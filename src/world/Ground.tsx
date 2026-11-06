@@ -4,7 +4,7 @@ export function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[GROUND_SIZE, GROUND_SIZE]} />
-      <meshStandardMaterial color="#8f9078" roughness={1} />
+      <meshStandardMaterial color="#97907a" roughness={1} />
     </mesh>
   )
 }

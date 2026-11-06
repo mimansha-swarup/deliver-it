@@ -1771,3 +1771,141 @@ feel polished. `lerp` then blends the two camera positions by that amount.
 ### Next
 
 Remove the debug lines, then make the world look less like boxes.
+
+---
+
+## 2026-11-06: Entry 13, less like boxes
+
+Commit `4445850` holds everything before this entry.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/world/Buildings.tsx` | Windows and floor lines on every wall, and darker roofs |
+| `src/world/RoadMarkings.tsx` | New. Dashed centre lines that stop short of junctions |
+| `src/world/props.ts` | New. Chooses where trees and lamps go, and makes them solid |
+| `src/world/RoadsideProps.tsx` | New. Draws 116 trees and 98 lamps |
+| `src/world/Boundary.tsx` | New. A low wall around the play area |
+| `src/world/roadGeometry.ts` | New. Road-drawing helpers, now shared with the markings |
+| `src/world/collision.ts` | Added `addPost`, for small solid things |
+| `src/world/World.tsx` | Now builds the collision world, and places the props in it |
+| `src/world/DebugMap.tsx` | Deleted, along with the green and yellow guide lines |
+
+### Why
+
+- **One window image, repeated.** Every wall in the city shares a single 128-pixel image
+  drawn in code. There are no image files to download, and no extra triangles.
+- **Trees and lamps are solid.** Riding through a tree would break the illusion at once, so
+  each adds a small post to the collision world.
+- **The same trees every visit.** Placement uses a fixed seed (Lesson 12), so collisions and
+  routes behave the same way each time.
+- **The wall explains the edge.** Until now the scooter stopped at an invisible barrier.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| Props placed | 116 trees, 98 lamps, in 10 ms |
+| Same placement on each load | Yes |
+| Any prop on a road | None: the closest is 0.74 m from a road's edge |
+| Bot following only the arrow, around the props | **100 deliveries, all on time**, averaging 55.5 s, 0 steps inside a wall |
+| 500 random missions | All valid, 315 customers |
+| Views from the air and from the road | Look right, with no errors |
+
+### Frame rate: read this carefully
+
+My test browser renders on the CPU, so these numbers say nothing about your Mac. They only
+compare one version with another:
+
+| Version | Test FPS |
+| --- | --- |
+| All new visuals off | 18 |
+| Windows only | 15 |
+| Everything except trees and lamps | 14.5 |
+| Everything on | 12 |
+
+So the visuals cost about a third here, spread across several features, with no single
+cause. Turning off anisotropy, which I suspected, made no difference.
+
+Earlier I measured 26 FPS for the old version, and that wasn't a fair comparison: the same
+old visuals measured 18 in this later test, so my machine was simply busier. Timing tests
+need to be compared in the same session.
+
+A real GPU should handle this far better than a CPU, but **I can't measure that**, so please
+check your FPS. If it's slow, the first things to cut are tree shadows and the shadow map
+size.
+
+### Known issues
+
+- **Every wall has the same windows**, with no doors or shop fronts, so ground floors look
+  like upper floors.
+- **Windows can be cut off at corners**, because the pattern doesn't fit each wall exactly.
+- **The ground is one flat colour.** There are no pavements yet.
+- **Roads continue a little past the boundary wall**, where their rounded ends poke out.
+
+### Lesson 47: UV mapping
+
+A texture is a flat image. **UV coordinates** say which part of the image each corner of a
+triangle shows, from (0, 0) at one corner of the image to (1, 1) at the opposite one. Go
+past 1 with `RepeatWrapping` on, and the image repeats. That makes windows easy:
+
+```ts
+uvs[i * 2] = alongWall / WINDOW_BAY_WIDTH // one repeat per window
+uvs[i * 2 + 1] = position.getZ(i) / FLOOR_HEIGHT // one repeat per floor
+```
+
+A 3.2 m floor gets exactly one row of windows, and a 9.6 m building gets three. The roofs
+share the same material, so they'd get windows too, except that every roof corner points at
+one plain spot on the image.
+
+### Lesson 48: `map` plus vertex colours
+
+Texture and vertex colour **multiply** together. White in the image shows the building's own
+colour, and dark areas stay dark. So one image makes a cream building, a pink building and a
+blue building, and all 509 stay in one draw call.
+
+### Lesson 49: instancing
+
+Merging (Lesson 10) combines shapes into one. **Instancing** is different: one shape, drawn
+many times.
+
+```tsx
+<instancedMesh args={[geometry, undefined, props.length]} />
+```
+
+The tree's 80-triangle canopy is stored once. Each copy adds only a matrix, which is 16
+numbers holding position, rotation and scale. `setColorAt` gives each one its own shade.
+
+| | Merging | Instancing |
+| --- | --- | --- |
+| Best for | Different shapes | Many of the same shape |
+| Memory | Grows with every copy | One shape, plus a matrix per copy |
+| Moving one later | Hard | Easy: change its matrix |
+
+### Lesson 50: mipmaps and anisotropy
+
+Far-away windows would shimmer as you move, because many image pixels land on one screen
+pixel. **Mipmaps** are pre-shrunk copies of a texture that the GPU switches to with distance.
+**Anisotropy** keeps textures sharp on surfaces seen at a steep angle, like a wall running
+away from you.
+
+### Lesson 51: comparing fairly
+
+The 26 versus 12 comparison looked alarming and was half wrong. Change one thing at a time,
+and measure both versions in the same session, because a machine's speed drifts.
+
+### Try it
+
+1. Ride around, and tell me your FPS.
+2. In `Buildings.tsx`, change `WINDOW_BAY_WIDTH` to `2.4` for narrower windows.
+3. In `createFacadeTexture`, change the glass colour from `#3e4c58` to `#9ac4d8`.
+4. In `props.ts`, set `TREE_CHANCE` to `1` for a leafier neighbourhood. Then try changing the
+   seed number passed to `createRandom`.
+5. In `Lighting.tsx`, set the sun to `[-180, 80, 120]`. Long shadows look lovely with windows.
+
+### Next
+
+Your FPS decides this. After that, shop fronts on ground floors, pavements, and a rider on
+the scooter.

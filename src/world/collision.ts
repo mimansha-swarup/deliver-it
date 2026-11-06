@@ -24,6 +24,24 @@ function cellKey(cellX: number, cellZ: number): number {
   return (cellX + 5000) * 10000 + (cellZ + 5000)
 }
 
+function addFootprint(world: CollisionWorld, footprint: Footprint) {
+  const xs = footprint.map(([x]) => x)
+  const zs = footprint.map(([, z]) => z)
+  const firstX = toCell(Math.min(...xs) - MAX_CHECK_RADIUS)
+  const lastX = toCell(Math.max(...xs) + MAX_CHECK_RADIUS)
+  const firstZ = toCell(Math.min(...zs) - MAX_CHECK_RADIUS)
+  const lastZ = toCell(Math.max(...zs) + MAX_CHECK_RADIUS)
+
+  for (let cellX = firstX; cellX <= lastX; cellX++) {
+    for (let cellZ = firstZ; cellZ <= lastZ; cellZ++) {
+      const key = cellKey(cellX, cellZ)
+      const cell = world.get(key)
+      if (cell) cell.push(footprint)
+      else world.set(key, [footprint])
+    }
+  }
+}
+
 export function createCollisionWorld(buildings: PolygonFeature[]): CollisionWorld {
   const world: CollisionWorld = new Map()
 
@@ -31,29 +49,27 @@ export function createCollisionWorld(buildings: PolygonFeature[]): CollisionWorl
     const ring = building.geometry.coordinates[0]
     if (!isRingInPlayArea(ring)) continue
 
-    const footprint = ring.slice(0, -1).map((position): GroundPoint => {
-      const [x, , z] = lonLatToWorld(position)
-      return [x, z]
-    })
-
-    const xs = footprint.map(([x]) => x)
-    const zs = footprint.map(([, z]) => z)
-    const firstX = toCell(Math.min(...xs) - MAX_CHECK_RADIUS)
-    const lastX = toCell(Math.max(...xs) + MAX_CHECK_RADIUS)
-    const firstZ = toCell(Math.min(...zs) - MAX_CHECK_RADIUS)
-    const lastZ = toCell(Math.max(...zs) + MAX_CHECK_RADIUS)
-
-    for (let cellX = firstX; cellX <= lastX; cellX++) {
-      for (let cellZ = firstZ; cellZ <= lastZ; cellZ++) {
-        const key = cellKey(cellX, cellZ)
-        const cell = world.get(key)
-        if (cell) cell.push(footprint)
-        else world.set(key, [footprint])
-      }
-    }
+    addFootprint(
+      world,
+      ring.slice(0, -1).map((position): GroundPoint => {
+        const [x, , z] = lonLatToWorld(position)
+        return [x, z]
+      }),
+    )
   }
 
   return world
+}
+
+/** Adds a small solid post, such as a tree trunk or a lamp post. */
+export function addPost(world: CollisionWorld, x: number, z: number, radius: number) {
+  const sides = 6
+  const footprint: Footprint = []
+  for (let side = 0; side < sides; side++) {
+    const angle = (side / sides) * Math.PI * 2
+    footprint.push([x + Math.cos(angle) * radius, z + Math.sin(angle) * radius])
+  }
+  addFootprint(world, footprint)
 }
 
 /**

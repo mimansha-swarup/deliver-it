@@ -16,6 +16,52 @@ const WALL_COLORS = [
   '#d6a184', // terracotta
 ].map((color) => new THREE.Color(color))
 
+/** Width of one window and the wall around it, in metres. */
+const WINDOW_BAY_WIDTH = 3.4
+const ROOF_SHADE = 0.8
+/** A spot on the texture that's plain wall, used for roofs. */
+const PLAIN_SPOT = 0.02
+
+/**
+ * One window bay, drawn in code. It's white where the wall is, so the building's
+ * own colour shows through there, and every wall in the city repeats this image.
+ */
+function createFacadeTexture(): THREE.CanvasTexture {
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+
+  const context = canvas.getContext('2d')
+  if (context) {
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, size, size)
+
+    // A slightly darker band where each floor meets the next.
+    context.fillStyle = '#d9d9d9'
+    context.fillRect(0, size - 6, size, 6)
+
+    // Frame, then glass, then the bar down the middle of the window.
+    context.fillStyle = '#8c8a84'
+    context.fillRect(34, 26, 60, 66)
+    context.fillStyle = '#3e4c58'
+    context.fillRect(38, 30, 52, 58)
+    context.fillStyle = '#8c8a84'
+    context.fillRect(62, 30, 4, 58)
+
+    // Window sill.
+    context.fillStyle = '#b4b2ab'
+    context.fillRect(30, 92, 68, 5)
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 8
+  return texture
+}
+
 /**
  * Turns text into a stable number (FNV-1a hash). A building's "random" height
  * and colour come from its id, so it looks the same on every page load.
@@ -44,6 +90,34 @@ function toRing(ring: LonLat[]): THREE.Vector2[] {
   return ring.slice(0, -1).map((position) => new THREE.Vector2(...lonLatToLocal(position)))
 }
 
+/**
+ * Sets each corner's colour and its place on the window texture. Colour stored
+ * on the geometry is what lets all buildings share a single material.
+ *
+ * On walls, one repeat of the texture covers one window bay and one floor, and
+ * the horizontal position is measured along the wall so windows line up. Roofs
+ * all use one plain spot on the texture, so they get no windows.
+ */
+function applyFacadeMapping(geometry: THREE.BufferGeometry, color: THREE.Color) {
+  const position = geometry.attributes.position
+  const normal = geometry.attributes.normal
+  const uvs = new Float32Array(position.count * 2)
+  const colors = new Float32Array(position.count * 3)
+  const roofColor = color.clone().multiplyScalar(ROOF_SHADE)
+
+  for (let i = 0; i < position.count; i++) {
+    const isRoof = Math.abs(normal.getZ(i)) > 0.5
+    const alongWall = position.getX(i) * -normal.getY(i) + position.getY(i) * normal.getX(i)
+
+    uvs[i * 2] = isRoof ? PLAIN_SPOT : alongWall / WINDOW_BAY_WIDTH
+    uvs[i * 2 + 1] = isRoof ? PLAIN_SPOT : position.getZ(i) / FLOOR_HEIGHT
+    ;(isRoof ? roofColor : color).toArray(colors, i * 3)
+  }
+
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+}
+
 function createBuildingGeometry(building: PolygonFeature): THREE.BufferGeometry {
   const [outerRing, ...holes] = building.geometry.coordinates
 
@@ -56,18 +130,8 @@ function createBuildingGeometry(building: PolygonFeature): THREE.BufferGeometry 
     bevelEnabled: false,
   })
 
-  // Every corner of this building gets the same colour. Storing colour on the
-  // geometry is what lets all buildings share a single material.
   const color = WALL_COLORS[hashString(building.id) % WALL_COLORS.length]
-  const vertexCount = geometry.attributes.position.count
-  const colors = new Float32Array(vertexCount * 3)
-  for (let i = 0; i < vertexCount; i++) {
-    color.toArray(colors, i * 3)
-  }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-
-  // There are no textures yet, so texture coordinates would be wasted memory.
-  geometry.deleteAttribute('uv')
+  applyFacadeMapping(geometry, color)
   return geometry
 }
 
@@ -95,12 +159,15 @@ export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
     [buildings],
   )
 
-  // We created this geometry by hand, so R3F won't free its GPU memory for us.
+  const facade = useMemo(() => createFacadeTexture(), [])
+
+  // We created these by hand, so R3F won't free their GPU memory for us.
   useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => () => facade.dispose(), [facade])
 
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial vertexColors roughness={0.9} />
+      <meshStandardMaterial map={facade} vertexColors roughness={0.9} />
     </mesh>
   )
 }
