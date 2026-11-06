@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { CanvasTexture, type Group } from 'three'
+import { useGameStore } from '../game/gameStore'
 import type { CollisionWorld } from '../world/collision'
 import { stepScooter, type ScooterState } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
@@ -152,7 +153,9 @@ export function Scooter({
 
   useFrame((_, delta) => {
     const state = scooterState.current
-    stepScooter(state, input.current, collisions, Math.min(delta, MAX_FRAME_TIME))
+    if (useGameStore.getState().started) {
+      stepScooter(state, input.current, collisions, Math.min(delta, MAX_FRAME_TIME))
+    }
 
     if (ref.current) {
       ref.current.position.set(state.x, 0, state.z)

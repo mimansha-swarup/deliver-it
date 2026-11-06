@@ -15,6 +15,8 @@ type Telemetry = {
 }
 
 type GameState = Telemetry & {
+  /** False while the title screen is showing. */
+  started: boolean
   phase: MissionPhase
   /** Goes up with each new delivery, which restarts the mission clock. */
   missionNumber: number
@@ -24,6 +26,7 @@ type GameState = Telemetry & {
   xp: number
   lastReward: Reward | null
 
+  startGame: () => void
   /** Hands over the planner once the map has loaded, and plans the first delivery. */
   startMissions: (planner: MissionPlanner, fromX: number, fromZ: number) => void
   /** Moves the mission on when the scooter reaches the current stop. */
@@ -42,6 +45,7 @@ export const useGameStore = create<GameState>()(
       drifting: false,
       boosting: false,
 
+      started: false,
       phase: 'toPickup',
       missionNumber: 1,
       mission: null,
@@ -49,6 +53,8 @@ export const useGameStore = create<GameState>()(
       credits: 0,
       xp: 0,
       lastReward: null,
+
+      startGame: () => set({ started: true }),
 
       startMissions: (planner, fromX, fromZ) => {
         if (get().mission) return
@@ -82,6 +88,7 @@ export const useGameStore = create<GameState>()(
   setTelemetry: (telemetry) => set(telemetry),
     }),
     {
+      // Kept from the project's earlier name, so existing saves still load.
       name: 'slikk-it-progress',
       version: 1,
       // Only progress is saved. Everything else starts fresh on each visit.

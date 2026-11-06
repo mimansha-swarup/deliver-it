@@ -175,3 +175,91 @@ body,
   width: 100%;
   height: 100%;
 }
+
+.title-screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: linear-gradient(rgb(15 17 21 / 25%), rgb(15 17 21 / 65%));
+}
+
+.title-card {
+  width: min(420px, 100%);
+  box-sizing: border-box;
+  padding: 28px 32px;
+  border-radius: 12px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 88%);
+}
+
+.title-card h1 {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.title-card p {
+  margin: 0;
+}
+
+.title-subtitle {
+  margin-top: 6px !important;
+  color: #c9c6bc;
+}
+
+.title-controls {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 20px 0;
+  font-size: 14px;
+}
+
+.title-controls dt {
+  font-weight: 600;
+}
+
+.title-controls dd {
+  margin: 0;
+  color: #c9c6bc;
+}
+
+.title-progress {
+  margin-bottom: 14px !important;
+  color: #3ddc97;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.title-card button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 0;
+  border-radius: 6px;
+  color: #10231a;
+  background: #3ddc97;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.title-loading {
+  padding: 12px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 8%);
+  text-align: center;
+}
+
+.title-note {
+  margin-top: 14px !important;
+  color: #8f8c83;
+  font-size: 12px;
+  text-align: center;
+}

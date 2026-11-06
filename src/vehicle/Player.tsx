@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Group } from 'three'
 import { FollowCamera } from '../camera/FollowCamera'
+import { TitleCamera } from '../camera/TitleCamera'
 import { useGameStore } from '../game/gameStore'
 import { MissionMarker } from '../missions/MissionMarker'
 import { createMissionPlanner } from '../missions/missionPlanner'
@@ -12,6 +13,7 @@ import { SkidMarks } from './SkidMarks'
 import { createScooterState } from './ScooterController'
 
 export function Player({ data }: { data: MapData }) {
+  const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
   const collisions = useMemo(() => createCollisionWorld(data.buildings), [data])
@@ -25,7 +27,11 @@ export function Player({ data }: { data: MapData }) {
     <>
       <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} />
       <SkidMarks scooter={scooterState} />
-      <FollowCamera scooter={scooterState} collisions={collisions} />
+      {started ? (
+        <FollowCamera scooter={scooterState} collisions={collisions} />
+      ) : (
+        <TitleCamera />
+      )}
       <MissionTracker scooter={scooterState} />
       <MissionMarker />
     </>

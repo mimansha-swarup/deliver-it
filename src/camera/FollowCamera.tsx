@@ -1,6 +1,6 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { PerspectiveCamera } from 'three'
+import { PerspectiveCamera, Vector3 } from 'three'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getTravelSpeed } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
@@ -13,6 +13,9 @@ const LOOK_HEIGHT = 1
 
 /** How fast the camera swings round behind the scooter. Higher is tighter. */
 const TURN_RESPONSE = 5
+
+/** How long the camera takes to fly in from the title view, in seconds. */
+const INTRO_TIME = 1.6
 
 const BASE_FOV = 60
 /** Extra field of view at top speed, which makes speed feel faster. */
@@ -60,9 +63,12 @@ export function FollowCamera({
 }) {
   const cameraHeading = useRef<number | null>(null)
   const cameraDistance = useRef(DISTANCE_BEHIND)
+  const introStart = useRef<Vector3 | null>(null)
+  const introTime = useRef(0)
 
   useFrame(({ camera }, delta) => {
     const state = scooter.current
+    introStart.current ??= new Vector3().copy(camera.position)
     const travelSpeed = getTravelSpeed(state)
 
     // In a slide, look partly along the direction of travel, so the scooter is
@@ -88,6 +94,15 @@ export function FollowCamera({
     cameraDistance.current = distance
 
     camera.position.set(state.x - forwardX * distance, HEIGHT, state.z - forwardZ * distance)
+
+    // Blends from the title view, starting and finishing gently.
+    if (introTime.current < INTRO_TIME) {
+      introTime.current += delta
+      const progress = Math.min(introTime.current / INTRO_TIME, 1)
+      const eased = progress * progress * (3 - 2 * progress)
+      camera.position.lerp(introStart.current, 1 - eased)
+    }
+
     camera.lookAt(state.x + forwardX * LOOK_AHEAD, LOOK_HEIGHT, state.z + forwardZ * LOOK_AHEAD)
 
     if (camera instanceof PerspectiveCamera) {

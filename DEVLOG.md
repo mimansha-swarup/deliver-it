@@ -1,4 +1,6 @@
-# slikk-it dev log
+# Deliver It dev log
+
+This game was called SLIKK IT until Entry 12.
 
 What was done, why it was done, and what it teaches about Three.js and
 React Three Fiber (R3F). Newest entry goes at the bottom, so the lessons read in
@@ -1663,3 +1665,109 @@ work out the types when middleware is involved.
 ### Next
 
 A title screen and loading screen, then making the world look less like boxes.
+
+---
+
+## 2026-11-06: Entry 12, title screen and a new name
+
+Commit `c26c5a9` holds everything before this entry.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/ui/TitleScreen.tsx` | New. Name, controls, saved progress and a start button. It also shows "Loading the neighbourhood…" until the map is ready |
+| `src/ui/ErrorBoundary.tsx` | New. Shows a message and a retry button if loading fails |
+| `src/camera/TitleCamera.tsx` | New. A slow aerial circle behind the title |
+| `src/camera/FollowCamera.tsx` | Flies in from the title view when you start |
+| `src/game/gameStore.ts` | Added `started` and `startGame` |
+| `src/vehicle/Scooter.tsx` | Ignores the controls until the game has started |
+| `src/App.tsx` | Shows either the title screen or the HUD |
+
+**The game is now called Deliver It**, at your request. That's in the title screen, the
+browser tab and `package.json`.
+
+### Why
+
+- **Your real neighbourhood is the backdrop.** It's the most striking thing the game has,
+  so it does the selling behind the title.
+- **Enter starts the game**, because the button has focus. Nobody needs to reach for the
+  mouse on a keyboard game.
+- **The error screen matters for a demo.** Before this, a failed map load left a blank page.
+- **The save key stays `slikk-it-progress`.** Renaming it would have wiped your saved
+  credits and XP, and players never see it.
+- **The project folder is still `slikk-it`.** Renaming it would disturb your open editor
+  and running dev server, so that's your call.
+- **"Independent prototype. Not an official product."** stays on the title, since this
+  still isn't an approved product.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| On the title: HUD and minimap hidden, Start button focused | Yes |
+| Pressing W on the title | Scooter doesn't move, clock stays at 0 |
+| Pressing Enter | Starts, with HUD and minimap showing |
+| Fly-in | Seen mid-flight in a screenshot |
+| Riding after starting | Works, 32 km/h after 1.5 s |
+| Map file blocked on purpose | Error screen instead of a blank page |
+
+**Not seen: the loading message.** The map loads too quickly here to catch it on screen.
+You'd see it for longer on a slow connection.
+
+### Known issues
+
+- **The green and yellow debug lines show in the aerial view.** They should go before the
+  demo.
+- **Starting after a long pause keeps the same mission**, which is intended.
+
+### Lesson 44: error boundaries
+
+If a React component throws while rendering, React removes the whole tree, which is why
+you'd get a blank page. An **error boundary** catches that and shows something else:
+
+```tsx
+static getDerivedStateFromError(): State {
+  return { failed: true }
+}
+```
+
+It's the one thing that still needs a class component. It pairs naturally with `use()` from
+Lesson 4: `Suspense` handles "still loading", and an error boundary handles "it failed".
+
+### Lesson 45: swapping cameras by swapping components
+
+There's no camera mode flag here:
+
+```tsx
+{started ? <FollowCamera ... /> : <TitleCamera />}
+```
+
+Each component drives the same camera in its own `useFrame`, and while it's mounted it's in
+charge. In R3F, mounting a component can switch behaviour on, and unmounting it switches
+behaviour off.
+
+### Lesson 46: smoothstep
+
+The fly-in uses a small formula you'll see everywhere:
+
+```ts
+const eased = progress * progress * (3 - 2 * progress)
+```
+
+A straight line from 0 to 1 starts and stops abruptly. This curve starts slowly, speeds up,
+and settles gently. It's called **smoothstep**, and it's a one-line way to make any movement
+feel polished. `lerp` then blends the two camera positions by that amount.
+
+### Try it
+
+1. Refresh, and watch the aerial view. Press Enter to fly in.
+2. In `TitleCamera.tsx`, change `ORBIT_HEIGHT` to `60` for a lower sweep.
+3. In `FollowCamera.tsx`, set `INTRO_TIME` to `4` for a slow descent.
+4. Replace `eased` with `progress` in the fly-in, and feel the difference.
+5. In `mapData.ts`, temporarily misspell `MAP_URL` to see the error screen.
+
+### Next
+
+Remove the debug lines, then make the world look less like boxes.
