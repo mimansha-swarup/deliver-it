@@ -898,3 +898,177 @@ so you can see it turning.
 Building collision, so the walls are solid. It uses the same footprints we extruded,
 and it's where the narrow residential stretches from Entry 5 will show up. Then come
 the pickup, the destination and the first mission.
+
+---
+
+## 2026-11-06: Entry 7, solid walls
+
+Roadmap: Phase 3, collision detection. Commit `08eafc5` holds everything before this
+entry.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/world/collision.ts` | New. Sorts building footprints into a grid, pushes the scooter out of walls, and checks whether a spot is clear |
+| `src/vehicle/ScooterController.ts` | Now reacts to hits: head-on stops you, and a glancing hit turns you along the wall |
+| `src/camera/FollowCamera.tsx` | Moves in closer when a building is behind the scooter |
+| `src/vehicle/Player.tsx`, `Scooter.tsx` | Pass the collision data along |
+| `src/world/World.tsx`, `src/App.tsx` | `<Player />` moved into `World`, because it now needs the map data |
+| `src/world/worldUtils.ts`, `Roads.tsx`, `Buildings.tsx` | Shared helpers moved to one place, so buildings look and collide by the same rule |
+
+### Why
+
+- **Plain 2D collision, not a physics engine.** Buildings are straight walls, and the
+  scooter stays on flat ground, so this is 2D. It needs no new dependency. Rapier
+  remains an option if we ever need real physics.
+- **The scooter counts as a 0.6 m circle.** A circle has no corners to snag on, so it
+  slides around building edges. The trade-off is that the nose can overlap a wall by
+  about 0.3 m in a head-on hit, because the scooter is longer than it is wide.
+- **Glancing hits deflect you.** Only the part of your speed running into the wall is
+  removed, and the scooter swings to run along it. That's the arcade feel the brief
+  asks for. Hits within about 37° of straight-on count as head-on and stop you.
+- **No score or damage.** Hits don't change anything except speed, for now. The brief
+  says packages stay pristine, and hits may count toward a performance score later.
+- **The camera fix came along too**, because the collision data made it about 30 lines,
+  and walls blocking the view was a known issue from Entry 6.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| Earlier handling checks | All still pass |
+| Can every road be reached with solid walls? | **Yes: all 2,055 road sample points** |
+| Random bot, 600,000 steps (nearly 3 hours at 60 FPS) | Never ended a step inside a wall, across 1,868 hard hits |
+| Slowest allowed frame at top speed | Doesn't pass through a wall |
+| Head-on hit, then reverse | Stops, and backs away |
+| Browser ride, including S | Glanced off a wall and rode on, with S pressed afterwards, and no errors |
+| Browser errors | None |
+
+The reachability check flood-filled a 0.5 m grid with a 0.6 m scooter. So the tight
+residential stretches from Entry 5 turned out not to block anything.
+
+As before, these were throwaway scripts, so they aren't in the repo. **I still can't
+judge how it feels**, and the camera's movement isn't covered by these checks beyond
+the few screenshots.
+
+The head-on stop was only tested in Node, because the browser ride hit its wall at a
+glancing angle.
+
+### A bug I found: walls were sticky
+
+My first version only cut speed. A check failed, so I measured what happened when
+holding W against a wall from top speed, and it was worse than the test showed. The
+scooter kept pointing into the wall, so it lost speed again on every frame:
+
+| Angle into wall | First version, after 0.5 s | Now, after 0.5 s | Now, after 3 s |
+| --- | --- | --- | --- |
+| 3° | 14.0 m/s | 14.0 m/s | 14.0 m/s |
+| 10° | 10.9 m/s | 14.0 m/s | 14.0 m/s |
+| 25° | **1.6 m/s** | 13.1 m/s | 14.0 m/s |
+| 45° | **0.2 m/s** | 8.1 m/s | 14.0 m/s |
+
+So a 25° brush took you from 50 km/h to walking pace, as if the wall were glue. At first
+I wrote that off as a feature, then looked at the numbers again. The fix turns the
+scooter along the wall, so you only pay the penalty once.
+
+The tuning values are `headOnThreshold` and `wallDeflectRate` in `vehicleConfig.ts`.
+
+### Lesson 23: broad phase and narrow phase
+
+There are 509 buildings, averaging about 6 walls each. Checking all of them every frame
+is wasteful, because nearly all of them are far away. Games split this into two steps:
+
+- **Broad phase:** quickly rule out what can't possibly touch
+- **Narrow phase:** do the careful maths on what's left
+
+Our broad phase is a **spatial grid**. The map is divided into 20 m cells, and each cell
+lists the buildings that touch it. To find what's nearby, we divide our position by 20
+and look in that one list.
+
+```ts
+const nearby = world.get(cellKey(toCell(point.x), toCell(point.z)))
+```
+
+Building the grid takes about 3 ms, once. Each footprint is stored in every cell it
+reaches, plus a 2 m margin, so one cell's list is enough.
+
+### Lesson 24: the nearest point on a wall
+
+The narrow phase needs one thing: the nearest point on a wall. A wall runs from A to B.
+Project the scooter onto that line, then clamp the result to the wall's ends:
+
+```ts
+const along = ((x - ax) * edgeX + (z - az) * edgeZ) / lengthSquared
+const clamped = Math.max(0, Math.min(1, along))
+```
+
+`along` is a **dot product**: it measures how far along the wall the scooter sits, from
+0 at A to 1 at B. If the distance to that nearest point is less than the radius, we
+overlap, and we push out by the difference.
+
+### Lesson 25: the dot product
+
+The dot product is the most useful tool in game maths. For two directions of length 1,
+it says how much they agree: 1 means the same way, 0 means at right angles, and -1 means
+opposite.
+
+We use it again for hits. `towardWall` is the dot product of your travel direction and
+the wall's facing direction:
+
+| You are | `towardWall` | What happens |
+| --- | --- | --- |
+| Hitting head-on | 1 | Stop |
+| Hitting at 45° | 0.71 | Keep 71% of speed and turn along the wall |
+| Scraping at 10° | 0.17 | Keep 98% of speed and turn along the wall |
+| Moving away | Negative | Nothing |
+
+It also gives us the direction along the wall. Take your travel direction and remove
+the part pointing into the wall, and what's left runs parallel to it:
+
+```ts
+const alongX = travelX + normalX * towardWall
+const alongZ = travelZ + normalZ * towardWall
+```
+
+This trick is called **projection**, and you'll see it everywhere in game code.
+
+### Lesson 26: inside or outside?
+
+At top speed in a slow frame, the scooter moves 0.7 m, which is more than its radius, so
+its centre can land *inside* a building. Then "move away from the nearest wall" would
+push it deeper. This is the start of **tunnelling**, where fast objects skip through
+thin walls.
+
+So `measureFootprint` also does the classic **ray test**: walk in a straight line and
+count the walls you cross. An odd number means you started inside. If you're inside,
+we push the other way.
+
+The speed limit and thick buildings keep us safe here. A bullet would need a more
+advanced check.
+
+### Lesson 27: flood fill
+
+To answer "can the scooter reach every road?", I marked every spot on a grid as free or
+blocked. Starting from the spawn point, I spread to neighbouring free spots until
+nothing new was reached, the way the paint bucket works in a drawing app. Then I checked
+that every road point had been reached.
+
+We'll use the same thinking when we place pickups and deliveries, since a mission must
+never target somewhere you can't reach.
+
+### Try it
+
+1. Ride into a wall head-on, then at a shallow angle, and compare. Tell me if the
+   deflection feels natural or if it fights your steering.
+2. Ride around a tight junction and watch the camera move in near the walls.
+3. In `vehicleConfig.ts`, set `collisionRadius` to `2` and try the narrow streets. You
+   should feel them close up. Then set it back.
+4. In `handleCollisions`, change the `Math.sqrt(...)` line to `state.speed = 0`. Any
+   touch now stops you dead, and you'll see why arcade games don't do that.
+
+### Next
+
+The delivery mission: a pickup, a destination, markers and rewards. That needs Zustand
+for game state, which is also what the HUD will read.

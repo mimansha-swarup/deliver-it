@@ -4,6 +4,9 @@ export type LonLat = [lon: number, lat: number]
 /** Metres from the world origin. */
 export type LocalPoint = [east: number, north: number]
 
+/** A position on the ground in world coordinates: [x, z]. */
+export type GroundPoint = [x: number, z: number]
+
 /**
  * The point on the map that becomes (0, 0, 0) in the game world: the centre of
  * the playable area. It is fixed rather than computed from the data, so
@@ -39,4 +42,12 @@ export function isInsidePlayArea(position: LonLat): boolean {
   const [east, north] = lonLatToLocal(position)
   const half = PLAY_AREA_SIZE / 2
   return Math.abs(east) <= half && Math.abs(north) <= half
+}
+
+/** True when the centre of a closed GeoJSON ring falls inside the playable area. */
+export function isRingInPlayArea(closedRing: LonLat[]): boolean {
+  const ring = closedRing.slice(0, -1)
+  const lon = ring.reduce((sum, [pointLon]) => sum + pointLon, 0) / ring.length
+  const lat = ring.reduce((sum, [, pointLat]) => sum + pointLat, 0) / ring.length
+  return isInsidePlayArea([lon, lat])
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { CanvasTexture, type Group } from 'three'
+import type { CollisionWorld } from '../world/collision'
 import { createScooterState, stepScooter } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
 import { SCOOTER } from './vehicleConfig'
@@ -133,7 +134,13 @@ function Handlebars() {
  * and direction, the lean group tilts everything, and the steering group turns
  * only the front end. Each part inherits the movement of the groups around it.
  */
-export function Scooter({ ref }: { ref: RefObject<Group | null> }) {
+export function Scooter({
+  ref,
+  collisions,
+}: {
+  ref: RefObject<Group | null>
+  collisions: CollisionWorld
+}) {
   const input = useDriveInput()
   const scooterState = useRef(createScooterState())
 
@@ -144,7 +151,7 @@ export function Scooter({ ref }: { ref: RefObject<Group | null> }) {
 
   useFrame((_, delta) => {
     const state = scooterState.current
-    stepScooter(state, input.current, Math.min(delta, MAX_FRAME_TIME))
+    stepScooter(state, input.current, collisions, Math.min(delta, MAX_FRAME_TIME))
 
     if (ref.current) {
       ref.current.position.set(state.x, 0, state.z)

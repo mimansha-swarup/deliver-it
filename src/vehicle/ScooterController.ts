@@ -1,3 +1,4 @@
+import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
 import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMIT } from './vehicleConfig'
 
 export type DriveInput = {
@@ -70,7 +71,48 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   state.lean = moveToward(state.lean, targetLean, SCOOTER.leanRate * SCOOTER.maxLean * dt)
 }
 
-function updatePosition(state: ScooterState, dt: number) {
+/**
+ * Pushes the scooter out of any building, then reacts to how direct the hit was.
+ * Every hit removes the speed heading into the wall. A glancing hit also swings
+ * the scooter along the wall, so it doesn't lose speed again on every frame.
+ */
+function handleCollisions(state: ScooterState, collisions: CollisionWorld, dt: number) {
+  const beforeX = state.x
+  const beforeZ = state.z
+  pushOutOfBuildings(collisions, state, SCOOTER.collisionRadius)
+
+  const pushX = state.x - beforeX
+  const pushZ = state.z - beforeZ
+  const pushLength = Math.hypot(pushX, pushZ)
+  if (pushLength === 0 || state.speed === 0) return
+
+  // The wall's facing direction, and our direction of travel (flipped in reverse).
+  const normalX = pushX / pushLength
+  const normalZ = pushZ / pushLength
+  const travelSign = Math.sign(state.speed)
+  const travelX = Math.sin(state.heading) * travelSign
+  const travelZ = Math.cos(state.heading) * travelSign
+
+  const towardWall = -(travelX * normalX + travelZ * normalZ)
+  if (towardWall <= 0) return
+
+  state.speed *= Math.sqrt(Math.max(0, 1 - towardWall * towardWall))
+  if (towardWall > SCOOTER.headOnThreshold) return
+
+  // Remove the part of our travel that points into the wall. What's left runs along it.
+  const alongX = travelX + normalX * towardWall
+  const alongZ = travelZ + normalZ * towardWall
+  const targetHeading = Math.atan2(alongX * travelSign, alongZ * travelSign)
+
+  // The shortest way round from one angle to the other.
+  const turn = Math.atan2(
+    Math.sin(targetHeading - state.heading),
+    Math.cos(targetHeading - state.heading),
+  )
+  state.heading += turn * (1 - Math.exp(-SCOOTER.wallDeflectRate * dt))
+}
+
+function updatePosition(state: ScooterState, collisions: CollisionWorld, dt: number) {
   const nextX = state.x + Math.sin(state.heading) * state.speed * dt
   const nextZ = state.z + Math.cos(state.heading) * state.speed * dt
 
@@ -78,12 +120,19 @@ function updatePosition(state: ScooterState, dt: number) {
   state.z = Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, nextZ))
   if (state.x !== nextX || state.z !== nextZ) state.speed = 0
 
+  handleCollisions(state, collisions, dt)
+
   state.wheelSpin += (state.speed / SCOOTER.wheelRadius) * dt
 }
 
 /** Advances the scooter by `dt` seconds. Updates `state` in place. */
-export function stepScooter(state: ScooterState, input: DriveInput, dt: number) {
+export function stepScooter(
+  state: ScooterState,
+  input: DriveInput,
+  collisions: CollisionWorld,
+  dt: number,
+) {
   updateSpeed(state, input, dt)
   updateSteering(state, input, dt)
-  updatePosition(state, dt)
+  updatePosition(state, collisions, dt)
 }

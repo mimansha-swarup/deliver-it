@@ -23,6 +23,13 @@ export const SCOOTER = {
   leanRate: 7,
 
   wheelRadius: 0.25,
+
+  /** The scooter counts as a circle of this radius when it hits things. */
+  collisionRadius: 0.6,
+  /** Hits more direct than this are head-on, and don't deflect. 1 is dead straight. */
+  headOnThreshold: 0.8,
+  /** How quickly a glancing hit swings the scooter along the wall. */
+  wallDeflectRate: 14,
 }
 
 /** On a real road in the play area, pointing along it. */

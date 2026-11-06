@@ -1,10 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { LineFeature } from './mapData'
-import { lonLatToWorld, PLAY_AREA_SIZE } from './worldUtils'
-
-/** A position on the ground: [x, z]. */
-type GroundPoint = [x: number, z: number]
+import { lonLatToWorld, PLAY_AREA_SIZE, type GroundPoint } from './worldUtils'
 
 const LANE_WIDTH = 3.5
 const DEFAULT_ROAD_WIDTH = 5

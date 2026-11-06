@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { PolygonFeature } from './mapData'
-import { isInsidePlayArea, lonLatToLocal, type LonLat } from './worldUtils'
+import { isRingInPlayArea, lonLatToLocal, type LonLat } from './worldUtils'
 
 const FLOOR_HEIGHT = 3.2
 
@@ -89,16 +89,9 @@ function createCityGeometry(buildings: PolygonFeature[]): THREE.BufferGeometry {
   return city
 }
 
-function isBuildingInPlayArea(building: PolygonFeature): boolean {
-  const ring = building.geometry.coordinates[0].slice(0, -1)
-  const lon = ring.reduce((sum, [pointLon]) => sum + pointLon, 0) / ring.length
-  const lat = ring.reduce((sum, [, pointLat]) => sum + pointLat, 0) / ring.length
-  return isInsidePlayArea([lon, lat])
-}
-
 export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
   const geometry = useMemo(
-    () => createCityGeometry(buildings.filter(isBuildingInPlayArea)),
+    () => createCityGeometry(buildings.filter((b) => isRingInPlayArea(b.geometry.coordinates[0]))),
     [buildings],
   )
 

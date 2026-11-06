@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Player } from './vehicle/Player'
 import { World } from './world/World'
 
 const SKY_COLOR = '#cfe3f2'
@@ -13,7 +12,6 @@ function App() {
         <fog attach="fog" args={[SKY_COLOR, 500, 1300]} />
         <Suspense fallback={null}>
           <World />
-          <Player />
         </Suspense>
       </Canvas>
 

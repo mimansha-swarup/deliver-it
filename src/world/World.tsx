@@ -1,4 +1,5 @@
 import { use } from 'react'
+import { Player } from '../vehicle/Player'
 import { Buildings } from './Buildings'
 import { DebugMap } from './DebugMap'
 import { Ground } from './Ground'
@@ -16,6 +17,7 @@ export function World() {
       <Roads roads={data.roads} />
       <Buildings buildings={data.buildings} />
       <DebugMap data={data} />
+      <Player buildings={data.buildings} />
     </>
   )
 }
