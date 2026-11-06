@@ -700,3 +700,201 @@ piece never touches the box.
 
 Add the scooter and controls, following the brief's recommended order. Sidewalks and
 landmarks aren't on the weekend MVP list, so they can wait.
+
+---
+
+## 2026-11-06: Entry 6, the scooter rides
+
+Roadmap: Phases 2 and 3 (basic version), plus the follow camera from Phase 4. Commit
+`70e4740` holds everything before this entry.
+
+**This reaches the first major milestone: a player-controlled scooter riding through
+a 3D neighbourhood generated from real HSR Layout data.**
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/vehicle/vehicleConfig.ts` | New. Every handling number, in one place |
+| `src/vehicle/ScooterController.ts` | New. The handling, as plain TypeScript with no 3D code |
+| `src/vehicle/useDriveInput.ts` | New. Tracks which keys are held |
+| `src/vehicle/Scooter.tsx` | New. The procedural model, updated every frame |
+| `src/camera/FollowCamera.tsx` | New. Third-person camera |
+| `src/vehicle/Player.tsx` | New. Connects the scooter and the camera |
+| `src/App.tsx` | Removed orbit controls and added the player and a controls hint |
+
+| Handling | Value |
+| --- | --- |
+| Top speed | 14 m/s (about 50 km/h) |
+| 0 to top speed | 2.8 s |
+| Stopping from top speed | 8.8 m braking, 6.4 m with the handbrake |
+| Reverse | 3 m/s |
+
+### Why
+
+- **The handling knows nothing about 3D.** `ScooterController.ts` takes numbers and
+  returns numbers, so I could test it without a browser. It also keeps the door open
+  for the game-state work in Phase 7.
+- **A follow camera now.** You asked for controls, but you can't ride without one.
+- **The world-edge barrier from Entry 3 is in**, since it's only a few lines.
+- **No Zustand yet.** Nothing outside the scooter needs its state. It'll come with the
+  HUD, which needs to read the speed.
+- **No rider yet.** The roadmap marks it "if time permits".
+- **The box is plain.** No logos or branding, as the brief requires.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| 13 handling checks in Node | All pass |
+| Same ride at 30, 60 and 144 FPS | Ends within 0.11 m |
+| Real key presses in headless Chrome | W accelerates, A and D turn correctly, Space stops, S untested in the browser |
+| Browser errors during the rides | None |
+
+The Node checks were throwaway scripts, so they aren't in the repo. We have no test
+framework yet.
+
+**Not checked: how it feels.** My test browser ran at about 25 FPS on the CPU, and I
+can't judge feel from screenshots. All the numbers in `vehicleConfig.ts` are first
+guesses.
+
+### Problems I found by riding
+
+**The sun's shadow looked terrible on the scooter.** At 16 cm per pixel, a 2 m object
+becomes a smear. I replaced it with a fake soft shadow (see Lesson 21). My first
+version, a plain disc, had a hard edge and looked worse.
+
+One screenshot of that first version, taken mid-turn, didn't show the disc at all. I
+couldn't reproduce it. The soft version appears in the shots taken moving straight and
+turning, but I never found out why that frame differed, so keep an eye out.
+
+### Known issues
+
+- **There is no building collision.** You can ride through walls, and the camera can
+  end up inside a building. This is the biggest gap and should be next.
+- **The camera can still clip into walls** on narrow streets, even after collision
+  works, since it sits 5.2 m behind the scooter.
+- **The bird's-eye orbit view is gone**, replaced by the follow camera.
+- **The blue place dots float in the air.** They're debug markers, and will go when
+  real mission markers arrive.
+
+### Lesson 17: the game loop, and why not `useState`
+
+React is built for things that change now and then. A game changes 60 times a second.
+
+```tsx
+useFrame((_, delta) => {
+  stepScooter(state, input.current, Math.min(delta, MAX_FRAME_TIME))
+  ref.current.position.set(state.x, 0, state.z)
+})
+```
+
+`useFrame` runs once per frame, *outside* React's rendering. If position lived in
+`useState`, React would re-render the component tree 60 times a second for no benefit.
+So the rule in R3F is:
+
+- **Rendered once, changes rarely:** props and state, the normal React way
+- **Changes every frame:** refs, changed directly inside `useFrame`
+
+The same applies to `useDriveInput`, where a key press writes to a ref and the loop
+reads it. React never hears about it.
+
+`stepScooter` also updates its object in place rather than returning a new one.
+Creating objects 60 times a second gives the garbage collector work, and that can show
+up as stutter.
+
+### Lesson 18: delta time
+
+`delta` is the number of seconds since the last frame. Everything that moves is
+multiplied by it:
+
+```ts
+state.x += Math.sin(state.heading) * state.speed * dt
+```
+
+Without it, a 120 Hz screen would run the game twice as fast as a 60 Hz one. With it,
+the scooter covers the same ground either way, which is what the 30/60/144 FPS check
+confirmed.
+
+`MAX_FRAME_TIME` handles the other extreme. If the tab is hidden for 10 seconds, the
+next `delta` is huge, and the scooter would teleport through the world.
+
+### Lesson 19: direction from an angle
+
+One number, `heading`, gives the direction of travel:
+
+```ts
+forwardX = Math.sin(heading)
+forwardZ = Math.cos(heading)
+```
+
+At heading 0 that's `(0, 1)`, which is +Z, the way the model faces. This pair of numbers
+always has length 1, so multiplying by speed gives the movement directly. The camera
+uses the same two numbers to find the spot behind the scooter.
+
+### Lesson 20: nested groups are the scene graph
+
+A child inherits its parent's movement. The scooter's nesting is built around that:
+
+```text
+group          position and heading (the whole scooter)
+├─ BlobShadow  stays flat on the road
+└─ group       lean (tilts everything inside)
+   ├─ body, rear wheel
+   └─ group    steering (turns only the front)
+      ├─ handlebars
+      └─ front wheel   spins on its own axis
+```
+
+The front wheel spins, turns with the bars, leans, and travels with the scooter, yet
+its code only sets its spin. This is the **scene graph**, and it's one of the most
+useful ideas in 3D. Notice that the shadow sits outside the lean group, because a
+shadow shouldn't tilt.
+
+### Lesson 21: faking it
+
+Games are full of cheats that look right. The blob shadow is a flat rectangle with a
+gradient image drawn on a `<canvas>`:
+
+```tsx
+<meshBasicMaterial map={texture} transparent depthWrite={false} />
+```
+
+- `meshBasicMaterial` ignores light, so it costs almost nothing.
+- `map` paints the texture onto the surface, and `transparent` makes its see-through
+  parts work.
+- `depthWrite={false}` stops this invisible-edged shape from blocking things drawn
+  after it.
+
+### Lesson 22: smooth following
+
+The camera eases toward the scooter's heading:
+
+```ts
+const heading = previous + (target - previous) * (1 - Math.exp(-TURN_RESPONSE * delta))
+```
+
+Each frame it closes a fraction of the remaining gap, so it moves fast when far behind
+and settles gently. The `Math.exp` part makes that fraction depend on time rather than
+on frame count. A plain `previous + gap * 0.1` would feel tighter on faster screens.
+
+It also makes turns feel better: the scooter swings first and the camera catches up,
+so you can see it turning.
+
+### Try it
+
+1. Click the page, then ride with WASD or the arrow keys. Space is the handbrake.
+2. Tell me how it feels: too fast, too twitchy, too slow to stop? Try changing
+   `maxSpeed`, `turnRateLow` and `turnRateHigh` in `vehicleConfig.ts`, then save. If a
+   change doesn't seem to apply, refresh the page.
+3. Remove `Math.min(delta, MAX_FRAME_TIME)`, ride, switch tabs for 10 seconds and come
+   back. Then put it back.
+4. Move `<BlobShadow />` inside the lean group and watch the shadow tilt in corners.
+5. In `FollowCamera.tsx`, set `TURN_RESPONSE` to `1`, then `20`. Find what feels best.
+
+### Next
+
+Building collision, so the walls are solid. It uses the same footprints we extruded,
+and it's where the narrow residential stretches from Entry 5 will show up. Then come
+the pickup, the destination and the first mission.
