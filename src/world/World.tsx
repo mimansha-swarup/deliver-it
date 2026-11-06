@@ -1,4 +1,5 @@
 import { use, useMemo } from 'react'
+import { Sky } from '../sky/Sky'
 import { createTrafficWorld } from '../traffic/trafficLogic'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
@@ -30,6 +31,7 @@ export function World() {
 
   return (
     <>
+      <Sky />
       <Lighting />
       <Ground />
       <Roads roads={data.roads} />

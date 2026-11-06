@@ -21,7 +21,7 @@ function MissionPanel() {
   return (
     <section className="hud-card hud-mission">
       <p className="hud-label" style={{ color: stop.color }}>
-        {stop.objective}
+        {stop.objective} · {mission.tier.label}
       </p>
       <p className="hud-title">{stop.name}</p>
       <p className="hud-detail">{inZone ? stop.arrivalHint : `${distance} m by road`}</p>
@@ -46,6 +46,11 @@ function Wallet() {
       </p>
     </section>
   )
+}
+
+function SkyClock() {
+  const clock = useGameStore((state) => state.clock)
+  return <section className="hud-card hud-clock">{clock}</section>
 }
 
 function Speedometer() {
@@ -75,6 +80,12 @@ function DeliveryComplete() {
       <dl>
         <dt>Delivery reward</dt>
         <dd>+{reward.baseCredits} credits</dd>
+        {reward.distanceCredits > 0 && (
+          <>
+            <dt>Distance bonus</dt>
+            <dd>+{reward.distanceCredits} credits</dd>
+          </>
+        )}
         <dt>On-time bonus</dt>
         <dd>{reward.onTime ? `+${reward.onTimeCredits} credits` : 'Missed'}</dd>
         <dt>Experience</dt>
@@ -92,6 +103,7 @@ export function Hud() {
     <>
       <MissionPanel />
       <Wallet />
+      <SkyClock />
       <Speedometer />
       <DeliveryComplete />
     </>

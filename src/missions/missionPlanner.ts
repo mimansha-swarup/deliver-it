@@ -1,5 +1,5 @@
-import type { Mission, MissionStop } from '../game/gameTypes'
-import { MISSION_RULES, PICKUP_NAMES } from '../game/missionConfig'
+import type { DeliveryTier, Mission, MissionStop } from '../game/gameTypes'
+import { DELIVERY_TIERS, MISSION_RULES, PICKUP_NAMES } from '../game/missionConfig'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { MapData } from '../world/mapData'
 import {
@@ -22,6 +22,15 @@ export type MissionPlanner = {
 
 function pickRandom<T>(items: T[], random: () => number): T {
   return items[Math.floor(random() * items.length)]
+}
+
+function rollTier(random: () => number): DeliveryTier {
+  let roll = random()
+  for (const tier of DELIVERY_TIERS) {
+    roll -= tier.chance
+    if (roll < 0) return tier
+  }
+  return DELIVERY_TIERS[0]
 }
 
 /**
@@ -112,19 +121,25 @@ export function createMissionPlanner(
       Math.hypot(graph.xs[node] - graph.xs[lastCustomer], graph.zs[node] - graph.zs[lastCustomer]) >=
         MISSION_RULES.minCustomerSpacing
 
-    const customerChoices = stopNodes.filter(
-      (node) =>
-        fromPickup.distance[node] >= MISSION_RULES.minRouteLength &&
-        fromPickup.distance[node] <= MISSION_RULES.maxRouteLength &&
-        isFarFromLast(node),
-    )
-    const customer = pickRandom(customerChoices, random)
+    const customersFor = ({ minRoute, maxRoute }: DeliveryTier) =>
+      stopNodes.filter(
+        (node) =>
+          fromPickup.distance[node] >= minRoute &&
+          fromPickup.distance[node] <= maxRoute &&
+          isFarFromLast(node),
+      )
+
+    // A pickup near the end of the map may have no long routes, so try the others too.
+    const wanted = rollTier(random)
+    const tier = [wanted, ...DELIVERY_TIERS].find((option) => customersFor(option).length > 0) ?? wanted
+    const customer = pickRandom(customersFor(tier), random)
     lastCustomer = customer
 
     const routeLength = fromPickup.distance[start] + fromPickup.distance[customer]
     const road = graph.roadNames[customer]
 
     return {
+      tier,
       pickup: createStop(
         pickup.node,
         pickup.name,

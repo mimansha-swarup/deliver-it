@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
+import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { PolygonFeature } from './mapData'
 import { ChunkedMesh } from './ChunkedMesh'
@@ -23,6 +25,11 @@ const WALL_COLORS = [
 /** Width of one window and the wall around it, in metres. */
 const WINDOW_BAY_WIDTH = 3.4
 const ROOF_SHADE = 0.8
+/** How far the pattern of lit windows runs before it repeats. */
+const WINDOW_PATTERN_BAYS = 5
+const WINDOW_PATTERN_FLOORS = 4
+const LIT_WINDOW_SHARE = 0.45
+const WINDOW_GLOW = 0.7
 /** A spot on the texture that's plain wall, used for roofs. */
 const PLAIN_SPOT = 0.02
 
@@ -63,6 +70,41 @@ function createFacadeTexture(): THREE.CanvasTexture {
   texture.wrapT = THREE.RepeatWrapping
   texture.colorSpace = THREE.SRGBColorSpace
   texture.anisotropy = 8
+  return texture
+}
+
+/**
+ * Which windows are lit at night. It covers several bays and floors before it
+ * repeats, so that not every window is on. Black parts don't glow at all.
+ */
+function createWindowLightTexture(): THREE.CanvasTexture {
+  const bay = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = bay * WINDOW_PATTERN_BAYS
+  canvas.height = bay * WINDOW_PATTERN_FLOORS
+
+  const context = canvas.getContext('2d')
+  if (context) {
+    context.fillStyle = '#000000'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+
+    for (let column = 0; column < WINDOW_PATTERN_BAYS; column++) {
+      for (let row = 0; row < WINDOW_PATTERN_FLOORS; row++) {
+        const roll = hashString(`${column},${row}`) / 4294967296
+        if (roll > LIT_WINDOW_SHARE) continue
+
+        // These match the glass in the facade texture, at half its size.
+        context.fillStyle = roll < LIT_WINDOW_SHARE / 3 ? '#ffe9b0' : '#ffc66e'
+        context.fillRect(column * bay + 19, row * bay + 15, 26, 29)
+      }
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.repeat.set(1 / WINDOW_PATTERN_BAYS, 1 / WINDOW_PATTERN_FLOORS)
   return texture
 }
 
@@ -171,6 +213,10 @@ function createCityGeometries(buildings: PolygonFeature[]): THREE.BufferGeometry
   return [...squares.values()].map(createBlockGeometry)
 }
 
+function updateWindowGlow(material: THREE.MeshStandardMaterial) {
+  material.emissiveIntensity = liveSky.look.night * WINDOW_GLOW
+}
+
 export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
   const geometries = useMemo(() => createCityGeometries(buildings), [buildings])
 
@@ -178,18 +224,26 @@ export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
   const facade = useMemo(() => createFacadeTexture(), [])
 
   // We created these by hand, so R3F won't free their GPU memory for us.
+  const windowLights = useMemo(() => createWindowLightTexture(), [])
+
   useEffect(() => () => facade.dispose(), [facade])
+  useEffect(() => () => windowLights.dispose(), [windowLights])
 
   // A new material each time, as a material can't gain or lose a texture freely.
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
         map: windows ? facade : null,
+        emissive: windows ? '#ffffff' : '#000000',
+        emissiveMap: windows ? windowLights : null,
+        emissiveIntensity: 0,
         vertexColors: true,
         roughness: 0.9,
       }),
-    [windows, facade],
+    [windows, facade, windowLights],
   )
+
+  useFrame(() => updateWindowGlow(material))
 
   return <ChunkedMesh geometries={geometries} material={material} castShadow />
 }

@@ -2261,3 +2261,198 @@ disagree, find a third that measures the thing directly.
 ### Next
 
 Your FPS decides whether we also trim the draw calls, or move on to missions across the strip.
+
+## 2026-11-06: Entry 17, deliveries across the strip
+
+### What I did
+
+Every delivery now has a length, shown in the mission panel and rolled at random:
+
+| Length | Road distance | Chance | Extra credits | Extra XP |
+| --- | --- | --- | --- | --- |
+| Local | 180–450 m | 50% | 0 | 0 |
+| Across town | 450–900 m | 35% | +35 | +15 |
+| Long haul | 900–1500 m | 15% | +80 | +35 |
+
+The extras appear as a "Distance bonus" on the results card. The base 50 credits and 25 XP are
+paid on every delivery as before, and the on-time bonus still doesn't change. On-time limits
+already grew with route length, so they needed no change.
+
+### Why
+
+The map grew four times over, but deliveries stayed at 180–450 m, so most of it went unused.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| 500 random missions | All valid, routes 181–1497 m |
+| 3,000 random starts | No crashes |
+| 200 deliveries, no traffic | All on time, 0 steps inside walls |
+| 200 deliveries, **with traffic** | All on time, 0 steps inside walls |
+
+This closes the gap from Entry 15, where the delivery bot had only ridden without traffic.
+
+My first bonuses (+50 and +120) were too generous. The bot earned 115 credits a minute on long
+hauls and 80 on local trips. With the final values and traffic on:
+
+| Length | Average time | Time limit | Credits per minute |
+| --- | --- | --- | --- |
+| Local | 57 s | 102 s | 78.5 |
+| Across town | 83 s | 154 s | 79.1 |
+| Long haul | 109 s | 202 s | 85.5 |
+
+The bot barely slows down and never looks around, so a person will be slower. The comparison
+between lengths should hold, but the times won't, and **whether the limits feel fair is yours to
+judge**.
+
+The first traffic run failed: only 186 of 200 done, stuck for hours in one spot. I checked before
+blaming anything. No vehicle was within 9 m, and reversing freed 10.5 m, so it wasn't a trap.
+Traffic had pushed the bot onto a post, and its fixed reverse-and-retry repeated forever. With a
+varied escape in the bot, all 200 finished. The game itself didn't change for this.
+
+The rider can still block a car forever by parking in front of it, as cars wait for the rider
+without limit. You can always ride around or reverse, so I left it.
+
+### Lesson 66: tune with numbers from play
+
+A bonus looks fair on paper until you divide by time. What matters to a player is earnings per
+minute, not per trip. Here, a real measurement replaced a guess:
+
+```
+credits per minute = (base + distance + on-time) / average seconds × 60
+```
+
+Keep long trips slightly ahead. Too far ahead, and nobody wants short trips.
+
+### Lesson 67: data-driven rules
+
+The lengths are a plain list, and the code just reads it:
+
+```ts
+{ label: 'Long haul', minRoute: 900, maxRoute: 1500, chance: 0.15, extraCredits: 80, extraXp: 35 },
+```
+
+A new length needs a new row and no new logic. Games use this everywhere, because rules get
+tuned far more often than code gets rewritten.
+
+### Try it
+
+1. Do a Long haul, and see if the time limit feels fair.
+2. In `missionConfig.ts`, set Long haul's `chance` to `1`, and the other two to `0`, to get only long trips.
+3. Park in front of a car and watch it wait.
+
+### Next
+
+Tell me how the long trips feel. After that, the map could use something to ride for: spending
+credits, or a level from XP.
+
+## 2026-11-07: Entry 18, trees, a clock and weather
+
+### What I did
+
+- **Trees:** three shapes (round, tall, wide like a rain tree) and 12 colours, including flowering
+  ones like the city's gulmohar, tabebuia and jacaranda. They sway, harder as the wind picks up.
+- **A sky dome,** with a gradient, sun, moon, stars and drifting clouds.
+- **A 24-hour clock,** shown on screen. A day lasts about 8 minutes, as the clock runs twice as
+  fast after dark. It starts at 09:00.
+- **Weather:** Clear, Cloudy and Rain, each lasting 45–110 seconds and blending into the next.
+  Rain darkens the road, thickens the fog and fades the shadows. Wind moves the trees and clouds.
+- **Night lighting:** moonlight, lit windows, pools of light under street lamps, and a headlight.
+- **Two shortcuts:** `N` jumps 3 hours and `M` changes the weather.
+
+Low skips clouds, and the rain has fewer drops on lower levels.
+
+### Why
+
+The city looked frozen. A sky that changes and trees that move make it feel alive, even when
+nothing else is going on. Weather is only for looks for now. It doesn't change the handling.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| 20 simulated days | All values valid, no sudden jumps in light or colour |
+| Weather over 200 minutes | Clear, Cloudy and Rain all came up |
+| 200 deliveries with traffic | All passed again |
+| Browser | No errors |
+| Screenshots | Day, night, rain and rain at night all looked right |
+
+Frame rate, on the CPU test renderer:
+
+| Level | Before | After |
+| --- | --- | --- |
+| High | 9.0 | 8.3 |
+| Medium | 11.7 | 10.7 |
+| Low | 24.3 | 25.3 |
+
+**Not checked, or not perfect:**
+
+- Screenshots can't show movement, so I haven't seen the sway, the falling rain or how the shadows
+  move as the sun crosses the sky. Moving shadow edges may crawl slightly.
+- Tree shadows don't sway. Only the trees do.
+- Sunset lasts under a minute, and I didn't screenshot it.
+- Cars and pedestrians have no lights at night.
+- The cost of the sky on your Retina screen is unknown, as the CPU test runs at 1× resolution.
+
+### Lesson 68: a shader on a dome
+
+The sky isn't a picture. It's a huge sphere, seen from inside, that follows the camera, so you can
+never reach it. A **fragment shader** works out its colour pixel by pixel:
+
+```glsl
+vec3 color = mix(uHorizon, uZenith, pow(height, 0.55));
+```
+
+The fog takes the horizon's colour, so that distant buildings melt into the sky at any time of day.
+
+### Lesson 69: noise makes clouds
+
+Random numbers look like static. **Value noise** blends between them smoothly, and adding finer,
+fainter layers gives the billowing shapes of cloud. To draw them, keep only what's above a
+threshold. Lower the threshold, and the sky fills up, which is how weather controls cloud cover.
+
+### Lesson 70: moving things on the GPU
+
+Rain is 1,400 lines, and JavaScript never moves one. It passes the time, and the vertex shader
+works out each position:
+
+```glsl
+drop.y = mod(drop.y - uTime * 24.0, 18.0);
+```
+
+`mod` wraps a falling drop back to the top, forever. The trees work the same way: `onBeforeCompile`
+adds a few lines to Three.js's own shader, and hundreds of trees sway for the price of one number.
+
+### Lesson 71: fake lights
+
+Every real light adds work to every surface. The lamp pools and the headlight aren't lights: they're
+flat shapes with **additive blending**, which adds their colour to what's under them. They can't
+light a wall, but on a road nobody notices.
+
+### Lesson 72: R3F copies `uniforms`
+
+This cost me two rounds. Rain was invisible and the clouds were frozen, with no errors. Checking the
+live material showed `uOpacity: 0`, even though my code was setting it. Passing `uniforms` as a JSX
+prop gave the material a copy, so my updates went nowhere. The fix was to build the material once:
+
+```ts
+const skyMaterial = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader })
+```
+
+```tsx
+<mesh material={skyMaterial} />
+```
+
+Camera position still worked, because the copy kept the same `Vector3`. That's what gave it away.
+
+### Try it
+
+1. Press `N` a few times and watch the day pass, then press `M` until it rains.
+2. In `skyLogic.ts`, set `dayLength` to `120`.
+3. In `Rain.tsx`, change `FALL_SPEED`, or `rainDrops` in `qualitySettings.ts`.
+4. In `RoadsideProps.tsx`, multiply `0.045` by four, and the trees get a gale.
+
+### Next
+
+Tell me how it feels. Rain could also make the road slippery, if you'd like weather to matter.

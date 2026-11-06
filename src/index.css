@@ -75,6 +75,13 @@ body,
   text-align: right;
 }
 
+.hud-clock {
+  top: 142px;
+  right: 12px;
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .hud-value {
   font-size: 18px;
   font-weight: 700;

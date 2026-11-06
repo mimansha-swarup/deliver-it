@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { liveSky } from '../game/livePlayer'
 import { ChunkedMesh } from './ChunkedMesh'
 import { createFlatGeometries, positionsFor, splitLongPiece, type ChunkedPositions } from './chunks'
 import type { LineFeature } from './mapData'
@@ -13,6 +15,9 @@ const JOINT_SIDES = 12
 /** A pavement runs under each road, showing this far past the edge on both sides. */
 export const PAVEMENT_WIDTH = 1.8
 const PAVEMENT_HEIGHT = 0.03
+const ROAD_COLOR = new THREE.Color('#66676b')
+/** Wet tarmac looks darker. A full downpour takes this share off. */
+const WET_DARKENING = 0.35
 
 /** A flat circle. These fill the gaps at bends and form the junctions. */
 function pushJoint(positions: number[], [x, z]: GroundPoint, width: number, height: number) {
@@ -67,6 +72,10 @@ function createRoadGeometry(
   return createFlatGeometries(chunks)
 }
 
+function updateWetness(material: THREE.MeshStandardMaterial) {
+  material.color.copy(ROAD_COLOR).multiplyScalar(1 - liveSky.rain * WET_DARKENING)
+}
+
 export function Roads({ roads }: { roads: LineFeature[] }) {
   const road = useMemo(() => createRoadGeometry(roads, ROAD_HEIGHT, 0), [roads])
   const pavement = useMemo(
@@ -96,6 +105,8 @@ export function Roads({ roads }: { roads: LineFeature[] }) {
       }),
     [],
   )
+
+  useFrame(() => updateWetness(roadMaterial))
 
   return (
     <>

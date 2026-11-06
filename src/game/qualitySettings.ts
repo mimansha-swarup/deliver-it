@@ -12,6 +12,9 @@ type QualityPreset = {
   drawDistance: number
   /** Trees and lamps further from the rider than this aren't drawn, in metres. */
   propDistance: number
+  /** Whether the sky draws clouds. They're the costliest part of it. */
+  skyClouds: boolean
+  rainDrops: number
   vehicles: number
   pedestrians: number
 }
@@ -25,6 +28,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     treeShadows: false,
     drawDistance: 280,
     propDistance: 140,
+    skyClouds: false,
+    rainDrops: 300,
     vehicles: 6,
     pedestrians: 10,
   },
@@ -36,6 +41,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     treeShadows: false,
     drawDistance: 400,
     propDistance: 200,
+    skyClouds: true,
+    rainDrops: 700,
     vehicles: 12,
     pedestrians: 22,
   },
@@ -47,6 +54,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     treeShadows: true,
     drawDistance: 520,
     propDistance: 260,
+    skyClouds: true,
+    rainDrops: 1400,
     vehicles: 18,
     pedestrians: 36,
   },

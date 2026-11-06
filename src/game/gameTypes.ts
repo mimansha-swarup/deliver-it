@@ -14,7 +14,17 @@ export type MissionStop = {
   color: string
 }
 
+export type DeliveryTier = {
+  label: string
+  minRoute: number
+  maxRoute: number
+  chance: number
+  extraCredits: number
+  extraXp: number
+}
+
 export type Mission = {
+  tier: DeliveryTier
   pickup: MissionStop
   customer: MissionStop
   /** Finish within this time for the bonus. It depends on the route's length. */
@@ -23,6 +33,7 @@ export type Mission = {
 
 export type Reward = {
   baseCredits: number
+  distanceCredits: number
   onTimeCredits: number
   xp: number
   seconds: number

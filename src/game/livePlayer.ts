@@ -1,9 +1,20 @@
+import { createSkyState, getSkyLook } from '../sky/skyLogic'
+
 /**
  * Values updated every frame by the game loop and read by the minimap and the
  * direction arrow. They're plain objects rather than store state, so that
  * writing to them 60 times a second doesn't re-render anything.
  */
 export const livePlayer = { x: 0, z: 0, heading: 0 }
+
+/** The sky as it looks right now, worked out each frame by the Sky component. */
+export const liveSky = {
+  look: getSkyLook(createSkyState()),
+  /** How hard it's raining, from 0 to 1. */
+  rain: 0,
+  /** How windy it is, from 0 to 1. */
+  wind: 0.3,
+}
 
 export const liveView = {
   /** Nothing further than this from the rider is drawn, in metres. */

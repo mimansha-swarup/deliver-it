@@ -11,6 +11,7 @@ import type { MapData } from '../world/mapData'
 import type { RoadGraph } from '../world/roadGraph'
 import { Traffic } from '../traffic/Traffic'
 import type { TrafficWorld } from '../traffic/trafficLogic'
+import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
 import { createScooterState } from './ScooterController'
@@ -34,6 +35,7 @@ export function Player({ data, collisions, graph, traffic }: PlayerProps) {
   return (
     <>
       <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} />
+      <Headlight scooter={scooterState} />
       <SkidMarks scooter={scooterState} />
       {started ? (
         <FollowCamera scooter={scooterState} collisions={collisions} />

@@ -27,6 +27,8 @@ type GameState = Telemetry & {
   xp: number
   quality: Quality
   lastReward: Reward | null
+  /** The time and the weather, as shown on screen. */
+  clock: string
 
   startGame: () => void
   setQuality: (quality: Quality) => void
@@ -36,6 +38,7 @@ type GameState = Telemetry & {
   arriveAtStop: (seconds: number) => void
   nextMission: () => void
   setTelemetry: (telemetry: Telemetry) => void
+  setClock: (clock: string) => void
 }
 
 export const useGameStore = create<GameState>()(
@@ -57,6 +60,7 @@ export const useGameStore = create<GameState>()(
       xp: 0,
       quality: 'high',
       lastReward: null,
+      clock: '',
 
       startGame: () => set({ started: true }),
 
@@ -72,11 +76,12 @@ export const useGameStore = create<GameState>()(
           if (state.phase === 'toPickup') return { phase: 'toCustomer' }
           if (state.phase !== 'toCustomer' || !state.mission) return state
 
-          const reward = calculateReward(seconds, state.mission.onTimeSeconds)
+          const { onTimeSeconds, tier } = state.mission
+          const reward = calculateReward(seconds, onTimeSeconds, tier)
           return {
             phase: 'delivered',
             lastReward: reward,
-            credits: state.credits + reward.baseCredits + reward.onTimeCredits,
+            credits: state.credits + reward.baseCredits + reward.distanceCredits + reward.onTimeCredits,
             xp: state.xp + reward.xp,
           }
     }),
@@ -92,6 +97,7 @@ export const useGameStore = create<GameState>()(
     })),
 
   setTelemetry: (telemetry) => set(telemetry),
+  setClock: (clock) => set({ clock }),
     }),
     {
       // Kept from the project's earlier name, so existing saves still load.

@@ -27,7 +27,7 @@ function GameUi() {
         <Minimap />
       </Suspense>
 
-      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift</p>
+      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · N skips time · M changes weather</p>
     </>
   )
 }

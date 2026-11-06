@@ -1,4 +1,4 @@
-import type { Mission, MissionPhase, MissionStop, Reward } from '../game/gameTypes'
+import type { DeliveryTier, Mission, MissionPhase, MissionStop, Reward } from '../game/gameTypes'
 import { MISSION_RULES } from '../game/missionConfig'
 
 /** The stop the player is heading for, or null when there isn't one. */
@@ -13,14 +13,15 @@ export function hasArrived(distance: number, speed: number): boolean {
   return distance <= MISSION_RULES.zoneRadius && Math.abs(speed) <= MISSION_RULES.maxArrivalSpeed
 }
 
-/** The base reward is paid in full on every delivery. Time can only add to it. */
-export function calculateReward(seconds: number, onTimeSeconds: number): Reward {
+/** The base reward is paid in full on every delivery. Distance and time only add to it. */
+export function calculateReward(seconds: number, onTimeSeconds: number, tier: DeliveryTier): Reward {
   const onTime = seconds <= onTimeSeconds
 
   return {
     baseCredits: MISSION_RULES.baseCredits,
+    distanceCredits: tier.extraCredits,
     onTimeCredits: onTime ? MISSION_RULES.onTimeCredits : 0,
-    xp: MISSION_RULES.baseXp,
+    xp: MISSION_RULES.baseXp + tier.extraXp,
     seconds,
     onTime,
   }

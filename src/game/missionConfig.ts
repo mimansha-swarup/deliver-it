@@ -1,3 +1,5 @@
+import type { DeliveryTier } from './gameTypes'
+
 /** The rules every delivery follows. Locations are chosen by the mission planner. */
 export const MISSION_RULES = {
   /** Radius of the ring around each stop, in metres. */
@@ -15,9 +17,6 @@ export const MISSION_RULES = {
   onTimeRouteSpeed: 6.7,
   minOnTimeSeconds: 30,
 
-  /** A customer's road distance from the pickup, in metres. */
-  minRouteLength: 180,
-  maxRouteLength: 450,
   /** Pickups within this road distance of the rider are preferred, in metres. */
   maxPickupDistance: 500,
   /** A new customer is at least this far from the last one, in metres. */
@@ -33,6 +32,16 @@ export const MISSION_RULES = {
   pickupColor: '#ffb02e',
   customerColor: '#3ddc97',
 }
+
+/**
+ * Lengths of delivery, by road distance from pickup to customer. `chance` values
+ * add up to 1. The extras are paid on top of the base reward, never instead of it.
+ */
+export const DELIVERY_TIERS: DeliveryTier[] = [
+  { label: 'Local', minRoute: 180, maxRoute: 450, chance: 0.5, extraCredits: 0, extraXp: 0 },
+  { label: 'Across town', minRoute: 450, maxRoute: 900, chance: 0.35, extraCredits: 35, extraXp: 15 },
+  { label: 'Long haul', minRoute: 900, maxRoute: 1500, chance: 0.15, extraCredits: 80, extraXp: 35 },
+]
 
 /** Fictional placeholders. No real shop or brand appears in the game. */
 export const PICKUP_NAMES = [
