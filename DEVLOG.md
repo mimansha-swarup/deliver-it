@@ -567,3 +567,136 @@ ourselves, so we clean it up ourselves.
 
 Generate real road surfaces from the OSM lines, using `lanes` and road type for width.
 That also replaces the thin guide lines.
+
+---
+
+## 2026-11-06: Entry 5, real road surfaces
+
+Roadmap: Phase 1, generating roads. Commit `d6ef20b` holds everything before this
+entry.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/world/Roads.tsx` | New. Builds all road surfaces into one flat mesh |
+| `src/world/World.tsx` | Added `<Roads />` |
+| `src/world/DebugMap.tsx` | Removed the road guide lines, which the surfaces replace |
+
+The result is 1,776 triangles, with 123 joints at bends and junctions. Roads stop at
+the play area boundary.
+
+### Why
+
+**Widths come from measurement.** OSM has no width data for these roads, so I measured
+the distance from each road's centre to the nearest building, every 3 m or so:
+
+| Road type | Closest 1% | Closest 5% | Typical (median) | Width chosen |
+| --- | --- | --- | --- | --- |
+| Residential | 1.2 m | 2.0 m | 5.2 m | 5 m |
+| Service | 2.9 m | 3.2 m | 10.1 m | 4 m |
+| Tertiary, 2 lanes | 4.5 m | 5.6 m | 9.5 m | 7 m |
+| Tertiary, 4 lanes | 10.4 m | 10.6 m | 12.1 m | 14 m |
+
+These are distances from the centre, so a 5 m road reaches 2.5 m out. When OSM has a
+`lanes` tag, the width is lanes × 3.5 m.
+
+I had expected residential roads to be 6–7 m. At that width they'd run under many more
+buildings, so the measurement changed the decision.
+
+**Asphalt is lighter than real asphalt.** My first colour, `#47484c`, made shadows on
+the road nearly black. Switching to `#6a6b6f` fixed it. Very dark surfaces leave little
+room for shadow detail, but I didn't isolate the exact cause.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| Browser console | No errors |
+| Network | Connected, with clean bends and junctions |
+| View from above | No flicker between road and ground in the screenshots |
+| View from a real road at 1.6 m | Reads as a road |
+| Tertiary and service roads | No buildings within the road's width |
+| Residential roads | **8% of their length is not fully clear (see below)** |
+
+Screenshots can't show flicker that only appears while the camera moves, so please
+look for that as you orbit around.
+
+### Known issue: buildings close to residential roads
+
+Along 515 m of residential road (11% of residential, 8% of all road), a building
+stands within the 5 m width. The closest is 0.86 m from the centre, and 114 m of road
+has a building within 1.5 m.
+
+Visually this is minor, because the wall simply covers the road's edge. It will matter
+for collisions, since a scooter could clip a corner on those stretches. Some of it may
+be inaccuracy in the mapped footprints or road lines. I'm leaving the data alone until
+we can feel it while riding.
+
+### Lesson 13: building a mesh by hand
+
+Until now, Three.js made our triangles. `Roads.tsx` makes them itself, and that's less
+mysterious than it sounds. A road piece is a rectangle, so two triangles:
+
+```text
+startLeft ------- endLeft
+    |  \             |
+    |      \         |
+startRight ------ endRight
+```
+
+To find the corners we need the road's sideways direction. Turning a direction
+`(x, z)` by 90 degrees gives `(z, -x)`, which is all `sideX` and `sideZ` do.
+
+Rectangles alone leave wedge-shaped gaps at bends, so `pushJoint` puts a flat circle
+at every point, the way a round brush stroke has no gaps at its corners. At a junction,
+the circles and rectangles simply overlap. Because they're the same colour at the same
+height, you can't see the seams.
+
+### Lesson 14: which way a triangle faces
+
+A triangle has two sides, and by default Three.js draws only the **front**, to save
+work. This is called **back-face culling**. The front is decided by the order of the
+corners: anticlockwise as seen from the viewer.
+
+That's what the `facesUp` check in `pushTriangle` handles. It uses a cross product to
+see which way the triangle would face, and swaps two corners if it's upside down.
+Get this wrong and the road is invisible from above, with no error.
+
+A **normal** is a separate thing. It's the direction a surface points *for lighting*.
+Three.js's built-in shapes come with normals. Ours has none until we add them, and
+without them lighting doesn't work. Roads are flat, so every normal is `(0, 1, 0)`.
+
+### Lesson 15: z-fighting
+
+When two surfaces are at nearly the same depth, the GPU can't reliably tell which is
+in front, and they flicker in a striped pattern. That's **z-fighting**. Depth precision
+is also worse far from the camera. We use three defences:
+
+- The road sits 5 cm above the ground (`ROAD_HEIGHT`).
+- `polygonOffset` nudges the road's depth toward the camera, without moving it.
+- `near: 1` on the camera. Depth precision depends heavily on this value, and a tiny
+  `near` wastes much of it on the space right in front of the camera.
+
+### Lesson 16: clipping a line to a box
+
+`clipToPlayArea` is the Liang-Barsky algorithm, a classic from graphics. Think of a
+road piece as running from 0 (start) to 1 (end). Each of the four box edges can only
+push the "enter" point later or the "leave" point earlier. If enter passes leave, the
+piece never touches the box.
+
+### Try it
+
+1. Orbit around, including low to the road, and look for flickering.
+2. In `Roads.tsx`, set `residential` to `8` and see roads push under buildings.
+3. Remove the `pushJoint` loop (the `joints.forEach` line) and look at the bends.
+4. In `pushTriangle`, change `facesUp ? [a, b, c] : [a, c, b]` to the opposite order.
+   The road disappears from above, and that's back-face culling.
+5. Set `ROAD_HEIGHT` to `0`, and remove the three `polygonOffset` props, to see real
+   z-fighting.
+
+### Next
+
+Add the scooter and controls, following the brief's recommended order. Sidewalks and
+landmarks aren't on the weekend MVP list, so they can wait.

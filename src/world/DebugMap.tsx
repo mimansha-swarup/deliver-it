@@ -3,7 +3,6 @@ import type { MapData } from './mapData'
 import { lonLatToWorld, PLAY_AREA_SIZE, type LonLat } from './worldUtils'
 
 const DEBUG_COLORS = {
-  road: '#2f3136',
   footway: '#55705f',
   place: '#1677c9',
   playArea: '#ffe14d',
@@ -75,16 +74,14 @@ function PlayAreaOutline({ height }: { height: number }) {
   )
 }
 
-/** Temporary guide lines for roads, places and the play area boundary. */
+/** Temporary guides for footways, places and the play area boundary. */
 export function DebugMap({ data }: { data: MapData }) {
-  const roads = useMemo(() => data.roads.map((r) => r.geometry.coordinates), [data])
   const footways = useMemo(() => data.footways.map((f) => f.geometry.coordinates), [data])
   const places = useMemo(() => data.places.map((p) => p.geometry.coordinates), [data])
 
   return (
     <>
       <LineLayer lines={footways} color={DEBUG_COLORS.footway} height={0.2} />
-      <LineLayer lines={roads} color={DEBUG_COLORS.road} height={0.3} />
       <PointLayer points={places} color={DEBUG_COLORS.place} height={1} />
       <PlayAreaOutline height={0.4} />
     </>
