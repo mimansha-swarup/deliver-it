@@ -21,22 +21,27 @@ export type MapData = {
   buildings: PolygonFeature[]
   roads: LineFeature[]
   footways: LineFeature[]
+  /** Parks, playgrounds and sports pitches. */
+  parks: PolygonFeature[]
   places: PointFeature[]
 }
 
 const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
 
 /** OSM `highway` values a scooter should not treat as a road. */
+const GREEN_SPACES = new Set(['park', 'garden', 'playground', 'pitch'])
 const NOT_DRIVABLE = new Set(['footway', 'path'])
 
 function sortFeatures(features: Feature[]): MapData {
-  const data: MapData = { buildings: [], roads: [], footways: [], places: [] }
+  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [] }
 
   for (const feature of features) {
     const { geometry, properties } = feature
 
     if (geometry.type === 'Polygon' && properties.building) {
       data.buildings.push({ ...feature, geometry })
+    } else if (geometry.type === 'Polygon' && GREEN_SPACES.has(properties.leisure ?? '')) {
+      data.parks.push({ ...feature, geometry })
     } else if (geometry.type === 'LineString' && properties.highway) {
       const layer = NOT_DRIVABLE.has(properties.highway) ? data.footways : data.roads
       layer.push({ ...feature, geometry })

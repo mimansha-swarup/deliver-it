@@ -13,6 +13,8 @@ export const MISSION_RULES = {
 
   /** Extra credits for finishing on time. Missing it costs nothing. */
   onTimeCredits: 25,
+  /** Extra credits for a delivery with no crashes. Crashing never costs anything else. */
+  cleanRideCredits: 10,
   /** The route speed the on-time limit is based on, in metres per second. */
   onTimeRouteSpeed: 6.7,
   minOnTimeSeconds: 30,

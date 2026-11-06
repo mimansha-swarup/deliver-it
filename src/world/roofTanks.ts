@@ -1,24 +1,13 @@
 import { FLOOR_HEIGHT, getFloors, hashString } from './buildingData'
 import type { PolygonFeature } from './mapData'
 import type { Prop } from './props'
-import { isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
+import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
 /** Share of buildings with water tanks, out of 100. */
 const TANK_CHANCE = 75
 /** Every point this far around a tank's middle must be on the roof, in metres. */
 const TANK_SPACE = 0.9
 const SECOND_TANK_GAP = 1.8
-
-/** The ray test: walk in one direction and count the walls you cross. Odd means inside. */
-function isInsideOutline(outline: GroundPoint[], x: number, z: number): boolean {
-  let inside = false
-  for (let i = 0, previous = outline.length - 1; i < outline.length; previous = i++) {
-    const [ax, az] = outline[previous]
-    const [bx, bz] = outline[i]
-    if (az > z !== bz > z && x < ax + ((z - az) / (bz - az)) * (bx - ax)) inside = !inside
-  }
-  return inside
-}
 
 function fitsOnRoof(outline: GroundPoint[], x: number, z: number): boolean {
   return (

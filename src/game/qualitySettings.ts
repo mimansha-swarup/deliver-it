@@ -19,6 +19,10 @@ type QualityPreset = {
   /** Whether the sky draws clouds. They're the costliest part of it. */
   skyClouds: boolean
   rainDrops: number
+  /** Whether trees use photographed leaves, or the simple solid shapes. */
+  leafyTrees: boolean
+  /** Tufts of grass around the rider. */
+  grassTufts: number
   vehicles: number
   pedestrians: number
 }
@@ -35,6 +39,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     propDistance: 140,
     skyClouds: false,
     rainDrops: 300,
+    leafyTrees: false,
+    grassTufts: 0,
     vehicles: 6,
     pedestrians: 10,
   },
@@ -49,6 +55,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     propDistance: 200,
     skyClouds: true,
     rainDrops: 700,
+    leafyTrees: true,
+    grassTufts: 1400,
     vehicles: 12,
     pedestrians: 22,
   },
@@ -63,6 +71,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     propDistance: 260,
     skyClouds: true,
     rainDrops: 1400,
+    leafyTrees: true,
+    grassTufts: 3200,
     vehicles: 18,
     pedestrians: 36,
   },

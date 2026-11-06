@@ -8,6 +8,8 @@ export type ShopFront = {
   /** Which way it faces, in radians around Y. */
   rotation: number
   width: number
+  /** What the signboard says: only ever the kind of shop, never a real shop's name. */
+  sign: string
   /** A 0 to 1 value used to pick a colour. */
   variation: number
 }
@@ -18,6 +20,24 @@ const MIN_WALL_LENGTH = 3
 const MAX_AWNING_WIDTH = 7
 /** Two awnings closer than this would overlap, in metres. */
 const MIN_SPACING = 5
+
+/** A generic word for each kind of place on the map. */
+const SIGN_WORDS: Record<string, string> = {
+  clothes: 'CLOTHING',
+  restaurant: 'RESTAURANT',
+  fast_food: 'SNACKS',
+  cafe: 'COFFEE',
+  supermarket: 'GROCERY',
+  pharmacy: 'MEDICALS',
+  bakery: 'BAKERY',
+  beauty: 'BEAUTY',
+  hairdresser: 'SALON',
+  jewelry: 'JEWELLERS',
+  electronics: 'ELECTRONICS',
+}
+
+export const OTHER_SHOP_SIGN = 'GENERAL STORE'
+export const ALL_SIGNS = [...Object.values(SIGN_WORDS), OTHER_SHOP_SIGN]
 
 /** A stable 0 to 1 number from a map feature's id, so colours never change. */
 function hashToUnit(text: string): number {
@@ -46,6 +66,7 @@ export function generateShopFronts(places: PointFeature[], collisions: Collision
       z: wall.z,
       rotation: Math.atan2(wall.normalX, wall.normalZ),
       width: Math.min(wall.length * 0.8, MAX_AWNING_WIDTH),
+      sign: SIGN_WORDS[shop ?? amenity ?? ''] ?? OTHER_SHOP_SIGN,
       variation: hashToUnit(place.id),
     })
   }

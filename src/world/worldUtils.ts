@@ -59,6 +59,17 @@ export function isInsidePlayArea(position: LonLat): boolean {
   return isInsideBounds(x, z)
 }
 
+/** The ray test: walk in one direction and count the edges you cross. Odd means inside. */
+export function isInsideOutline(outline: GroundPoint[], x: number, z: number): boolean {
+  let inside = false
+  for (let i = 0, previous = outline.length - 1; i < outline.length; previous = i++) {
+    const [ax, az] = outline[previous]
+    const [bx, bz] = outline[i]
+    if (az > z !== bz > z && x < ax + ((z - az) / (bz - az)) * (bx - ax)) inside = !inside
+  }
+  return inside
+}
+
 /** True when the centre of a closed GeoJSON ring falls inside the playable area. */
 export function isRingInPlayArea(closedRing: LonLat[]): boolean {
   const ring = closedRing.slice(0, -1)

@@ -32,6 +32,9 @@ const PROBE_STEP = 0.4
 /** How fast the camera drifts back out after being pushed in. */
 const DISTANCE_RESPONSE = 3
 
+/** How far the camera rattles in the hardest hit, in metres. */
+const SHAKE_SIZE = 0.35
+
 /** Walks backwards from the scooter and returns how far the camera can go. */
 function findClearDistance(
   collisions: CollisionWorld,
@@ -66,7 +69,7 @@ export function FollowCamera({
   const introStart = useRef<Vector3 | null>(null)
   const introTime = useRef(0)
 
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     const state = scooter.current
     introStart.current ??= new Vector3().copy(camera.position)
     const travelSpeed = getTravelSpeed(state)
@@ -94,6 +97,10 @@ export function FollowCamera({
     cameraDistance.current = distance
 
     camera.position.set(state.x - forwardX * distance, HEIGHT, state.z - forwardZ * distance)
+
+    // A hit rattles the camera. Two speeds of wobble stop it looking regular.
+    camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
+    camera.position.y += Math.sin(clock.elapsedTime * 61) * state.impact * SHAKE_SIZE * 0.6
 
     // Blends from the title view, starting and finishing gently.
     if (introTime.current < INTRO_TIME) {

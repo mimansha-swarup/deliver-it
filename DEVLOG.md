@@ -2635,3 +2635,369 @@ y = startY + (endY - startY) * along - sag * 4 * along * (1 - along)
 ### Next
 
 More street clutter (shutters, signboards, parked scooters), soft shading, or better trees.
+
+## 2026-11-07: Entry 21, shutters, signboards and parked scooters
+
+### What I did
+
+- **Rolling shutters and signboards** on all 113 shop fronts, under and above the awnings. Signs glow
+  at night.
+- **165 parked scooters** outside shops, in six colours, some nosed in and some backed in. They're
+  solid, and they never stand on the road.
+- Moved the small box helpers into `simpleShapes.ts`, as traffic and parked scooters both use them.
+
+Signs only ever say what kind of place it is, such as `BAKERY` or `SALON`. The map holds real
+shop names, but the brief says no real branding without approval, so the game never reads them.
+
+### Why
+
+These are what make a street look lived-in. Shops now look like shops, and not like houses with
+an awning.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Sign text | Reads forwards, by day and glowing at night |
+| 200 deliveries with traffic | All passed, around the new solid scooters |
+| Placement | The same on every load, and none on a road |
+| Type check, lint, build, browser errors | All clean |
+
+Triangles rose by a little, measured on a busier street than the old start point: High 109,088,
+Medium 58,736, Low 26,990. I don't have a fair FPS comparison, as that street isn't where I took
+the earlier numbers.
+
+**Not perfect:**
+
+- A shop can face a side wall or a narrow gap, as it uses the wall nearest its map point. Its sign
+  can then be cut off by the next building.
+- Every shutter is closed, even in daytime.
+- Traffic doesn't know about parked scooters, but they're off the road so it shouldn't matter.
+- Scooters are simple boxes, and there are none away from shops.
+- Signs are in English only. Real Bengaluru signs usually have Kannada too.
+- Screenshot test: one run looked broken because it pressed Start before the button appeared. That
+  was the test, not the game.
+
+### Lesson 80: a texture atlas
+
+Every sign and shutter shares one image, called an **atlas**. Each quad's UVs just pick its own
+rectangle. One image means one material, so every shop front in a map square can merge into
+one draw call. With a texture per sign, that would be 200 draw calls.
+
+### Lesson 81: which way is right?
+
+A wall faces outward, but you read it looking back at it, so the viewer's right isn't the wall's.
+Forward is `(sin r, cos r)`, and the viewer's right comes out as `(cos r, -sin r)`. If that's
+wrong, all the text is mirrored. The corners also go anticlockwise as seen from the front, or
+the quad is culled as a back face.
+
+### Lesson 82: glow from a second image
+
+`emissiveMap` says where a surface makes its own light. Copying the atlas and blacking out the
+shutters means that only the signs glow, and `emissiveIntensity` fades them in after dark.
+
+### Try it
+
+1. Ride past shops by day, then press `N` a few times.
+2. Bump into a parked scooter.
+3. In `shopFrontPlacement.ts`, change a word in `SIGN_WORDS`.
+4. In `props.ts`, raise `MAX_PARKED_PER_SHOP` to `8`.
+
+### Next
+
+Soft shading, better trees, or open shop fronts with people and light inside.
+
+## 2026-11-07: Entry 22, grass and parks
+
+### What I did
+
+- **Real parks:** the 6 parks inside the riding area, drawn from their true outlines on the map
+  with a grass texture. The largest is about 1 hectare.
+- **Footpaths:** the map's footways, which the game had loaded but never drawn.
+- **Park planting:** 103 more trees and 52 benches, all solid and the same on every load.
+- **Open ground** now uses a dusty, patchy texture instead of flat tan.
+- **Grass tufts** near the rider that sway in the wind: 4,000 on High, 1,800 on Medium, none on Low.
+
+Two parks, two pitches and a playground on the map fall outside the riding area, so they aren't
+in the game. Grass doesn't slow the scooter down.
+
+### Why
+
+The city was all hard surfaces. The parks are real places, so they're where a local would expect.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| 200 deliveries with traffic | All passed, around the new trees and benches |
+| Park planting time | 9 ms |
+| Placement | The same on every load |
+| Type check, lint, build, browser errors | All clean |
+| Screenshots | The biggest park and the normal start |
+
+At the normal start, High went from about 96,000 to about 144,000 triangles. FPS on the CPU test
+renderer went from about 6.3 to 5.0 on High, 9.3 to 7.7 on Medium, and stayed at 21.7 on Low. This
+one is bigger than recent additions. It's mostly the new ground and grass, and your Mac's number is
+the one that counts. If High suffers, `grassTufts` is the first thing to lower.
+
+**Not perfect:**
+
+- Grass is still sparse up close. It's a scatter, not a lawn.
+- Grass tufts have no shadows, and I haven't seen them sway, as screenshots can't show it.
+- Parks have no fence, gate or hedge, so you can ride straight in.
+- Footpaths have small gaps at sharp bends.
+- The ground texture may show its repeat from high up.
+
+### Lesson 83: triangulation
+
+A GPU can only draw triangles, but a park is an irregular outline. `THREE.ShapeUtils.triangulateShape`
+cuts any outline, with holes, into triangles, using an algorithm called **earcut**.
+
+### Lesson 84: a mask texture
+
+A shader can't ask "is this spot a road?", but it can read an image. So we paint one top-down map:
+black for roads and buildings, grey for open ground, and white for parks. Each tuft reads the
+pixel under it, and hides itself on black. Images are how you hand data to a GPU.
+
+### Lesson 85: the field that follows you
+
+There are only 4,000 tufts, however big the map is. Each wraps around the rider with `mod`, as the
+rain does, and shrinks to nothing near the edge, so that nobody sees it jump. It looks endless, and
+JavaScript never moves a single tuft.
+
+### Lesson 86: looks wrong? Name what's wrong
+
+My first grass looked like agave plants. It was too tall and sharp, and grew from a single root. My
+second had black spikes, because a back face is lit as if it faces away, and a flipped normal
+points down. Each fix came from describing what was wrong, not from "make it better".
+
+### Try it
+
+1. Ride into a park: there's one close to the start, just east of the first road.
+2. Press `M` until it rains, and watch the grass and trees move faster.
+3. In `qualitySettings.ts`, try `grassTufts: 8000` on High.
+4. In `GrassField.tsx`, change `OPEN_GROUND_DENSITY` to `200` for a greener city.
+
+### Next
+
+Fences and gates for parks, or the open shop fronts from before.
+
+## 2026-11-07: Entry 23, realistic trees, grass, vehicles and people
+
+### What I did
+
+**Trees and grass**
+
+- Canopies are now dozens of cards showing real photographed jacaranda fronds, around a dark solid
+  core. Trunks have bark and branches. Low keeps the simple solid trees.
+- Grass tufts are crossed cards showing real photographed clumps.
+
+**Vehicles**
+
+- Sedans and hatchbacks are built from a side view given width, with proper wheels, windows, bumpers
+  and lights. Autos have a curved hood, and motorbike riders joined the traffic.
+- Headlights and tail lights come on after dark.
+
+**People**
+
+- Men in shirts and trousers, and women in long kurtas or sarees, with hair and varied skin tones.
+- Arms and legs swing as they walk.
+
+The fronds, grass and bark are CC0 from Poly Haven. The full jacaranda model has 312,356 polygons,
+so we use only its photographs, on a few hundred triangles per tree.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| 200 deliveries with traffic | All passed |
+| 24 simulated minutes of traffic | 0 vehicles in buildings, closest pass to a pedestrian 1.83 m |
+| Vehicle pairs closer than 1.5 m | 119 pair-frames in 86,400 |
+| Rider can't pass through a vehicle | Pass |
+| Screenshots | Park, day and night street, close-up traffic |
+
+**This was a heavy change.** See the numbers in the next section.
+
+**Bugs found on the way:**
+
+- My grass crop failed silently, which showed the wrong part of the image.
+- 150 cards per tree was far too many, so I halved it.
+- The people's shader didn't compile, so none appeared. The car shot looked fine, and only the
+  browser's error log showed it. In this Three.js version `vColor` is a `vec4`.
+- Headlights were far too strong.
+
+### What it cost
+
+Measured at the normal start, on the CPU test renderer:
+
+| Level | Triangles before | Triangles after | FPS before | FPS after |
+| --- | --- | --- | --- | --- |
+| High | About 144,000 | 235,717 | 5.0 | 3.0 |
+| Medium | 64,579 | 101,611 | 7.7 | 4.0 |
+| Low | 25,995 | 34,883 | 21.7 | 14.3 |
+
+That's about 35–50% slower here, the largest drop of any change so far. A CPU renderer suffers
+most from see-through cards, and a real GPU handles them far better, so these numbers likely
+overstate it. Even so, **this is the change most likely to be felt on your Mac**. If it is:
+
+1. Turn off leaf shadows on High, which draw every card a second time.
+2. Lower `grassTufts`.
+3. Use leaf cards only for nearby trees, with simple shapes further away.
+
+Also not done: tree shadows don't sway, faces have no features, and people don't stop or stand
+around. The grass and leaf textures add 1.1 MB, for 2.9 MB of textures in all.
+
+### Lesson 87: cards
+
+Games don't model every leaf. A **card** is a flat rectangle showing a photo, and `alphaMap` cuts
+the background away. Dozens of them, facing different ways, read as a full tree from a few hundred
+triangles. Our source tree has 312,356.
+
+### Lesson 88: `alphaTest`
+
+```tsx
+<meshStandardMaterial map={color} alphaMap={alpha} alphaTest={0.45} />
+```
+
+Any pixel below the cutoff isn't drawn at all. Unlike true transparency, this needs no sorting, and
+shadows get the leaf shape too. But the GPU still has to run the shader for every hidden pixel, so
+stacked cards are costly. That's called **overdraw**.
+
+### Lesson 89: light and shade, not colour
+
+To make a green photo pink, multiplying won't do: green × pink is dark. So the shader first turns
+the photo to grey, keeping only light and shade, and each tree's colour then tints that. One photo
+makes every tree in the city, flowers included.
+
+### Lesson 90: joints in a shader
+
+Each vertex of an arm stores its joint's height and which way it swings. The shader rotates it by
+`sin(stride)`, so 36 people walk for almost no JavaScript.
+
+### Lesson 91: read the error log
+
+A screenshot of a street with no people in it looks like a street with no people in it. Only the
+browser's log said that the shader had failed. Always check the log, even when a picture looks fine.
+
+### Try it
+
+1. Ride along a tree-lined road at sunset, and watch for the dappled shade.
+2. In `foliage.ts`, set `CARDS_PER_AREA` to `0.3` and `1.2`, and compare FPS.
+3. Press `N` until dark, and watch the headlights go by.
+4. In `trafficLogic.ts`, change `VEHICLE_MIX` to fill the road with autos.
+
+### Next
+
+Your FPS on High and Medium decides this.
+
+## 2026-11-07: Entry 24, cars that look like cars
+
+### What I did
+
+You said the cars weren't as realistic as the trees, and that was fair. The trees use real photos, and
+the cars were shapes I'd built by hand. I looked for a real CC0 car, but Poly Haven only has one
+under a tarp, and Kenney's are cartoon-style. So I rebuilt the sedan and hatchback:
+
+- **A sculpted body:** slices along the car, joined into a smooth skin with curved surfaces.
+- **Reflections:** paint and glass mirror a tiny painted world of sky, skyline and road. This
+  also went onto autos and motorbikes, more weakly.
+- **Painted detail:** door seams, handles, windows and pillars, wheel arches, grilles, lights and
+  blank number plates.
+- **Better wheels:** tyres with a metal rim and hub.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Cars close up, front and back | Curved bodies, glass and lights all read correctly |
+| Traffic tests | Vehicles and rider rules all still pass |
+| Type check, lint, build, browser errors | All clean |
+
+I tested the look by making all traffic cars for one run, then put the normal mix back.
+
+**Not perfect:** there are no real car photos behind this, so up close it's clean, like a new toy,
+with no dirt or dents. Autos and motorbikes didn't get this treatment. Their riders are still simple
+shapes, and so is your own scooter, which is now the least realistic vehicle on the road.
+
+### Lesson 92: why shiny things look real
+
+Most of what makes a car look like a car isn't its shape. Your eye reads the reflection sliding over
+curved paint. An **environment map** is a picture of the surroundings that a material mirrors.
+Ours is a small scene rendered once by `PMREMGenerator`, which also prepares blurry versions for
+rough surfaces. It's only used for vehicles, and dims with the light at night.
+
+### Lesson 93: lofting
+
+Instead of stacking boxes, describe slices along the length, and join them up. That's **lofting**,
+and it's how real boats and cars were drawn. Sharing points between slices gives smooth normals.
+
+### Lesson 94: blueprint projection
+
+A curved body needs painting without a modelling tool. So each triangle checks which way it mostly
+faces, and takes its UVs from that view in the image: side, top, front or back. It's how a car's
+four blueprint views wrap into a whole car.
+
+### Lesson 95: small tests of big changes
+
+Traffic is random, so the cars I needed to inspect weren't in shot. A temporary change to
+`VEHICLE_MIX`, plus a burst of screenshots, found them in one run.
+
+### Try it
+
+1. Watch a car turn in front of you, and see the reflection slide over it.
+2. In `Traffic.tsx`, set `REFLECTION_STRENGTH` to `2.5` for a showroom shine.
+3. In `carModel.ts`, change the numbers in `SEDAN` to build your own car.
+
+### Next
+
+Your own scooter and rider, then autos and motorbikes.
+
+## 2026-11-07: Entry 25, collisions by weight, and crashes
+
+### What I did
+
+- **Everything that moves now has a weight,** from a 110 kg parked scooter to a 1,200 kg sedan. A hit
+  shares speed by weight using the standard collision formula, not a rule for each pair.
+- **Parked scooters are loose:** they get thrown, tip over, and can knock each other down.
+- **Motorbikes fall over** for a few seconds, and vehicles ease back to their lane afterwards.
+- **Crashes:** a wall hit above 7 m/s, or a hit that changes your speed by over 6.5 m/s. You lose
+  control, fall, and the camera shakes, and the screen says the package is safe.
+- **A clean ride bonus:** +10 credits for a delivery with no crashes. Crashes cost nothing else.
+
+Buildings, trees, lamps and benches never move. Pedestrians still step aside and can't be hit.
+
+### What I checked
+
+Ridden at a stationary vehicle at 14 m/s, in a simulation:
+
+| Hit | How far it moved | Rider |
+| --- | --- | --- |
+| Sedan | 0.78 m | Crash |
+| Hatchback | 0.96 m | Crash |
+| Auto | 1.94 m | Crash |
+| Motorbike | 3.14 m, and fell over | Crash |
+| Parked scooter | 7.2 m, and fell over | Kept going, no crash |
+
+| Check | Result |
+| --- | --- |
+| Gentle bump, or slow wall hit | Not a crash |
+| Row of 5 parked scooters | All moved, 4 fell |
+| Crashes and base pay | Base, XP and on-time bonus unchanged by 5 crashes |
+| 200 bot deliveries with traffic | All finished, 0 inside walls, no invalid numbers |
+
+**Not checked:** none of this has been run in a browser yet, so I haven't seen a crash, the fall, the
+shake or the crash message. The bot crashed 222 times in 200 deliveries, because it doesn't steer
+around traffic. It knocked over 0 parked scooters on that ride, so loose scooters are only tested
+in the lab cases above.
+
+### Lesson 96: momentum decides who moves
+
+In a collision, both things feel the same push. Speed change is push ÷ mass, so the lighter thing
+changes speed more. That one line gives you "the car barely moves and the scooter bounces" with
+no special cases.
+
+### Lesson 97: what a physics engine would add
+
+This code treats everything as flat circles and capsules on the ground. It's not a physics engine.
+Nothing leaves the ground, so nothing can flip, roll or tumble. An engine such as Rapier handles
+real 3D bodies, and that's the question to settle next.

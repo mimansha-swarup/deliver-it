@@ -13,14 +13,24 @@ export function hasArrived(distance: number, speed: number): boolean {
   return distance <= MISSION_RULES.zoneRadius && Math.abs(speed) <= MISSION_RULES.maxArrivalSpeed
 }
 
-/** The base reward is paid in full on every delivery. Distance and time only add to it. */
-export function calculateReward(seconds: number, onTimeSeconds: number, tier: DeliveryTier): Reward {
+/**
+ * The base reward is paid in full on every delivery, however many crashes there
+ * were. Distance, time and a clean ride only add to it.
+ */
+export function calculateReward(
+  seconds: number,
+  onTimeSeconds: number,
+  tier: DeliveryTier,
+  crashes = 0,
+): Reward {
   const onTime = seconds <= onTimeSeconds
 
   return {
     baseCredits: MISSION_RULES.baseCredits,
     distanceCredits: tier.extraCredits,
     onTimeCredits: onTime ? MISSION_RULES.onTimeCredits : 0,
+    cleanRideCredits: crashes === 0 ? MISSION_RULES.cleanRideCredits : 0,
+    crashes,
     xp: MISSION_RULES.baseXp + tier.extraXp,
     seconds,
     onTime,

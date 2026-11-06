@@ -18,6 +18,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const elapsed = useRef(0)
   const sinceTelemetry = useRef(0)
   const currentMission = useRef(1)
+  const countedCrashes = useRef(0)
 
   useFrame((_, delta) => {
     const game = useGameStore.getState()
@@ -26,6 +27,11 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     if (game.missionNumber !== currentMission.current) {
       currentMission.current = game.missionNumber
       elapsed.current = 0
+    }
+
+    if (state.crashCount !== countedCrashes.current) {
+      countedCrashes.current = state.crashCount
+      game.recordCrash()
     }
 
     livePlayer.x = state.x
@@ -64,6 +70,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         inZone: stop !== null && distance <= MISSION_RULES.zoneRadius,
         drifting: state.drifting,
         boosting: state.boostLeft > 0,
+        crashed: state.crashLeft > 0,
       })
     }
   })

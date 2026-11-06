@@ -2,7 +2,7 @@ import { PLAY_AREA } from '../world/worldUtils'
 
 /** Everything that affects how the scooter feels. Speeds are in metres per second. */
 export const SCOOTER = {
-  maxSpeed:  20, //14, // about 50 km/h
+  maxSpeed:  14, //14, // about 50 km/h
   maxReverseSpeed: 3,
   /** Engine pull from a standstill, and what's left of it near top speed. */
   acceleration: 6.5,
@@ -62,6 +62,22 @@ export const SCOOTER = {
 
   /** The scooter counts as a circle of this radius when it hits things. */
   collisionRadius: 0.6,
+  /** The weight of the scooter, rider and load, in kilograms. */
+  mass: 180,
+  /** Hitting a wall faster than this is a crash, in metres per second. */
+  wallCrashSpeed: 7,
+  /** Being knocked by more than this much speed by anything else is a crash. */
+  impactCrashSpeed: 6.5,
+  /** How long a crash takes from start to riding again, in seconds. */
+  crashTime: 1.7,
+  /** The last part of that time is spent getting back up. */
+  getUpTime: 0.6,
+  /** How quickly the scooter skids to a stop on its side. */
+  crashSkid: 1.6,
+  /** How far it tips over in a crash, in radians. */
+  crashLean: 1.3,
+  /** Share of the speed kept when bouncing off a wall in a crash. */
+  wallBounce: 0.3,
   /** Hits more direct than this are head-on, and don't deflect. 1 is dead straight. */
   headOnThreshold: 0.8,
   /** How quickly a glancing hit swings the scooter along the wall. */

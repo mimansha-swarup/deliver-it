@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
@@ -6,6 +7,9 @@ import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { Prop, RoadsideProps as Props } from './props'
+import { box, merge } from './simpleShapes'
+import { createCanopyGeometries, createLeafyCanopyGeometries, createTrunkGeometry } from './foliage'
+import { windUniforms } from './wind'
 
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'
@@ -30,6 +34,12 @@ const TANK_COLORS = ['#17181a', '#1d1e21', '#222327', '#2a5fa8', '#e6e4dc'].map(
   (color) => new THREE.Color(color),
 )
 
+/** Photo leaves are dark, so their light and shade is scaled up before tinting. */
+const LEAF_BRIGHTNESS = 4.2
+/** How much of a leaf card's edge is kept. */
+const LEAF_CUTOFF = 0.45
+const BARK_REPEAT: [number, number] = [1.5, 2]
+
 /** The number of tree shapes. */
 const TREE_KINDS = 3
 
@@ -39,12 +49,6 @@ const GLOW_HEIGHT = 0.12
 const GLOW_SIDES = 16
 /** Where the lamp's light lands, under the head at the end of its arm. */
 const GLOW_OFFSET = 1.5
-
-/** Shared by every tree, so one update moves them all. */
-const windUniforms = {
-  uWindPhase: { value: 0 },
-  uWindStrength: { value: 0.3 },
-}
 
 /**
  * Adds a little GLSL to the standard material. Everything moves sideways, more
@@ -78,53 +82,6 @@ const REFRESH_DISTANCE = 20
 
 const transform = new THREE.Object3D()
 
-function createTrunkGeometry(): THREE.BufferGeometry {
-  const trunk = new THREE.CylinderGeometry(0.16, 0.26, 3, 6)
-  trunk.translate(0, 1.5, 0)
-  return trunk
-}
-
-/** Rough balls, joined together, make a leafy outline from very few triangles. */
-function createBlobs(blobs: [number, number, number, number][]): THREE.BufferGeometry {
-  const parts = blobs.map(([x, y, z, radius]) => {
-    const blob = new THREE.IcosahedronGeometry(radius, 0)
-    blob.rotateY(x + z)
-    blob.translate(x, y, z)
-    return blob
-  })
-
-  const merged = mergeGeometries(parts)
-  if (!merged) throw new Error('Could not merge canopy geometry')
-  parts.forEach((part) => part.dispose())
-  return merged
-}
-
-/** One shape for each kind of tree. Each has 80 triangles or fewer. */
-function createCanopyGeometries(): THREE.BufferGeometry[] {
-  return [
-    // Round and full.
-    createBlobs([
-      [0, 4.5, 0, 2.1],
-      [1.2, 3.8, 0.5, 1.5],
-      [-1.1, 3.9, -0.7, 1.6],
-      [0.1, 5.5, -0.3, 1.4],
-    ]),
-    // Tall and narrow.
-    createBlobs([
-      [0, 3.8, 0, 1.6],
-      [0.2, 5.2, 0.1, 1.35],
-      [-0.1, 6.4, -0.1, 1],
-    ]),
-    // Wide and flat, like a rain tree.
-    createBlobs([
-      [0, 4.7, 0, 1.9],
-      [1.9, 4.4, 0.4, 1.5],
-      [-1.8, 4.4, -0.5, 1.6],
-      [0.3, 4.3, 1.8, 1.4],
-    ]),
-  ]
-}
-
 /**
  * A plastic rooftop water tank: a seven-sided drum with a narrower top. There
  * are a lot of these, and they're small, so it stays at 28 triangles.
@@ -151,6 +108,40 @@ function createLampGeometry(): THREE.BufferGeometry {
   const lamp = mergeGeometries([post.toNonIndexed(), arm.toNonIndexed(), head.toNonIndexed()])
   if (!lamp) throw new Error('Could not merge lamp geometry')
   return lamp
+}
+
+/**
+ * Sway, plus two changes for leaf cards. The photo's green is reduced to light
+ * and shade, so that each tree's own colour can tint it, flowers included. And
+ * both sides of a card are lit alike, or half the leaves would look black.
+ */
+function addLeafLook(shader: THREE.WebGLProgramParametersWithUniforms) {
+  addSway(shader)
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      diffuseColor.rgb = vec3(dot(diffuseColor.rgb, vec3(0.3, 0.6, 0.1))) * LEAF_BRIGHTNESS;`,
+    )
+    .replace(
+      '#include <normal_fragment_begin>',
+      `float faceDirection = 1.0;
+      vec3 normal = normalize(vNormal);
+      vec3 nonPerturbedNormal = normal;`,
+    )
+    .replace('void main() {', `#define LEAF_BRIGHTNESS ${LEAF_BRIGHTNESS.toFixed(1)}\nvoid main() {`)
+}
+
+/** A park bench: slats on two legs, with a backrest. */
+function createBenchGeometry(): THREE.BufferGeometry {
+  const wood = '#8a5f3c'
+  const iron = '#2a2c30'
+  return merge([
+    box([1.7, 0.06, 0.46], [0, 0.45, 0], wood),
+    box([1.7, 0.3, 0.05], [0, 0.72, -0.22], wood),
+    box([0.08, 0.45, 0.44], [-0.75, 0.22, 0], iron),
+    box([0.08, 0.45, 0.44], [0.75, 0.22, 0], iron),
+  ])
 }
 
 /** A soft pool of light on the ground, plus a bright spot at the lamp's head. */
@@ -205,6 +196,9 @@ function PropInstances({
   sizeRange,
   sway = false,
   glow = false,
+  vertexColors = false,
+  surface,
+  leaves,
 }: {
   props: Prop[]
   geometry: THREE.BufferGeometry
@@ -212,6 +206,12 @@ function PropInstances({
   colors?: THREE.Color[]
   sizeRange: number
   sway?: boolean
+  /** Keeps the colours stored on the shape, such as a black seat on a coloured scooter. */
+  vertexColors?: boolean
+  /** A texture for the whole shape, such as bark. */
+  surface?: THREE.Texture
+  /** Colour and cutout images for leaf cards. */
+  leaves?: { color: THREE.Texture; alpha: THREE.Texture }
   /** Draws a light that adds to the scene and shows only at night. */
   glow?: boolean
 }) {
@@ -285,19 +285,54 @@ function PropInstances({
         <meshStandardMaterial
           color={colors ? '#ffffff' : color}
           roughness={0.95}
-          flatShading
-          onBeforeCompile={sway ? addSway : undefined}
+          flatShading={!leaves}
+          vertexColors={vertexColors || !!leaves}
+          map={leaves?.color ?? surface ?? null}
+          alphaMap={leaves?.alpha ?? null}
+          alphaTest={leaves ? LEAF_CUTOFF : 0}
+          side={leaves ? THREE.DoubleSide : THREE.FrontSide}
+          onBeforeCompile={leaves ? addLeafLook : sway ? addSway : undefined}
         />
       )}
     </instancedMesh>
   )
 }
 
-export function RoadsideProps({ props, tanks }: { props: Props; tanks: Prop[] }) {
+const FOLIAGE_TEXTURES = [
+  '/textures/leaf-color.jpg',
+  '/textures/leaf-alpha.jpg',
+  '/textures/bark-color.jpg',
+]
+
+function prepareFoliageTextures([color, alpha, bark]: THREE.Texture[]) {
+  color.colorSpace = THREE.SRGBColorSpace
+  bark.colorSpace = THREE.SRGBColorSpace
+  bark.wrapS = THREE.RepeatWrapping
+  bark.wrapT = THREE.RepeatWrapping
+  bark.repeat.set(...BARK_REPEAT)
+  for (const texture of [color, alpha, bark]) texture.anisotropy = 4
+}
+
+export function RoadsideProps({
+  props,
+  tanks,
+  benches,
+}: {
+  props: Props
+  tanks: Prop[]
+  benches: Prop[]
+}) {
+  const { leafyTrees } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
-  const canopies = useMemo(() => createCanopyGeometries(), [])
+  const canopies = useMemo(
+    () => (leafyTrees ? createLeafyCanopyGeometries() : createCanopyGeometries()),
+    [leafyTrees],
+  )
+  const [leafColor, leafAlpha, bark] = useTexture(FOLIAGE_TEXTURES, prepareFoliageTextures)
+  const leaves = useMemo(() => ({ color: leafColor, alpha: leafAlpha }), [leafColor, leafAlpha])
   const lamp = useMemo(() => createLampGeometry(), [])
   const tank = useMemo(() => createTankGeometry(), [])
+  const bench = useMemo(() => createBenchGeometry(), [])
   const lampGlow = useMemo(() => createLampGlowGeometry(), [])
   const windPhase = useRef(0)
 
@@ -324,26 +359,37 @@ export function RoadsideProps({ props, tanks }: { props: Props; tanks: Prop[] })
       lamp.dispose()
       lampGlow.dispose()
       tank.dispose()
+      bench.dispose()
     },
-    [trunk, canopies, lamp, lampGlow, tank],
+    [trunk, canopies, lamp, lampGlow, tank, bench],
   )
 
   return (
     <>
-      <PropInstances props={props.trees} geometry={trunk} color={TRUNK_COLOR} sizeRange={0.5} sway />
+      <PropInstances
+        key={String(leafyTrees)}
+        props={props.trees}
+        geometry={trunk}
+        color={leafyTrees ? '#ffffff' : TRUNK_COLOR}
+        sizeRange={0.5}
+        sway
+        surface={leafyTrees ? bark : undefined}
+      />
       {canopies.map((canopy, kind) => (
         <PropInstances
-          key={kind}
+          key={`${kind}-${leafyTrees}`}
           props={treesByKind[kind]}
           geometry={canopy}
           colors={CANOPY_COLORS}
           sizeRange={0.5}
           sway
+          leaves={leafyTrees ? leaves : undefined}
         />
       ))}
       <PropInstances props={props.lamps} geometry={lamp} color={LAMP_COLOR} sizeRange={0} />
       <PropInstances props={props.lamps} geometry={lampGlow} sizeRange={0} glow />
       <PropInstances props={tanks} geometry={tank} colors={TANK_COLORS} sizeRange={0.3} />
+      <PropInstances props={benches} geometry={bench} color="#ffffff" sizeRange={0} vertexColors />
     </>
   )
 }

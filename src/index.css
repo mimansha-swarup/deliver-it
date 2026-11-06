@@ -139,6 +139,27 @@ body,
   cursor: pointer;
 }
 
+.hud-crash {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 18px;
+  border-radius: 8px;
+  color: #fff;
+  background: rgb(176 34 28 / 88%);
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.hud-crash span {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .hud-drift,
 .hud-boost {
   font-size: 12px;

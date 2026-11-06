@@ -13,6 +13,7 @@ type Telemetry = {
   inZone: boolean
   drifting: boolean
   boosting: boolean
+  crashed: boolean
 }
 
 type GameState = Telemetry & {
@@ -27,6 +28,8 @@ type GameState = Telemetry & {
   xp: number
   quality: Quality
   lastReward: Reward | null
+  /** Crashes on the current delivery. */
+  crashes: number
   /** The time and the weather, as shown on screen. */
   clock: string
 
@@ -39,6 +42,7 @@ type GameState = Telemetry & {
   nextMission: () => void
   setTelemetry: (telemetry: Telemetry) => void
   setClock: (clock: string) => void
+  recordCrash: () => void
 }
 
 export const useGameStore = create<GameState>()(
@@ -50,6 +54,8 @@ export const useGameStore = create<GameState>()(
       inZone: false,
       drifting: false,
       boosting: false,
+      crashed: false,
+      crashes: 0,
 
       started: false,
       phase: 'toPickup',
@@ -77,11 +83,16 @@ export const useGameStore = create<GameState>()(
           if (state.phase !== 'toCustomer' || !state.mission) return state
 
           const { onTimeSeconds, tier } = state.mission
-          const reward = calculateReward(seconds, onTimeSeconds, tier)
+          const reward = calculateReward(seconds, onTimeSeconds, tier, state.crashes)
           return {
             phase: 'delivered',
             lastReward: reward,
-            credits: state.credits + reward.baseCredits + reward.distanceCredits + reward.onTimeCredits,
+            credits:
+              state.credits +
+              reward.baseCredits +
+              reward.distanceCredits +
+              reward.onTimeCredits +
+              reward.cleanRideCredits,
             xp: state.xp + reward.xp,
           }
     }),
@@ -92,12 +103,14 @@ export const useGameStore = create<GameState>()(
       missionNumber: state.missionNumber + 1,
       lastReward: null,
       seconds: 0,
+      crashes: 0,
       // The next delivery starts wherever the rider is.
       mission: state.planner?.planMission(livePlayer.x, livePlayer.z) ?? state.mission,
     })),
 
   setTelemetry: (telemetry) => set(telemetry),
   setClock: (clock) => set({ clock }),
+  recordCrash: () => set((state) => ({ crashes: state.crashes + 1 })),
     }),
     {
       // Kept from the project's earlier name, so existing saves still load.

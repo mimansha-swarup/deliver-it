@@ -6,9 +6,12 @@ import { Boundary } from './Boundary'
 import { Buildings } from './Buildings'
 import { Cables } from './Cables'
 import { createCollisionWorld } from './collision'
+import { GrassField } from './GrassField'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
 import { loadMapData } from './mapData'
+import { plantParks } from './parkPlanting'
+import { Parks } from './Parks'
 import { generateRoadsideProps } from './props'
 import { generateRoofTanks } from './roofTanks'
 import { RoadMarkings } from './RoadMarkings'
@@ -23,13 +26,15 @@ export function World() {
 
   // Trees and lamps are solid, so they're added to the collision world as they're placed.
   // Awnings go first, while the collision world holds nothing but buildings.
-  const { collisions, props, shopFronts, graph, traffic, tanks } = useMemo(() => {
+  const { collisions, props, shopFronts, graph, traffic, tanks, benches } = useMemo(() => {
     const collisions = createCollisionWorld(data.buildings)
     const shopFronts = generateShopFronts(data.places, collisions)
-    const props = generateRoadsideProps(data.roads, collisions)
+    const props = generateRoadsideProps(data.roads, collisions, shopFronts)
+    const benches = plantParks(data, collisions, props)
     const graph = createRoadGraph(data.roads)
-    const traffic = createTrafficWorld(graph, collisions)
-    return { collisions, props, shopFronts, graph, traffic, tanks: generateRoofTanks(data.buildings) }
+    const traffic = createTrafficWorld(graph, collisions, props.parkedScooters)
+    const tanks = generateRoofTanks(data.buildings)
+    return { collisions, props, shopFronts, graph, traffic, tanks, benches }
   }, [data])
 
   return (
@@ -37,10 +42,12 @@ export function World() {
       <Sky />
       <Lighting />
       <Ground />
+      <Parks data={data} />
+      <GrassField data={data} />
       <Roads roads={data.roads} />
       <RoadMarkings roads={data.roads} />
       <Buildings buildings={data.buildings} />
-      <RoadsideProps props={props} tanks={tanks} />
+      <RoadsideProps props={props} tanks={tanks} benches={benches} />
       <Cables props={props} collisions={collisions} />
       <ShopFronts shopFronts={shopFronts} />
       <Boundary />

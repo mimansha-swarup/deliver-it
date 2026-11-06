@@ -35,6 +35,8 @@ export type Reward = {
   baseCredits: number
   distanceCredits: number
   onTimeCredits: number
+  cleanRideCredits: number
+  crashes: number
   xp: number
   seconds: number
   onTime: boolean

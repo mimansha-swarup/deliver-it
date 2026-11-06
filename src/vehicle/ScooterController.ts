@@ -36,6 +36,16 @@ export type ScooterState = {
   pitch: number
   /** How far the wheels have turned, in radians. */
   wheelSpin: number
+  /** Seconds left of a crash, during which the controls do nothing. */
+  crashLeft: number
+  /** Which way it falls: 1 or -1. */
+  crashSide: number
+  /** Crashes so far. The mission tracker counts these. */
+  crashCount: number
+  /** Turning speed after a hit, in radians per second. */
+  spin: number
+  /** How hard the last hit was, from 0 to 1. It fades, and shakes the camera. */
+  impact: number
 }
 
 export function createScooterState(): ScooterState {
@@ -53,6 +63,54 @@ export function createScooterState(): ScooterState {
     lean: 0,
     pitch: 0,
     wheelSpin: 0,
+    crashLeft: 0,
+    crashSide: 1,
+    crashCount: 0,
+    spin: 0,
+    impact: 0,
+  }
+}
+
+const NO_INPUT: DriveInput = {
+  forward: false,
+  backward: false,
+  left: false,
+  right: false,
+  handbrake: false,
+}
+
+function startCrash(state: ScooterState, side: number, strength: number) {
+  state.impact = Math.max(state.impact, Math.min(strength / 12, 1))
+  if (state.crashLeft > 0) return
+
+  state.crashLeft = SCOOTER.crashTime
+  state.crashSide = side >= 0 ? 1 : -1
+  state.crashCount++
+  state.spin = state.crashSide * Math.min(strength * 0.5, 5)
+  state.drifting = false
+  state.boostLeft = 0
+}
+
+/**
+ * Applies a hit from something that isn't a wall. `changeX` and `changeZ` are
+ * the speed the hit adds, and `pushX` and `pushZ` move the scooter clear of it.
+ */
+export function applyImpact(
+  state: ScooterState,
+  changeX: number,
+  changeZ: number,
+  pushX: number,
+  pushZ: number,
+) {
+  state.x += pushX
+  state.z += pushZ
+  state.velocityX += changeX
+  state.velocityZ += changeZ
+
+  const change = Math.hypot(changeX, changeZ)
+  state.impact = Math.max(state.impact, Math.min(change / 12, 1))
+  if (change > SCOOTER.impactCrashSpeed) {
+    startCrash(state, changeX * Math.cos(state.heading) - changeZ * Math.sin(state.heading), change)
   }
 }
 
@@ -198,13 +256,6 @@ function handleCollisions(state: ScooterState, collisions: CollisionWorld, dt: n
   reactToPush(state, state.x - beforeX, state.z - beforeZ, dt)
 }
 
-/** Moves the scooter out of something solid that isn't a building, such as a car. */
-export function bumpScooter(state: ScooterState, pushX: number, pushZ: number, dt: number) {
-  state.x += pushX
-  state.z += pushZ
-  reactToPush(state, pushX, pushZ, dt)
-}
-
 function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: number) {
   const pushLength = Math.hypot(pushX, pushZ)
   const travelSpeed = getTravelSpeed(state)
@@ -220,10 +271,18 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
   state.velocityX = alongX
   state.velocityZ = alongZ
 
-  const directness = -intoWall / travelSpeed
+  const hitSpeed = -intoWall
+  const isCrash = hitSpeed > SCOOTER.wallCrashSpeed
+  if (isCrash) {
+    // Which side the wall is on decides which way the scooter falls.
+    startCrash(state, normalX * Math.cos(state.heading) - normalZ * Math.sin(state.heading), hitSpeed)
+  }
+
+  const directness = hitSpeed / travelSpeed
   if (directness > SCOOTER.headOnThreshold) {
-    state.velocityX = 0
-    state.velocityZ = 0
+    const bounce = isCrash ? hitSpeed * SCOOTER.wallBounce : 0
+    state.velocityX = normalX * bounce
+    state.velocityZ = normalZ * bounce
     return
   }
 
@@ -248,6 +307,12 @@ function updatePosition(state: ScooterState, collisions: CollisionWorld, dt: num
 
 /** Tilts the body. This changes how it looks, not where it goes. */
 function updateBodyMotion(state: ScooterState, input: DriveInput, dt: number) {
+  if (state.crashLeft > SCOOTER.getUpTime) {
+    const fallen = state.crashSide * SCOOTER.crashLean
+    state.lean = moveToward(state.lean, fallen, 7 * dt)
+    return
+  }
+
   const speedRatio = Math.min(Math.abs(state.speed) / SCOOTER.maxSpeed, 1)
 
   const cornerLean = state.steer * Math.min(speedRatio * 1.5, 1) * SCOOTER.maxLean
@@ -271,9 +336,24 @@ export function stepScooter(
   collisions: CollisionWorld,
   dt: number,
 ) {
-  updateDrift(state, input, dt)
-  updateSteering(state, input, dt)
-  updateVelocity(state, input, dt)
+  const crashed = state.crashLeft > 0
+  const controls = crashed ? NO_INPUT : input
+
+  updateDrift(state, controls, dt)
+  updateSteering(state, controls, dt)
+  updateVelocity(state, controls, dt)
+
+  if (crashed) {
+    const skid = Math.exp(-SCOOTER.crashSkid * dt)
+    state.velocityX *= skid
+    state.velocityZ *= skid
+    state.crashLeft = Math.max(0, state.crashLeft - dt)
+  }
+
+  state.heading += state.spin * dt
+  state.spin *= Math.exp(-3 * dt)
+  state.impact *= Math.exp(-5 * dt)
+
   updatePosition(state, collisions, dt)
-  updateBodyMotion(state, input, dt)
+  updateBodyMotion(state, controls, dt)
 }

@@ -53,6 +53,18 @@ function SkyClock() {
   return <section className="hud-card hud-clock">{clock}</section>
 }
 
+/** Says so plainly, as the package always survives. */
+function CrashNotice() {
+  const crashed = useGameStore((state) => state.crashed)
+  if (!crashed) return null
+
+  return (
+    <p className="hud-crash" role="status">
+      Crash! <span>Package is safe</span>
+    </p>
+  )
+}
+
 function Speedometer() {
   const speedKmh = useGameStore((state) => state.speedKmh)
   const drifting = useGameStore((state) => state.drifting)
@@ -88,6 +100,12 @@ function DeliveryComplete() {
         )}
         <dt>On-time bonus</dt>
         <dd>{reward.onTime ? `+${reward.onTimeCredits} credits` : 'Missed'}</dd>
+        <dt>Clean ride</dt>
+        <dd>
+          {reward.crashes === 0
+            ? `+${reward.cleanRideCredits} credits`
+            : `${reward.crashes} crash${reward.crashes > 1 ? 'es' : ''}`}
+        </dd>
         <dt>Experience</dt>
         <dd>+{reward.xp} XP</dd>
       </dl>
@@ -105,6 +123,7 @@ export function Hud() {
       <Wallet />
       <SkyClock />
       <Speedometer />
+      <CrashNotice />
       <DeliveryComplete />
     </>
   )
