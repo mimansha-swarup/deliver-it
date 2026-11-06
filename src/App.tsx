@@ -1,10 +1,12 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGameStore } from './game/gameStore'
+import { QUALITY_PRESETS } from './game/qualitySettings'
 import { DirectionArrow } from './ui/DirectionArrow'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Hud } from './ui/Hud'
 import { Minimap } from './ui/Minimap'
+import { QualityPicker } from './ui/QualityPicker'
 import { TitleScreen } from './ui/TitleScreen'
 import { World } from './world/World'
 
@@ -18,6 +20,7 @@ function GameUi() {
   return (
     <>
       <Hud />
+      <QualityPicker className="quality-hud" />
       <DirectionArrow />
       <Suspense fallback={null}>
         <Minimap />
@@ -29,10 +32,12 @@ function GameUi() {
 }
 
 function App() {
+  const { pixelRatio } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+
   return (
     <>
       <ErrorBoundary>
-        <Canvas shadows camera={{ fov: 60, near: 0.5, far: 1500 }}>
+        <Canvas shadows dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }}>
           <color attach="background" args={[SKY_COLOR]} />
           <fog attach="fog" args={[SKY_COLOR, 500, 1300]} />
           <Suspense fallback={null}>

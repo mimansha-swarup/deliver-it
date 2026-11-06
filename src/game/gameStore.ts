@@ -4,6 +4,7 @@ import { calculateReward } from '../missions/missionLogic'
 import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
 import { livePlayer } from './livePlayer'
+import type { Quality } from './qualitySettings'
 
 type Telemetry = {
   speedKmh: number
@@ -24,9 +25,11 @@ type GameState = Telemetry & {
   planner: MissionPlanner | null
   credits: number
   xp: number
+  quality: Quality
   lastReward: Reward | null
 
   startGame: () => void
+  setQuality: (quality: Quality) => void
   /** Hands over the planner once the map has loaded, and plans the first delivery. */
   startMissions: (planner: MissionPlanner, fromX: number, fromZ: number) => void
   /** Moves the mission on when the scooter reaches the current stop. */
@@ -52,9 +55,12 @@ export const useGameStore = create<GameState>()(
       planner: null,
       credits: 0,
       xp: 0,
+      quality: 'high',
       lastReward: null,
 
       startGame: () => set({ started: true }),
+
+      setQuality: (quality) => set({ quality }),
 
       startMissions: (planner, fromX, fromZ) => {
         if (get().mission) return
@@ -91,8 +97,8 @@ export const useGameStore = create<GameState>()(
       // Kept from the project's earlier name, so existing saves still load.
       name: 'slikk-it-progress',
       version: 1,
-      // Only progress is saved. Everything else starts fresh on each visit.
-      partialize: ({ credits, xp }) => ({ credits, xp }),
+      // Only progress and settings are saved. Everything else starts fresh on each visit.
+      partialize: ({ credits, xp, quality }) => ({ credits, xp, quality }),
     },
   ),
 )

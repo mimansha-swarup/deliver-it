@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { useGameStore } from '../game/gameStore'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { PolygonFeature } from './mapData'
 import { isRingInPlayArea, lonLatToLocal, type LonLat } from './worldUtils'
 
@@ -159,6 +161,7 @@ export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
     [buildings],
   )
 
+  const { windows } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const facade = useMemo(() => createFacadeTexture(), [])
 
   // We created these by hand, so R3F won't free their GPU memory for us.
@@ -167,7 +170,13 @@ export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
 
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial map={facade} vertexColors roughness={0.9} />
+      {/* The key makes a new material, as a material can't gain or lose a texture freely. */}
+      <meshStandardMaterial
+        key={String(windows)}
+        map={windows ? facade : null}
+        vertexColors
+        roughness={0.9}
+      />
     </mesh>
   )
 }

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { useGameStore } from '../game/gameStore'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { Prop, RoadsideProps as Props } from './props'
 
 const TRUNK_COLOR = '#6f5a43'
@@ -55,6 +57,7 @@ function PropInstances({
   colors?: THREE.Color[]
   sizeRange: number
 }) {
+  const { treeShadows } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const mesh = useRef<THREE.InstancedMesh>(null)
 
   useLayoutEffect(() => {
@@ -78,7 +81,12 @@ function PropInstances({
   }, [props, colors, sizeRange])
 
   return (
-    <instancedMesh ref={mesh} args={[geometry, undefined, props.length]} castShadow receiveShadow>
+    <instancedMesh
+      ref={mesh}
+      args={[geometry, undefined, props.length]}
+      castShadow={treeShadows}
+      receiveShadow
+    >
       <meshStandardMaterial color={colors ? '#ffffff' : color} roughness={0.95} flatShading />
     </instancedMesh>
   )

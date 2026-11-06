@@ -1,4 +1,5 @@
 import { useGameStore } from '../game/gameStore'
+import { QualityPicker } from './QualityPicker'
 
 export function TitleScreen() {
   const ready = useGameStore((state) => state.mission !== null)
@@ -20,6 +21,8 @@ export function TitleScreen() {
           <dt>Hold Space and steer</dt>
           <dd>Drift, then let go to boost</dd>
         </dl>
+
+        <QualityPicker className="quality-title" />
 
         {credits + xp > 0 && (
           <p className="title-progress">

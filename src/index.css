@@ -263,3 +263,47 @@ body,
   font-size: 12px;
   text-align: center;
 }
+
+.quality-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.quality-picker span {
+  margin-right: 4px;
+  color: #c9c6bc;
+}
+
+.quality-picker button {
+  width: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  color: #f4f1e8;
+  background: rgb(255 255 255 / 12%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quality-picker button[aria-pressed='true'] {
+  color: #10231a;
+  background: #3ddc97;
+}
+
+.quality-title {
+  margin-bottom: 14px;
+}
+
+.quality-hud {
+  position: fixed;
+  top: 96px;
+  right: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgb(15 17 21 / 72%);
+}

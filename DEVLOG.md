@@ -1909,3 +1909,103 @@ and measure both versions in the same session, because a machine's speed drifts.
 
 Your FPS decides this. After that, shop fronts on ground floors, pavements, and a rider on
 the scooter.
+
+---
+
+## 2026-11-06: Entry 14, a quality setting
+
+Commit `6da86ae` holds everything before this entry.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/game/qualitySettings.ts` | New. The three presets |
+| `src/ui/QualityPicker.tsx` | New. Low, Medium and High buttons |
+| `src/game/gameStore.ts` | Stores the quality, and saves it between visits |
+| `src/App.tsx` | Sets the rendering resolution, and shows the picker during a ride |
+| `src/ui/TitleScreen.tsx` | Shows the picker on the title screen |
+| `src/world/Lighting.tsx`, `Buildings.tsx`, `RoadsideProps.tsx` | Follow the chosen preset |
+
+| Setting | Low | Medium | High |
+| --- | --- | --- | --- |
+| Rendering resolution | 0.75× | Up to 1.25× | Up to 2× |
+| Sun shadows | Off | 2048 | 4096 |
+| Tree and lamp shadows | Off | Off | On |
+| Window textures | Off | On | On |
+
+### Why
+
+- **Resolution does the most.** On a Retina screen, 2× means four times as many pixels as 1×,
+  and every pixel costs GPU work.
+- **Trees and lamps stay at every level.** They're solid, and hiding them would mean crashing
+  into things you can't see.
+- **It applies instantly**, so you can compare levels while riding.
+- **High stays the default**, and your choice is saved along with credits and XP.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| Test FPS, High | 11.3 |
+| Test FPS, Medium | 14.0 |
+| Test FPS, Low | 27.3 |
+| Switching 5 times during a ride | No reset, no errors, WebGL context stayed alive |
+| Choice kept after a reload | Yes |
+| Low from the road | Plain but clean, with no shadows or windows |
+
+These are CPU test numbers, so they only compare the levels with each other. My test browser
+has a 1× screen, so it **can't show the gain from reducing resolution on a Retina display**.
+That means High and Medium differ here only by shadows. On your Mac the gap may well be bigger,
+but I haven't measured it.
+
+### Lesson 52: `dpr`
+
+`dpr` stands for device pixel ratio: how many real pixels are drawn per CSS pixel.
+
+```tsx
+<Canvas dpr={[1, 2]} />
+```
+
+The pair means "use the screen's ratio, kept between these limits". Going from 2 to 1 halves
+the width and the height, so it's a quarter of the pixels. Few settings give so much for so
+little. Below 1, the browser stretches the picture, so it looks softer.
+
+### Lesson 53: why some changes need a new object
+
+Most props can change at any time, but a few things are baked in when created:
+
+- A **shadow map** is a texture of a fixed size, so it can't simply resize.
+- Three.js compiles a **shader** for each material, based on features like having a texture.
+
+So we use React's `key` prop. When a key changes, React throws the old object away and builds a
+new one:
+
+```tsx
+<directionalLight key={shadowSize} ... />
+```
+
+This is normally a way to reset a component. Here it's a one-line way to rebuild a Three.js
+object cleanly.
+
+### Lesson 54: selecting from the store
+
+```ts
+const { windows } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+```
+
+The selector returns an object, which would be dangerous if it created a new one each time, as
+React would see a change on every read. These presets are fixed objects, so it's the same one
+each time, and the component only re-renders when the quality really changes.
+
+### Try it
+
+1. Press Low, Medium and High while riding, and watch the difference.
+2. Run the FPS check from earlier on each level.
+3. In `qualitySettings.ts`, try `pixelRatio: [0.5, 0.5]` for Low, to see how far it can go.
+4. Make your own mix: set `windows: true` on Low and see what it costs.
+
+### Next
+
+Your FPS on each level decides how much more detail we can add.
