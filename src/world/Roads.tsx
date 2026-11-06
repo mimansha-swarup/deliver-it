@@ -1,8 +1,12 @@
 import { useMemo } from 'react'
+import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { ChunkedMesh } from './ChunkedMesh'
+import { createSurfaceMaterial, prepareSurfaceTextures } from './surfaceMaterial'
 import { createFlatGeometries, positionsFor, splitLongPiece, type ChunkedPositions } from './chunks'
 import type { LineFeature } from './mapData'
 import { getRoadWidth } from './roadData'
@@ -13,9 +17,17 @@ import { lonLatToWorld, type GroundPoint } from './worldUtils'
 const ROAD_HEIGHT = 0.05
 const JOINT_SIDES = 12
 /** A pavement runs under each road, showing this far past the edge on both sides. */
-export const PAVEMENT_WIDTH = 1.8
+export const PAVEMENT_WIDTH = 3
 const PAVEMENT_HEIGHT = 0.03
-const ROAD_COLOR = new THREE.Color('#66676b')
+const PLAIN_ROAD_COLOR = new THREE.Color('#66676b')
+const TEXTURED_ROAD_COLOR = new THREE.Color('#a4a4a6')
+const PAVEMENT_COLOR = '#ffffff'
+/** How wide one repeat of each texture is on the ground, in metres. */
+const ROAD_TILE = 8
+const PAVEMENT_TILE = 2.5
+
+const ROAD_TEXTURES = ['/textures/road-color.jpg', '/textures/road-normal.jpg']
+const PAVEMENT_TEXTURES = ['/textures/pavement-color.jpg', '/textures/pavement-normal.jpg']
 /** Wet tarmac looks darker. A full downpour takes this share off. */
 const WET_DARKENING = 0.35
 
@@ -72,8 +84,8 @@ function createRoadGeometry(
   return createFlatGeometries(chunks)
 }
 
-function updateWetness(material: THREE.MeshStandardMaterial) {
-  material.color.copy(ROAD_COLOR).multiplyScalar(1 - liveSky.rain * WET_DARKENING)
+function updateWetness(material: THREE.MeshStandardMaterial, dryColor: THREE.Color) {
+  material.color.copy(dryColor).multiplyScalar(1 - liveSky.rain * WET_DARKENING)
 }
 
 export function Roads({ roads }: { roads: LineFeature[] }) {
@@ -83,30 +95,38 @@ export function Roads({ roads }: { roads: LineFeature[] }) {
     [roads],
   )
 
+  const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const roadMaps = useTexture(ROAD_TEXTURES, (maps) => prepareSurfaceTextures(maps, ROAD_TILE))
+  const pavementMaps = useTexture(PAVEMENT_TEXTURES, (maps) =>
+    prepareSurfaceTextures(maps, PAVEMENT_TILE),
+  )
+  const dryRoadColor = surfaces === 'plain' ? PLAIN_ROAD_COLOR : TEXTURED_ROAD_COLOR
+
   const roadMaterial = useMemo(
     () =>
-      new THREE.MeshStandardMaterial({
-        color: '#66676b',
+      createSurfaceMaterial(roadMaps, surfaces, {
+        color: dryRoadColor,
         roughness: 0.95,
         polygonOffset: true,
         polygonOffsetFactor: -2,
         polygonOffsetUnits: -2,
       }),
-    [],
+    [roadMaps, surfaces, dryRoadColor],
   )
   const pavementMaterial = useMemo(
     () =>
-      new THREE.MeshStandardMaterial({
-        color: '#a8a498',
+      // The pavers show on every level, so Low only gives up their bumps.
+      createSurfaceMaterial(pavementMaps, surfaces === 'plain' ? 'color' : surfaces, {
+        color: PAVEMENT_COLOR,
         roughness: 1,
         polygonOffset: true,
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -1,
       }),
-    [],
+    [pavementMaps, surfaces],
   )
 
-  useFrame(() => updateWetness(roadMaterial))
+  useFrame(() => updateWetness(roadMaterial, dryRoadColor))
 
   return (
     <>

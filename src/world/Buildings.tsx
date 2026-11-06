@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
@@ -22,6 +23,13 @@ const WALL_COLORS = [
   '#d6a184', // terracotta
 ].map((color) => new THREE.Color(color))
 
+/** Resolution of one window bay, in pixels. */
+const FACADE_SIZE = 512
+/** How pale the wall photo ends up, and how much of its staining survives. */
+const PLASTER_BRIGHTNESS = 0.94
+const PLASTER_CONTRAST = 0.75
+const WALL_BUMP_STRENGTH = 0.7
+
 /** Width of one window and the wall around it, in metres. */
 const WINDOW_BAY_WIDTH = 3.4
 const ROOF_SHADE = 0.8
@@ -34,35 +42,81 @@ const WINDOW_GLOW = 0.7
 const PLAIN_SPOT = 0.02
 
 /**
- * One window bay, drawn in code. It's white where the wall is, so the building's
- * own colour shows through there, and every wall in the city repeats this image.
+ * Strips the colour from a wall photo and lifts it close to white, keeping only
+ * its stains and patches. That way, each building's own paint shows through.
  */
-function createFacadeTexture(): THREE.CanvasTexture {
-  const size = 128
+function createPlasterCanvas(photo: CanvasImageSource, size: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
 
   const context = canvas.getContext('2d')
+  if (!context) return canvas
+
+  context.drawImage(photo, 0, 0, size, size)
+  const image = context.getImageData(0, 0, size, size)
+  const { data } = image
+
+  let total = 0
+  for (let i = 0; i < data.length; i += 4) total += data[i] + data[i + 1] + data[i + 2]
+  const average = total / (data.length / 4)
+
+  for (let i = 0; i < data.length; i += 4) {
+    const shade = (data[i] + data[i + 1] + data[i + 2]) / average
+    const value = Math.min(255, 255 * (PLASTER_BRIGHTNESS + (shade - 1) * PLASTER_CONTRAST))
+    data[i] = value
+    data[i + 1] = value
+    data[i + 2] = value
+  }
+
+  context.putImageData(image, 0, 0)
+  return canvas
+}
+
+/**
+ * One window bay, drawn in code over the plaster. The wall stays pale, so the
+ * building's own colour shows through, and every wall repeats this image.
+ */
+function createFacadeTexture(photo: CanvasImageSource): THREE.CanvasTexture {
+  const size = FACADE_SIZE
+  const canvas = createPlasterCanvas(photo, size)
+
+  const context = canvas.getContext('2d')
   if (context) {
-    context.fillStyle = '#ffffff'
-    context.fillRect(0, 0, size, size)
+    /** All these measurements are in a 128-unit square, so they don't depend on `size`. */
+    context.scale(size / 128, size / 128)
 
     // A slightly darker band where each floor meets the next.
-    context.fillStyle = '#d9d9d9'
-    context.fillRect(0, size - 6, size, 6)
+    context.fillStyle = 'rgb(0 0 0 / 14%)'
+    context.fillRect(0, 122, 128, 6)
 
-    // Frame, then glass, then the bar down the middle of the window.
-    context.fillStyle = '#8c8a84'
+    // Grime that has run down from the sill, fading out.
+    const grime = context.createLinearGradient(0, 96, 0, 122)
+    grime.addColorStop(0, 'rgb(40 34 28 / 24%)')
+    grime.addColorStop(1, 'rgb(40 34 28 / 0%)')
+    context.fillStyle = grime
+    context.fillRect(32, 96, 64, 26)
+
+    // Frame, then glass, which is lighter towards the top where it catches the sky.
+    context.fillStyle = '#6f6d68'
     context.fillRect(34, 26, 60, 66)
-    context.fillStyle = '#3e4c58'
+    const glass = context.createLinearGradient(0, 30, 0, 88)
+    glass.addColorStop(0, '#70869a')
+    glass.addColorStop(1, '#2c3843')
+    context.fillStyle = glass
     context.fillRect(38, 30, 52, 58)
-    context.fillStyle = '#8c8a84'
+
+    // A shadow cast on the glass by the top of the frame, then the middle bar.
+    context.fillStyle = 'rgb(0 0 0 / 32%)'
+    context.fillRect(38, 30, 52, 4)
+    context.fillStyle = '#6f6d68'
     context.fillRect(62, 30, 4, 58)
 
-    // Window sill.
-    context.fillStyle = '#b4b2ab'
-    context.fillRect(30, 92, 68, 5)
+    // A sill with a shadow under it.
+    context.fillStyle = '#c4c2bb'
+    context.fillRect(30, 92, 68, 4)
+    context.fillStyle = 'rgb(0 0 0 / 30%)'
+    context.fillRect(30, 96, 68, 2)
   }
 
   const texture = new THREE.CanvasTexture(canvas)
@@ -213,6 +267,11 @@ function createCityGeometries(buildings: PolygonFeature[]): THREE.BufferGeometry
   return [...squares.values()].map(createBlockGeometry)
 }
 
+function prepareWallBumps([, bumps]: THREE.Texture[]) {
+  bumps.wrapS = THREE.RepeatWrapping
+  bumps.wrapT = THREE.RepeatWrapping
+}
+
 function updateWindowGlow(material: THREE.MeshStandardMaterial) {
   material.emissiveIntensity = liveSky.look.night * WINDOW_GLOW
 }
@@ -220,8 +279,12 @@ function updateWindowGlow(material: THREE.MeshStandardMaterial) {
 export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
   const geometries = useMemo(() => createCityGeometries(buildings), [buildings])
 
-  const { windows } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const facade = useMemo(() => createFacadeTexture(), [])
+  const { windows, surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const [wallPhoto, wallBumps] = useTexture(
+    ['/textures/wall-color.jpg', '/textures/wall-normal.jpg'],
+    prepareWallBumps,
+  )
+  const facade = useMemo(() => createFacadeTexture(wallPhoto.image as HTMLImageElement), [wallPhoto])
 
   // We created these by hand, so R3F won't free their GPU memory for us.
   const windowLights = useMemo(() => createWindowLightTexture(), [])
@@ -234,13 +297,15 @@ export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
     () =>
       new THREE.MeshStandardMaterial({
         map: windows ? facade : null,
+        normalMap: surfaces === 'bumps' ? wallBumps : null,
+        normalScale: new THREE.Vector2(WALL_BUMP_STRENGTH, WALL_BUMP_STRENGTH),
         emissive: windows ? '#ffffff' : '#000000',
         emissiveMap: windows ? windowLights : null,
         emissiveIntensity: 0,
         vertexColors: true,
         roughness: 0.9,
       }),
-    [windows, facade, windowLights],
+    [windows, surfaces, facade, windowLights, wallBumps],
   )
 
   useFrame(() => updateWindowGlow(material))

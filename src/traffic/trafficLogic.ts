@@ -127,7 +127,7 @@ export function createTrafficWorld(
   })
   const walkLanes = createLanes(graph, collisions, {
     minRoadWidth: 4,
-    sideOffset: (roadWidth) => roadWidth / 2 + 0.7,
+    sideOffset: (roadWidth) => roadWidth / 2 + 0.7, // On the pavement, inside the lamp posts.
     clearance: 0.4,
   })
 

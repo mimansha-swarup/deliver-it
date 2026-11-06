@@ -39,12 +39,26 @@ export function splitLongPiece(start: GroundPoint, end: GroundPoint): [GroundPoi
   return Array.from({ length: count }, (_, part) => [pointAt(part), pointAt(part + 1)])
 }
 
+/**
+ * Texture coordinates measured in metres across the ground, so that a texture
+ * runs on from one road piece to the next with no seams or stretching.
+ */
+function createGroundUvs(positions: number[]): Float32Array {
+  const uvs = new Float32Array((positions.length / 3) * 2)
+  for (let corner = 0; corner < positions.length / 3; corner++) {
+    uvs[corner * 2] = positions[corner * 3]
+    uvs[corner * 2 + 1] = positions[corner * 3 + 2]
+  }
+  return uvs
+}
+
 /** Builds one flat geometry per map square. */
 export function createFlatGeometries(chunks: ChunkedPositions): THREE.BufferGeometry[] {
   return [...chunks.values()].map((positions) => {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geometry.setAttribute('normal', new THREE.BufferAttribute(createNormals(positions.length / 3), 3))
+    geometry.setAttribute('uv', new THREE.BufferAttribute(createGroundUvs(positions), 2))
     geometry.computeBoundingSphere()
     return geometry
   })

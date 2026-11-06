@@ -1,0 +1,5 @@
+Textures from Poly Haven (https://polyhaven.com), licensed CC0 1.0. Resized for this project.
+
+road-color.jpg, road-normal.jpg         Asphalt 04         https://polyhaven.com/a/asphalt_04
+pavement-color.jpg, pavement-normal.jpg Brick Pavement 03  https://polyhaven.com/a/brick_pavement_03
+wall-color.jpg, wall-normal.jpg         Clay Plaster       https://polyhaven.com/a/clay_plaster

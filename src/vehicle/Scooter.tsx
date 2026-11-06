@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { CanvasTexture, type Group } from 'three'
+import { BufferGeometry, DoubleSide, Float32BufferAttribute, type Group } from 'three'
 import { useGameStore } from '../game/gameStore'
 import type { CollisionWorld } from '../world/collision'
 import { stepScooter, type ScooterState } from './ScooterController'
@@ -39,24 +39,48 @@ function Wheel({ spinRef, z }: { spinRef: Ref<Group>; z: number }) {
   )
 }
 
-/** Draws a dark circle that fades to transparent at its edge. */
-function createBlobTexture(): CanvasTexture {
-  const size = 64
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+const BLOB_WIDTH = 0.65
+const BLOB_LENGTH = 1.45
+const BLOB_HEIGHT = 0.08
+const BLOB_SIDES = 20
+/** [distance out from the middle, darkness] for each ring of the shape. */
+const BLOB_RINGS = [
+  [0, 0.6],
+  [0.55, 0.45],
+  [1, 0],
+]
 
-  const context = canvas.getContext('2d')
-  if (context) {
-    const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.6)')
-    gradient.addColorStop(0.55, 'rgba(0, 0, 0, 0.45)')
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
-    context.fillStyle = gradient
-    context.fillRect(0, 0, size, size)
+/** A dark oval that fades out at its edge. The fade is stored on its corners. */
+function createBlobGeometry(): BufferGeometry {
+  const positions: number[] = []
+  const colors: number[] = []
+
+  const add = (ring: number, side: number) => {
+    const [distance, darkness] = BLOB_RINGS[ring]
+    const angle = (side / BLOB_SIDES) * Math.PI * 2
+    positions.push(
+      Math.cos(angle) * distance * BLOB_WIDTH,
+      BLOB_HEIGHT,
+      Math.sin(angle) * distance * BLOB_LENGTH,
+    )
+    colors.push(0, 0, 0, darkness)
   }
 
-  return new CanvasTexture(canvas)
+  for (let ring = 0; ring < BLOB_RINGS.length - 1; ring++) {
+    for (let side = 0; side < BLOB_SIDES; side++) {
+      add(ring, side)
+      add(ring + 1, side)
+      add(ring, side + 1)
+      add(ring, side + 1)
+      add(ring + 1, side)
+      add(ring + 1, side + 1)
+    }
+  }
+
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('color', new Float32BufferAttribute(colors, 4))
+  return geometry
 }
 
 /**
@@ -64,14 +88,21 @@ function createBlobTexture(): CanvasTexture {
  * object this small, so the scooter fakes its own shadow instead of casting one.
  */
 function BlobShadow() {
-  const texture = useMemo(() => createBlobTexture(), [])
+  const geometry = useMemo(() => createBlobGeometry(), [])
 
-  useEffect(() => () => texture.dispose(), [texture])
+  useEffect(() => () => geometry.dispose(), [geometry])
 
   return (
-    <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[1.1, 2.6]} />
-      <meshBasicMaterial map={texture} transparent depthWrite={false} />
+    <mesh geometry={geometry}>
+      <meshBasicMaterial
+        vertexColors
+        transparent
+        depthWrite={false}
+        side={DoubleSide}
+        polygonOffset
+        polygonOffsetFactor={-6}
+        polygonOffsetUnits={-6}
+      />
     </mesh>
   )
 }

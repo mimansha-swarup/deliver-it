@@ -1,5 +1,8 @@
 export type Quality = 'low' | 'medium' | 'high'
 
+/** How much surface texture to draw: none, colour only, or colour with bumps. */
+export type SurfaceDetail = 'plain' | 'color' | 'bumps'
+
 type QualityPreset = {
   label: string
   /** Rendering resolution, as [lowest, highest] pixels per screen point. */
@@ -7,6 +10,7 @@ type QualityPreset = {
   /** Sun shadow detail in pixels, or 0 for no shadows. */
   shadowSize: number
   windows: boolean
+  surfaces: SurfaceDetail
   treeShadows: boolean
   /** How far you can see. Map squares further away aren't drawn, in metres. */
   drawDistance: number
@@ -25,6 +29,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     pixelRatio: [0.75, 0.75],
     shadowSize: 0,
     windows: false,
+    surfaces: 'plain',
     treeShadows: false,
     drawDistance: 280,
     propDistance: 140,
@@ -38,6 +43,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     pixelRatio: [1, 1.25],
     shadowSize: 2048,
     windows: true,
+    surfaces: 'color',
     treeShadows: false,
     drawDistance: 400,
     propDistance: 200,
@@ -51,6 +57,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     pixelRatio: [1, 2],
     shadowSize: 4096,
     windows: true,
+    surfaces: 'bumps',
     treeShadows: true,
     drawDistance: 520,
     propDistance: 260,

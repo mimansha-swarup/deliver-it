@@ -2456,3 +2456,105 @@ Camera position still worked, because the copy kept the same `Vector3`. That's w
 ### Next
 
 Tell me how it feels. Rain could also make the road slippery, if you'd like weather to matter.
+
+## 2026-11-07: Entry 19, real road and building textures
+
+### What I did
+
+- **Roads** now use a tarmac photo, **pavements** use the brick pavers you chose, and **walls** have
+  real plaster weathering. Windows got a sky gradient, shadows, and grime under the sills.
+- **Added a surface setting to the quality levels:** Low stays plain, Medium has colour, and High
+  also has bump detail from normal maps.
+- **Rebuilt the scooter's soft shadow** from geometry, because its texture stopped showing up.
+
+All the textures are CC0 from Poly Haven, listed in `public/textures/CREDITS.txt`. They add 1 MB.
+
+You pointed me to `brick_pavement_03_1k.blend`, which turned out to be a folder. Browsers can't load
+a `.blend` file, and its bump map was an EXR, which they can't load either. So I used the folder's
+colour JPG, and fetched the same asset's bump map as a JPG from Poly Haven. Your file is unchanged.
+
+### Why
+
+Flat colours were what made the city look like a toy. Real surfaces change every frame you see.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Type check, lint, build | Pass |
+| Browser | No errors |
+| Screenshots | Day and rainy night look right, and the scooter's shadow is back |
+
+Frame rate on the CPU test renderer, measured in repeated runs:
+
+| Level | Before | After |
+| --- | --- | --- |
+| High | 8.3 | 5.0–7.0 |
+| Medium | 10.3–10.7 | 6.0–9.3 |
+| Low | 24.3–25.7 | 17.3–23.7 |
+
+Low draws no new textures, yet its range moved too, so **part of this is noise on my machine**.
+Textures cost a CPU renderer far more than a GPU, as sampling is what GPUs are built for. So only
+your Mac can give the real cost.
+
+**Not solved:**
+
+- **The scooter shadow's real cause is unknown.** The plane drew fine in solid red, and the canvas
+  held the right data, but with the texture on, nothing showed. A rebuilt texture didn't help
+  either. I replaced it instead of finding out why, so the cause could matter elsewhere.
+- **The map-square glitch from Entry 16 came back in a screenshot**, with road missing while
+  riding. You saw nothing on your Mac then, so I still think it's a screenshot fault. It's worth
+  a look now that the surfaces changed.
+- Tiling repeats. It isn't obvious on tarmac, but could be from high up.
+
+### Lesson 73: UVs in metres
+
+Roads had no **UVs**, the numbers saying which part of a texture lands on each corner. A road
+made of many separate pieces would show seams if each had its own. So we use world position:
+
+```ts
+uvs[corner * 2] = positions[corner * 3]         // x, in metres
+uvs[corner * 2 + 1] = positions[corner * 3 + 2] // z, in metres
+```
+
+Then `texture.repeat.set(1 / 2.5, 1 / 2.5)` means "one copy every 2.5 m". Every piece lines up,
+as they all read from one texture laid across the whole map.
+
+### Lesson 74: normal maps
+
+A **normal map** doesn't change the shape. Each pixel stores which way the surface "faces", so
+light catches bumps that aren't there. Its red, green and blue are an X, Y and Z direction, which
+is why these images look purple. It's why the bricks seem raised on a flat plane, and it costs
+extra work on every pixel, so it's High only.
+
+Colour textures need `colorSpace = SRGBColorSpace`, as they're made for eyes. Normal maps are
+data, so they must stay as they are.
+
+### Lesson 75: keep the stains, lose the colour
+
+Every wall shares one texture, but buildings have different colours, which multiply with it. A
+brown plaster photo would turn them all brown. So we turn each pixel into a pale grey based on how
+it differs from the average. The stains survive, and the paint shows through.
+
+### Lesson 76: when to stop debugging
+
+I made three attempts to find why the shadow texture was blank, and each ruled something out. It's
+only a dark oval, so I built it another way. Moving on is often right, as long as you write down
+that the cause is unknown. A workaround that's recorded as one can be revisited.
+
+### Try it
+
+1. Press Low, Medium and High to compare the road and walls up close.
+2. In `Roads.tsx`, set `PAVEMENT_TILE` to `1` or `6`, and see why real size matters.
+3. In `Roads.tsx`, change `TEXTURED_ROAD_COLOR` to `#ffffff` for a paler road.
+4. Open `public/textures/road-normal.jpg` to see what a normal map looks like.
+
+### Next
+
+Building detail and street clutter, such as water tanks, shutters and overhead cables.
+
+### Update: making the pavement visible
+
+You said your pavement wasn't there. It was, as a side-by-side with your file showed, but I'd made it
+easy to miss: Low skipped it, and at 1.8 m wide, most of what sat beside the road was plain ground.
+Now the pavers show on every level, the bumps stay on High only, and pavements are 3 m wide.
