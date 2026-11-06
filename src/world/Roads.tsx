@@ -1,32 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { LineFeature } from './mapData'
+import { getRoadWidth } from './roadData'
 import { lonLatToWorld, PLAY_AREA_SIZE, type GroundPoint } from './worldUtils'
-
-const LANE_WIDTH = 3.5
-const DEFAULT_ROAD_WIDTH = 5
-
-/**
- * Road widths in metres. OSM has no width data here, so these were chosen by
- * measuring the gap between road centrelines and the nearest buildings.
- */
-const ROAD_WIDTHS: Record<string, number> = {
-  secondary: 9,
-  tertiary: 7,
-  residential: 5,
-  service: 4,
-  track: 3,
-}
 
 /** Just above the ground, so the two surfaces don't flicker against each other. */
 const ROAD_HEIGHT = 0.05
 const JOINT_SIDES = 12
-
-function getRoadWidth({ properties }: LineFeature): number {
-  const lanes = Number(properties.lanes)
-  if (lanes > 0) return lanes * LANE_WIDTH
-  return ROAD_WIDTHS[properties.highway ?? ''] ?? DEFAULT_ROAD_WIDTH
-}
 
 /**
  * Cuts a line segment down to the part inside the play area, or returns null if

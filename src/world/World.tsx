@@ -17,7 +17,7 @@ export function World() {
       <Roads roads={data.roads} />
       <Buildings buildings={data.buildings} />
       <DebugMap data={data} />
-      <Player buildings={data.buildings} />
+      <Player data={data} />
     </>
   )
 }

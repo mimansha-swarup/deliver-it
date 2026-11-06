@@ -4,7 +4,6 @@ import { lonLatToWorld, PLAY_AREA_SIZE, type LonLat } from './worldUtils'
 
 const DEBUG_COLORS = {
   footway: '#55705f',
-  place: '#1677c9',
   playArea: '#ffe14d',
 }
 
@@ -37,22 +36,6 @@ function LineLayer({ lines, color, height }: { lines: LonLat[][]; color: string;
   )
 }
 
-function PointLayer({ points, color, height }: { points: LonLat[]; color: string; height: number }) {
-  const positions = useMemo(
-    () => new Float32Array(points.flatMap((point) => lonLatToWorld(point, height))),
-    [points, height],
-  )
-
-  return (
-    <points>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial color={color} size={5} sizeAttenuation={false} />
-    </points>
-  )
-}
-
 function PlayAreaOutline({ height }: { height: number }) {
   const corners = useMemo(() => {
     const half = PLAY_AREA_SIZE / 2
@@ -74,15 +57,13 @@ function PlayAreaOutline({ height }: { height: number }) {
   )
 }
 
-/** Temporary guides for footways, places and the play area boundary. */
+/** Temporary guides for footways and the play area boundary. */
 export function DebugMap({ data }: { data: MapData }) {
   const footways = useMemo(() => data.footways.map((f) => f.geometry.coordinates), [data])
-  const places = useMemo(() => data.places.map((p) => p.geometry.coordinates), [data])
 
   return (
     <>
       <LineLayer lines={footways} color={DEBUG_COLORS.footway} height={0.2} />
-      <PointLayer points={places} color={DEBUG_COLORS.place} height={1} />
       <PlayAreaOutline height={0.4} />
     </>
   )

@@ -1,5 +1,8 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { DirectionArrow } from './ui/DirectionArrow'
+import { Hud } from './ui/Hud'
+import { Minimap } from './ui/Minimap'
 import { World } from './world/World'
 
 const SKY_COLOR = '#cfe3f2'
@@ -15,7 +18,13 @@ function App() {
         </Suspense>
       </Canvas>
 
-      <p className="controls-hint">W A S D or arrow keys to ride · Space for handbrake</p>
+      <Hud />
+      <DirectionArrow />
+      <Suspense fallback={null}>
+        <Minimap />
+      </Suspense>
+
+      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift</p>
 
       <a
         className="attribution"

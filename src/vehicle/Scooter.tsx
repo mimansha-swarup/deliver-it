@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { CanvasTexture, type Group } from 'three'
 import type { CollisionWorld } from '../world/collision'
-import { createScooterState, stepScooter } from './ScooterController'
+import { stepScooter, type ScooterState } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
 import { SCOOTER } from './vehicleConfig'
 
@@ -136,13 +136,14 @@ function Handlebars() {
  */
 export function Scooter({
   ref,
+  scooterState,
   collisions,
 }: {
   ref: RefObject<Group | null>
+  scooterState: RefObject<ScooterState>
   collisions: CollisionWorld
 }) {
   const input = useDriveInput()
-  const scooterState = useRef(createScooterState())
 
   const lean = useRef<Group>(null)
   const steering = useRef<Group>(null)
@@ -157,7 +158,10 @@ export function Scooter({
       ref.current.position.set(state.x, 0, state.z)
       ref.current.rotation.y = state.heading
     }
-    if (lean.current) lean.current.rotation.z = -state.lean
+    if (lean.current) {
+      lean.current.rotation.z = -state.lean
+      lean.current.rotation.x = state.pitch
+    }
     if (steering.current) steering.current.rotation.y = state.steer * MAX_FRONT_WHEEL_ANGLE
     if (frontWheel.current) frontWheel.current.rotation.x = state.wheelSpin
     if (rearWheel.current) rearWheel.current.rotation.x = state.wheelSpin

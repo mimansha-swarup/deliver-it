@@ -1,6 +1,9 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
-import type { Group } from 'three'
+import { PerspectiveCamera } from 'three'
+import type { ScooterState } from '../vehicle/ScooterController'
+import { getTravelSpeed } from '../vehicle/ScooterController'
+import { SCOOTER } from '../vehicle/vehicleConfig'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 
 const DISTANCE_BEHIND = 5.2
@@ -10,6 +13,14 @@ const LOOK_HEIGHT = 1
 
 /** How fast the camera swings round behind the scooter. Higher is tighter. */
 const TURN_RESPONSE = 5
+
+const BASE_FOV = 60
+/** Extra field of view at top speed, which makes speed feel faster. */
+const SPEED_FOV = 12
+const FOV_RESPONSE = 4
+
+/** How far the camera swings toward the direction of travel in a slide, from 0 to 1. */
+const SLIDE_FOLLOW = 0.65
 
 /** How close the camera may come to the scooter when backed against a wall. */
 const MIN_DISTANCE = 1.4
@@ -41,29 +52,34 @@ function findClearDistance(
  * it closer when a building would otherwise block the view.
  */
 export function FollowCamera({
-  target,
+  scooter,
   collisions,
 }: {
-  target: RefObject<Group | null>
+  scooter: RefObject<ScooterState>
   collisions: CollisionWorld
 }) {
   const cameraHeading = useRef<number | null>(null)
   const cameraDistance = useRef(DISTANCE_BEHIND)
 
   useFrame(({ camera }, delta) => {
-    if (!target.current) return
+    const state = scooter.current
+    const travelSpeed = getTravelSpeed(state)
 
-    const { position, rotation } = target.current
-    const previous = cameraHeading.current ?? rotation.y
+    // In a slide, look partly along the direction of travel, so the scooter is
+    // seen turned sideways against it.
+    const slipAngle = travelSpeed > 3 ? Math.atan2(state.slip, Math.max(state.speed, 1)) : 0
+    const targetHeading = state.heading - slipAngle * SLIDE_FOLLOW
+
+    const previous = cameraHeading.current ?? targetHeading
 
     // Moves a fraction of the remaining gap, in a way that doesn't depend on frame rate.
-    const heading = previous + (rotation.y - previous) * (1 - Math.exp(-TURN_RESPONSE * delta))
+    const heading = previous + (targetHeading - previous) * (1 - Math.exp(-TURN_RESPONSE * delta))
     cameraHeading.current = heading
 
     const forwardX = Math.sin(heading)
     const forwardZ = Math.cos(heading)
 
-    const clearDistance = findClearDistance(collisions, position.x, position.z, forwardX, forwardZ)
+    const clearDistance = findClearDistance(collisions, state.x, state.z, forwardX, forwardZ)
     const distance =
       clearDistance < cameraDistance.current
         ? clearDistance // Snap in, or the wall would be visible for a moment.
@@ -71,8 +87,14 @@ export function FollowCamera({
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
 
-    camera.position.set(position.x - forwardX * distance, HEIGHT, position.z - forwardZ * distance)
-    camera.lookAt(position.x + forwardX * LOOK_AHEAD, LOOK_HEIGHT, position.z + forwardZ * LOOK_AHEAD)
+    camera.position.set(state.x - forwardX * distance, HEIGHT, state.z - forwardZ * distance)
+    camera.lookAt(state.x + forwardX * LOOK_AHEAD, LOOK_HEIGHT, state.z + forwardZ * LOOK_AHEAD)
+
+    if (camera instanceof PerspectiveCamera) {
+      const targetFov = BASE_FOV + SPEED_FOV * Math.min(travelSpeed / SCOOTER.maxSpeed, 1.2)
+      camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-FOV_RESPONSE * delta))
+      camera.updateProjectionMatrix()
+    }
   })
 
   return null

@@ -940,7 +940,7 @@ entry.
 | Lint, type check, production build | Pass |
 | Earlier handling checks | All still pass |
 | Can every road be reached with solid walls? | **Yes: all 2,055 road sample points** |
-| Random bot, 600,000 steps (nearly 3 hours at 60 FPS) | Never ended a step inside a wall, across 1,868 hard hits |
+| Random bot, 600,000 steps (nearly 3 hours at 60 FPS) | Never ended a step inside a wall, across 1,868 hard hits. **Weak test: see the correction in Entry 9** |
 | Slowest allowed frame at top speed | Doesn't pass through a wall |
 | Head-on hit, then reverse | Stops, and backs away |
 | Browser ride, including S | Glanced off a wall and rode on, with S pressed afterwards, and no errors |
@@ -1072,3 +1072,528 @@ never target somewhere you can't reach.
 
 The delivery mission: a pickup, a destination, markers and rewards. That needs Zustand
 for game state, which is also what the HUD will read.
+
+---
+
+## 2026-11-06: Entry 8, the first complete delivery
+
+Roadmap: Phases 5 and 6 (basic versions) and the start of Phase 7. Commit `2ffb858`
+holds everything before this entry.
+
+**This completes all 14 weekend MVP items. You can now ride to a pickup, collect an
+order, deliver it to a customer, and earn credits and XP.**
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/game/gameTypes.ts` | New. Shared mission types |
+| `src/game/missionConfig.ts` | New. Locations, rewards and rules, in one place |
+| `src/game/gameStore.ts` | New. The Zustand store: mission phase, credits, XP and HUD numbers |
+| `src/missions/missionLogic.ts` | New. Mission rules, with no React or 3D code |
+| `src/missions/MissionTracker.tsx` | New. Checks arrival every frame and feeds the HUD |
+| `src/missions/MissionMarker.tsx` | New. The light beam, ring and pointer |
+| `src/missions/TargetArrow.tsx` | New. A compass dart above the scooter |
+| `src/ui/Hud.tsx` | New. Mission panel, wallet, speedometer and results card |
+| `src/vehicle/Player.tsx`, `Scooter.tsx` | The scooter's state moved up to `Player`, so the mission code can read it |
+| `src/world/DebugMap.tsx` | Removed the blue place dots, as promised in Entry 6 |
+
+I also installed `zustand` 5.1. It's the first new dependency since the project began.
+
+### The rules
+
+| Rule | Value |
+| --- | --- |
+| Delivery reward | 50 credits and 25 XP, **always** |
+| On-time bonus | +25 credits within 90 s, and nothing is lost if you miss it |
+| Arriving | Be inside the ring, under 3 m/s (about 11 km/h) |
+| Route | About 280 m to the pickup, then about 320 m to the customer |
+
+### Why
+
+- **Real spots, fictional names.** The pickup is on 21st Cross Road, about 10 m from a
+  mapped clothing shop, but the game calls it "The Fashion Hub". The customer is on a
+  residential street. Both are placeholders, and no real shop name appears. I chose
+  them by computing routes around the buildings, so both are reachable by design.
+- **Time can only add to your reward.** The brief says the base reward must not be
+  reduced, so being late costs a bonus, never the base pay.
+- **You have to slow down to arrive.** It gives braking a purpose, and "safe braking" is
+  one of the brief's performance measures. Riding through at 50 km/h doesn't count.
+- **An arrow, not a route line.** The dart points straight at the stop, so it can point
+  across buildings. A line along the roads needs pathfinding, which isn't on the MVP.
+- **Plain CSS, not Tailwind.** The brief lists Tailwind, but this HUD is small enough
+  that adding it wouldn't help yet.
+- **No hit penalty.** Hits don't affect score. The brief allows it later, and the
+  package stays pristine either way.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| 12 mission rule checks | All pass, including base pay at any time up to 99,999 s |
+| Bot riding the real route with the real handling | Finished in 50.5 s, with no hard hits |
+| Earlier handling and collision checks | All still pass |
+| Browser ride with real keys | Collected, delivered, got 75 credits and 25 XP, and "Next delivery" reset the game |
+| Browser errors | None |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+
+`npm audit` does report 10 moderate warnings in the full tree, and they come from
+ESLint, a development tool, rather than anything shipped to players.
+
+The browser ride moved both stops close to the spawn point, in memory only, so a short
+ride could cover the whole flow. So the full route at its real locations was only
+ridden by the Node bot.
+
+**The 90 s limit is a guess.** The bot took 50.5 s, knows the route and never makes
+mistakes. A person seeing the map for the first time may need much longer.
+
+### Problems I found by looking
+
+- **The arrow was a big kite** floating over the road. I squashed it into a slim dart.
+- **The clock started when the page loaded**, so the player lost time before touching a
+  key. It now starts when the scooter first moves.
+
+### Known issues
+
+- **Credits and XP vanish on refresh.** Saving them locally is Phase 7.
+- **The dart ignores roads.** It can point straight at a wall.
+- **The beam can be hidden** behind buildings until you're fairly close.
+- **The results card covers part of the scooter**, and you can still ride behind it.
+- **The yellow boundary and green footway lines** are still debug guides.
+
+### Lesson 28: a state machine
+
+A delivery is always in exactly one stage:
+
+```text
+toPickup  ->  toCustomer  ->  delivered  ->  (next delivery) toPickup
+```
+
+This is a **state machine**, and it's one of the most common patterns in games. A single
+`phase` value is far safer than separate flags like `hasOrder` and `isDone`, because
+those can end up in impossible combinations. `arriveAtStop` is the only way forward, and
+it can't skip a stage.
+
+### Lesson 29: Zustand
+
+Zustand is a global store you can read from anywhere, in two different ways. That
+difference is why it fits games so well.
+
+**Inside React**, use the hook. The component re-renders when that value changes:
+
+```tsx
+const credits = useGameStore((state) => state.credits)
+```
+
+The function is a **selector**. Because it picks one value, this component ignores every
+other change in the store, like speed updates.
+
+**Outside React**, such as in the game loop, use `getState()`. It reads the current value
+with no subscription and no re-render:
+
+```tsx
+useFrame(() => {
+  const game = useGameStore.getState()
+})
+```
+
+This solves the gap from Lesson 17, where game loop values live in refs, but the HUD is
+React and needs to see them.
+
+### Lesson 30: two speeds, one bridge
+
+The game runs 60 times a second, but people can't read a number that fast, and React
+shouldn't re-render that often. So `MissionTracker` copies values to the store only every
+0.1 s:
+
+```ts
+sinceTelemetry.current += frameTime
+if (sinceTelemetry.current >= TELEMETRY_INTERVAL) {
+  game.setTelemetry({ /* ... */ })
+}
+```
+
+This is **throttling**. Rounding helps too, because a selector only triggers a re-render
+when its value really changes, so a speed sitting at `50` costs nothing.
+
+### Lesson 31: components that draw nothing
+
+`MissionTracker` returns `null`. In R3F, a component is just a way to attach behaviour
+to the scene's lifecycle. It doesn't have to draw anything, and `FollowCamera` works the
+same way. Each piece of behaviour gets its own small component, with its own `useFrame`.
+
+### Lesson 32: seeing the marker from far away
+
+Three small settings make the beam work:
+
+- `fog={false}` keeps its colour at a distance, where fog would otherwise fade it.
+- `side={DoubleSide}` draws the inside of the cylinder as well, so it still shows when
+  you're standing in it.
+- `depthWrite={false}` stops the see-through beam from hiding things behind it.
+
+The open-ended cylinder comes from the `true` in its `args`.
+
+### Try it
+
+1. Do a full delivery, and tell me your time. It's the best evidence for the 90 s limit.
+2. Ride through the ring at full speed, and watch the HUD ask you to slow down.
+3. In `missionConfig.ts`, set `onTimeSeconds` to `20`. Finish late and check the base
+   reward is still paid.
+4. Open React DevTools, enable "Highlight updates", and ride. The speedometer flashes,
+   but the wallet doesn't. That's selectors at work.
+5. In `missionConfig.ts`, move `customer` somewhere else. Pick a spot from a road and
+   watch the beam move. A spot inside a building would still count as arrival, once
+   you're close enough.
+
+### Next
+
+The weekend goal is met, so the priority now depends on your feedback from playing.
+After that, the likely order is saving progress, a title screen and a results polish,
+then making the world look less like boxes.
+
+---
+
+## 2026-11-06: Entry 9, momentum, drifting and a minimap
+
+Your feedback: deliveries work, nothing flickers, and riding could be better, with
+drifting and a minimap. The mission work from Entry 8 isn't committed yet, so this
+sits on top of it.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/vehicle/ScooterController.ts` | Rewritten around real momentum, with grip, drifting and boosts |
+| `src/vehicle/vehicleConfig.ts` | New handling values, and every drift setting |
+| `src/vehicle/SkidMarks.tsx` | New. Black streaks from the rear wheel |
+| `src/ui/Minimap.tsx` | New. A round map that turns with you |
+| `src/game/livePlayer.ts` | New. Shares the scooter's position with the minimap |
+| `src/world/roadData.ts` | New. Road widths, shared by the road mesh and the minimap |
+| `src/camera/FollowCamera.tsx` | Follows your slide, and widens the view with speed |
+| `src/ui/Hud.tsx`, `src/missions/MissionTracker.tsx` | Drift and boost badges. Speed now means true speed in any direction |
+
+### How to drift
+
+Get above about 22 km/h, then hold **Space** and steer. Keep **W** held to hold your speed.
+Steer the other way to catch the slide. Slide for 0.7 s or more and let go of Space for a
+boost.
+
+| Handling | Before | Now |
+| --- | --- | --- |
+| Top speed | 50 km/h | 50 km/h, or 61 km/h on a boost |
+| 0 to 25 km/h | 1.4 s | 1.15 s, because power now fades near the top |
+| Space, in a straight line | Stops in 6.4 m | Stops in 13.9 m, because it's now for sliding |
+| S, from top speed | Stops in 8.8 m | The same |
+| Corners | On rails | Up to about 4° of natural slide |
+| A 1.2 s drift | Not possible | Slides up to 27°, turns 66°, keeps 50 km/h |
+
+**Space is now worse at stopping.** Use S to stop for pickups and deliveries.
+
+### Why
+
+- **The old scooter couldn't slide at all.** It always moved exactly where it pointed,
+  so no tuning could produce a drift. Pointing and travelling had to become two things.
+- **The minimap turns with you.** Up is always ahead, so left on the map means left on
+  your keyboard. A fixed north-up map makes you work that out while riding.
+- **The boost is a reward**, so a drift is worth doing rather than only looking good.
+  Letting go is what earns it, and a short tap earns nothing.
+- **It uses a pre-drawn image.** The minimap draws the whole area once, then only rotates
+  that picture each frame.
+
+### Problems the tests caught
+
+- **The first drift was uncontrollable.** 1.2 s of drifting spun the scooter 103°, killed
+  its speed and ended the drift, so no boost could ever be earned. I capped how far it
+  can rotate past its direction of travel at about 52°. Counter-steering is never capped.
+  Holding W in a drift now feeds the slide back into forward speed.
+- **Corners made you faster**: 15.7 m/s, over the 14 m/s limit. Recovering speed from a
+  slide was adding free energy, so it's now capped at the speed limit.
+
+### Correction: my bot test was much weaker than I said
+
+In Entries 7 and 8, I reported a random bot riding for nearly 3 hours without ending up
+in a wall. When I checked what it was really doing, **it had visited only 33 of about
+2,025 map cells and never drifted.** It was stuck near the start the whole time, so that
+result said very little. My random inputs changed too often to get anywhere, and I had
+never measured coverage.
+
+The replacement rides toward random road points at speed, and drifts at random. It took
+several attempts to get right, and three of those runs were flawed by my own bot logic.
+They looked like game bugs until I tested them. At each stuck spot, W drove straight
+out, so the bot was at fault rather than the game.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| 22 handling checks, including drifting | All pass |
+| 14 mission checks, on the new physics | All pass |
+| Mission bot on the real route | 49.6 s, with 1 hard hit |
+| Touring bot, 333 minutes of riding | 891 cells, 147 destinations, 157 boosts, 4,392 hard hits |
+| Steps inside a wall on that tour | **0** |
+| Spots where all six control combinations failed to move it | **0** |
+| Every road still reachable | Yes, 2,055 of 2,055 |
+| Same ride, with a drift, at 30, 60 and 144 FPS | Ends within 0.19 m |
+| Real keys in headless Chrome | Rode, drifted, boosted, with no errors |
+| Minimap direction | Correct: the pickup is east, which is your left at the start, and it shows there |
+
+The 891 cells is less than half the map, partly because many cells are inside buildings,
+and partly because of the 40 destinations the bot used. So it's strong evidence rather
+than proof.
+
+**How the drift feels is still your call.** The numbers show that it works, not that
+it's fun. All of it is adjustable in `vehicleConfig.ts`.
+
+### Known issues
+
+- **The bonus time needs a new look.** The boost makes you faster, and you've now played
+  it, so tell me your time.
+- **A minimap target can be behind buildings.** It shows direction, not the road route.
+- **Skid marks also appear on grass.** They're drawn at a fixed height on any surface.
+- **Earlier issues remain:** credits and XP reset on refresh, and the yellow boundary
+  and green footway lines are still debug guides.
+
+### Lesson 33: velocity is not direction
+
+This is the most important idea in vehicle handling. The scooter now has two separate
+things:
+
+- `heading`: where it **points**
+- `velocityX`, `velocityZ`: where it's actually **going**
+
+When you turn, `heading` changes, but momentum carries on the old way. The difference
+is the slide. Every frame we split velocity into two parts, using dot products from
+Lesson 25:
+
+```ts
+const speed = velocityX * forwardX + velocityZ * forwardZ // along the scooter
+const slip = velocityX * sideX + velocityZ * sideZ // sideways
+```
+
+The engine and brakes act on `speed`. Tyres act on `slip`:
+
+```ts
+const nextSlip = slip * Math.exp(-state.grip * dt)
+```
+
+### Lesson 34: grip is one number
+
+That one line is the whole drift. With `grip: 12`, a slide vanishes in a fraction of a
+second, so you feel planted. With `driftGrip: 1.4`, it lasts a second or more, so you
+slide. The handbrake only changes that number, and everything else follows from it.
+
+`Math.exp` is here for the same reason as in Lesson 22: it makes the fade depend on time
+and not on frame rate. That's why the drift ride matched at 30, 60 and 144 FPS.
+
+### Lesson 35: when arcade beats realism
+
+Real drifting loses speed fast, and a real scooter that slid like this would fall over.
+So we cheat in ways that feel right:
+
+- `powerSlideRecovery` turns slide into forward speed, so W keeps the drift alive.
+- `maxDriftAngle` stops you spinning out, however long you hold the steering.
+- `driftTurnBoost` lets you turn sharper while sliding.
+
+Good handling is rarely accurate. It's about making the player feel skilled.
+
+### Lesson 36: a 2D canvas alongside 3D
+
+The minimap isn't Three.js at all. It's a plain `<canvas>` using the browser's 2D drawing
+tools, sitting on top of the 3D view. Not everything in a 3D game needs to be 3D.
+
+It runs its own `requestAnimationFrame` loop, because it's outside `<Canvas>`, so
+`useFrame` isn't available. It reads `livePlayer`, a plain object rather than store
+state. Lesson 30 throttled the HUD to 10 updates a second, but a map at that rate would
+stutter visibly.
+
+So there are now three ways to share data, each for a different speed:
+
+| Data | Tool | Updates |
+| --- | --- | --- |
+| Credits, mission phase | Zustand with selectors | Rarely |
+| Speed and distance on the HUD | Zustand, throttled | 10 times a second |
+| Position for the minimap | A plain object | Every frame |
+
+### Lesson 37: the ring buffer
+
+Skid marks could pile up forever, so `SkidMarks.tsx` uses a fixed block of 500 segments.
+A counter moves along it, and when it reaches the end it wraps to the start, overwriting
+the oldest mark:
+
+```ts
+nextSegment.current = (nextSegment.current + 1) % MAX_SEGMENTS
+```
+
+The memory used never grows. Games use this for bullet holes, particles and more.
+
+### Lesson 38: test your tests
+
+The bot lesson applies far beyond games. A test that passes can mean the code works, or
+it can mean the test isn't testing much. Mine passed for days of simulated riding while
+barely moving. Two habits would have caught it:
+
+- **Measure what a test really covered**, as well as whether it passed.
+- **Be suspicious of neat results.** The same 1,868 hits under completely different
+  physics was the clue here.
+
+### Try it
+
+1. Practise on a long straight, then at a junction. Hold Space, steer, and keep W held.
+2. Catch a slide by steering the other way.
+3. Earn a boost, and watch for the green badge by the speedometer.
+4. In `vehicleConfig.ts`, try `driftGrip: 0.6` for an icy feel, then `3` for a tight one.
+5. Set `maxDriftAngle` to `1.5` and see how close you get to spinning out.
+6. In `Minimap.tsx`, set `VIEW_METRES` to `400` for a wider view.
+
+### Next
+
+Your feedback on the drift decides this. After that, a route line on the minimap would
+fix "the target is behind buildings", and saving progress is still waiting.
+
+---
+
+## 2026-11-06: Entry 10, real directions and varied deliveries
+
+Your feedback: the direction arrow is hard to figure out, and the delivery location is
+always the same.
+
+Both came from one gap: the game had no idea what a road was. The dart pointed straight
+through buildings at a fixed spot, and nothing could choose a new one.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/world/roadGraph.ts` | New. Turns the roads into a network, and finds routes across it |
+| `src/missions/missionPlanner.ts` | New. Picks a random pickup and customer for each delivery |
+| `src/missions/routeTracking.ts` | New. Works out the route and where the arrow aims, every frame |
+| `src/ui/DirectionArrow.tsx` | New. A large arrow at the top of the screen |
+| `src/ui/Minimap.tsx` | Now draws the route along the roads |
+| `src/world/collision.ts` | Added `hasClearLine`, a line-of-sight check |
+| `src/game/gameTypes.ts`, `gameStore.ts`, `missionConfig.ts` | Missions are now generated, not fixed |
+| `src/missions/TargetArrow.tsx` | Deleted. The large arrow replaces the 3D dart |
+
+### How it works now
+
+- **The arrow** shows where to go *next*, with up meaning straight ahead and down meaning
+  turn around. It follows the roads, not a straight line to the stop.
+- **The minimap** shows the route in the target's colour.
+- **Every delivery** has a new pickup and a new customer. Customers are 180–450 m by road
+  from the pickup, and at least 60 m from the last one.
+- **"Next delivery"** carries on from where you are, with no jump back to the start.
+- **The bonus time** scales with the route: about 6.7 m/s of road, and at least 30 s. The
+  limits came out between 38 and 164 s.
+- **The HUD distance** now means metres by road.
+
+### Why
+
+- **Why the 3D dart failed.** It lay nearly flat, and the camera sees it from a low angle,
+  so it was often just a thin sliver. An arrow on the screen is always face-on.
+- **Why "up means ahead".** It needs no thinking: the arrow matches your keys.
+- **Why five pickups.** Each sits by a real mapped clothing shop, and shops close together
+  share one. The game shows fictional names, and customers are labelled by real street
+  names, which are just geography.
+- **Why generated, not a list.** A hand-written list would run out and need updating. The
+  planner works from the map, so it will also keep working as the world grows.
+
+### A bug the bot found: the arrow pointed into walls
+
+My first version aimed 22 m along the route. A bot steering only by the arrow managed 34
+deliveries, then got stuck for an hour and a half at one corner. Given last time, I
+checked before blaming the bot, and all 620 road links were clear.
+
+The real cause: at a tight corner, a point 22 m along the route is on the far side of a
+building, so the arrow pointed into the wall. You'd have been confused there too. The
+arrow now aims at the furthest route point you can actually see.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| 22 handling checks | All pass |
+| 500 random missions | All valid: reachable, clear of buildings, within the length limits |
+| Variety | 315 different customers, 5 pickups |
+| Repeats | A customer never within 60 m of the last, and no pickup twice in a row |
+| Road network | All 591 points connected, and all 620 links clear for the scooter |
+| Bot following only the arrow | **100 deliveries in 88.5 minutes**, averaging 53 s, all on time |
+| That bot's coverage | 611 map cells, 23 hard hits, 15 reversals, 0 steps inside a wall |
+| Real keys in headless Chrome | Collected, delivered and got paid through the new tracker |
+| Next delivery in the browser | New stops each time, and the scooter stayed put |
+| Browser errors | None |
+
+The browser ride moved the stops close by, in memory only, as in Entry 8. Later deliveries
+in that test were completed through the store, to check that the locations changed, so
+only the bot rode full-length routes.
+
+### Known issues
+
+- **Routes ignore one-way streets.** 31 road pieces are tagged one-way, and the game treats
+  them all as two-way. There's no traffic yet, so it doesn't matter.
+- **The bonus time is still untested on people.** The bot's near-perfect score only shows
+  that it's possible.
+- **Route length is measured along the road**, so cutting through gaps between buildings
+  can beat it. That seems fine, even fun.
+- **Skid marks still appear on grass.** Credits and XP still reset on refresh, and the
+  debug lines are still there.
+
+### Lesson 39: roads as a graph, for real
+
+Lesson 7 used a graph to count loops. Now we use one to navigate. `createRoadGraph` turns
+each road into points, joined by links, and adds extra points on long straights. Where two
+OSM roads share an exact point, they become one node, and that's what makes a junction.
+
+### Lesson 40: Dijkstra's algorithm
+
+To find the shortest route: start at the destination with distance 0, then repeatedly take
+the closest unfinished point and check its neighbours. If going through this point gives a
+neighbour a shorter distance, record it, along with which way to go.
+
+Here's the trick. Usually you search from the rider to the goal, but then you'd have to
+search again whenever the rider moves. We search **outward from the goal** instead, once,
+and get an answer for **every point on the map**:
+
+```ts
+node = field.nextNode[node] // from anywhere, this is the next step toward the goal
+```
+
+This is called a **flow field**. Take a wrong turn, and the route updates instantly with no
+new search. It's how strategy games move hundreds of units toward one target.
+
+### Lesson 41: line of sight
+
+`hasClearLine` is the simplest possible version: step along a line, one metre at a time,
+and check each spot. It's cheap because the spatial grid from Lesson 23 keeps each check
+small, and the arrow only tests a few points each frame.
+
+"Aim at the furthest point I can see" is a classic trick called **path smoothing**, and it
+often turns a jagged route into a natural-looking one.
+
+### Lesson 42: randomness you can test
+
+`createMissionPlanner` takes `random` as a parameter, defaulting to `Math.random`:
+
+```ts
+export function createMissionPlanner(data, collisions, random = Math.random) {
+```
+
+The game gets real randomness, and a test can pass in a predictable sequence and get the
+same 500 missions each run. A failure you can repeat is a failure you can fix. This is
+called **dependency injection**, and the idea is simple: pass things in, rather than
+reaching out for them.
+
+### Try it
+
+1. Do a few deliveries. Take a wrong turn on purpose, and watch the route redraw instantly.
+2. In `routeTracking.ts`, set `AIM_DISTANCE` to `40`, then `10`. See which reads best.
+3. In `missionConfig.ts`, change `minRouteLength` and `maxRouteLength` for shorter or longer
+   deliveries.
+4. Set `onTimeRouteSpeed` to `9` for tighter bonus times.
+5. In `Minimap.tsx`, try `VIEW_METRES` at `300` to see more of your route.
+
+### Next
+
+Your feedback again. Otherwise, the next items are saving progress and a title screen, then
+making the world look less like boxes.

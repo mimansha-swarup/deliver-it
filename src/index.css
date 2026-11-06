@@ -32,3 +32,146 @@ body,
   color: #f4f1e8;
   background: rgb(0 0 0 / 55%);
 }
+
+.hud-card {
+  position: fixed;
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 72%);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.hud-card p {
+  margin: 0;
+}
+
+.hud-mission {
+  top: 12px;
+  left: 12px;
+  min-width: 220px;
+}
+
+.hud-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hud-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.hud-detail {
+  color: #c9c6bc;
+}
+
+.hud-wallet {
+  top: 12px;
+  right: 12px;
+  text-align: right;
+}
+
+.hud-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-speed {
+  right: 12px;
+  bottom: 40px;
+}
+
+.hud-speed-value {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-results {
+  top: 50%;
+  left: 50%;
+  width: min(340px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 20px 24px;
+  transform: translate(-50%, -50%);
+  background: rgb(15 17 21 / 90%);
+}
+
+.hud-results h1 {
+  margin: 0 0 2px;
+  font-size: 24px;
+}
+
+.hud-results dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  margin: 16px 0;
+}
+
+.hud-results dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.hud-results button {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #10231a;
+  background: #3ddc97;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hud-drift,
+.hud-boost {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.hud-drift {
+  color: #ffb02e;
+}
+
+.hud-boost {
+  color: #3ddc97;
+}
+
+.minimap {
+  position: fixed;
+  left: 12px;
+  bottom: 40px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(15 17 21 / 72%);
+}
+
+.direction-arrow {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  width: 84px;
+  height: 84px;
+  margin-left: -42px;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 50%));
+}
+
+.direction-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

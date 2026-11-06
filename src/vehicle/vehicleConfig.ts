@@ -4,11 +4,16 @@ import { PLAY_AREA_SIZE } from '../world/worldUtils'
 export const SCOOTER = {
   maxSpeed: 14, // about 50 km/h
   maxReverseSpeed: 3,
-  acceleration: 5,
+  /** Engine pull from a standstill, and what's left of it near top speed. */
+  acceleration: 6.5,
+  topEndAcceleration: 1.8,
   reverseAcceleration: 3,
   braking: 11,
-  handbrake: 15,
   coasting: 1.6,
+
+  /** Slowing while the handbrake is held, without and with the throttle. */
+  handbrake: 7,
+  powerSlideDrag: 2.2,
 
   /** How quickly the handlebars reach full lock, in full turns of input per second. */
   steerRate: 5,
@@ -18,9 +23,40 @@ export const SCOOTER = {
   /** Below this speed, steering fades out, so a parked scooter can't spin on the spot. */
   fullSteeringSpeed: 4,
 
+  /** How strongly the tyres cancel sideways sliding, each second. */
+  grip: 12,
+  driftGrip: 1.4,
+  /** How quickly grip changes when the handbrake goes on or off. */
+  gripChangeRate: 30,
+
+  /** Drifting needs at least this much forward speed. */
+  driftMinSpeed: 6,
+  /** Extra turning speed while drifting. */
+  driftTurnBoost: 1.5,
+  /** The furthest the scooter can rotate past its direction of travel, in radians. */
+  maxDriftAngle: 0.9,
+  /** Share of lost sideways speed turned into forward speed as the tyres bite. */
+  slideRecovery: 0.35,
+  /** The same, with the throttle held during a drift. This is what keeps a drift alive. */
+  powerSlideRecovery: 0.8,
+  /** Sideways speed that counts as a real slide, for boosts and skid marks. */
+  slipThreshold: 1.2,
+
+  /** Hold a slide this long, and letting go gives a boost. */
+  boostChargeTime: 0.7,
+  boostTime: 0.8,
+  boostSpeed: 3,
+  boostAcceleration: 9,
+  /** Slowing back down after going over the speed limit. */
+  overspeedDrag: 3,
+
   /** How far the scooter tilts in corners, in radians. */
   maxLean: 0.38,
   leanRate: 7,
+  /** How far the nose lifts under power and dips under braking, in radians. */
+  pitchUnderPower: 0.05,
+  pitchUnderBraking: 0.07,
+  pitchRate: 0.5,
 
   wheelRadius: 0.25,
 

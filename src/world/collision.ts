@@ -129,3 +129,24 @@ export function isNearBuilding(world: CollisionWorld, x: number, z: number, radi
     return inside || distance < radius
   })
 }
+
+/** True when a circle could slide in a straight line from one point to another. */
+export function hasClearLine(
+  world: CollisionWorld,
+  fromX: number,
+  fromZ: number,
+  toX: number,
+  toZ: number,
+  radius: number,
+): boolean {
+  const length = Math.hypot(toX - fromX, toZ - fromZ)
+  const steps = Math.max(1, Math.ceil(length))
+
+  for (let step = 1; step <= steps; step++) {
+    const along = step / steps
+    if (isNearBuilding(world, fromX + (toX - fromX) * along, fromZ + (toZ - fromZ) * along, radius)) {
+      return false
+    }
+  }
+  return true
+}
