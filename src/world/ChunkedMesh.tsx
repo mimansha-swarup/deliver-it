@@ -8,6 +8,10 @@ type ChunkedMeshProps = {
   geometries: THREE.BufferGeometry[]
   material: THREE.Material
   castShadow?: boolean
+  /** Draws thin lines instead of solid triangles. */
+  lines?: boolean
+  /** A shorter draw distance for this layer, in metres. */
+  maxDistance?: number
 }
 
 /**
@@ -16,18 +20,25 @@ type ChunkedMeshProps = {
  * its nearest edge is out of range. Three.js also skips any visible square that
  * isn't in front of the camera, which only works now that they're separate.
  */
-export function ChunkedMesh({ geometries, material, castShadow = false }: ChunkedMeshProps) {
+export function ChunkedMesh({
+  geometries,
+  material,
+  castShadow = false,
+  lines = false,
+  maxDistance = Infinity,
+}: ChunkedMeshProps) {
   const group = useRef<THREE.Group>(null)
 
   useFrame(() => {
     if (!group.current) return
 
+    const reach = Math.min(liveView.drawDistance, maxDistance)
     for (const mesh of group.current.children as THREE.Mesh[]) {
       const sphere = mesh.geometry.boundingSphere
       if (!sphere) continue
 
       const distance = Math.hypot(sphere.center.x - livePlayer.x, sphere.center.z - livePlayer.z)
-      mesh.visible = distance - sphere.radius < liveView.drawDistance
+      mesh.visible = distance - sphere.radius < reach
     }
   })
 
@@ -42,15 +53,19 @@ export function ChunkedMesh({ geometries, material, castShadow = false }: Chunke
 
   return (
     <group ref={group}>
-      {geometries.map((geometry) => (
-        <mesh
-          key={geometry.uuid}
-          geometry={geometry}
-          material={material}
-          castShadow={castShadow}
-          receiveShadow
-        />
-      ))}
+      {geometries.map((geometry) =>
+        lines ? (
+          <lineSegments key={geometry.uuid} geometry={geometry} material={material} />
+        ) : (
+          <mesh
+            key={geometry.uuid}
+            geometry={geometry}
+            material={material}
+            castShadow={castShadow}
+            receiveShadow
+          />
+        ),
+      )}
     </group>
   )
 }

@@ -52,6 +52,16 @@ function createGroundUvs(positions: number[]): Float32Array {
   return uvs
 }
 
+/** Builds one geometry per map square from pairs of line ends. */
+export function createLineGeometries(chunks: ChunkedPositions): THREE.BufferGeometry[] {
+  return [...chunks.values()].map((positions) => {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.computeBoundingSphere()
+    return geometry
+  })
+}
+
 /** Builds one flat geometry per map square. */
 export function createFlatGeometries(chunks: ChunkedPositions): THREE.BufferGeometry[] {
   return [...chunks.values()].map((positions) => {

@@ -7,13 +7,18 @@ import { lonLatToWorld, type GroundPoint } from './worldUtils'
 export type Prop = {
   x: number
   z: number
+  /** Height above the ground, for things that sit on a roof. */
+  y?: number
   /** Which way it faces, in radians around Y. */
   rotation: number
   /** A 0 to 1 value used for size and colour differences. */
   variation: number
 }
 
-export type RoadsideProps = { trees: Prop[]; lamps: Prop[] }
+/** Two neighbouring lamp posts on the same road, which a cable can join. */
+export type PostPair = { from: Prop; to: Prop }
+
+export type RoadsideProps = { trees: Prop[]; lamps: Prop[]; postPairs: PostPair[] }
 
 const PROP_SPACING = 13
 const TREE_CHANCE = 0.55
@@ -26,6 +31,8 @@ const TREE_BUILDING_GAP = 1.8
 const LAMP_BUILDING_GAP = 0.5
 const MIN_PROP_SPACING = 4
 const ROAD_CLEARANCE = 0.7
+/** Lamp posts further apart than this don't get a cable between them, in metres. */
+const MAX_CABLE_SPAN = 75
 
 /** Mulberry32: a tiny random generator that gives the same numbers from the same seed. */
 function createRandom(seed: number): () => number {
@@ -38,12 +45,12 @@ function createRandom(seed: number): () => number {
   }
 }
 
-type RoadPiece = { start: GroundPoint; end: GroundPoint; width: number }
+type RoadPiece = { road: number; start: GroundPoint; end: GroundPoint; width: number }
 
 function toRoadPieces(roads: LineFeature[]): RoadPiece[] {
   const pieces: RoadPiece[] = []
 
-  for (const road of roads) {
+  roads.forEach((road, roadIndex) => {
     const width = getRoadWidth(road)
     const points = road.geometry.coordinates.map((position): GroundPoint => {
       const [x, , z] = lonLatToWorld(position)
@@ -52,9 +59,9 @@ function toRoadPieces(roads: LineFeature[]): RoadPiece[] {
 
     for (let i = 0; i < points.length - 1; i++) {
       const clipped = clipToPlayArea(points[i], points[i + 1])
-      if (clipped) pieces.push({ start: clipped[0], end: clipped[1], width })
+      if (clipped) pieces.push({ road: roadIndex, start: clipped[0], end: clipped[1], width })
     }
-  }
+  })
 
   return pieces
 }
@@ -81,7 +88,8 @@ export function generateRoadsideProps(
   const random = createRandom(20261106)
   const pieces = toRoadPieces(roads)
   const placed: GroundPoint[] = []
-  const props: RoadsideProps = { trees: [], lamps: [] }
+  const props: RoadsideProps = { trees: [], lamps: [], postPairs: [] }
+  const lastLampOnRoad = new Map<number, Prop>()
 
   const canPlace = (x: number, z: number, buildingGap: number) =>
     !isNearBuilding(collisions, x, z, buildingGap) &&
@@ -114,8 +122,17 @@ export function generateRoadsideProps(
       // A lamp's arm reaches back over the road.
       const rotation = isLamp ? Math.atan2(-directionZ * side, directionX * side) : random() * 6.28
       const prop = { x, z, rotation, variation: random() }
-      if (isLamp) props.lamps.push(prop)
-      else props.trees.push(prop)
+      if (!isLamp) {
+        props.trees.push(prop)
+        continue
+      }
+
+      props.lamps.push(prop)
+      const previous = lastLampOnRoad.get(piece.road)
+      if (previous && Math.hypot(previous.x - x, previous.z - z) <= MAX_CABLE_SPAN) {
+        props.postPairs.push({ from: previous, to: prop })
+      }
+      lastLampOnRoad.set(piece.road, prop)
     }
   }
 

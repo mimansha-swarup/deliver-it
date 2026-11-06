@@ -7,11 +7,11 @@ import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { PolygonFeature } from './mapData'
+import { FLOOR_HEIGHT, getFloors, hashString } from './buildingData'
 import { ChunkedMesh } from './ChunkedMesh'
 import { chunkKey } from './chunks'
 import { isRingInPlayArea, lonLatToLocal, type LonLat } from './worldUtils'
 
-const FLOOR_HEIGHT = 3.2
 
 const WALL_COLORS = [
   '#e8e0d0', // off-white
@@ -162,29 +162,6 @@ function createWindowLightTexture(): THREE.CanvasTexture {
   return texture
 }
 
-/**
- * Turns text into a stable number (FNV-1a hash). A building's "random" height
- * and colour come from its id, so it looks the same on every page load.
- */
-function hashString(text: string): number {
-  let hash = 2166136261
-  for (let i = 0; i < text.length; i++) {
-    hash = Math.imul(hash ^ text.charCodeAt(i), 16777619)
-  }
-  return hash >>> 0
-}
-
-/** Uses the mapped floor count if there is one, otherwise estimates from size. */
-function getFloors(building: PolygonFeature, footprintArea: number): number {
-  const mapped = Number(building.properties['building:levels'])
-  if (mapped > 0) return mapped
-
-  const variation = hashString(building.id) % 3
-  if (footprintArea < 60) return 1 + (variation % 2) // 1 or 2
-  if (footprintArea > 400) return 3 + variation // 3 to 5
-  return 2 + variation // 2 to 4
-}
-
 function toRing(ring: LonLat[]): THREE.Vector2[] {
   // GeoJSON repeats the first point at the end. Three.js closes shapes itself.
   return ring.slice(0, -1).map((position) => new THREE.Vector2(...lonLatToLocal(position)))
@@ -224,7 +201,7 @@ function createBuildingGeometry(building: PolygonFeature): THREE.BufferGeometry 
   const shape = new THREE.Shape(toRing(outerRing))
   shape.holes = holes.map((hole) => new THREE.Path(toRing(hole)))
 
-  const floors = getFloors(building, Math.abs(THREE.ShapeUtils.area(shape.getPoints())))
+  const floors = getFloors(building)
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: floors * FLOOR_HEIGHT,
     bevelEnabled: false,

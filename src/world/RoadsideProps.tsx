@@ -26,6 +26,10 @@ const CANOPY_COLORS = [
   '#8e6fc1',
 ].map((color) => new THREE.Color(color))
 
+const TANK_COLORS = ['#17181a', '#1d1e21', '#222327', '#2a5fa8', '#e6e4dc'].map(
+  (color) => new THREE.Color(color),
+)
+
 /** The number of tree shapes. */
 const TREE_KINDS = 3
 
@@ -119,6 +123,16 @@ function createCanopyGeometries(): THREE.BufferGeometry[] {
       [0.3, 4.3, 1.8, 1.4],
     ]),
   ]
+}
+
+/**
+ * A plastic rooftop water tank: a seven-sided drum with a narrower top. There
+ * are a lot of these, and they're small, so it stays at 28 triangles.
+ */
+function createTankGeometry(): THREE.BufferGeometry {
+  const tank = new THREE.CylinderGeometry(0.42, 0.64, 1.45, 7, 1, false)
+  tank.translate(0, 0.72, 0)
+  return tank
 }
 
 function createLampGeometry(): THREE.BufferGeometry {
@@ -228,10 +242,10 @@ function PropInstances({
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
 
     let count = 0
-    for (const { x, z, rotation, variation } of props) {
+    for (const { x, y = 0, z, rotation, variation } of props) {
       if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
 
-      transform.position.set(x, 0, z)
+      transform.position.set(x, y, z)
       transform.rotation.y = rotation
       transform.scale.setScalar(1 - sizeRange / 2 + variation * sizeRange)
       transform.updateMatrix()
@@ -279,10 +293,11 @@ function PropInstances({
   )
 }
 
-export function RoadsideProps({ props }: { props: Props }) {
+export function RoadsideProps({ props, tanks }: { props: Props; tanks: Prop[] }) {
   const trunk = useMemo(() => createTrunkGeometry(), [])
   const canopies = useMemo(() => createCanopyGeometries(), [])
   const lamp = useMemo(() => createLampGeometry(), [])
+  const tank = useMemo(() => createTankGeometry(), [])
   const lampGlow = useMemo(() => createLampGlowGeometry(), [])
   const windPhase = useRef(0)
 
@@ -308,8 +323,9 @@ export function RoadsideProps({ props }: { props: Props }) {
       canopies.forEach((canopy) => canopy.dispose())
       lamp.dispose()
       lampGlow.dispose()
+      tank.dispose()
     },
-    [trunk, canopies, lamp, lampGlow],
+    [trunk, canopies, lamp, lampGlow, tank],
   )
 
   return (
@@ -327,6 +343,7 @@ export function RoadsideProps({ props }: { props: Props }) {
       ))}
       <PropInstances props={props.lamps} geometry={lamp} color={LAMP_COLOR} sizeRange={0} />
       <PropInstances props={props.lamps} geometry={lampGlow} sizeRange={0} glow />
+      <PropInstances props={tanks} geometry={tank} colors={TANK_COLORS} sizeRange={0.3} />
     </>
   )
 }

@@ -2558,3 +2558,80 @@ Building detail and street clutter, such as water tanks, shutters and overhead c
 You said your pavement wasn't there. It was, as a side-by-side with your file showed, but I'd made it
 easy to miss: Low skipped it, and at 1.8 m wide, most of what sat beside the road was plain ground.
 Now the pavers show on every level, the bumps stay on High only, and pavements are 3 m wide.
+
+## 2026-11-07: Entry 20, water tanks and overhead cables
+
+### What I did
+
+- **1,498 rooftop water tanks,** on about three in four buildings. Most are black, some blue or white,
+  and some roofs have two.
+- **Overhead cables:** bundles of four sagging wires between 194 pairs of lamp posts, plus single
+  wires from every second lamp to the nearest house.
+- Moved the building height rules into `buildingData.ts`, so tanks can find each roof.
+
+### Why
+
+Tanks and cable tangles are two of the things that make a street read as Indian. They cost little,
+and they're seen against the sky, where the silhouette stands out.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Tanks not on a building | 0 of 1,498 |
+| Tanks and cables the same on every load | Yes |
+| 200 deliveries with traffic | All passed |
+| Type check, lint, build, browser errors | All clean |
+
+Cost, measured on the CPU test renderer at the start point:
+
+| Level | Triangles before | Triangles after | FPS before | FPS after |
+| --- | --- | --- | --- | --- |
+| High | 74,882 | 96,146 | 5.3–7.0 | 6.3 |
+| Medium | 42,776 | 50,432 | 6.0–9.3 | 9.3 |
+| Low | 19,334 | 24,218 | 17.3–23.7 | 21.7 |
+
+The FPS change is lost in the noise, so all this shows is that it's no big hit here.
+
+**Not perfect:**
+
+- Tanks have no shape detail, such as a lid or stand.
+- Cables can pass through a tree's leaves, and they cast no shadows.
+- Cables only appear within 130 m, so you may spot a bundle appearing in the distance.
+- A house wire goes to the nearest wall, which can be a side wall.
+- Lamp posts are doing the job of electricity poles, and only spans that clear buildings are wired.
+
+### Lesson 77: count the triangles of small things
+
+My first tank had 84 triangles, as a lid and stand were included. That's more than a tree, for
+something you see from far below. With 1,498 of them, High's total almost doubled. A plain
+seven-sided drum has 28, and from the street nobody can tell. Detail should go where the eye goes.
+
+### Lesson 78: lines don't shrink
+
+Triangles get smaller with distance, but a line is always at least one pixel wide. So four wires
+that sit metres apart up close merge into a black bar far away, and the aerial view looked awful.
+The fix was a separate draw distance for cables. A wider lesson: thin things need different rules
+from solid things.
+
+### Lesson 79: a parabola for sag
+
+A hanging cable makes a curve called a catenary, but a parabola is close enough, and simple:
+
+```ts
+y = startY + (endY - startY) * along - sag * 4 * along * (1 - along)
+```
+
+`along * (1 - along)` is 0 at both ends and 0.25 in the middle, so the `4` makes the drop exactly
+`sag` at the centre.
+
+### Try it
+
+1. Look up while riding, and use the title screen to see the tanks from above.
+2. In `Cables.tsx`, raise `CABLE_DISTANCE` to `600`, and see the black bars from Lesson 78.
+3. In `Cables.tsx`, change a `sag` to `2.5` for very slack wires.
+4. In `roofTanks.ts`, set `TANK_CHANCE` to `100`.
+
+### Next
+
+More street clutter (shutters, signboards, parked scooters), soft shading, or better trees.

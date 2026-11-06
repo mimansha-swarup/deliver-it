@@ -4,11 +4,13 @@ import { createTrafficWorld } from '../traffic/trafficLogic'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
 import { Buildings } from './Buildings'
+import { Cables } from './Cables'
 import { createCollisionWorld } from './collision'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
 import { loadMapData } from './mapData'
 import { generateRoadsideProps } from './props'
+import { generateRoofTanks } from './roofTanks'
 import { RoadMarkings } from './RoadMarkings'
 import { createRoadGraph } from './roadGraph'
 import { Roads } from './Roads'
@@ -21,12 +23,13 @@ export function World() {
 
   // Trees and lamps are solid, so they're added to the collision world as they're placed.
   // Awnings go first, while the collision world holds nothing but buildings.
-  const { collisions, props, shopFronts, graph, traffic } = useMemo(() => {
+  const { collisions, props, shopFronts, graph, traffic, tanks } = useMemo(() => {
     const collisions = createCollisionWorld(data.buildings)
     const shopFronts = generateShopFronts(data.places, collisions)
     const props = generateRoadsideProps(data.roads, collisions)
     const graph = createRoadGraph(data.roads)
-    return { collisions, props, shopFronts, graph, traffic: createTrafficWorld(graph, collisions) }
+    const traffic = createTrafficWorld(graph, collisions)
+    return { collisions, props, shopFronts, graph, traffic, tanks: generateRoofTanks(data.buildings) }
   }, [data])
 
   return (
@@ -37,7 +40,8 @@ export function World() {
       <Roads roads={data.roads} />
       <RoadMarkings roads={data.roads} />
       <Buildings buildings={data.buildings} />
-      <RoadsideProps props={props} />
+      <RoadsideProps props={props} tanks={tanks} />
+      <Cables props={props} collisions={collisions} />
       <ShopFronts shopFronts={shopFronts} />
       <Boundary />
       <Player data={data} collisions={collisions} graph={graph} traffic={traffic} />
