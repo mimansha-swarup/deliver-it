@@ -1,7 +1,9 @@
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import * as THREE from 'three'
+import { ChunkedMesh } from './ChunkedMesh'
+import { createFlatGeometries, positionsFor, type ChunkedPositions } from './chunks'
 import type { LineFeature } from './mapData'
-import { clipToPlayArea, createNormals, pushStrip } from './roadGeometry'
+import { clipToPlayArea, pushStrip } from './roadGeometry'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
 
 const DASH_LENGTH = 2
@@ -32,12 +34,12 @@ function findJunctions(roads: LineFeature[]): GroundPoint[] {
   return [...uses.values()].filter(({ count }) => count > 1).map(({ point }) => point)
 }
 
-function createMarkingGeometry(roads: LineFeature[]): THREE.BufferGeometry {
+function createMarkingGeometries(roads: LineFeature[]): THREE.BufferGeometry[] {
   const junctions = findJunctions(roads)
   const isNearJunction = ([x, z]: GroundPoint) =>
     junctions.some(([jx, jz]) => Math.hypot(jx - x, jz - z) < JUNCTION_CLEARANCE)
 
-  const positions: number[] = []
+  const chunks: ChunkedPositions = new Map()
 
   for (const road of roads) {
     const points = road.geometry.coordinates.map((position): GroundPoint => {
@@ -65,32 +67,27 @@ function createMarkingGeometry(roads: LineFeature[]): THREE.BufferGeometry {
         ]
         if (isNearJunction(dashStart) || isNearJunction(dashEnd)) continue
 
-        pushStrip(positions, MARKING_HEIGHT, dashStart, dashEnd, DASH_WIDTH)
+        pushStrip(positionsFor(chunks, dashStart), MARKING_HEIGHT, dashStart, dashEnd, DASH_WIDTH)
       }
     }
   }
 
-  const vertexCount = positions.length / 3
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('normal', new THREE.BufferAttribute(createNormals(vertexCount), 3))
-  return geometry
+  return createFlatGeometries(chunks)
 }
 
 export function RoadMarkings({ roads }: { roads: LineFeature[] }) {
-  const geometry = useMemo(() => createMarkingGeometry(roads), [roads])
-
-  useEffect(() => () => geometry.dispose(), [geometry])
-
-  return (
-    <mesh geometry={geometry} receiveShadow>
-      <meshStandardMaterial
-        color="#e8e5da"
-        roughness={0.8}
-        polygonOffset
-        polygonOffsetFactor={-2}
-        polygonOffsetUnits={-2}
-      />
-    </mesh>
+  const geometries = useMemo(() => createMarkingGeometries(roads), [roads])
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#e8e5da',
+        roughness: 0.8,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      }),
+    [],
   )
+
+  return <ChunkedMesh geometries={geometries} material={material} />
 }

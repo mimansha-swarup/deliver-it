@@ -1,10 +1,11 @@
 import type { LineFeature } from './mapData'
+import { getRoadWidth } from './roadData'
 import { isInsidePlayArea, lonLatToWorld } from './worldUtils'
 
 /** Long straight roads get extra points this far apart, in metres. */
 const NODE_SPACING = 10
 
-type Link = { to: number; length: number }
+type Link = { to: number; length: number; roadWidth: number }
 
 /** The road network as a graph: points on roads, joined where you can ride between them. */
 export type RoadGraph = {
@@ -43,14 +44,15 @@ export function createRoadGraph(roads: LineFeature[]): RoadGraph {
     return node
   }
 
-  const connect = (a: number, b: number) => {
+  const connect = (a: number, b: number, roadWidth: number) => {
     const length = Math.hypot(graph.xs[a] - graph.xs[b], graph.zs[a] - graph.zs[b])
-    graph.links[a].push({ to: b, length })
-    graph.links[b].push({ to: a, length })
+    graph.links[a].push({ to: b, length, roadWidth })
+    graph.links[b].push({ to: a, length, roadWidth })
   }
 
   for (const road of roads) {
     const name = road.properties.name ?? ''
+    const roadWidth = getRoadWidth(road)
     const points = road.geometry.coordinates
 
     for (let i = 0; i < points.length - 1; i++) {
@@ -66,14 +68,66 @@ export function createRoadGraph(roads: LineFeature[]): RoadGraph {
       for (let part = 1; part < parts; part++) {
         const along = part / parts
         const node = addNode(startX + (endX - startX) * along, startZ + (endZ - startZ) * along, name)
-        connect(previous, node)
+        connect(previous, node, roadWidth)
         previous = node
       }
-      connect(previous, end)
+      connect(previous, end, roadWidth)
     }
   }
 
-  return graph
+  return keepMainNetwork(graph)
+}
+
+/**
+ * Some mapped roads don't join the rest, usually because the area's edge cuts
+ * them off. No route can use them, so the graph keeps only its largest
+ * connected group of points, and every point it holds can reach every other.
+ */
+function keepMainNetwork(graph: RoadGraph): RoadGraph {
+  const groupOf = new Int32Array(graph.xs.length).fill(-1)
+  let largestGroup = -1
+  let largestSize = 0
+
+  for (let first = 0; first < groupOf.length; first++) {
+    if (groupOf[first] !== -1) continue
+
+    groupOf[first] = first
+    const waiting = [first]
+    let size = 0
+    while (waiting.length > 0) {
+      const node = waiting.pop() as number
+      size++
+      for (const { to } of graph.links[node]) {
+        if (groupOf[to] === -1) {
+          groupOf[to] = first
+          waiting.push(to)
+        }
+      }
+    }
+
+    if (size > largestSize) {
+      largestSize = size
+      largestGroup = first
+    }
+  }
+
+  // Removing points shifts the numbers of the rest, so each link is renumbered.
+  const newNumber = new Int32Array(groupOf.length)
+  const kept: number[] = []
+  groupOf.forEach((group, node) => {
+    if (group !== largestGroup) return
+    newNumber[node] = kept.length
+    kept.push(node)
+  })
+
+  return {
+    xs: kept.map((node) => graph.xs[node]),
+    zs: kept.map((node) => graph.zs[node]),
+    roadNames: kept.map((node) => graph.roadNames[node]),
+    links: kept.map((node) =>
+      graph.links[node].map((link) => ({ ...link, to: newNumber[link.to] })),
+    ),
+  }
 }
 
 export function findNearestNode(graph: RoadGraph, x: number, z: number): number {

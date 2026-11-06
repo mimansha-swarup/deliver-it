@@ -2009,3 +2009,255 @@ each time, and the component only re-renders when the quality really changes.
 ### Next
 
 Your FPS on each level decides how much more detail we can add.
+
+## 2026-11-06: Entry 15, the strip, traffic and people
+
+### What I did
+
+- **Made the world four times bigger.** The 450 m square is now a 600 × 1440 m rectangle called
+  `PLAY_AREA`. It holds 1,545 buildings (93% of the file) and about 21 km of road.
+- **Made the sun follow the rider,** so shadows work everywhere.
+- **Stopped drawing distant trees and lamps,** with the distance set per quality level.
+- **Kept only the main road network,** and added a preference for nearby pickups.
+- **Added vehicles** (cars and auto rickshaws) that keep left, follow each other, give way at
+  junctions and stop for the rider. They're solid.
+- **Added pedestrians** on the pavements, who step aside when the rider comes close.
+- **Added street detail:** pavements on every road, and 113 coloured awnings on the walls
+  nearest to mapped shops and restaurants.
+
+I had said the strip was about 500 m × 1.9 km with 98% of the buildings. Measuring it properly
+gave 600 × 1440 m and 93%. Going further south adds 7 km of road for about 100 buildings.
+
+### Why
+
+The brief kept the rest of the map for later, and the game had room to grow. Traffic and people
+were out of scope for the weekend MVP, which is finished, and you asked for them. They stay
+simple on purpose: they follow fixed paths, with a few rules and no real AI.
+
+Pedestrians can't be hit, because that isn't a thing this game should reward or punish. Vehicles
+only stop the scooter. As the brief says, nothing damages a package.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Road samples reachable from the spawn | 7,055 of 7,055 |
+| 500 random missions | All valid |
+| 3,000 random starts | No crashes, median 389 m to the pickup, worst 882 m |
+| 100 deliveries following the arrow | All on time, average 51.9 s, 0 steps inside walls |
+| Sun snapping, 20,000 positions | 0.0000 pixels off the shadow grid, rider always covered |
+| 24 simulated minutes of 18 vehicles | 0 in buildings, longest stop 1.8 s |
+| Vehicle pairs closer than 1.5 m | 139 pair-frames in 86,400 frames, down from 4,643 |
+| Rider rides at a parked car | Stopped behind it, and can reverse away |
+| Rider rides along a pedestrian's path at 7 m/s | Closest 1.78 m |
+| Traffic update | 0.011 ms per frame in Node |
+
+Some things are **not** clean, or weren't tested:
+
+- A pedestrian's rounded corner clipped a wall corner for 18 person-frames, out of about 3 million.
+- Vehicles can still briefly overlap, usually when the patience rule lets one go.
+- The delivery bot rode **without traffic**. Only the short rider and car tests had both.
+- Shadows reach 260 m from the rider, so distant buildings have none.
+
+Frame rates, all measured on the CPU test renderer on one machine:
+
+| Level | The old square | Strip, before the fix | Final, with traffic |
+| --- | --- | --- | --- |
+| High | 10.7 | 6.7 | 8.3 |
+| Medium | 12.3 | 8.3 | 10.3 |
+| Low | 25.3 | 13.0 | 18.3 |
+
+So it's still slower than before, by about 20–30% here. A CPU renderer exaggerates this, so only
+**your Mac's number** can tell us the real cost.
+
+### Lesson 55: measure what's slow by removing it
+
+I assumed three times the buildings would be the cost. So I switched things off one at a time:
+
+| Switched off | Low FPS |
+| --- | --- |
+| Nothing | 13.3 |
+| Minimap | 14.7 |
+| Buildings | 17.3 |
+| Trees and lamps | 25.0 |
+
+The trees and lamps were the biggest cost, and I'd never have guessed it. Each tree is about 100
+triangles. 1,500 buildings merged together were cheaper than 838 small things.
+
+### Lesson 56: `count` on an instanced mesh
+
+An `InstancedMesh` has room for a fixed number of copies, but draws only the first `count`:
+
+```ts
+instances.setMatrixAt(count, transform.matrix)
+count++
+// ...
+instances.count = count
+```
+
+So we write only the nearby trees into the list, and redo it each time the rider has moved 20 m.
+This is called **distance culling**. As the copies now change, the mesh's bounding sphere would
+be out of date, so `frustumCulled={false}` turns off that check.
+
+### Lesson 57: a shadow map is a picture
+
+The sun "photographs" the world from above to see what's in shadow. Move the camera smoothly and
+every shadow edge lands on different pixels each frame, which looks like shimmering. The fix is
+to move the sun only in whole shadow-map pixels:
+
+```ts
+const snap = (metres: number) => Math.round(metres / pixelSize) * pixelSize
+```
+
+Note that a `directionalLight` has a `target`, and direction is decided by the light's position
+relative to it. The target isn't in the scene, so we call `updateMatrixWorld()` on it ourselves.
+
+### Lesson 58: colours multiply
+
+A vertex colour and an instance colour are multiplied together. White (1 × anything) takes on
+the instance colour, which is why car bodies are white in the geometry. Black stays black, which
+keeps tyres and windows dark on every car.
+
+This is also why my first heads came out nearly black: skin × shirt colour. An instance can only
+have one colour per shape, so heads became their own instanced mesh with their own colours.
+
+### Lesson 59: test by looking too
+
+Every traffic check passed, yet the first close-up showed an auto rickshaw inside a car. It
+started there, and nothing stopped it. Numbers answer the questions you thought to ask. A
+screenshot shows you the ones you didn't.
+
+### Lesson 60: rules that can't deadlock
+
+Two cars at a junction can't both give way, or neither moves. The rule here: the car earlier in
+the list always yields. As the last car yields to nobody, there can't be a circle of waiting.
+Real traffic has no such list, but games get to cheat.
+
+### Try it
+
+1. On each quality level, check the FPS while riding, using Chrome's "Show frame rendering stats".
+2. Ride to the far north end, and check that the shadows came with you.
+3. Ride straight at a pedestrian, or stop in front of a car.
+4. In `qualitySettings.ts`, change `vehicles` on High and see the street fill up.
+5. In `trafficLogic.ts`, set `sideOffset: () => -1.4` and the traffic drives on the right.
+
+### Next
+
+Your FPS decides this. If it's fine, missions can use the whole strip. If it isn't, we can draw
+only the nearby buildings.
+
+## 2026-11-06: Entry 16, drawing only what's near you
+
+### What I did
+
+- **Cut the world into 160 m map squares.** Buildings, roads, pavements and road markings each
+  became many meshes, one per square, instead of one mesh for the whole map.
+- **Hid squares beyond the draw distance:** 280 m on Low, 400 m on Medium, 520 m on High.
+- **Tied the fog to that distance,** so it's fully thick exactly where drawing stops.
+- **Eased the view in from the title screen,** which still shows the whole map.
+
+Collisions, the minimap and routes still use the whole map. The rider can't reach an undrawn
+square, as a square reappears long before you get there.
+
+### Why
+
+You asked for it, and it's what big games do. Merged meshes were cheap to draw but all-or-nothing:
+if one corner of the map was on screen, every triangle in it was sent. Separate squares can be
+skipped on their own, both past the draw distance and behind the camera.
+
+This is **render** streaming, not **data** streaming. The whole 1.6 MB map still loads at the
+start, because it's small enough. A big game also loads and unloads from disk, as its world
+wouldn't fit in memory.
+
+### What I checked
+
+Measured in one session at the spawn, on the CPU test renderer:
+
+| Level | FPS before | FPS after | Triangles before | Triangles after | Draw calls before | After |
+| --- | --- | --- | --- | --- | --- | --- |
+| High | 8.7 | 9.0 | 105,342 | 75,212 | 40 | 116 |
+| Medium | 10.3 | 11.7 | 77,758 | 42,354 | 37 | 100 |
+| Low | 20.0 | 24.3 | 49,686 | 18,572 | 31 | 61 |
+
+The triangle count dropped by about a third on High and over 60% on Low. The cost is more draw
+calls, because each visible square is its own call. A real GPU often cares about draw calls more
+than a CPU renderer does, so **the gain on your Mac could be larger or smaller** than this.
+
+**One thing I can't fully explain.** Riding through the far north end, some headless screenshots
+showed road missing, cut off at a map-square edge. It appeared in 3 of the 16 screenshots I took
+there. I couldn't explain it from the picture, so I counted inside the page:
+
+| Check, riding through the same spot | Result |
+| --- | --- |
+| Nearby road squares skipped by Three.js, over 125 frames | 0 |
+| Screenshots with the glitch during that same run | 1 of 7 |
+| Same spot, standing still | Road is there |
+
+So Three.js asked for those squares on every frame, and that points to the screenshot, not the
+game. Headless screenshots have shown odd things before (the blank band in Entry 2). But I
+haven't proved it, as the count can't see what reached the screen.
+
+**Update:** you rode through that spot on your Mac and saw nothing weird. So the glitch appears
+only in my headless screenshots, and it looks like a capture fault. That's one ride, so if road
+ever blinks out for you, it's worth reopening.
+
+### Lesson 61: chunks
+
+A **chunk** is a piece of the world handled as a unit. It's a trade:
+
+| One big mesh | Many chunks |
+| --- | --- |
+| 1 draw call | 1 call per visible chunk |
+| All triangles, always | Only the chunks you can see |
+
+Too few chunks and little gets skipped. Too many and draw calls pile up. 160 m is a middle
+choice, and it's one number in `chunks.ts` if you want to try others.
+
+### Lesson 62: two kinds of skipping
+
+- **Distance culling** is ours: `mesh.visible = false` past the draw distance.
+- **Frustum culling** is built into Three.js. The **frustum** is the pyramid-shaped volume the
+  camera sees. Each frame, Three.js tests each mesh's **bounding sphere** against it, and skips
+  meshes outside.
+
+The second did nothing for us before, because one sphere around the whole map always touches the
+view. Splitting the map is what made it work. It's why `computeBoundingSphere()` matters.
+
+### Lesson 63: fog hides the seam
+
+Without fog, you'd see buildings pop into view at the draw distance. So:
+
+```ts
+scene.fog.near = liveView.drawDistance * FOG_START
+scene.fog.far = liveView.drawDistance
+```
+
+At `far`, a surface has become exactly the fog colour, which matches the sky. A square can switch
+on there and nobody can tell. Early 3D games used the same trick, for the same reason.
+
+### Lesson 64: sharing one material
+
+Each square shares one material, made once with `useMemo`:
+
+```tsx
+<mesh geometry={geometry} material={material} />
+```
+
+Had each mesh had its own `<meshStandardMaterial />` child, we'd have hundreds of copies.
+
+### Lesson 65: ask the program, not the picture
+
+A screenshot told me a square was missing, and a one-off check said it was visible. Neither
+settled it. Wrapping `gl.render` and counting real draws, frame by frame, did. When two views
+disagree, find a third that measures the thing directly.
+
+### Try it
+
+1. Ride along a long straight road, and watch distant buildings fade out of the fog.
+2. In `qualitySettings.ts`, set High's `drawDistance` to `150`, and see how close it gets.
+3. In `ViewDistance.tsx`, set `FOG_START` to `0.9`, and you'll see squares pop in.
+4. In `chunks.ts`, try `CHUNK_SIZE` of `80` and `320`, and compare your FPS.
+
+### Next
+
+Your FPS decides whether we also trim the draw calls, or move on to missions across the strip.

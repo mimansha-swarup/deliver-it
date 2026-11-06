@@ -1,13 +1,20 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
+import { livePlayer } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { Prop, RoadsideProps as Props } from './props'
 
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'
 const CANOPY_COLORS = ['#4f7a3a', '#5e8a3f', '#3f6d3b', '#6c9347'].map((c) => new THREE.Color(c))
+
+/** The list of what's nearby is only rebuilt after the rider moves this far, in metres. */
+const REFRESH_DISTANCE = 20
+
+const transform = new THREE.Object3D()
 
 function createTrunkGeometry(): THREE.BufferGeometry {
   const trunk = new THREE.CylinderGeometry(0.16, 0.26, 3, 6)
@@ -43,6 +50,9 @@ function createLampGeometry(): THREE.BufferGeometry {
 /**
  * Draws many copies of one shape in a single draw call. Each copy only needs a
  * transform matrix: its position, rotation and size packed into 16 numbers.
+ *
+ * Only copies near the rider are written into the list, and `count` tells the
+ * GPU to stop there. In the title screen's aerial view, everything is drawn.
  */
 function PropInstances({
   props,
@@ -57,33 +67,51 @@ function PropInstances({
   colors?: THREE.Color[]
   sizeRange: number
 }) {
-  const { treeShadows } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { treeShadows, propDistance } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const started = useGameStore((state) => state.started)
   const mesh = useRef<THREE.InstancedMesh>(null)
+  const lastRefresh = useRef<{ x: number; z: number; reach: number } | null>(null)
 
-  useLayoutEffect(() => {
-    if (!mesh.current) return
+  useFrame(() => {
+    const instances = mesh.current
+    if (!instances) return
 
-    const transform = new THREE.Object3D()
-    props.forEach(({ x, z, rotation, variation }, index) => {
+    const reach = started ? propDistance : Infinity
+    const last = lastRefresh.current
+    if (
+      last &&
+      last.reach === reach &&
+      Math.hypot(last.x - livePlayer.x, last.z - livePlayer.z) < REFRESH_DISTANCE
+    ) {
+      return
+    }
+    lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
+
+    let count = 0
+    for (const { x, z, rotation, variation } of props) {
+      if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
+
       transform.position.set(x, 0, z)
       transform.rotation.y = rotation
       transform.scale.setScalar(1 - sizeRange / 2 + variation * sizeRange)
       transform.updateMatrix()
-      mesh.current?.setMatrixAt(index, transform.matrix)
+      instances.setMatrixAt(count, transform.matrix)
       if (colors) {
-        mesh.current?.setColorAt(index, colors[Math.floor(variation * colors.length * 0.999)])
+        instances.setColorAt(count, colors[Math.floor(variation * colors.length * 0.999)])
       }
-    })
+      count++
+    }
 
-    mesh.current.instanceMatrix.needsUpdate = true
-    if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true
-    mesh.current.computeBoundingSphere()
-  }, [props, colors, sizeRange])
+    instances.count = count
+    instances.instanceMatrix.needsUpdate = true
+    if (instances.instanceColor) instances.instanceColor.needsUpdate = true
+  })
 
   return (
     <instancedMesh
       ref={mesh}
       args={[geometry, undefined, props.length]}
+      frustumCulled={false}
       castShadow={treeShadows}
       receiveShadow
     >

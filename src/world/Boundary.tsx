@@ -1,4 +1,4 @@
-import { PLAY_AREA_SIZE } from './worldUtils'
+import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from './worldUtils'
 
 const WALL_HEIGHT = 1.5
 const WALL_THICKNESS = 0.4
@@ -6,14 +6,18 @@ const WALL_COLOR = '#b8b3a6'
 
 /** A low wall around the play area, so the edge of the world looks like one. */
 export function Boundary() {
-  const distance = PLAY_AREA_SIZE / 2 + WALL_THICKNESS
-  const length = PLAY_AREA_SIZE + WALL_THICKNESS * 3
+  const { minX, maxX, minZ, maxZ } = PLAY_AREA
+  const centreX = (minX + maxX) / 2
+  const centreZ = (minZ + maxZ) / 2
+  const y = WALL_HEIGHT / 2
+  const width = PLAY_AREA_WIDTH + WALL_THICKNESS * 3
+  const depth = PLAY_AREA_DEPTH + WALL_THICKNESS * 3
 
   const sides: { position: [number, number, number]; size: [number, number, number] }[] = [
-    { position: [0, WALL_HEIGHT / 2, -distance], size: [length, WALL_HEIGHT, WALL_THICKNESS] },
-    { position: [0, WALL_HEIGHT / 2, distance], size: [length, WALL_HEIGHT, WALL_THICKNESS] },
-    { position: [-distance, WALL_HEIGHT / 2, 0], size: [WALL_THICKNESS, WALL_HEIGHT, length] },
-    { position: [distance, WALL_HEIGHT / 2, 0], size: [WALL_THICKNESS, WALL_HEIGHT, length] },
+    { position: [centreX, y, minZ - WALL_THICKNESS], size: [width, WALL_HEIGHT, WALL_THICKNESS] },
+    { position: [centreX, y, maxZ + WALL_THICKNESS], size: [width, WALL_HEIGHT, WALL_THICKNESS] },
+    { position: [minX - WALL_THICKNESS, y, centreZ], size: [WALL_THICKNESS, WALL_HEIGHT, depth] },
+    { position: [maxX + WALL_THICKNESS, y, centreZ], size: [WALL_THICKNESS, WALL_HEIGHT, depth] },
   ]
 
   return (

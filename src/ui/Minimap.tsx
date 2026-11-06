@@ -4,14 +4,21 @@ import { livePlayer, liveRoute } from '../game/livePlayer'
 import { getCurrentStop } from '../missions/missionLogic'
 import { loadMapData, type MapData } from '../world/mapData'
 import { getRoadWidth } from '../world/roadData'
-import { isRingInPlayArea, lonLatToWorld, PLAY_AREA_SIZE, type LonLat } from '../world/worldUtils'
+import {
+  isRingInPlayArea,
+  lonLatToWorld,
+  PLAY_AREA,
+  PLAY_AREA_DEPTH,
+  PLAY_AREA_WIDTH,
+  type LonLat,
+} from '../world/worldUtils'
 
 /** Size on screen, in CSS pixels. */
 const MAP_SIZE = 200
 /** How many metres of the world fit across the map. */
 const VIEW_METRES = 240
 /** Resolution of the pre-drawn map image, in pixels per metre. */
-const IMAGE_SCALE = 3
+const IMAGE_SCALE = 2
 /** How quickly the map turns to follow the scooter. Higher is tighter. */
 const TURN_RESPONSE = 7
 
@@ -22,7 +29,7 @@ const PLAYER_COLOR = '#ffffff'
 
 function toImage(position: LonLat): [number, number] {
   const [x, , z] = lonLatToWorld(position)
-  return [(x + PLAY_AREA_SIZE / 2) * IMAGE_SCALE, (z + PLAY_AREA_SIZE / 2) * IMAGE_SCALE]
+  return [(x - PLAY_AREA.minX) * IMAGE_SCALE, (z - PLAY_AREA.minZ) * IMAGE_SCALE]
 }
 
 function traceLine(context: CanvasRenderingContext2D, points: LonLat[]) {
@@ -37,8 +44,8 @@ function traceLine(context: CanvasRenderingContext2D, points: LonLat[]) {
 /** Draws the whole play area once. Each frame only has to rotate this image. */
 function createMapImage(data: MapData): HTMLCanvasElement {
   const image = document.createElement('canvas')
-  image.width = PLAY_AREA_SIZE * IMAGE_SCALE
-  image.height = PLAY_AREA_SIZE * IMAGE_SCALE
+  image.width = PLAY_AREA_WIDTH * IMAGE_SCALE
+  image.height = PLAY_AREA_DEPTH * IMAGE_SCALE
 
   const context = image.getContext('2d')
   if (!context) return image
@@ -191,8 +198,8 @@ export function Minimap() {
       context.scale(pixelsPerMetre / IMAGE_SCALE, pixelsPerMetre / IMAGE_SCALE)
       context.drawImage(
         mapImage,
-        -(livePlayer.x + PLAY_AREA_SIZE / 2) * IMAGE_SCALE,
-        -(livePlayer.z + PLAY_AREA_SIZE / 2) * IMAGE_SCALE,
+        -(livePlayer.x - PLAY_AREA.minX) * IMAGE_SCALE,
+        -(livePlayer.z - PLAY_AREA.minZ) * IMAGE_SCALE,
       )
       context.restore()
 

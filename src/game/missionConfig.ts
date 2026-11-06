@@ -18,6 +18,8 @@ export const MISSION_RULES = {
   /** A customer's road distance from the pickup, in metres. */
   minRouteLength: 180,
   maxRouteLength: 450,
+  /** Pickups within this road distance of the rider are preferred, in metres. */
+  maxPickupDistance: 500,
   /** A new customer is at least this far from the last one, in metres. */
   minCustomerSpacing: 60,
 
@@ -39,4 +41,9 @@ export const PICKUP_NAMES = [
   'The Wardrobe Room',
   'Thread & Needle',
   'The Outfit Depot',
+  'The Dress Rack',
+  'Fabric Lane',
+  'The Stitch Studio',
+  'Hem & Hanger',
+  'The Closet Corner',
 ]

@@ -3,13 +3,12 @@ import { MISSION_RULES, PICKUP_NAMES } from '../game/missionConfig'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { MapData } from '../world/mapData'
 import {
-  createRoadGraph,
   createRouteField,
   findNearestNode,
   type RoadGraph,
   type RouteField,
 } from '../world/roadGraph'
-import { lonLatToWorld, PLAY_AREA_SIZE } from '../world/worldUtils'
+import { isInsideBounds, lonLatToWorld } from '../world/worldUtils'
 
 type PickupSpot = { node: number; name: string }
 
@@ -32,10 +31,9 @@ function pickRandom<T>(items: T[], random: () => number): T {
 export function createMissionPlanner(
   data: MapData,
   collisions: CollisionWorld,
+  graph: RoadGraph,
   random: () => number = Math.random,
 ): MissionPlanner {
-  const graph = createRoadGraph(data.roads)
-
   const routeFields = new Map<number, RouteField>()
   const getRouteField = (node: number): RouteField => {
     let field = routeFields.get(node)
@@ -46,19 +44,13 @@ export function createMissionPlanner(
     return field
   }
 
-  const limit = PLAY_AREA_SIZE / 2 - MISSION_RULES.edgeMargin
-  const usableNodes = graph.xs
+  const stopNodes = graph.xs
     .map((_, node) => node)
     .filter(
       (node) =>
-        Math.abs(graph.xs[node]) <= limit &&
-        Math.abs(graph.zs[node]) <= limit &&
+        isInsideBounds(graph.xs[node], graph.zs[node], MISSION_RULES.edgeMargin) &&
         !isNearBuilding(collisions, graph.xs[node], graph.zs[node], MISSION_RULES.stopClearance),
     )
-
-  // Keep only points joined to the main network, using the middle of the map as a guide.
-  const centre = findNearestNode(graph, 0, 0)
-  const connectedNodes = usableNodes.filter((node) => getRouteField(centre).distance[node] < Infinity)
 
   // A pickup is the nearest usable road point to each mapped clothing shop.
   const pickups: PickupSpot[] = []
@@ -68,7 +60,7 @@ export function createMissionPlanner(
     const [shopX, , shopZ] = lonLatToWorld(place.geometry.coordinates)
     let nearest = -1
     let nearestDistance: number = MISSION_RULES.maxShopDistance
-    for (const node of connectedNodes) {
+    for (const node of stopNodes) {
       const distance = Math.hypot(graph.xs[node] - shopX, graph.zs[node] - shopZ)
       if (distance < nearestDistance) {
         nearestDistance = distance
@@ -99,12 +91,19 @@ export function createMissionPlanner(
   const planMission = (fromX: number, fromZ: number): Mission => {
     const start = findNearestNode(graph, fromX, fromZ)
 
-    // A different pickup from last time, and not right on top of the rider.
-    const pickupChoices = pickups.filter(({ node }) => {
-      const distance = getRouteField(node).distance[start]
-      return node !== lastPickup && distance > 60 && distance < Infinity
-    })
-    const pickup = pickRandom(pickupChoices.length > 0 ? pickupChoices : pickups, random)
+    // A different pickup from last time, not right on top of the rider, and
+    // not a long trek away. With nothing nearby, the closest one will do.
+    const distanceTo = ({ node }: PickupSpot) => getRouteField(node).distance[start]
+    const pickupChoices = pickups
+      .filter((spot) => spot.node !== lastPickup && distanceTo(spot) > 60 && distanceTo(spot) < Infinity)
+      .sort((a, b) => distanceTo(a) - distanceTo(b))
+    const nearbyPickups = pickupChoices.filter(
+      (spot) => distanceTo(spot) <= MISSION_RULES.maxPickupDistance,
+    )
+    const pickup =
+      nearbyPickups.length > 0
+        ? pickRandom(nearbyPickups, random)
+        : (pickupChoices[0] ?? pickRandom(pickups, random))
     lastPickup = pickup.node
     const fromPickup = getRouteField(pickup.node)
 
@@ -113,7 +112,7 @@ export function createMissionPlanner(
       Math.hypot(graph.xs[node] - graph.xs[lastCustomer], graph.zs[node] - graph.zs[lastCustomer]) >=
         MISSION_RULES.minCustomerSpacing
 
-    const customerChoices = connectedNodes.filter(
+    const customerChoices = stopNodes.filter(
       (node) =>
         fromPickup.distance[node] >= MISSION_RULES.minRouteLength &&
         fromPickup.distance[node] <= MISSION_RULES.maxRouteLength &&

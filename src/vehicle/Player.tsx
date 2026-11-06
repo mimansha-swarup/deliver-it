@@ -8,18 +8,28 @@ import { createMissionPlanner } from '../missions/missionPlanner'
 import { MissionTracker } from '../missions/MissionTracker'
 import type { CollisionWorld } from '../world/collision'
 import type { MapData } from '../world/mapData'
+import type { RoadGraph } from '../world/roadGraph'
+import { Traffic } from '../traffic/Traffic'
+import type { TrafficWorld } from '../traffic/trafficLogic'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
 import { createScooterState } from './ScooterController'
 
-export function Player({ data, collisions }: { data: MapData; collisions: CollisionWorld }) {
+type PlayerProps = {
+  data: MapData
+  collisions: CollisionWorld
+  graph: RoadGraph
+  traffic: TrafficWorld
+}
+
+export function Player({ data, collisions, graph, traffic }: PlayerProps) {
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
   useEffect(() => {
     const { x, z } = scooterState.current
-    useGameStore.getState().startMissions(createMissionPlanner(data, collisions), x, z)
-  }, [data, collisions])
+    useGameStore.getState().startMissions(createMissionPlanner(data, collisions, graph), x, z)
+  }, [data, collisions, graph])
 
   return (
     <>
@@ -32,6 +42,7 @@ export function Player({ data, collisions }: { data: MapData; collisions: Collis
       )}
       <MissionTracker scooter={scooterState} />
       <MissionMarker />
+      <Traffic scooter={scooterState} world={traffic} />
     </>
   )
 }

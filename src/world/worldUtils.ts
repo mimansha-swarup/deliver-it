@@ -14,8 +14,14 @@ export type GroundPoint = [x: number, z: number]
  */
 export const WORLD_ORIGIN = { lon: 77.6502, lat: 12.9095 }
 
-/** Side length in metres of the square playable area, centred on the origin. */
-export const PLAY_AREA_SIZE = 450
+/**
+ * The playable rectangle in world coordinates, in metres. It follows the dense
+ * part of the map, so it's long and thin, and it isn't centred on the origin.
+ */
+export const PLAY_AREA = { minX: -320, maxX: 280, minZ: -720, maxZ: 720 }
+
+export const PLAY_AREA_WIDTH = PLAY_AREA.maxX - PLAY_AREA.minX
+export const PLAY_AREA_DEPTH = PLAY_AREA.maxZ - PLAY_AREA.minZ
 
 const METRES_PER_DEGREE = 111_320
 const LON_SCALE = Math.cos((WORLD_ORIGIN.lat * Math.PI) / 180)
@@ -37,11 +43,20 @@ export function lonLatToWorld(position: LonLat, height = 0): [number, number, nu
   return [east, height, -north]
 }
 
-/** True when a position falls inside the square playable area. */
+/** True when a ground point is inside the playable area, by at least `margin` metres. */
+export function isInsideBounds(x: number, z: number, margin = 0): boolean {
+  return (
+    x >= PLAY_AREA.minX + margin &&
+    x <= PLAY_AREA.maxX - margin &&
+    z >= PLAY_AREA.minZ + margin &&
+    z <= PLAY_AREA.maxZ - margin
+  )
+}
+
+/** True when a position falls inside the playable area. */
 export function isInsidePlayArea(position: LonLat): boolean {
-  const [east, north] = lonLatToLocal(position)
-  const half = PLAY_AREA_SIZE / 2
-  return Math.abs(east) <= half && Math.abs(north) <= half
+  const [x, , z] = lonLatToWorld(position)
+  return isInsideBounds(x, z)
 }
 
 /** True when the centre of a closed GeoJSON ring falls inside the playable area. */

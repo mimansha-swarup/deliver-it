@@ -1,8 +1,8 @@
-import { PLAY_AREA_SIZE } from '../world/worldUtils'
+import { PLAY_AREA } from '../world/worldUtils'
 
 /** Everything that affects how the scooter feels. Speeds are in metres per second. */
 export const SCOOTER = {
-  maxSpeed: 14, // about 50 km/h
+  maxSpeed:  20, //14, // about 50 km/h
   maxReverseSpeed: 3,
   /** Engine pull from a standstill, and what's left of it near top speed. */
   acceleration: 6.5,
@@ -75,5 +75,10 @@ export const SCOOTER_SPAWN = {
   heading: Math.atan2(-0.9, 90),
 }
 
-/** The invisible barrier, measured from the centre of the world. */
-export const WORLD_LIMIT = PLAY_AREA_SIZE / 2 - 1
+/** The invisible barrier, a metre inside the wall. */
+export const WORLD_LIMITS = {
+  minX: PLAY_AREA.minX + 1,
+  maxX: PLAY_AREA.maxX - 1,
+  minZ: PLAY_AREA.minZ + 1,
+  maxZ: PLAY_AREA.maxZ - 1,
+}

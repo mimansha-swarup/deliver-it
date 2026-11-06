@@ -8,6 +8,7 @@ import { Hud } from './ui/Hud'
 import { Minimap } from './ui/Minimap'
 import { QualityPicker } from './ui/QualityPicker'
 import { TitleScreen } from './ui/TitleScreen'
+import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 
 const SKY_COLOR = '#cfe3f2'
@@ -39,7 +40,8 @@ function App() {
       <ErrorBoundary>
         <Canvas shadows dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }}>
           <color attach="background" args={[SKY_COLOR]} />
-          <fog attach="fog" args={[SKY_COLOR, 500, 1300]} />
+          <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
+          <ViewDistance />
           <Suspense fallback={null}>
             <World />
           </Suspense>

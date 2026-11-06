@@ -108,6 +108,58 @@ function measureFootprint(footprint: Footprint, x: number, z: number) {
   return { nearestX, nearestZ, distance: Math.sqrt(nearestSquared), inside }
 }
 
+/** Where a wall is, and the direction pointing away from the building. */
+export type WallSpot = { x: number; z: number; normalX: number; normalZ: number; length: number }
+
+/** Finds the closest wall to a point, or null if none is within `reach`. */
+export function findNearestWall(
+  world: CollisionWorld,
+  x: number,
+  z: number,
+  reach: number,
+): WallSpot | null {
+  let best: WallSpot | null = null
+  let bestDistance = reach
+
+  for (let cellX = toCell(x - reach); cellX <= toCell(x + reach); cellX++) {
+    for (let cellZ = toCell(z - reach); cellZ <= toCell(z + reach); cellZ++) {
+      for (const footprint of world.get(cellKey(cellX, cellZ)) ?? []) {
+        const centreX = footprint.reduce((sum, point) => sum + point[0], 0) / footprint.length
+        const centreZ = footprint.reduce((sum, point) => sum + point[1], 0) / footprint.length
+
+        for (let i = 0, previous = footprint.length - 1; i < footprint.length; previous = i++) {
+          const [ax, az] = footprint[previous]
+          const [bx, bz] = footprint[i]
+          const length = Math.hypot(bx - ax, bz - az)
+          if (length === 0) continue
+
+          const along = ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / (length * length)
+          const clamped = Math.max(0, Math.min(1, along))
+          const wallX = ax + (bx - ax) * clamped
+          const wallZ = az + (bz - az) * clamped
+          const distance = Math.hypot(x - wallX, z - wallZ)
+          if (distance >= bestDistance) continue
+
+          // Either side of a wall could be outside, so pick the one facing away from the middle.
+          const sideX = (bz - az) / length
+          const sideZ = -(bx - ax) / length
+          const facesOut = (ax - centreX) * sideX + (az - centreZ) * sideZ > 0
+          bestDistance = distance
+          best = {
+            x: wallX,
+            z: wallZ,
+            normalX: facesOut ? sideX : -sideX,
+            normalZ: facesOut ? sideZ : -sideZ,
+            length,
+          }
+        }
+      }
+    }
+  }
+
+  return best
+}
+
 /** Moves a circle out of any buildings it overlaps. Updates `point` in place. */
 export function pushOutOfBuildings(
   world: CollisionWorld,

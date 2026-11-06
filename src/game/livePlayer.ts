@@ -5,6 +5,11 @@
  */
 export const livePlayer = { x: 0, z: 0, heading: 0 }
 
+export const liveView = {
+  /** Nothing further than this from the rider is drawn, in metres. */
+  drawDistance: 1300,
+}
+
 export const liveRoute = {
   /** The road route to the current stop, as x, z, x, z and so on. */
   points: [] as number[],

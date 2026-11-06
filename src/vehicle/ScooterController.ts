@@ -1,5 +1,5 @@
 import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
-import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMIT } from './vehicleConfig'
+import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMITS } from './vehicleConfig'
 
 export type DriveInput = {
   forward: boolean
@@ -195,9 +195,17 @@ function handleCollisions(state: ScooterState, collisions: CollisionWorld, dt: n
   const beforeX = state.x
   const beforeZ = state.z
   pushOutOfBuildings(collisions, state, SCOOTER.collisionRadius)
+  reactToPush(state, state.x - beforeX, state.z - beforeZ, dt)
+}
 
-  const pushX = state.x - beforeX
-  const pushZ = state.z - beforeZ
+/** Moves the scooter out of something solid that isn't a building, such as a car. */
+export function bumpScooter(state: ScooterState, pushX: number, pushZ: number, dt: number) {
+  state.x += pushX
+  state.z += pushZ
+  reactToPush(state, pushX, pushZ, dt)
+}
+
+function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: number) {
   const pushLength = Math.hypot(pushX, pushZ)
   const travelSpeed = getTravelSpeed(state)
   if (pushLength === 0 || travelSpeed === 0) return
@@ -229,8 +237,8 @@ function updatePosition(state: ScooterState, collisions: CollisionWorld, dt: num
   const nextX = state.x + state.velocityX * dt
   const nextZ = state.z + state.velocityZ * dt
 
-  state.x = clamp(nextX, -WORLD_LIMIT, WORLD_LIMIT)
-  state.z = clamp(nextZ, -WORLD_LIMIT, WORLD_LIMIT)
+  state.x = clamp(nextX, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
+  state.z = clamp(nextZ, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
   if (state.x !== nextX) state.velocityX = 0
   if (state.z !== nextZ) state.velocityZ = 0
 

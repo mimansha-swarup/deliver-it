@@ -4,6 +4,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { PolygonFeature } from './mapData'
+import { ChunkedMesh } from './ChunkedMesh'
+import { chunkKey } from './chunks'
 import { isRingInPlayArea, lonLatToLocal, type LonLat } from './worldUtils'
 
 const FLOOR_HEIGHT = 3.2
@@ -137,46 +139,57 @@ function createBuildingGeometry(building: PolygonFeature): THREE.BufferGeometry 
   return geometry
 }
 
-/** Combines all buildings into one geometry, so the GPU draws them in one call. */
-function createCityGeometry(buildings: PolygonFeature[]): THREE.BufferGeometry {
+/** Combines buildings into one geometry, so the GPU draws them in one call. */
+function createBlockGeometry(buildings: PolygonFeature[]): THREE.BufferGeometry {
   const parts = buildings.map(createBuildingGeometry)
-  const city = mergeGeometries(parts)
-  if (!city) throw new Error('Could not merge building geometries')
+  const block = mergeGeometries(parts)
+  if (!block) throw new Error('Could not merge building geometries')
 
   parts.forEach((part) => part.dispose())
 
   // Extrusion pushes along +Z. This stands the buildings up along +Y.
-  city.rotateX(-Math.PI / 2)
-  city.computeBoundingSphere()
+  block.rotateX(-Math.PI / 2)
+  block.computeBoundingSphere()
+  return block
+}
 
-  console.info(
-    `[buildings] built ${buildings.length} buildings, ${city.attributes.position.count / 3} triangles`,
-  )
-  return city
+/** One merged geometry per map square, so each square can be skipped on its own. */
+function createCityGeometries(buildings: PolygonFeature[]): THREE.BufferGeometry[] {
+  const squares = new Map<number, PolygonFeature[]>()
+
+  for (const building of buildings) {
+    const ring = building.geometry.coordinates[0]
+    if (!isRingInPlayArea(ring)) continue
+
+    const [east, north] = lonLatToLocal(ring[0])
+    const key = chunkKey(east, -north)
+    const square = squares.get(key)
+    if (square) square.push(building)
+    else squares.set(key, [building])
+  }
+
+  return [...squares.values()].map(createBlockGeometry)
 }
 
 export function Buildings({ buildings }: { buildings: PolygonFeature[] }) {
-  const geometry = useMemo(
-    () => createCityGeometry(buildings.filter((b) => isRingInPlayArea(b.geometry.coordinates[0]))),
-    [buildings],
-  )
+  const geometries = useMemo(() => createCityGeometries(buildings), [buildings])
 
   const { windows } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const facade = useMemo(() => createFacadeTexture(), [])
 
   // We created these by hand, so R3F won't free their GPU memory for us.
-  useEffect(() => () => geometry.dispose(), [geometry])
   useEffect(() => () => facade.dispose(), [facade])
 
-  return (
-    <mesh geometry={geometry} castShadow receiveShadow>
-      {/* The key makes a new material, as a material can't gain or lose a texture freely. */}
-      <meshStandardMaterial
-        key={String(windows)}
-        map={windows ? facade : null}
-        vertexColors
-        roughness={0.9}
-      />
-    </mesh>
+  // A new material each time, as a material can't gain or lose a texture freely.
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        map: windows ? facade : null,
+        vertexColors: true,
+        roughness: 0.9,
+      }),
+    [windows, facade],
   )
+
+  return <ChunkedMesh geometries={geometries} material={material} castShadow />
 }

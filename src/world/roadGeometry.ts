@@ -1,4 +1,4 @@
-import { PLAY_AREA_SIZE, type GroundPoint } from './worldUtils'
+import { PLAY_AREA, type GroundPoint } from './worldUtils'
 
 /**
  * Cuts a line segment down to the part inside the play area, or returns null if
@@ -9,17 +9,16 @@ export function clipToPlayArea(
   start: GroundPoint,
   end: GroundPoint,
 ): [GroundPoint, GroundPoint] | null {
-  const half = PLAY_AREA_SIZE / 2
   const dx = end[0] - start[0]
   const dz = end[1] - start[1]
   let enter = 0
   let leave = 1
 
   const edges = [
-    [-dx, start[0] + half],
-    [dx, half - start[0]],
-    [-dz, start[1] + half],
-    [dz, half - start[1]],
+    [-dx, start[0] - PLAY_AREA.minX],
+    [dx, PLAY_AREA.maxX - start[0]],
+    [-dz, start[1] - PLAY_AREA.minZ],
+    [dz, PLAY_AREA.maxZ - start[1]],
   ]
 
   for (const [direction, distance] of edges) {
