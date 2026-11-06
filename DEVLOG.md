@@ -1597,3 +1597,69 @@ reaching out for them.
 
 Your feedback again. Otherwise, the next items are saving progress and a title screen, then
 making the world look less like boxes.
+
+---
+
+## 2026-11-06: Entry 11, saving progress
+
+Your feedback: the arrow, the drift and the bonus times all look fine, so those settings
+stay as they are. Commit `e1413e4` holds everything before this entry.
+
+### What I did
+
+Wrapped the store in `src/game/gameStore.ts` with Zustand's `persist` middleware, so
+credits and XP now survive a refresh. There's no new dependency, because `persist` comes
+with Zustand. Roadmap: Phase 7, local credits and XP storage.
+
+### Why
+
+- **Only `credits` and `xp` are saved.** If the current mission were saved, a refresh could
+  bring back an old mission, without the planner it needs.
+- **`localStorage`, not IndexedDB.** Two numbers don't need a database.
+- **`version: 1`.** If the save format changes later, this tells us which format a player
+  has, so old saves can be converted.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| Earn 75 credits and 25 XP, then reload in headless Chrome | Both kept, and a new mission started |
+| Corrupted save data | No crash, starts from 0 |
+| Browser errors | None |
+
+Progress lives in that one browser, so it won't follow you to another browser or device,
+and clearing site data erases it.
+
+### Lesson 43: middleware
+
+**Middleware** wraps something to add behaviour, without changing the thing itself. Here,
+`persist` sits around the store and watches every update:
+
+```ts
+create<GameState>()(
+  persist((set, get) => ({ /* the same store as before */ }), {
+    name: 'slikk-it-progress',
+    partialize: ({ credits, xp }) => ({ credits, xp }),
+  }),
+)
+```
+
+None of the code that reads the store had to change. `partialize` picks what gets saved.
+Without it, the store would try to save everything, including speed updates 10 times a
+second and the planner.
+
+The odd `create<GameState>()(...)`, with its extra `()`, is only there to help TypeScript
+work out the types when middleware is involved.
+
+### Try it
+
+1. Do a delivery and refresh. Your credits should still be there.
+2. In DevTools, open Application, then Local Storage, and find `slikk-it-progress`.
+3. Change `credits` to `9999` there, and refresh. Saves on a player's device can always be
+   edited, which matters if we ever add leaderboards.
+4. Delete that entry and refresh to start again.
+
+### Next
+
+A title screen and loading screen, then making the world look less like boxes.

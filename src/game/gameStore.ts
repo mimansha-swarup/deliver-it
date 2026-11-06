@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { calculateReward } from '../missions/missionLogic'
 import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
@@ -31,39 +32,41 @@ type GameState = Telemetry & {
   setTelemetry: (telemetry: Telemetry) => void
 }
 
-export const useGameStore = create<GameState>((set, get) => ({
-  speedKmh: 0,
-  distance: 0,
-  seconds: 0,
-  inZone: false,
-  drifting: false,
-  boosting: false,
+export const useGameStore = create<GameState>()(
+  persist(
+    (set, get) => ({
+      speedKmh: 0,
+      distance: 0,
+      seconds: 0,
+      inZone: false,
+      drifting: false,
+      boosting: false,
 
-  phase: 'toPickup',
-  missionNumber: 1,
-  mission: null,
-  planner: null,
-  credits: 0,
-  xp: 0,
-  lastReward: null,
+      phase: 'toPickup',
+      missionNumber: 1,
+      mission: null,
+      planner: null,
+      credits: 0,
+      xp: 0,
+      lastReward: null,
 
-  startMissions: (planner, fromX, fromZ) => {
-    if (get().mission) return
-    set({ planner, mission: planner.planMission(fromX, fromZ) })
-  },
+      startMissions: (planner, fromX, fromZ) => {
+        if (get().mission) return
+        set({ planner, mission: planner.planMission(fromX, fromZ) })
+      },
 
-  arriveAtStop: (seconds) =>
-    set((state) => {
-      if (state.phase === 'toPickup') return { phase: 'toCustomer' }
-      if (state.phase !== 'toCustomer' || !state.mission) return state
+      arriveAtStop: (seconds) =>
+        set((state) => {
+          if (state.phase === 'toPickup') return { phase: 'toCustomer' }
+          if (state.phase !== 'toCustomer' || !state.mission) return state
 
-      const reward = calculateReward(seconds, state.mission.onTimeSeconds)
-      return {
-        phase: 'delivered',
-        lastReward: reward,
-        credits: state.credits + reward.baseCredits + reward.onTimeCredits,
-        xp: state.xp + reward.xp,
-      }
+          const reward = calculateReward(seconds, state.mission.onTimeSeconds)
+          return {
+            phase: 'delivered',
+            lastReward: reward,
+            credits: state.credits + reward.baseCredits + reward.onTimeCredits,
+            xp: state.xp + reward.xp,
+          }
     }),
 
   nextMission: () =>
@@ -77,4 +80,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     })),
 
   setTelemetry: (telemetry) => set(telemetry),
-}))
+    }),
+    {
+      name: 'slikk-it-progress',
+      version: 1,
+      // Only progress is saved. Everything else starts fresh on each visit.
+      partialize: ({ credits, xp }) => ({ credits, xp }),
+    },
+  ),
+)
