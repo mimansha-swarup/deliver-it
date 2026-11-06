@@ -1,0 +1,22 @@
+:root {
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.attribution {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #f4f1e8;
+  background: rgb(0 0 0 / 55%);
+}
