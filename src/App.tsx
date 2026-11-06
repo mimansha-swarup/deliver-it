@@ -1,17 +1,20 @@
 import { Suspense } from 'react'
-import { MapControls } from '@react-three/drei'
+import { OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { World } from './world/World'
+
+const SKY_COLOR = '#cfe3f2'
 
 function App() {
   return (
     <>
-      <Canvas orthographic camera={{ position: [0, 500, 0], zoom: 1.6, far: 1000 }}>
-        <color attach="background" args={['#14171c']} />
+      <Canvas shadows camera={{ position: [260, 190, 320], fov: 45, near: 1, far: 1500 }}>
+        <color attach="background" args={[SKY_COLOR]} />
+        <fog attach="fog" args={[SKY_COLOR, 500, 1300]} />
         <Suspense fallback={null}>
           <World />
         </Suspense>
-        <MapControls enableRotate={false} />
+        <OrbitControls makeDefault maxPolarAngle={Math.PI / 2 - 0.05} minDistance={30} maxDistance={900} />
       </Canvas>
 
       <a

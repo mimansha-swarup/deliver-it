@@ -33,3 +33,10 @@ export function lonLatToWorld(position: LonLat, height = 0): [number, number, nu
   const [east, north] = lonLatToLocal(position)
   return [east, height, -north]
 }
+
+/** True when a position falls inside the square playable area. */
+export function isInsidePlayArea(position: LonLat): boolean {
+  const [east, north] = lonLatToLocal(position)
+  const half = PLAY_AREA_SIZE / 2
+  return Math.abs(east) <= half && Math.abs(north) <= half
+}

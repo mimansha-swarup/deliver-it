@@ -412,3 +412,158 @@ clip roads at the edge, and stop the scooter at an invisible barrier.
 
 Generate the first real 3D buildings inside the square, with a ground plane and
 lighting. We'll also need a rule for heights, since nearly all buildings have none.
+
+---
+
+## 2026-11-06: Entry 4, the first 3D neighbourhood
+
+Roadmap: Phase 1, generating buildings, ground and lighting. The first commit,
+`d9fcd89`, holds everything before this entry.
+
+### What I did
+
+| File | Change |
+| --- | --- |
+| `src/world/Buildings.tsx` | New. Turns OSM footprints into one merged 3D mesh |
+| `src/world/Ground.tsx` | New. A large flat ground plane |
+| `src/world/Lighting.tsx` | New. Sky light, sun and shadows |
+| `src/world/worldUtils.ts` | Added `isInsidePlayArea` |
+| `src/world/World.tsx` | Now puts lighting, ground, buildings and guide lines together |
+| `src/world/DebugMap.tsx` | Dropped the building outlines and kept roads, places and the boundary as guides |
+| `src/App.tsx` | Switched to a perspective camera, with shadows, fog and orbit controls |
+
+The result is 509 buildings in 6,572 triangles, all in one mesh.
+
+### Why
+
+- **Merged into one mesh.** Entry 1 asked whether to merge, and the answer turned out
+  to be easy: the buildings never move, so nothing is lost by combining them.
+  One mesh also means the whole city shares a single material.
+- **Keep a building if its centre is inside the square.** This is the rule I suggested
+  in Entry 3. Buildings stay whole, rather than being sliced along the boundary.
+- **Heights.** Only 9 of the 509 buildings have a mapped floor count. Those 9 range
+  from 1 to 5 floors, so the estimates stay in that range:
+
+  | Footprint | Floors |
+  | --- | --- |
+  | Mapped in OSM | Use the real value |
+  | Under 60 m² | 1 to 2 |
+  | 60 to 400 m² | 2 to 4 |
+  | Over 400 m² | 3 to 5 |
+
+  Each floor is 3.2 m. These are estimates to look plausible, not real heights.
+- **Fog.** It hides where the ground and camera range end, which would otherwise be a
+  hard edge on the horizon.
+- **Roads are still thin guide lines.** They come next, so they aren't real surfaces
+  yet, and from street level they're nearly invisible.
+
+### What I checked
+
+| Check | Result |
+| --- | --- |
+| Lint, type check, production build | Pass |
+| Browser console | No errors |
+| Walls and roofs | Solid from outside, with no missing or inside-out faces |
+| Shadows | Present and attached to the buildings, with no speckling on walls |
+| View from a real road at 1.6 m eye height | Reads as a street, and building scale looks right |
+
+**Not checked: frame rate.** My headless browser renders on the CPU, so its speed says
+nothing about your Mac. See "Try it" below for how to look.
+
+### Lesson 9: from outline to solid
+
+`createBuildingGeometry` follows the recipe from Lesson 2, with one addition. Real
+footprints can have holes, like a courtyard, and `THREE.Shape` supports that through
+`shape.holes`. None of the 509 buildings here has one, but two elsewhere on the map do,
+so the code will be ready when the world expands.
+
+GeoJSON repeats a ring's first point at the end, while Three.js closes shapes itself.
+That's why `toRing` drops the last point.
+
+### Lesson 10: merging, and colour on the geometry
+
+```ts
+const parts = buildings.map(createBuildingGeometry)
+const city = mergeGeometries(parts)
+```
+
+`mergeGeometries` joins many BufferGeometries into one, which is the same trick as
+Lesson 3 but for solid shapes. There's a catch. A mesh has one material, so how can
+each building have its own colour?
+
+The answer is to store colour **per corner**, as another attribute next to `position`:
+
+```ts
+geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+```
+
+Then one prop tells the material to use it:
+
+```tsx
+<meshStandardMaterial vertexColors roughness={0.9} />
+```
+
+`mergeGeometries` requires every part to have the same attributes. That's why each
+building gets `color`, and each loses `uv` (texture coordinates, which we don't need
+yet).
+
+### Lesson 11: light and shadows
+
+`meshStandardMaterial` reacts to light, so with no lights it's black. We use two:
+
+- **HemisphereLight**: soft fill from all around, so shaded walls aren't pure black
+- **DirectionalLight**: the sun. Its rays are parallel, so its `position` only sets
+  the direction
+
+Shadows need **four** switches, and missing any one gives no shadow and no error:
+
+```tsx
+<Canvas shadows>                       {/* 1. turn shadows on */}
+<directionalLight castShadow />        {/* 2. this light makes shadows */}
+<mesh castShadow receiveShadow />      {/* 3. buildings cast them, and 4. receive them */}
+<mesh receiveShadow />                 {/* the ground receives them too */}
+```
+
+How they work: the light renders the scene from its own point of view into a texture,
+the **shadow map**, which records what it can see. Any point it can't see is in shadow.
+
+That view is a camera too, and its box is set by `shadow-camera-left` and friends.
+This is a trade-off: a texture of 4096 pixels stretched over our 640 m box gives
+about 16 cm per pixel. A bigger box covers more ground with blurrier shadows.
+
+`shadow-mapSize` and `shadow-camera-left` are **dash props**. R3F reads them as nested
+paths, so `shadow-mapSize` sets `light.shadow.mapSize`. It's the same idea as `attach`.
+
+### Lesson 12: stable randomness
+
+If heights came from `Math.random()`, the city would change on every reload, and a
+collision or a mission marker could end up inside a different-sized building. So
+`hashString` turns each building's OSM id into a number, and the same id always gives
+the same height and colour.
+
+Games use this constantly. It's called **deterministic** or seeded generation.
+
+### One thing you might notice
+
+The console prints `[buildings] built` **twice** in development. That's React
+`StrictMode`, which deliberately runs `useMemo` twice in dev to catch impure code. It
+doesn't happen in production.
+
+The `useEffect` that calls `geometry.dispose()` is there because GPU memory isn't
+garbage collected. R3F cleans up what it creates from JSX, but we made this geometry
+ourselves, so we clean it up ourselves.
+
+### Try it
+
+1. Drag to orbit, scroll to zoom, right-drag to pan. Get down between the buildings.
+2. Check your frame rate: in Chrome DevTools, press Cmd+Shift+P and run
+   "Show frame rendering stats". Tell me the FPS, especially at street level.
+3. In `Lighting.tsx`, change the sun's `position` to `[-180, 80, 120]` for a late
+   evening look, with long shadows.
+4. In `Buildings.tsx`, remove `castShadow` from the mesh and see the shadows vanish.
+5. Change `FLOOR_HEIGHT` to `6` to see how much height affects the feel of a street.
+
+### Next
+
+Generate real road surfaces from the OSM lines, using `lanes` and road type for width.
+That also replaces the thin guide lines.
