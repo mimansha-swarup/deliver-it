@@ -57,8 +57,8 @@ type Moving = {
   heading: number
   lift: number
   tint: number
-  /** How far it's tipped onto its side, in radians. */
-  tilt?: number
+  /** A full 3D rotation, when physics has it tumbling. */
+  rotation?: [number, number, number, number] | null
 }
 
 const transform = new THREE.Object3D()
@@ -67,7 +67,8 @@ function writeTransforms(instances: THREE.InstancedMesh, items: Moving[], reach 
   items.forEach((item, index) => {
     const inRange = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach
     transform.position.set(item.x, item.lift, item.z)
-    transform.rotation.set(0, item.heading, item.tilt ?? 0)
+    if (item.rotation) transform.quaternion.set(...item.rotation)
+    else transform.rotation.set(0, item.heading, 0)
     // Size zero is the cheapest way to skip one copy of an instanced shape.
     transform.scale.setScalar(inRange ? 1 : 0)
     transform.updateMatrix()

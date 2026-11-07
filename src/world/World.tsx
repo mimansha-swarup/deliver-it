@@ -1,5 +1,7 @@
 import { use, useMemo } from 'react'
 import { Sky } from '../sky/Sky'
+import { createCrashPhysics } from '../physics/crashPhysics'
+import { loadRapier } from '../physics/rapier'
 import { createTrafficWorld } from '../traffic/trafficLogic'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
@@ -23,6 +25,7 @@ import { generateShopFronts } from './shopFrontPlacement'
 
 export function World() {
   const data = use(loadMapData())
+  const rapier = use(loadRapier())
 
   // Trees and lamps are solid, so they're added to the collision world as they're placed.
   // Awnings go first, while the collision world holds nothing but buildings.
@@ -32,10 +35,11 @@ export function World() {
     const props = generateRoadsideProps(data.roads, collisions, shopFronts)
     const benches = plantParks(data, collisions, props)
     const graph = createRoadGraph(data.roads)
-    const traffic = createTrafficWorld(graph, collisions, props.parkedScooters)
+    const physics = createCrashPhysics(rapier, collisions)
+    const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics)
     const tanks = generateRoofTanks(data.buildings)
     return { collisions, props, shopFronts, graph, traffic, tanks, benches }
-  }, [data])
+  }, [data, rapier])
 
   return (
     <>

@@ -3001,3 +3001,85 @@ no special cases.
 This code treats everything as flat circles and capsules on the ground. It's not a physics engine.
 Nothing leaves the ground, so nothing can flip, roll or tumble. An engine such as Rapier handles
 real 3D bodies, and that's the question to settle next.
+
+## 2026-11-07: Entry 26, real crash physics with Rapier
+
+### What I did
+
+- **Installed Rapier,** a physics engine, as `@dimforge/rapier3d-compat`. It loads as its own file,
+  1.67 MB compressed, and adds no known security problems.
+- **Used it only for crashes.** Your scooter and normal traffic stay arcade, and appear in the physics
+  world as shapes that push things but can't be pushed.
+- **Parked scooters near you are real bodies,** resting until something touches them.
+- **A hard hit turns a vehicle into a real body** that can flip and roll. It then rejoins traffic. A
+  wreck that can't drive away is cleared once you're 30 m away.
+- **All walls, trees, lamps and benches** went into one fixed mesh.
+
+This replaces the flat sliding and fake tipping from Entry 25. Weights, crashes, the clean ride
+bonus and base pay all work as they did.
+
+I used the core library, not the `@react-three/rapier` wrapper I'd mentioned. The wrapper suits objects
+declared in React, but ours appear mid-frame. Going direct also means it can be tested without a browser.
+
+### What I checked
+
+Riding at a stationary vehicle, against real Rapier:
+
+| Hit at 14 m/s | Moved | Height reached | Result |
+| --- | --- | --- | --- |
+| Sedan | 0.52 m | 0 m | Stays upright, rejoins traffic in 1.2 s |
+| Hatchback | 0.69 m | 0 m | Stays upright, rejoins in 1.3 s |
+| Auto | 2.19 m | 1.57 m | Tips past its side, stays a wreck until you leave |
+| Motorbike | 7.60 m | 2.58 m | Rolls right over, back up after 4 s |
+| Parked scooter | 14.1 m | 2.62 m | Lands on its side, and you ride on with no crash |
+
+| Check | Result |
+| --- | --- |
+| Browser, riding into parked scooters at 20 km/h | They flew, tumbled and lay on their sides, no errors |
+| A parked scooter left alone | Doesn't move at all |
+| Thrown scooter meets a wall | Stops at it |
+| 40 bot deliveries, with traffic | All finished, 0 inside walls, no invalid numbers |
+| Physics and traffic cost | 0.058 ms per frame on average |
+
+**Not checked:** I haven't seen a crash in the browser, as my test ride was too slow for one, so the
+fall, the shake and the crash message are unseen there. Crashes were tested only in simulation. The
+bot knocked over only 1 parked scooter, so that's tested mostly in the lab cases.
+
+**One thing to watch:** the worst single frame in that ride took 233.6 ms, against 2 ms in the run
+before. I don't know why, and it didn't repeat in a way I could study. If you see a sudden hitch,
+especially on the first crash, tell me.
+
+**Known gaps:** pedestrians aren't in the physics world, so flying objects pass through them. Lying
+scooters stay down, for now. Your scooter's own fall is still scripted, by design.
+
+### Lesson 98: three kinds of body
+
+| Type | Moved by | Used for |
+| --- | --- | --- |
+| Fixed | Nothing | Ground and walls |
+| Kinematic | Your code | Your scooter and normal traffic |
+| Dynamic | Forces and collisions | Anything that's been hit |
+
+Mixing them is how a game gets arcade handling and real crashes together.
+
+### Lesson 99: sleeping bodies
+
+A body at rest "sleeps", and costs almost nothing until something touches it. That's why dozens of
+parked scooters add almost no cost.
+
+### Lesson 100: test the join, not the parts
+
+Rapier was perfect alone, and my hit code was fine alone. Together, a parked scooter slid 45 m like it
+was on ice, as the physics shape reached it before my hit check fired, and shoved it along. The bug
+was in the order the two parts met. Tracing one object on its own is what showed this.
+
+### Try it
+
+1. Ride into the parked scooters outside a shop, at different speeds.
+2. Hit a motorbike, then an auto, then a car, and compare.
+3. In `trafficLogic.ts`, raise `throwUp` to `0.9`.
+4. In `crashPhysics.ts`, set `GRAVITY` to `-1.6` for crashes on the Moon.
+
+### Next
+
+Your scooter and rider, or letting flying things hit pedestrians if you want that.

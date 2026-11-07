@@ -1,6 +1,8 @@
+import type { CrashPhysics, CrashShape, Quaternion, Tumbler } from '../physics/crashPhysics'
+import { uprightness } from '../physics/crashPhysics'
 import { applyImpact, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
-import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import type { CollisionWorld } from '../world/collision'
 import type { Prop } from '../world/props'
 import type { RoadGraph } from '../world/roadGraph'
 import { createLanes, type Lane } from './lanes'
@@ -36,20 +38,23 @@ export const TRAFFIC_RULES = {
 
   /** How bouncy a hit is. 0 is a dead thud, and 1 is a perfect bounce. */
   bounciness: 0.25,
-  /** How quickly each loses speed from a knock. Higher stops sooner. */
-  vehicleScrub: 2.6,
-  looseScrub: 2.2,
-  /** A knock of less than this is ignored, in metres per second. */
-  smallestKnock: 0.25,
-  /** A knock of more than this tips over a bike or a parked scooter. */
-  tipOverKnock: 1.6,
-  /** How long a knocked-over bike lies there, in seconds. */
-  fallenTime: 3.5,
+  /** A knock of less than this doesn't launch anything, in metres per second. */
+  launchKnock: 1,
+  /** How far a hit throws things upward and spins them, for each m/s of knock. */
+  throwUp: 0.45,
+  throwSpin: 0.9,
+  /** Anything heavier than this, in kilograms, is thrown less. */
+  easyTipMass: 200,
+  /** The most upward speed a hit can give, in metres per second. */
+  maxThrowUp: 4.5,
+  /** How long a bike rider takes to get up, in seconds. */
+  bikeDownTime: 3.5,
+  /** The longest anything stays a real body before rejoining traffic, in seconds. */
+  maxCrashTime: 8,
+  /** A wreck is only cleared away when the rider is at least this far off, in metres. */
+  clearDistance: 30,
   /** How long a vehicle takes to get going again after a hit, in seconds. */
   recoveryTime: 2,
-  /** How far things tip over, and how quickly, in radians. */
-  fallenTilt: 1.42,
-  tiltRate: 5,
 
   /** How quickly the drawn position catches up with the path, which rounds off corners. */
   positionResponse: 8,
@@ -83,34 +88,61 @@ const VEHICLE_MIX: VehicleKind[] = ['sedan', 'bike', 'auto', 'hatchback', 'bike'
 /** `mass` is in kilograms. A collision shares speed out according to these weights. */
 const VEHICLE_SHAPES: Record<
   VehicleKind,
-  { speed: number; halfLength: number; radius: number; mass: number }
+  { speed: number; halfLength: number; radius: number; crash: CrashShape }
 > = {
-  sedan: { speed: 8, halfLength: 2.1, radius: 0.85, mass: 1200 },
-  hatchback: { speed: 8, halfLength: 1.8, radius: 0.85, mass: 950 },
-  auto: { speed: 6, halfLength: 1.3, radius: 0.75, mass: 400 },
-  bike: { speed: 9, halfLength: 0.95, radius: 0.4, mass: 200 },
+  sedan: {
+    speed: 8,
+    halfLength: 2.1,
+    radius: 0.85,
+    crash: { halfSize: [0.85, 0.56, 2.05], centre: 0.78, mass: 1200 },
+  },
+  hatchback: {
+    speed: 8,
+    halfLength: 1.8,
+    radius: 0.85,
+    crash: { halfSize: [0.82, 0.6, 1.76], centre: 0.82, mass: 950 },
+  },
+  auto: {
+    speed: 6,
+    halfLength: 1.3,
+    radius: 0.75,
+    crash: { halfSize: [0.66, 0.78, 1.22], centre: 0.9, mass: 400 },
+  },
+  bike: {
+    speed: 9,
+    halfLength: 0.95,
+    radius: 0.4,
+    crash: { halfSize: [0.22, 0.62, 0.9], centre: 0.72, mass: 200 },
+  },
 }
 
-const PARKED_SCOOTER_MASS = 110
-const PARKED_SCOOTER_RADIUS = 0.4
-/** Parked scooters further from the rider than this aren't drawn, in metres. */
+const PARKED_SCOOTER_SHAPE: CrashShape = { halfSize: [0.2, 0.5, 0.74], centre: 0.53, mass: 110 }
+/**
+ * The rider's shape for pushing things, which doesn't react to being pushed back.
+ * It's kept small on purpose. A hit has to be noticed by `hitLoose` or `hitRider`
+ * first, or this would bulldoze things along the ground without ever launching them.
+ */
+const RIDER_SHAPE: CrashShape = { halfSize: [0.2, 0.5, 0.25], centre: 0.65, mass: SCOOTER.mass }
+/** How close the rider's middle gets to a parked scooter's middle before they hit. */
+const LOOSE_HIT_DISTANCE = 1.35
+/** Parked scooters become real bodies inside this distance of the rider, in metres. */
+const LOOSE_BODY_DISTANCE = 40
+/** Traffic further from the rider than this doesn't need a shape in the physics world. */
+const PUSHER_DISTANCE = 70
 export const LOOSE_DRAW_DISTANCE = 170
 
 export type Vehicle = Mover & {
   kind: VehicleKind
   /** Half the vehicle's width, used for the radius of its collision shape. */
   radius: number
-  mass: number
-  /** Speed from being hit, on top of its own driving. It fades as the tyres scrub it off. */
-  knockX: number
-  knockZ: number
-  /** Turning speed from being hit, in radians per second. */
-  spin: number
-  /** How far it's tipped over, in radians. */
-  tilt: number
-  /** Seconds left lying on its side. Only bikes fall over. */
-  fallenLeft: number
-  tiltSide: number
+  crash: CrashShape
+  /** Rapier's body for it while it's being thrown around, or null while it's driving. */
+  body: Tumbler['body']
+  rotation: Quaternion | null
+  /** Its shape in the physics world while it's driving normally. */
+  pusher: Tumbler['body']
+  /** Seconds since it was hit. */
+  crashTime: number
   /** From 0 just after a hit, up to 1 when it has fully gone back to normal driving. */
   recovery: number
   cruiseSpeed: number
@@ -128,22 +160,11 @@ export type Pedestrian = Mover & {
 }
 
 /** Something standing loose on the ground, which anything can knock about. */
-export type LooseBody = {
-  x: number
-  z: number
-  heading: number
-  lift: number
-  tint: number
-  tilt: number
-  velocityX: number
-  velocityZ: number
-  spin: number
-  /** Which way it fell, or 0 if it's still standing. */
-  fallenSide: number
-}
+export type LooseBody = Tumbler & { tint: number }
 
 export type TrafficWorld = {
-  collisions: CollisionWorld
+  physics: CrashPhysics
+  riderPusher: NonNullable<Tumbler['body']>
   loose: LooseBody[]
   roadLanes: Lane[]
   walkLanes: Lane[]
@@ -187,7 +208,8 @@ function findLaneInRing(
 export function createTrafficWorld(
   graph: RoadGraph,
   collisions: CollisionWorld,
-  parked: Prop[] = [],
+  parked: Prop[],
+  physics: CrashPhysics,
   random: () => number = Math.random,
 ): TrafficWorld {
   const roadLanes = createLanes(graph, collisions, {
@@ -203,17 +225,15 @@ export function createTrafficWorld(
 
   const vehicles: Vehicle[] = Array.from({ length: TRAFFIC_RULES.maxVehicles }, (_, index) => {
     const kind = VEHICLE_MIX[index % VEHICLE_MIX.length]
-    const { speed, halfLength, radius, mass } = VEHICLE_SHAPES[kind]
+    const { speed, halfLength, radius, crash } = VEHICLE_SHAPES[kind]
     return {
       kind,
       radius,
-      mass,
-      knockX: 0,
-      knockZ: 0,
-      spin: 0,
-      tilt: 0,
-      fallenLeft: 0,
-      tiltSide: 1,
+      crash,
+      body: null,
+      rotation: null,
+      pusher: physics.createPusher(crash),
+      crashTime: 0,
       recovery: 1,
       lane: -1,
       along: 0,
@@ -251,15 +271,14 @@ export function createTrafficWorld(
       heading: rotation,
       lift: 0,
       tint: variation,
-      tilt: 0,
-      velocityX: 0,
-      velocityZ: 0,
-      spin: 0,
-      fallenSide: 0,
+      rotation: null,
+      body: null,
     }),
   )
 
-  return { collisions, loose, roadLanes, walkLanes, vehicles, pedestrians, random }
+  const riderPusher = physics.createPusher(RIDER_SHAPE)
+
+  return { physics, riderPusher, loose, roadLanes, walkLanes, vehicles, pedestrians, random }
 }
 
 /** Moves along the lanes, and picks a new lane at the end of each. False at a dead end. */
@@ -324,42 +343,37 @@ function findGapAhead(
   return { gap, blockedByRider }
 }
 
-/** A vehicle sliding from a hit or lying on its side. True while it can't drive. */
-function stepKnockedVehicle(world: TrafficWorld, vehicle: Vehicle, dt: number): boolean {
+/** A vehicle in the air or on its side, until it's ready to rejoin traffic. */
+function stepCrashedVehicle(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt: number) {
   const rules = TRAFFIC_RULES
+  const { physics } = world
 
-  vehicle.fallenLeft = Math.max(0, vehicle.fallenLeft - dt)
-  const targetTilt = vehicle.fallenLeft > 0 ? vehicle.tiltSide * rules.fallenTilt : 0
-  vehicle.tilt += (targetTilt - vehicle.tilt) * (1 - Math.exp(-rules.tiltRate * dt))
+  physics.readBack(vehicle, vehicle.crash)
+  vehicle.crashTime += dt
 
-  const knocked = Math.hypot(vehicle.knockX, vehicle.knockZ) > rules.smallestKnock
-  if (!knocked && vehicle.fallenLeft === 0) {
-    vehicle.knockX = 0
-    vehicle.knockZ = 0
-    vehicle.spin = 0
-    return false
-  }
+  const settled = vehicle.body?.isSleeping() === true
+  const isBike = vehicle.kind === 'bike'
+  const upright = uprightness(vehicle.rotation) > 0.8
+  const finished = isBike
+    ? vehicle.crashTime > rules.bikeDownTime
+    : (settled && upright) || vehicle.crashTime > rules.maxCrashTime
+  if (!finished) return
 
-  vehicle.x += vehicle.knockX * dt
-  vehicle.z += vehicle.knockZ * dt
-  vehicle.heading += vehicle.spin * dt
+  const farAway = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) > rules.clearDistance
+  if (!isBike && !upright && !farAway) return
 
-  const scrub = Math.exp(-rules.vehicleScrub * dt)
-  vehicle.knockX *= scrub
-  vehicle.knockZ *= scrub
-  vehicle.spin *= scrub
-
-  pushOutOfBuildings(world.collisions, vehicle, vehicle.radius)
-  vehicle.speed = 0
+  physics.removeBody(vehicle)
+  vehicle.rotation = null
+  vehicle.lift = 0
   vehicle.recovery = 0
-  return true
+  // A wreck that can't drive away is cleared, and a new vehicle appears elsewhere.
+  if (!isBike && !upright) vehicle.lane = -1
 }
 
 function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], rider: ScooterState, dt: number) {
   const { roadLanes, random } = world
   const rules = TRAFFIC_RULES
 
-  if (stepKnockedVehicle(world, vehicle, dt)) return
   vehicle.recovery = Math.min(1, vehicle.recovery + dt / rules.recoveryTime)
 
   const lane = roadLanes[vehicle.lane]
@@ -440,181 +454,116 @@ function touchVehicle(vehicle: Vehicle, x: number, z: number, radius: number) {
 }
 
 function vehicleVelocity(vehicle: Vehicle): [number, number] {
-  return [
-    Math.sin(vehicle.heading) * vehicle.speed + vehicle.knockX,
-    Math.cos(vehicle.heading) * vehicle.speed + vehicle.knockZ,
-  ]
+  return [Math.sin(vehicle.heading) * vehicle.speed, Math.cos(vehicle.heading) * vehicle.speed]
 }
 
-/** Gives a vehicle the far end of a hit: a shove, a twist, and for a bike, a fall. */
-function knockVehicle(vehicle: Vehicle, hit: Impact, overlap: number, contact: number, overlapShare: number) {
+/** What a hit does to a loose thing: more spin and height the harder it was. */
+function throwFor(changeX: number, changeZ: number, baseX: number, baseZ: number, mass: number) {
   const rules = TRAFFIC_RULES
-  const change = Math.hypot(hit.otherX, hit.otherZ)
-  const away = Math.hypot(hit.pushX, hit.pushZ) || 1
+  const change = Math.hypot(changeX, changeZ)
+  // A heavy thing has a low, wide base, so the same knock tips it far less.
+  const tip = Math.min(1, rules.easyTipMass / mass)
+  const up = Math.min(change * rules.throwUp * tip, rules.maxThrowUp)
 
-  vehicle.x -= (hit.pushX / away) * overlap * overlapShare
-  vehicle.z -= (hit.pushZ / away) * overlap * overlapShare
-  if (change < rules.smallestKnock) return
-
-  const [velocityX, velocityZ] = vehicleVelocity(vehicle)
-  vehicle.knockX = velocityX + hit.otherX
-  vehicle.knockZ = velocityZ + hit.otherZ
-  vehicle.speed = 0
-
-  // A hit towards either end turns it, as it would a real car.
-  const sideways = hit.otherX * Math.cos(vehicle.heading) - hit.otherZ * Math.sin(vehicle.heading)
-  vehicle.spin += (sideways * contact) / (vehicle.halfLength + 0.5)
-
-  if (vehicle.kind === 'bike' && change > rules.tipOverKnock) {
-    vehicle.fallenLeft = rules.fallenTime
-    vehicle.tiltSide = sideways >= 0 ? 1 : -1
+  return {
+    velocity: [baseX + changeX, up, baseZ + changeZ] as [number, number, number],
+    // Tips away from the hit, as if its feet stayed behind.
+    spin: [changeZ * rules.throwSpin * tip, change * 0.25, -changeX * rules.throwSpin * tip] as [
+      number,
+      number,
+      number,
+    ],
   }
 }
 
-function hitRider(vehicle: Vehicle, rider: ScooterState) {
+function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState) {
   const touch = touchVehicle(vehicle, rider.x, rider.z, SCOOTER.collisionRadius)
   if (!touch) return
 
-  const { normalX, normalZ, overlap, clamped } = touch
+  const { normalX, normalZ, overlap } = touch
   const [velocityX, velocityZ] = vehicleVelocity(vehicle)
   const hit = resolveHit(
     normalX,
     normalZ,
     overlap,
     [rider.velocityX, rider.velocityZ, SCOOTER.mass],
-    [velocityX, velocityZ, vehicle.mass],
+    [velocityX, velocityZ, vehicle.crash.mass],
   )
 
   applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ)
-  knockVehicle(vehicle, hit, overlap, clamped, SCOOTER.mass / (SCOOTER.mass + vehicle.mass))
+
+  if (Math.hypot(hit.otherX, hit.otherZ) < TRAFFIC_RULES.launchKnock) return
+
+  // Hit hard enough, it stops being a car on rails and becomes a real object.
+  world.physics.hidePusher(vehicle.pusher as NonNullable<Tumbler['body']>)
+  world.physics.addBody(vehicle, vehicle.crash, false)
+  const { velocity, spin } = throwFor(
+    hit.otherX,
+    hit.otherZ,
+    velocityX,
+    velocityZ,
+    vehicle.crash.mass,
+  )
+  world.physics.launch(vehicle, velocity, spin)
+  vehicle.speed = 0
+  vehicle.crashTime = 0
 }
 
-/** Knocks a loose body, and tips it over if the hit is hard enough. */
-function knockLoose(body: LooseBody, changeX: number, changeZ: number) {
-  body.velocityX += changeX
-  body.velocityZ += changeZ
+/** The rider feels a loose thing as a real weight, and sends it on its way. */
+function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState) {
+  const awayX = rider.x - body.x
+  const awayZ = rider.z - body.z
+  const distance = Math.hypot(awayX, awayZ)
+  const touching = LOOSE_HIT_DISTANCE
+  if (distance >= touching || distance === 0 || !body.body) return
 
-  const change = Math.hypot(changeX, changeZ)
-  body.spin += (changeX - changeZ) * 0.6
-  if (change > TRAFFIC_RULES.tipOverKnock && body.fallenSide === 0) {
-    body.fallenSide = changeX >= changeZ ? 1 : -1
+  const velocity = body.body.linvel()
+  const hit = resolveHit(
+    awayX / distance,
+    awayZ / distance,
+    touching - distance,
+    [rider.velocityX, rider.velocityZ, SCOOTER.mass],
+    [velocity.x, velocity.z, PARKED_SCOOTER_SHAPE.mass],
+  )
+  const change = Math.hypot(hit.otherX, hit.otherZ)
+  applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ)
+  if (change < TRAFFIC_RULES.launchKnock) return
+
+  const thrown = throwFor(hit.otherX, hit.otherZ, velocity.x, velocity.z, PARKED_SCOOTER_SHAPE.mass)
+  world.physics.launch(body, thrown.velocity, thrown.spin)
+}
+
+/** Parked scooters near the rider are real bodies, resting until something touches them. */
+function updateLoose(world: TrafficWorld, rider: ScooterState) {
+  const { physics } = world
+
+  for (const body of world.loose) {
+    const near = Math.hypot(body.x - rider.x, body.z - rider.z) < LOOSE_BODY_DISTANCE
+
+    if (near && !body.body) physics.addBody(body, PARKED_SCOOTER_SHAPE, true)
+    if (!near && body.body) physics.removeBody(body)
+
+    if (body.body) {
+      hitLoose(world, body, rider)
+      if (!body.body.isSleeping()) physics.readBack(body, PARKED_SCOOTER_SHAPE)
+    }
   }
 }
 
-function hitLoose(body: LooseBody, others: LooseBody[], vehicles: Vehicle[], rider: ScooterState) {
-  const radius = PARKED_SCOOTER_RADIUS
-
-  const riderX = rider.x - body.x
-  const riderZ = rider.z - body.z
-  const riderDistance = Math.hypot(riderX, riderZ)
-  const touching = radius + SCOOTER.collisionRadius
-  if (riderDistance < touching && riderDistance > 0) {
-    const hit = resolveHit(
-      riderX / riderDistance,
-      riderZ / riderDistance,
-      touching - riderDistance,
-      [rider.velocityX, rider.velocityZ, SCOOTER.mass],
-      [body.velocityX, body.velocityZ, PARKED_SCOOTER_MASS],
-    )
-    applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ)
-    knockLoose(body, hit.otherX, hit.otherZ)
-  }
+/** Keeps the physics world's copy of the rider and of traffic up to date. */
+function updatePushers(world: TrafficWorld, vehicles: Vehicle[], rider: ScooterState) {
+  const { physics, riderPusher } = world
+  physics.movePusher(riderPusher, rider.x, RIDER_SHAPE.centre, rider.z, rider.heading)
 
   for (const vehicle of vehicles) {
-    if (vehicle.lane === -1) continue
-
-    const touch = touchVehicle(vehicle, body.x, body.z, radius)
-    if (!touch) continue
-
-    const [velocityX, velocityZ] = vehicleVelocity(vehicle)
-    // The first thing here is the vehicle, so the normal points the other way.
-    const hit = resolveHit(
-      -touch.normalX,
-      -touch.normalZ,
-      touch.overlap,
-      [velocityX, velocityZ, vehicle.mass],
-      [body.velocityX, body.velocityZ, PARKED_SCOOTER_MASS],
-    )
-    knockLoose(body, hit.otherX, hit.otherZ)
-    body.x += touch.normalX * touch.overlap
-    body.z += touch.normalZ * touch.overlap
-  }
-
-  // Only something moving can set off another, so a row can topple like dominoes.
-  if (Math.hypot(body.velocityX, body.velocityZ) < TRAFFIC_RULES.smallestKnock) return
-  for (const other of others) {
-    if (other === body) continue
-
-    const awayX = other.x - body.x
-    const awayZ = other.z - body.z
-    const distance = Math.hypot(awayX, awayZ)
-    if (distance >= radius * 2 || distance === 0) continue
-
-    const hit = resolveHit(
-      -awayX / distance,
-      -awayZ / distance,
-      radius * 2 - distance,
-      [body.velocityX, body.velocityZ, PARKED_SCOOTER_MASS],
-      [other.velocityX, other.velocityZ, PARKED_SCOOTER_MASS],
-    )
-    knockLoose(body, hit.changeX, hit.changeZ)
-    knockLoose(other, hit.otherX, hit.otherZ)
-    body.x += hit.pushX
-    body.z += hit.pushZ
-    other.x -= hit.pushX
-    other.z -= hit.pushZ
-  }
-}
-
-function stepLoose(world: TrafficWorld, body: LooseBody, dt: number) {
-  const rules = TRAFFIC_RULES
-
-  body.x += body.velocityX * dt
-  body.z += body.velocityZ * dt
-  body.heading += body.spin * dt
-
-  const scrub = Math.exp(-rules.looseScrub * dt)
-  body.velocityX *= scrub
-  body.velocityZ *= scrub
-  body.spin *= scrub
-
-  const target = body.fallenSide * rules.fallenTilt
-  body.tilt += (target - body.tilt) * (1 - Math.exp(-rules.tiltRate * dt))
-
-  const beforeX = body.x
-  const beforeZ = body.z
-  pushOutOfBuildings(world.collisions, body, PARKED_SCOOTER_RADIUS)
-  if (body.x !== beforeX || body.z !== beforeZ) {
-    body.velocityX = 0
-    body.velocityZ = 0
-  }
-}
-
-/** Two vehicles only collide once one has been knocked off its lane. */
-function hitVehicles(active: Vehicle[]) {
-  active.forEach((vehicle, place) => {
-    if (vehicle.lane === -1) return
-
-    for (const other of active.slice(place + 1)) {
-      if (other.lane === -1 || (vehicle.recovery === 1 && other.recovery === 1)) continue
-
-      const touch = touchVehicle(vehicle, other.x, other.z, other.radius)
-      if (!touch) continue
-
-      const hit = resolveHit(
-        touch.normalX,
-        touch.normalZ,
-        touch.overlap,
-        [...vehicleVelocity(other), other.mass],
-        [...vehicleVelocity(vehicle), vehicle.mass],
-      )
-      knockVehicle(vehicle, hit, touch.overlap, touch.clamped, other.mass / (vehicle.mass + other.mass))
-      other.x += hit.pushX
-      other.z += hit.pushZ
-      other.knockX += hit.changeX
-      other.knockZ += hit.changeZ
+    const pusher = vehicle.pusher as NonNullable<Tumbler['body']>
+    const close = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) < PUSHER_DISTANCE
+    if (vehicle.lane !== -1 && !vehicle.body && close) {
+      physics.movePusher(pusher, vehicle.x, vehicle.crash.centre, vehicle.z, vehicle.heading)
+    } else {
+      physics.hidePusher(pusher)
     }
-  })
+  }
 }
 
 function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterState, dt: number) {
@@ -667,6 +616,9 @@ export function stepTraffic(
   for (const vehicle of activeVehicles) {
     const tooFar = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) > rules.vehicleRemoveAt
     if (vehicle.lane === -1 || tooFar) {
+      if (vehicle.body) world.physics.removeBody(vehicle)
+      vehicle.rotation = null
+      vehicle.lift = 0
       vehicle.lane = -1
       const isFree = ({ startX, startZ }: Lane) =>
         activeVehicles.every(
@@ -686,27 +638,21 @@ export function stepTraffic(
       placeOnLane(vehicle, roadLanes, lane, random)
       vehicle.speed = vehicle.cruiseSpeed
       vehicle.waiting = 0
-      vehicle.knockX = 0
-      vehicle.knockZ = 0
-      vehicle.spin = 0
-      vehicle.tilt = 0
-      vehicle.fallenLeft = 0
       vehicle.recovery = 1
     }
 
+    if (vehicle.body) {
+      stepCrashedVehicle(world, vehicle, rider, dt)
+      continue
+    }
+
     stepVehicle(world, vehicle, activeVehicles, rider, dt)
-    if (vehicle.lane !== -1) hitRider(vehicle, rider)
+    if (vehicle.lane !== -1) hitRider(world, vehicle, rider)
   }
 
-  hitVehicles(activeVehicles)
-
-  const nearby = world.loose.filter(
-    ({ x, z }) => Math.hypot(x - rider.x, z - rider.z) < LOOSE_DRAW_DISTANCE,
-  )
-  for (const body of nearby) {
-    hitLoose(body, nearby, activeVehicles, rider)
-    stepLoose(world, body, dt)
-  }
+  updateLoose(world, rider)
+  updatePushers(world, activeVehicles, rider)
+  world.physics.step(dt)
 
   for (const person of world.pedestrians.slice(0, pedestrianCount)) {
     const tooFar = Math.hypot(person.x - rider.x, person.z - rider.z) > rules.pedestrianRemoveAt
