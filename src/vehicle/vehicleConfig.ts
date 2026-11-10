@@ -58,7 +58,7 @@ export const SCOOTER = {
   pitchUnderBraking: 0.07,
   pitchRate: 0.5,
 
-  wheelRadius: 0.25,
+  wheelRadius: 0.296,
 
   /** The scooter counts as a circle of this radius when it hits things. */
   collisionRadius: 0.6,
@@ -82,6 +82,8 @@ export const SCOOTER = {
   headOnThreshold: 0.8,
   /** How quickly a glancing hit swings the scooter along the wall. */
   wallDeflectRate: 14,
+  /** How quickly the throttle turns a nose pressed against something, so nobody gets stuck. */
+  wallNudgeRate: 1.8,
 }
 
 /** On a real road in the play area, pointing along it. */

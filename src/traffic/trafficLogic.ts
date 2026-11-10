@@ -6,6 +6,7 @@ import type { CollisionWorld } from '../world/collision'
 import type { Prop } from '../world/props'
 import type { RoadGraph } from '../world/roadGraph'
 import { createLanes, type Lane } from './lanes'
+import { createTrafficSignals, findStopAhead, type TrafficSignals } from './trafficSignals'
 
 export const TRAFFIC_RULES = {
   maxVehicles: 18,
@@ -35,6 +36,8 @@ export const TRAFFIC_RULES = {
   junctionRange: 9,
   /** After waiting this long for another vehicle, go anyway. It clears a rare deadlock. */
   patience: 4,
+  /** How hard vehicles brake for a red light, in metres per second squared. */
+  signalBraking: 3,
 
   /** How bouncy a hit is. 0 is a dead thud, and 1 is a perfect bounce. */
   bounciness: 0.25,
@@ -80,10 +83,23 @@ type Mover = {
   tint: number
 }
 
-export type VehicleKind = 'sedan' | 'hatchback' | 'auto' | 'bike'
+export type VehicleKind = 'sedan' | 'hatchback' | 'suv' | 'mpv' | 'auto' | 'bike'
 
 /** The mix of traffic, repeated: Bengaluru has a lot of two-wheelers. */
-const VEHICLE_MIX: VehicleKind[] = ['sedan', 'bike', 'auto', 'hatchback', 'bike', 'bike']
+const VEHICLE_MIX: VehicleKind[] = [
+  'sedan',
+  'bike',
+  'auto',
+  'hatchback',
+  'bike',
+  'bike',
+  'suv',
+  'bike',
+  'auto',
+  'mpv',
+  'bike',
+  'hatchback',
+]
 
 /** `mass` is in kilograms. A collision shares speed out according to these weights. */
 const VEHICLE_SHAPES: Record<
@@ -101,6 +117,18 @@ const VEHICLE_SHAPES: Record<
     halfLength: 1.8,
     radius: 0.85,
     crash: { halfSize: [0.82, 0.6, 1.76], centre: 0.82, mass: 950 },
+  },
+  suv: {
+    speed: 8,
+    halfLength: 2.3,
+    radius: 0.92,
+    crash: { halfSize: [0.92, 0.72, 2.25], centre: 0.92, mass: 1800 },
+  },
+  mpv: {
+    speed: 8,
+    halfLength: 2,
+    radius: 0.88,
+    crash: { halfSize: [0.86, 0.66, 1.96], centre: 0.86, mass: 1250 },
   },
   auto: {
     speed: 6,
@@ -170,6 +198,9 @@ export type TrafficWorld = {
   walkLanes: Lane[]
   vehicles: Vehicle[]
   pedestrians: Pedestrian[]
+  signals: TrafficSignals
+  /** Seconds of game time, which every traffic light runs from. */
+  signalClock: number
   random: () => number
 }
 
@@ -217,6 +248,15 @@ export function createTrafficWorld(
     sideOffset: () => 1.4,
     clearance: 1.1,
   })
+  const signals = createTrafficSignals(graph)
+  for (const lane of roadLanes) {
+    const signal = signals.byNode.get(lane.endNode)
+    const group = signal?.groupFrom.get(lane.startNode)
+    if (signal && group !== undefined) {
+      lane.signal = { junction: signal.junction, group, stopBack: signal.stopBack }
+    }
+  }
+
   const walkLanes = createLanes(graph, collisions, {
     minRoadWidth: 4,
     sideOffset: (roadWidth) => roadWidth / 2 + 0.7, // On the pavement, inside the lamp posts.
@@ -278,7 +318,18 @@ export function createTrafficWorld(
 
   const riderPusher = physics.createPusher(RIDER_SHAPE)
 
-  return { physics, riderPusher, loose, roadLanes, walkLanes, vehicles, pedestrians, random }
+  return {
+    physics,
+    riderPusher,
+    loose,
+    roadLanes,
+    walkLanes,
+    vehicles,
+    pedestrians,
+    signals,
+    signalClock: 0,
+    random,
+  }
 }
 
 /** Moves along the lanes, and picks a new lane at the end of each. False at a dead end. */
@@ -381,13 +432,27 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const { gap, blockedByRider } = findGapAhead(vehicle, lane, active, rider)
   const hasWaited = !blockedByRider && vehicle.waiting > rules.patience
   const free = hasWaited ? vehicle.cruiseSpeed : Math.min(vehicle.cruiseSpeed, Math.max(0, gap - rules.followGap))
-  const target = free * vehicle.recovery
+
+  // Patience never overrules a red light. The speed that stops it in time is sqrt(2 x braking x distance).
+  const toStop = findStopAhead(
+    roadLanes,
+    vehicle.lane,
+    vehicle.along,
+    vehicle.halfLength,
+    vehicle.speed,
+    world.signals,
+    world.signalClock,
+  )
+  const held = Math.sqrt(2 * rules.signalBraking * toStop)
+  const target = Math.min(free, held) * vehicle.recovery
 
   const rate = target < vehicle.speed ? rules.braking : rules.acceleration
   const change = target - vehicle.speed
   vehicle.speed += Math.sign(change) * Math.min(Math.abs(change), rate * dt)
 
-  vehicle.waiting = vehicle.speed < 0.3 ? vehicle.waiting + dt : 0
+  // Waiting at a light isn't a deadlock, or the whole queue would barge off together on green.
+  const atLight = toStop !== Infinity
+  vehicle.waiting = vehicle.speed < 0.3 && !atLight ? vehicle.waiting + dt : 0
   if (hasWaited) vehicle.waiting = rules.patience + 1
 
   if (!advance(vehicle, roadLanes, vehicle.speed * dt, random)) {
@@ -476,7 +541,7 @@ function throwFor(changeX: number, changeZ: number, baseX: number, baseZ: number
   }
 }
 
-function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState) {
+function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt: number) {
   const touch = touchVehicle(vehicle, rider.x, rider.z, SCOOTER.collisionRadius)
   if (!touch) return
 
@@ -490,7 +555,7 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState) {
     [velocityX, velocityZ, vehicle.crash.mass],
   )
 
-  applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ)
+  applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ, dt)
 
   if (Math.hypot(hit.otherX, hit.otherZ) < TRAFFIC_RULES.launchKnock) return
 
@@ -510,7 +575,7 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState) {
 }
 
 /** The rider feels a loose thing as a real weight, and sends it on its way. */
-function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState) {
+function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState, dt: number) {
   const awayX = rider.x - body.x
   const awayZ = rider.z - body.z
   const distance = Math.hypot(awayX, awayZ)
@@ -526,7 +591,7 @@ function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState) {
     [velocity.x, velocity.z, PARKED_SCOOTER_SHAPE.mass],
   )
   const change = Math.hypot(hit.otherX, hit.otherZ)
-  applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ)
+  applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ, dt)
   if (change < TRAFFIC_RULES.launchKnock) return
 
   const thrown = throwFor(hit.otherX, hit.otherZ, velocity.x, velocity.z, PARKED_SCOOTER_SHAPE.mass)
@@ -534,7 +599,7 @@ function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState) {
 }
 
 /** Parked scooters near the rider are real bodies, resting until something touches them. */
-function updateLoose(world: TrafficWorld, rider: ScooterState) {
+function updateLoose(world: TrafficWorld, rider: ScooterState, dt: number) {
   const { physics } = world
 
   for (const body of world.loose) {
@@ -544,7 +609,7 @@ function updateLoose(world: TrafficWorld, rider: ScooterState) {
     if (!near && body.body) physics.removeBody(body)
 
     if (body.body) {
-      hitLoose(world, body, rider)
+      hitLoose(world, body, rider, dt)
       if (!body.body.isSleeping()) physics.readBack(body, PARKED_SCOOTER_SHAPE)
     }
   }
@@ -612,6 +677,7 @@ export function stepTraffic(
   const { roadLanes, walkLanes, random } = world
   const rules = TRAFFIC_RULES
   const activeVehicles = world.vehicles.slice(0, vehicleCount)
+  world.signalClock += dt
 
   for (const vehicle of activeVehicles) {
     const tooFar = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) > rules.vehicleRemoveAt
@@ -647,10 +713,10 @@ export function stepTraffic(
     }
 
     stepVehicle(world, vehicle, activeVehicles, rider, dt)
-    if (vehicle.lane !== -1) hitRider(world, vehicle, rider)
+    if (vehicle.lane !== -1) hitRider(world, vehicle, rider, dt)
   }
 
-  updateLoose(world, rider)
+  updateLoose(world, rider, dt)
   updatePushers(world, activeVehicles, rider)
   world.physics.step(dt)
 

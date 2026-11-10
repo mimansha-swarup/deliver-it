@@ -30,3 +30,12 @@ export const liveRoute = {
   /** Whether there's a route to follow right now. */
   active: false,
 }
+
+/** A camera position that takes over from the normal view for a moment, such as a handover. */
+export const liveShot = {
+  active: false,
+  cameraX: 0,
+  cameraZ: 0,
+  lookX: 0,
+  lookZ: 0,
+}

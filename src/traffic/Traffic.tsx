@@ -1,18 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
+import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { ScooterState } from '../vehicle/ScooterController'
-import {
-  createCarGeometry,
-  createCarTexture,
-  createStreetReflection,
-  HATCHBACK,
-  SEDAN,
-} from './carModel'
-import { createManGeometry, createWomanGeometry } from './peopleShapes'
+import { getStreetReflection } from './carModel'
+import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
+import { createWomanGeometry } from './peopleShapes'
 import {
   LOOSE_DRAW_DISTANCE,
   stepTraffic,
@@ -21,15 +17,16 @@ import {
   type VehicleKind,
 } from './trafficLogic'
 import {
-  createAutoGeometry,
-  createBikeGeometry,
+  createBikeRiderGeometry,
   createParkedScooterGeometry,
   createVehicleGlowGeometry,
 } from './vehicleShapes'
 
+
 const CAR_COLORS = ['#e8e8e8', '#b9bcc2', '#30343b', '#8c2f2f', '#2f4f7f', '#d8d2c4', '#f4f4f2']
-const AUTO_COLORS = ['#3f8f4a', '#d9b21f', '#3f8f4a']
-const BIKE_COLORS = ['#22252b', '#7f2626', '#2a4a7a', '#c9cacc', '#30343b']
+/** An auto's colours come from its model, so its tint changes nothing. */
+const AUTO_COLORS = ['#ffffff']
+const BIKE_COLORS = ['#1c3fd1', '#b3201e', '#1a1b1e', '#e8e8e8', '#2e7d4f']
 const PARKED_COLORS = ['#c8c9cc', '#2f3136', '#8c2f2f', '#2f4f7f', '#e6e4dc', '#3d6b4f']
 const CLOTHES_COLORS = [
   '#c04a4a',
@@ -45,6 +42,13 @@ const CLOTHES_COLORS = [
 
 /** How strongly vehicles mirror the sky, by day. Night dims it along with the ambient light. */
 const REFLECTION_STRENGTH = 0.9
+
+/** The furthest a front wheel turns, in radians. */
+const MAX_STEER = 0.5
+/** How quickly a wheel swings towards where it should point. */
+const STEER_EASING = 8
+/** Below this speed, in metres per second, steering is worked out as if at this speed. */
+const LOWEST_STEER_SPEED = 2
 
 /** Longest a single frame may count for, so a hidden tab doesn't move everything at once. */
 const MAX_STEP = 0.05
@@ -62,6 +66,18 @@ type Moving = {
 }
 
 const transform = new THREE.Object3D()
+
+/** Only the paint takes a vehicle's colour, so glass, tyres and lights keep their own. */
+function tintPaintOnly(shader: THREE.WebGLProgramParametersWithUniforms) {
+  shader.vertexShader = `
+    attribute float _paint;
+    ${shader.vertexShader}
+  `.replace(
+    '#include <color_vertex>',
+    `vColor = vec4(1.0);
+    vColor.rgb = color.rgb * mix(vec3(1.0), instanceColor.rgb, _paint);`,
+  )
+}
 
 function writeTransforms(instances: THREE.InstancedMesh, items: Moving[], reach = Infinity) {
   items.forEach((item, index) => {
@@ -106,7 +122,7 @@ function MovingInstances({
   geometry,
   palette,
   castShadow,
-  map,
+  baked,
   reflection,
   reach,
 }: {
@@ -114,7 +130,8 @@ function MovingInstances({
   geometry: THREE.BufferGeometry
   palette: string[]
   castShadow: boolean
-  map?: THREE.Texture
+  /** Whether it's a model from `traffic.glb`, which says which parts are paint. */
+  baked?: boolean
   reflection: THREE.Texture
   /** Copies further from the rider than this aren't drawn. */
   reach?: number
@@ -128,6 +145,9 @@ function MovingInstances({
     if (material.current) updateReflection(material.current)
   })
 
+  // With no copies there are no instance colours, and the paint shader relies on them.
+  if (items.length === 0) return null
+
   return (
     <instancedMesh
       key={items.length}
@@ -139,10 +159,10 @@ function MovingInstances({
       <meshStandardMaterial
         ref={material}
         vertexColors
-        map={map ?? null}
         envMap={reflection}
-        roughness={map ? 0.24 : 0.45}
-        metalness={map ? 0.65 : 0.1}
+        roughness={baked ? 0.32 : 0.45}
+        metalness={baked ? 0.35 : 0.1}
+        onBeforeCompile={baked ? tintPaintOnly : undefined}
       />
     </instancedMesh>
   )
@@ -190,23 +210,23 @@ function VehicleLights({ items, geometry }: { items: Moving[]; geometry: THREE.B
  */
 function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.vertexShader = `
-    attribute vec3 aLimb;
+    attribute vec3 _limb;
     attribute vec2 aPerson;
     ${shader.vertexShader}
   `
     .replace(
       '#include <color_vertex>',
       `vColor = vec4(1.0);
-      vColor.rgb = color.rgb * (aLimb.z > 0.5 ? instanceColor.rgb : vec3(aPerson.y));`,
+      vColor.rgb = color.rgb * (_limb.z > 0.5 ? instanceColor.rgb : vec3(aPerson.y));`,
     )
     .replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
-      if (aLimb.x != 0.0) {
-        float angle = sin(aPerson.x) * aLimb.x * ${LIMB_SWING.toFixed(2)};
-        float down = position.y - aLimb.y;
+      if (_limb.x != 0.0) {
+        float angle = sin(aPerson.x) * _limb.x * ${LIMB_SWING.toFixed(2)};
+        float down = position.y - _limb.y;
         transformed.z = position.z * cos(angle) + down * sin(angle);
-        transformed.y = aLimb.y + down * cos(angle) - position.z * sin(angle);
+        transformed.y = _limb.y + down * cos(angle) - position.z * sin(angle);
       }`,
     )
 }
@@ -227,10 +247,20 @@ function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
   attribute.needsUpdate = true
 }
 
-function People({ items, body }: { items: Pedestrian[]; body: THREE.BufferGeometry }) {
+/** A crowd, or just one person, walking by the same shader. */
+export function People({
+  items,
+  body,
+  palette = CLOTHES_COLORS,
+}: {
+  items: Pedestrian[]
+  body: THREE.BufferGeometry
+  /** The colours their clothes can be. */
+  palette?: string[]
+}) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const geometry = useMemo(() => withPersonData(body, items.length), [body, items.length])
-  useInstanceColors(mesh, items, CLOTHES_COLORS)
+  useInstanceColors(mesh, items, palette)
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
@@ -252,9 +282,132 @@ function People({ items, body }: { items: Pedestrian[]; body: THREE.BufferGeomet
   )
 }
 
+type WheelSet = {
+  geometry: THREE.BufferGeometry
+  positions: [number, number, number][]
+  radius: number
+  /** A borrowed wheel is scaled from its own size to this vehicle's. */
+  scale: number
+  wheelBase: number
+}
+
+/** What each vehicle's wheels are doing, kept between frames. */
+type WheelState = { x: number; z: number; heading: number; roll: number; steer: number }
+
+const wheelBody = new THREE.Matrix4()
+const wheelPlace = new THREE.Matrix4()
+const wheelSpin = new THREE.Matrix4()
+const wheelSteer = new THREE.Matrix4()
+const wheelFlip = new THREE.Matrix4().makeRotationY(Math.PI)
+const wheelSize = new THREE.Matrix4()
+
+/** Works out how far a vehicle moved, so its wheels roll that far and steer into the bend. */
+function updateWheelState(state: WheelState, item: Moving, wheels: WheelSet, delta: number) {
+  const moveX = item.x - state.x
+  const moveZ = item.z - state.z
+  const turned = Math.atan2(
+    Math.sin(item.heading - state.heading),
+    Math.cos(item.heading - state.heading),
+  )
+  const forward = moveX * Math.sin(item.heading) + moveZ * Math.cos(item.heading)
+
+  state.roll += forward / wheels.radius
+  state.x = item.x
+  state.z = item.z
+  state.heading = item.heading
+  if (delta <= 0) return
+
+  const speed = Math.max(Math.abs(forward) / delta, LOWEST_STEER_SPEED)
+  const wanted = (turned / delta) * (wheels.wheelBase / speed)
+  const clamped = Math.max(-MAX_STEER, Math.min(MAX_STEER, wanted))
+  state.steer += (clamped - state.steer) * Math.min(1, delta * STEER_EASING)
+}
+
+/** The wheels of one kind of vehicle. They're separate so that they can roll and steer. */
+function VehicleWheels({ items, wheels }: { items: Moving[]; wheels: WheelSet }) {
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const states = useRef<WheelState[]>([])
+  const count = items.length * wheels.positions.length
+
+  useFrame((_, delta) => {
+    if (!mesh.current) return
+    const step = Math.min(delta, MAX_STEP)
+
+    items.forEach((item, itemIndex) => {
+      const state = (states.current[itemIndex] ??= {
+        x: item.x,
+        z: item.z,
+        heading: item.heading,
+        roll: 0,
+        steer: 0,
+      })
+      // A tumbling vehicle's wheels stop being driven, and simply go with it.
+      if (!item.rotation) updateWheelState(state, item, wheels, step)
+
+      transform.position.set(item.x, item.lift, item.z)
+      if (item.rotation) transform.quaternion.set(...item.rotation)
+      else transform.rotation.set(0, item.heading, 0)
+      transform.scale.setScalar(1)
+      transform.updateMatrix()
+      wheelBody.copy(transform.matrix)
+
+      wheels.positions.forEach(([x, y, z], wheelIndex) => {
+        const isLeft = x < 0
+        wheelPlace.makeTranslation(x, y, z)
+        wheelSteer.makeRotationY(z > 0 ? state.steer : 0)
+        // Wheels on the far side are the same wheel turned around, so they spin the other way.
+        wheelSpin.makeRotationX(isLeft ? -state.roll : state.roll)
+        wheelSize.makeScale(wheels.scale, wheels.scale, wheels.scale)
+
+        const matrix = wheelBody.clone().multiply(wheelPlace).multiply(wheelSteer)
+        if (isLeft) matrix.multiply(wheelFlip)
+        matrix.multiply(wheelSpin).multiply(wheelSize)
+        mesh.current?.setMatrixAt(itemIndex * wheels.positions.length + wheelIndex, matrix)
+      })
+    })
+    mesh.current.instanceMatrix.needsUpdate = true
+  })
+
+  if (count === 0) return null
+
+  return (
+    <instancedMesh
+      key={count}
+      ref={mesh}
+      args={[wheels.geometry, undefined, count]}
+      frustumCulled={false}
+    >
+      <meshStandardMaterial vertexColors roughness={0.55} />
+    </instancedMesh>
+  )
+}
+
+/** Pulls one model's wheels and their positions out of the loaded file. */
+function getWheels(scene: THREE.Group, name: string): WheelSet {
+  const model = scene.getObjectByName(name)
+  const { wheelModel, wheelRadius, wheelPositions } = model?.userData as {
+    wheelModel: string
+    wheelRadius: number
+    wheelPositions: [number, number, number][]
+  }
+  const source = scene.getObjectByName(`${wheelModel}-wheel`)
+  const sourceRadius = (source?.userData as { wheelRadius: number }).wheelRadius
+  const lengths = wheelPositions.map(([, , z]) => z)
+
+  return {
+    geometry: getModel(scene, `${wheelModel}-wheel`),
+    positions: wheelPositions,
+    radius: wheelRadius,
+    scale: wheelRadius / sourceRadius,
+    wheelBase: Math.max(...lengths) - Math.min(...lengths),
+  }
+}
+
 const VEHICLES: { kind: VehicleKind; palette: string[] }[] = [
   { kind: 'sedan', palette: CAR_COLORS },
   { kind: 'hatchback', palette: CAR_COLORS },
+  { kind: 'suv', palette: CAR_COLORS },
+  { kind: 'mpv', palette: CAR_COLORS },
   { kind: 'auto', palette: AUTO_COLORS },
   { kind: 'bike', palette: BIKE_COLORS },
 ]
@@ -269,50 +422,72 @@ export function Traffic({
 }) {
   const { vehicles, pedestrians, shadowSize } = useGameStore((state) => QUALITY_PRESETS[state.quality])
 
+  const { scene } = useGLTF(TRAFFIC_MODELS_URL)
+  const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
+
   const shapes = useMemo(
     () => ({
-      sedan: createCarGeometry(SEDAN),
-      hatchback: createCarGeometry(HATCHBACK),
-      auto: createAutoGeometry(),
-      bike: createBikeGeometry(),
-      parked: createParkedScooterGeometry(),
+      sedan: getModel(scene, 'sedan'),
+      hatchback: getModel(scene, 'hatchback'),
+      suv: getModel(scene, 'suv'),
+      mpv: getModel(scene, 'mpv'),
+      auto: getModel(scene, 'auto'),
+      bike: getModel(yamaha, 'bike'),
     }),
+    [scene, yamaha],
+  )
+  const wheels = useMemo(
+    () => ({
+      sedan: getWheels(scene, 'sedan'),
+      hatchback: getWheels(scene, 'hatchback'),
+      suv: getWheels(scene, 'suv'),
+      mpv: getWheels(scene, 'mpv'),
+      auto: getWheels(scene, 'auto'),
+      bike: getWheels(yamaha, 'bike'),
+    }),
+    [scene, yamaha],
+  )
+  // The woman is built in code until a model with a clear origin takes her place.
+  const woman = useMemo(() => createWomanGeometry(), [])
+  const bodies = useMemo(
+    () => [getModel(scene, 'man'), getModel(scene, 'teen'), woman],
+    [scene, woman],
+  )
+  // These two are still built in code, so they need freeing. Loaded models don't.
+  const drawn = useMemo(
+    () => ({ rider: createBikeRiderGeometry(), parked: createParkedScooterGeometry() }),
     [],
   )
   const lights = useMemo(
     () => ({
       sedan: createVehicleGlowGeometry(2.1, -2.1, 0.56, 0.7),
-      hatchback: createVehicleGlowGeometry(1.8, -1.8, 0.56, 0.7),
-      auto: createVehicleGlowGeometry(1.25, -1.2, 0, 0.72),
+      hatchback: createVehicleGlowGeometry(1.8, -1.8, 0.52, 0.72),
+      suv: createVehicleGlowGeometry(2.3, -2.3, 0.62, 0.9),
+      mpv: createVehicleGlowGeometry(2, -2, 0.58, 0.8),
+      auto: createVehicleGlowGeometry(1.3, -1.3, 0, 0.72),
       bike: createVehicleGlowGeometry(0.66, -0.9, 0, 0.9),
     }),
     [],
   )
   const gl = useThree((state) => state.gl)
-  const reflection = useMemo(() => createStreetReflection(gl), [gl])
-  const paintJobs = useMemo(
-    () => ({ sedan: createCarTexture(SEDAN), hatchback: createCarTexture(HATCHBACK) }),
-    [],
-  )
-  const man = useMemo(() => createManGeometry(), [])
-  const woman = useMemo(() => createWomanGeometry(), [])
+  // Shared with the rider's scooter, so it's never disposed of here.
+  const reflection = getStreetReflection(gl)
 
   useEffect(
     () => () => {
-      Object.values(shapes).forEach((geometry) => geometry.dispose())
+      Object.values(drawn).forEach((geometry) => geometry.dispose())
       Object.values(lights).forEach((geometry) => geometry.dispose())
-      man.dispose()
       woman.dispose()
-      reflection.dispose()
-      Object.values(paintJobs).forEach((texture) => texture.dispose())
     },
-    [shapes, lights, man, woman, reflection, paintJobs],
+    [drawn, lights, woman],
   )
 
   const inPlay = useMemo(() => world.vehicles.slice(0, vehicles), [world, vehicles])
   const people = useMemo(() => world.pedestrians.slice(0, pedestrians), [world, pedestrians])
-  const men = useMemo(() => people.filter((_, index) => index % 2 === 0), [people])
-  const women = useMemo(() => people.filter((_, index) => index % 2 === 1), [people])
+  const crowds = useMemo(
+    () => bodies.map((_, group) => people.filter((__, index) => index % bodies.length === group)),
+    [bodies, people],
+  )
 
   useFrame((_, delta) => {
     stepTraffic(world, scooter.current, vehicles, pedestrians, Math.min(delta, MAX_STEP))
@@ -329,23 +504,37 @@ export function Traffic({
               geometry={shapes[kind]}
               palette={palette}
               castShadow={shadowSize > 0}
-              map={kind === 'sedan' || kind === 'hatchback' ? paintJobs[kind] : undefined}
+              baked
               reflection={reflection}
             />
+            {kind === 'bike' && (
+              <MovingInstances
+                items={items}
+                geometry={drawn.rider}
+                palette={palette}
+                castShadow={shadowSize > 0}
+                reflection={reflection}
+              />
+            )}
+            <VehicleWheels items={items} wheels={wheels[kind]} />
             <VehicleLights items={items} geometry={lights[kind]} />
           </group>
         )
       })}
       <MovingInstances
         items={world.loose}
-        geometry={shapes.parked}
+        geometry={drawn.parked}
         palette={PARKED_COLORS}
         castShadow={false}
         reflection={reflection}
         reach={LOOSE_DRAW_DISTANCE}
       />
-      <People items={men} body={man} />
-      <People items={women} body={woman} />
+      {bodies.map((body, group) => (
+        <People key={body.uuid} items={crowds[group]} body={body} />
+      ))}
     </>
   )
 }
+
+useGLTF.preload(TRAFFIC_MODELS_URL)
+useGLTF.preload(YAMAHA_MODEL_URL)

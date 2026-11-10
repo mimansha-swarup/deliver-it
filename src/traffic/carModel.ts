@@ -359,7 +359,18 @@ export function createCarTexture(spec: CarSpec): THREE.CanvasTexture {
  * Paint looks like paint because it mirrors its surroundings. This is a tiny
  * painted world of sky, skyline and road, for shiny things to reflect.
  */
-export function createStreetReflection(renderer: THREE.WebGLRenderer): THREE.Texture {
+export function getStreetReflection(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const existing = reflections.get(renderer)
+  if (existing) return existing
+
+  const created = createStreetReflection(renderer)
+  reflections.set(renderer, created)
+  return created
+}
+
+const reflections = new WeakMap<THREE.WebGLRenderer, THREE.Texture>()
+
+function createStreetReflection(renderer: THREE.WebGLRenderer): THREE.Texture {
   const scene = new THREE.Scene()
 
   const dome = new THREE.Mesh(

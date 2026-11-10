@@ -1,6 +1,7 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { PerspectiveCamera, Vector3 } from 'three'
+import { liveShot } from '../game/livePlayer'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getTravelSpeed } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
@@ -31,6 +32,12 @@ const WALL_CLEARANCE = 0.4
 const PROBE_STEP = 0.4
 /** How fast the camera drifts back out after being pushed in. */
 const DISTANCE_RESPONSE = 3
+
+/** How high the camera sits for a moment like a handover, and what it looks at. */
+const SHOT_HEIGHT = 1.75
+const SHOT_LOOK_HEIGHT = 1.05
+/** How quickly the camera moves in and out of such a moment. */
+const SHOT_RESPONSE = 3.5
 
 /** How far the camera rattles in the hardest hit, in metres. */
 const SHAKE_SIZE = 0.35
@@ -68,6 +75,7 @@ export function FollowCamera({
   const cameraDistance = useRef(DISTANCE_BEHIND)
   const introStart = useRef<Vector3 | null>(null)
   const introTime = useRef(0)
+  const shotAmount = useRef(0)
 
   useFrame(({ camera, clock }, delta) => {
     const state = scooter.current
@@ -110,7 +118,24 @@ export function FollowCamera({
       camera.position.lerp(introStart.current, 1 - eased)
     }
 
-    camera.lookAt(state.x + forwardX * LOOK_AHEAD, LOOK_HEIGHT, state.z + forwardZ * LOOK_AHEAD)
+    let lookX = state.x + forwardX * LOOK_AHEAD
+    let lookY: number = LOOK_HEIGHT
+    let lookZ = state.z + forwardZ * LOOK_AHEAD
+
+    // Eases across to a set shot and back, so that it never cuts.
+    const shotTarget = liveShot.active ? 1 : 0
+    shotAmount.current += (shotTarget - shotAmount.current) * (1 - Math.exp(-SHOT_RESPONSE * delta))
+    const amount = shotAmount.current * shotAmount.current * (3 - 2 * shotAmount.current)
+    if (amount > 0.001) {
+      camera.position.x += (liveShot.cameraX - camera.position.x) * amount
+      camera.position.y += (SHOT_HEIGHT - camera.position.y) * amount
+      camera.position.z += (liveShot.cameraZ - camera.position.z) * amount
+      lookX += (liveShot.lookX - lookX) * amount
+      lookY += (SHOT_LOOK_HEIGHT - lookY) * amount
+      lookZ += (liveShot.lookZ - lookZ) * amount
+    }
+
+    camera.lookAt(lookX, lookY, lookZ)
 
     if (camera instanceof PerspectiveCamera) {
       const targetFov = BASE_FOV + SPEED_FOV * Math.min(travelSpeed / SCOOTER.maxSpeed, 1.2)

@@ -43,7 +43,7 @@ function build(parts: Part[]): THREE.BufferGeometry {
       const count = flat.getAttribute('position').count
       const limb = new Float32Array(count * 3)
       for (let i = 0; i < count; i++) limb.set([swing, joint, clothing], i * 3)
-      flat.setAttribute('aLimb', new THREE.BufferAttribute(limb, 3))
+      flat.setAttribute('_limb', new THREE.BufferAttribute(limb, 3))
       return flat
     }),
   )

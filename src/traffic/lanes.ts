@@ -14,6 +14,11 @@ export type Lane = {
   forwardZ: number
   /** Lanes that can follow this one. */
   next: number[]
+  /** The road points at each end of this lane. */
+  startNode: number
+  endNode: number
+  /** The light this lane runs up to, if there is one. */
+  signal?: { junction: number; group: number; stopBack: number }
 }
 
 type LaneRules = {
@@ -67,7 +72,18 @@ export function createLanes(
       lanesFrom[from].push(lanes.length)
       startNodes.push(from)
       endNodes.push(to)
-      lanes.push({ startX, startZ, endX, endZ, length, forwardX, forwardZ, next: [] })
+      lanes.push({
+        startX,
+        startZ,
+        endX,
+        endZ,
+        length,
+        forwardX,
+        forwardZ,
+        next: [],
+        startNode: from,
+        endNode: to,
+      })
     }
   })
 

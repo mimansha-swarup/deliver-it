@@ -19,13 +19,9 @@ export const MISSION_RULES = {
   onTimeRouteSpeed: 6.7,
   minOnTimeSeconds: 30,
 
-  /** Pickups within this road distance of the rider are preferred, in metres. */
-  maxPickupDistance: 500,
   /** A new customer is at least this far from the last one, in metres. */
   minCustomerSpacing: 60,
 
-  /** How far from a mapped clothing shop a pickup may be, in metres. */
-  maxShopDistance: 30,
   /** Stops need this much clear space around them, in metres. */
   stopClearance: 2.2,
   /** Stops stay this far inside the edge of the play area, in metres. */
@@ -45,16 +41,5 @@ export const DELIVERY_TIERS: DeliveryTier[] = [
   { label: 'Long haul', minRoute: 900, maxRoute: 1500, chance: 0.15, extraCredits: 80, extraXp: 35 },
 ]
 
-/** Fictional placeholders. No real shop or brand appears in the game. */
-export const PICKUP_NAMES = [
-  'The Fashion Hub',
-  'Style Corner',
-  'The Wardrobe Room',
-  'Thread & Needle',
-  'The Outfit Depot',
-  'The Dress Rack',
-  'Fabric Lane',
-  'The Stitch Studio',
-  'Hem & Hanger',
-  'The Closet Corner',
-]
+/** A fictional name. No real shop or brand appears in the game. */
+export const DARK_STORE_NAME = 'Deliver It dark store'

@@ -1,0 +1,30 @@
+3D models in traffic.glb. Each was changed for this game: interiors removed, rebuilt as a
+simplified low-detail mesh, rescaled, and textures replaced by colours. Vehicle badges are removed.
+The game has no connection with, or endorsement from, any vehicle maker.
+
+All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+"2022 Maruti Suzuki Swift Dzire" by BHP3D
+  https://sketchfab.com/3d-models/2022-maruti-suzuki-swift-dzire-95451c00cb2d48778f67d798167e7237
+"2020 Maruti Suzuki Alto 800" by BHP3D
+  https://sketchfab.com/3d-models/2020-maruti-suzuki-alto-800-dad66ee4a05a4f51bd0b9bf64ba6d4ef
+"2022 Mahindra Scorpio-N" by BHP3D
+  https://sketchfab.com/3d-models/2022-mahindra-scorpio-n-538b10f2860f44e694dc3e9d3e223bf8
+"Renault Triber" by BHP3D
+  https://sketchfab.com/3d-models/renault-triber-ab5d7009da494dc0bff20fb0f0d3d8e9
+"Autorikshaw - Indian Tuk Tuk" by bhagathartworks
+  https://sketchfab.com/3d-models/autorikshaw-indian-tuk-tuk-5775d012693741008acff9dad410e92d
+"Checkers Sixty60 Bike" by Caitlin Pillay (repainted black and white, number plate removed)
+  https://sketchfab.com/3d-models/checkers-sixty60-bike-4aabf2a85abd43f98fc4e5f2a5ae62f1
+"Indian Man In Dhoti" by anandmohan662
+  https://sketchfab.com/3d-models/indian-man-in-dhoti-54b9e050d0d6424b848a04bec02a85d0
+"Indian Teenager" by Pixel_Monster
+  https://sketchfab.com/3d-models/indian-teenager-b2804b40f671431ca7b5cc53b239175e
+
+city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
+
+yamaha.glb is licensed differently, and is kept in its own file:
+"Yamaha YZF 2021" by VTX, CC BY-NC-SA 4.0: https://creativecommons.org/licenses/by-nc-sa/4.0/
+  https://sketchfab.com/3d-models/yamaha-yzf-2021-0af46985abc54219be3aaf0991f5a3de
+This changed version (simplified, textures replaced by colours, recoloured) is shared under the same
+licence, and may not be used commercially.

@@ -8,8 +8,6 @@ const TRIM = '#1f2023'
 const BODY = '#ffffff'
 const AUTO_ROOF = '#1c1c1c'
 const LIGHT = '#f4f1e2'
-const TAIL = '#b3241d'
-const SKIN = '#8a5a3c'
 
 type Point = [along: number, height: number]
 
@@ -65,45 +63,48 @@ export function createAutoGeometry(): THREE.BufferGeometry {
   ])
 }
 
-/** A motorbike with its rider, whose helmet and body take the bike's own colour. */
-export function createBikeGeometry(): THREE.BufferGeometry {
-  const torso = new THREE.CylinderGeometry(0.15, 0.19, 0.6, 7)
-  torso.rotateX(0.32)
-  torso.translate(0, 1.18, -0.2)
+const TROUSERS = '#39404c'
+const GLOVE = '#1f2023'
 
-  const helmet = new THREE.SphereGeometry(0.15, 8, 6)
-  helmet.translate(0, 1.6, -0.02)
+type Joint = [x: number, y: number, z: number]
 
-  const leg = (x: number) => {
-    const part = new THREE.CylinderGeometry(0.075, 0.06, 0.62, 5)
-    part.rotateX(-1.1)
-    part.translate(x, 0.72, 0.02)
-    return colored(part.toNonIndexed(), '#2b3442')
-  }
-  const arm = (x: number) => {
-    const part = new THREE.CylinderGeometry(0.045, 0.045, 0.62, 5)
-    part.rotateX(1)
-    part.translate(x, 1.16, 0.2)
-    return colored(part.toNonIndexed(), SKIN)
-  }
+/** A round bar from one joint to another, with a ball at the far end so bends look solid. */
+function limb(from: Joint, to: Joint, radius: number, color: string): THREE.BufferGeometry[] {
+  const start = new THREE.Vector3(...from)
+  const end = new THREE.Vector3(...to)
+  const direction = end.clone().sub(start)
 
-  return merge([
-    box([0.18, 0.3, 0.5], [0, 0.66, 0.1], BODY),
-    box([0.24, 0.14, 0.72], [0, 0.82, -0.32], TRIM),
-    box([0.14, 0.2, 0.3], [0, 0.72, -0.72], BODY),
-    box([0.06, 0.62, 0.06], [0, 0.72, 0.56], TRIM),
-    box([0.62, 0.04, 0.05], [0, 1.03, 0.5], TRIM),
-    box([0.16, 0.16, 0.05], [0, 0.92, 0.64], LIGHT),
-    box([0.12, 0.08, 0.05], [0, 0.8, -0.88], TAIL),
-    ...wheel(0, 0.68, 0.3, 0.1),
-    ...wheel(0, -0.68, 0.3, 0.1),
-    colored(torso.toNonIndexed(), BODY),
-    colored(helmet.toNonIndexed(), BODY),
-    leg(-0.14),
-    leg(0.14),
-    arm(-0.2),
-    arm(0.2),
+  const bar = new THREE.CylinderGeometry(radius, radius, direction.length(), 7)
+  bar.applyQuaternion(
+    new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize()),
+  )
+  bar.translate(...start.clone().add(end).multiplyScalar(0.5).toArray())
+
+  const joint = new THREE.SphereGeometry(radius, 7, 5)
+  joint.translate(...to)
+  return [colored(bar.toNonIndexed(), color), colored(joint.toNonIndexed(), color)]
+}
+
+/**
+ * A motorbike rider, who takes their bike's colour. The joints are measured from
+ * the Yamaha in `models/yamaha.glb`: crouched forward, with hands on its low bars.
+ */
+export function createBikeRiderGeometry(): THREE.BufferGeometry {
+  const body = new THREE.CylinderGeometry(0.15, 0.17, 0.5, 8)
+  body.rotateX(0.62)
+  body.translate(0, 1.07, -0.16)
+
+  const helmet = new THREE.SphereGeometry(0.135, 10, 8)
+  helmet.translate(0, 1.42, 0.1)
+
+  const sides = [-1, 1].flatMap((side) => [
+    ...limb([side * 0.16, 1.27, -0.02], [side * 0.26, 1.09, 0.13], 0.05, BODY),
+    ...limb([side * 0.26, 1.09, 0.13], [side * 0.3, 0.98, 0.33], 0.042, GLOVE),
+    ...limb([side * 0.1, 0.87, -0.32], [side * 0.2, 0.74, 0], 0.075, TROUSERS),
+    ...limb([side * 0.2, 0.74, 0], [side * 0.18, 0.4, -0.2], 0.06, TROUSERS),
   ])
+
+  return merge([colored(body.toNonIndexed(), BODY), colored(helmet.toNonIndexed(), BODY), ...sides])
 }
 
 /** A parked scooter on its stand. White parts take on each scooter's own colour. */

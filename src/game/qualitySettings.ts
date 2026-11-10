@@ -3,6 +3,9 @@ export type Quality = 'low' | 'medium' | 'high'
 /** How much surface texture to draw: none, colour only, or colour with bumps. */
 export type SurfaceDetail = 'plain' | 'color' | 'bumps'
 
+/** How much of the city kit to draw: planters, then cornices and doors, then whole walls. */
+export type KitDetail = 0 | 1 | 2
+
 type QualityPreset = {
   label: string
   /** Rendering resolution, as [lowest, highest] pixels per screen point. */
@@ -11,6 +14,7 @@ type QualityPreset = {
   shadowSize: number
   windows: boolean
   surfaces: SurfaceDetail
+  kitDetail: KitDetail
   treeShadows: boolean
   /** How far you can see. Map squares further away aren't drawn, in metres. */
   drawDistance: number
@@ -34,6 +38,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSize: 0,
     windows: false,
     surfaces: 'plain',
+    kitDetail: 0,
     treeShadows: false,
     drawDistance: 280,
     propDistance: 140,
@@ -50,6 +55,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSize: 2048,
     windows: true,
     surfaces: 'color',
+    kitDetail: 1,
     treeShadows: false,
     drawDistance: 400,
     propDistance: 200,
@@ -66,6 +72,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSize: 4096,
     windows: true,
     surfaces: 'bumps',
+    kitDetail: 2,
     treeShadows: true,
     drawDistance: 520,
     propDistance: 260,

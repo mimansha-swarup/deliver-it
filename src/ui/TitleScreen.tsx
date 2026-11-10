@@ -20,6 +20,8 @@ export function TitleScreen() {
           <dd>Brake</dd>
           <dt>Hold Space and steer</dt>
           <dd>Drift, then let go to boost</dd>
+          <dt>P</dt>
+          <dd>Bring up your phone</dd>
         </dl>
 
         <QualityPicker className="quality-title" />

@@ -1,56 +1,8 @@
 import { useGameStore } from '../game/gameStore'
-import { getCurrentStop } from '../missions/missionLogic'
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60)
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
-}
-
-function MissionPanel() {
-  const phase = useGameStore((state) => state.phase)
-  const mission = useGameStore((state) => state.mission)
-  const distance = useGameStore((state) => state.distance)
-  const seconds = useGameStore((state) => state.seconds)
-  const inZone = useGameStore((state) => state.inZone)
-
-  const stop = getCurrentStop(mission, phase)
-  if (!stop || !mission) return null
-
-  const timeLeft = mission.onTimeSeconds - seconds
-
-  return (
-    <section className="hud-card hud-mission">
-      <p className="hud-label" style={{ color: stop.color }}>
-        {stop.objective} · {mission.tier.label}
-      </p>
-      <p className="hud-title">{stop.name}</p>
-      <p className="hud-detail">{inZone ? stop.arrivalHint : `${distance} m by road`}</p>
-      <p className="hud-detail">
-        {timeLeft >= 0 ? `${formatTime(timeLeft)} for on-time bonus` : 'On-time bonus missed'}
-      </p>
-    </section>
-  )
-}
-
-function Wallet() {
-  const credits = useGameStore((state) => state.credits)
-  const xp = useGameStore((state) => state.xp)
-
-  return (
-    <section className="hud-card hud-wallet">
-      <p>
-        <span className="hud-value">{credits}</span> credits
-      </p>
-      <p>
-        <span className="hud-value">{xp}</span> XP
-      </p>
-    </section>
-  )
-}
-
-function SkyClock() {
-  const clock = useGameStore((state) => state.clock)
-  return <section className="hud-card hud-clock">{clock}</section>
 }
 
 /** Says so plainly, as the package always survives. */
@@ -61,6 +13,18 @@ function CrashNotice() {
   return (
     <p className="hud-crash" role="status">
       Crash! <span>Package is safe</span>
+    </p>
+  )
+}
+
+/** Says what's happening while the rider is held still. */
+function HandoffNotice() {
+  const phase = useGameStore((state) => state.phase)
+  if (phase !== 'collecting' && phase !== 'handingOver') return null
+
+  return (
+    <p className="hud-handoff" role="status">
+      {phase === 'collecting' ? 'Collecting the order' : 'Handing over the order'}
     </p>
   )
 }
@@ -119,11 +83,9 @@ function DeliveryComplete() {
 export function Hud() {
   return (
     <>
-      <MissionPanel />
-      <Wallet />
-      <SkyClock />
       <Speedometer />
       <CrashNotice />
+      <HandoffNotice />
       <DeliveryComplete />
     </>
   )

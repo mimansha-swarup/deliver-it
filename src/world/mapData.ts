@@ -1,3 +1,4 @@
+import { classifyBuildings, type BuildingKind } from './buildingKinds'
 import type { LonLat } from './worldUtils'
 
 type Properties = Record<string, string | undefined>
@@ -17,8 +18,11 @@ export type PointFeature = Feature<Extract<Geometry, { type: 'Point' }>>
 export type LineFeature = Feature<Extract<Geometry, { type: 'LineString' }>>
 export type PolygonFeature = Feature<Extract<Geometry, { type: 'Polygon' }>>
 
+/** A building, with what it's used for worked out from the map. */
+export type BuildingFeature = PolygonFeature & { kind: BuildingKind }
+
 export type MapData = {
-  buildings: PolygonFeature[]
+  buildings: BuildingFeature[]
   roads: LineFeature[]
   footways: LineFeature[]
   /** Parks, playgrounds and sports pitches. */
@@ -34,12 +38,14 @@ const NOT_DRIVABLE = new Set(['footway', 'path'])
 
 function sortFeatures(features: Feature[]): MapData {
   const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [] }
+  const buildings: PolygonFeature[] = []
+  const areas: PolygonFeature[] = []
 
   for (const feature of features) {
     const { geometry, properties } = feature
 
     if (geometry.type === 'Polygon' && properties.building) {
-      data.buildings.push({ ...feature, geometry })
+      buildings.push({ ...feature, geometry })
     } else if (geometry.type === 'Polygon' && GREEN_SPACES.has(properties.leisure ?? '')) {
       data.parks.push({ ...feature, geometry })
     } else if (geometry.type === 'LineString' && properties.highway) {
@@ -47,9 +53,12 @@ function sortFeatures(features: Feature[]): MapData {
       layer.push({ ...feature, geometry })
     } else if (geometry.type === 'Point') {
       data.places.push({ ...feature, geometry })
+    } else if (geometry.type === 'Polygon') {
+      areas.push({ ...feature, geometry })
     }
   }
 
+  data.buildings = classifyBuildings(buildings, data.places, areas)
   return data
 }
 
@@ -62,8 +71,12 @@ async function fetchMapData(): Promise<MapData> {
   const { features } = (await response.json()) as { features: Feature[] }
   const data = sortFeatures(features)
 
+  const buildingKinds: Partial<Record<BuildingKind, number>> = {}
+  for (const { kind } of data.buildings) buildingKinds[kind] = (buildingKinds[kind] ?? 0) + 1
+
   console.info('[map] loaded', {
     buildings: data.buildings.length,
+    buildingKinds,
     roads: data.roads.length,
     footways: data.footways.length,
     places: data.places.length,

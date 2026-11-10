@@ -3,13 +3,15 @@ import type { Group } from 'three'
 import { FollowCamera } from '../camera/FollowCamera'
 import { TitleCamera } from '../camera/TitleCamera'
 import { useGameStore } from '../game/gameStore'
+import { Handoff } from '../missions/Handoff'
 import { MissionMarker } from '../missions/MissionMarker'
 import { createMissionPlanner } from '../missions/missionPlanner'
 import { MissionTracker } from '../missions/MissionTracker'
 import type { CollisionWorld } from '../world/collision'
-import type { MapData } from '../world/mapData'
+import type { DarkStore } from '../world/darkStore'
 import type { RoadGraph } from '../world/roadGraph'
 import { Traffic } from '../traffic/Traffic'
+import { TrafficLights } from '../traffic/TrafficLights'
 import type { TrafficWorld } from '../traffic/trafficLogic'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
@@ -17,20 +19,20 @@ import { SkidMarks } from './SkidMarks'
 import { createScooterState } from './ScooterController'
 
 type PlayerProps = {
-  data: MapData
+  store: DarkStore
   collisions: CollisionWorld
   graph: RoadGraph
   traffic: TrafficWorld
 }
 
-export function Player({ data, collisions, graph, traffic }: PlayerProps) {
+export function Player({ store, collisions, graph, traffic }: PlayerProps) {
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
   useEffect(() => {
     const { x, z } = scooterState.current
-    useGameStore.getState().startMissions(createMissionPlanner(data, collisions, graph), x, z)
-  }, [data, collisions, graph])
+    useGameStore.getState().startMissions(createMissionPlanner(store, collisions, graph), x, z)
+  }, [store, collisions, graph])
 
   return (
     <>
@@ -44,7 +46,9 @@ export function Player({ data, collisions, graph, traffic }: PlayerProps) {
       )}
       <MissionTracker scooter={scooterState} />
       <MissionMarker />
+      <Handoff scooter={scooterState} store={store} collisions={collisions} />
       <Traffic scooter={scooterState} world={traffic} />
+      <TrafficLights world={traffic} />
     </>
   )
 }

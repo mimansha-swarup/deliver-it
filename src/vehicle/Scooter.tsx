@@ -1,43 +1,27 @@
 import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useGLTF } from '@react-three/drei'
+import { useFrame, useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 import { BufferGeometry, DoubleSide, Float32BufferAttribute, type Group } from 'three'
 import { useGameStore } from '../game/gameStore'
+import { liveSky } from '../game/livePlayer'
+import { getStreetReflection } from '../traffic/carModel'
+import {
+  DELIVERY_BIKE_COLOR,
+  getModel,
+  paintModel,
+  TRAFFIC_MODELS_URL,
+} from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
-import { stepScooter, type ScooterState } from './ScooterController'
+import { Rider, STEERING_Z } from './Rider'
+import { HOLD_INPUT, stepScooter, type ScooterState } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
-import { SCOOTER } from './vehicleConfig'
-
-const BODY_COLOR = '#d9482b'
-const TRIM_COLOR = '#23252a'
-const METAL_COLOR = '#9a9da3'
-const BOX_COLOR = '#e8e4d8'
 
 /** Longest a single frame may count for, so a paused tab can't cause a huge jump. */
 const MAX_FRAME_TIME = 0.05
 
 /** How far the front wheel visibly turns at full lock, in radians. */
 const MAX_FRONT_WHEEL_ANGLE = 0.45
-
-const WHEEL_WIDTH = 0.1
-
-function Wheel({ spinRef, z }: { spinRef: Ref<Group>; z: number }) {
-  const radius = SCOOTER.wheelRadius
-
-  return (
-    <group ref={spinRef} position={[0, radius, z]}>
-      {/* Cylinders stand upright by default, so this lays the wheel on its side. */}
-      <mesh rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[radius, radius, WHEEL_WIDTH, 20]} />
-        <meshStandardMaterial color={TRIM_COLOR} roughness={0.9} />
-      </mesh>
-      {/* A bar across the hub, which makes the spinning visible. */}
-      <mesh>
-        <boxGeometry args={[WHEEL_WIDTH + 0.02, radius * 1.3, 0.05]} />
-        <meshStandardMaterial color={METAL_COLOR} metalness={0.6} roughness={0.4} />
-      </mesh>
-    </group>
-  )
-}
 
 const BLOB_WIDTH = 0.65
 const BLOB_LENGTH = 1.45
@@ -107,64 +91,54 @@ function BlobShadow() {
   )
 }
 
-function ScooterBody() {
+type Materials = ReturnType<typeof createMaterials>
+
+function createMaterials(reflection: THREE.Texture) {
+  return {
+    bike: new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.32,
+      metalness: 0.35,
+      envMap: reflection,
+    }),
+    wheel: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }),
+    headlight: new THREE.MeshStandardMaterial({ color: '#fff6d8', emissive: '#ffe9a8', emissiveIntensity: 0.7 }),
+    tail: new THREE.MeshStandardMaterial({ color: '#a51d16', emissive: '#ff2a1a', emissiveIntensity: 0 }),
+  }
+}
+
+/** Night lifts the brake light and headlight, and dims what the shiny parts reflect. */
+function updateLights(materials: Materials, braking: boolean) {
+  const { look } = liveSky
+  materials.tail.emissiveIntensity = (braking ? 2.2 : 0.3) + look.night * 0.9
+  materials.headlight.emissiveIntensity = 0.7 + look.night * 1.6
+  materials.bike.envMapIntensity = look.ambientIntensity * 0.9
+}
+
+function Wheel({
+  spinRef,
+  position,
+  geometry,
+  material,
+}: {
+  spinRef: Ref<Group>
+  position: [number, number, number]
+  geometry: THREE.BufferGeometry
+  material: THREE.Material
+}) {
   return (
-    <>
-      {/* Footboard */}
-      <mesh position={[0, 0.3, 0.1]}>
-        <boxGeometry args={[0.34, 0.09, 0.72]} />
-        <meshStandardMaterial color={TRIM_COLOR} roughness={0.8} />
-      </mesh>
-      {/* Rear body */}
-      <mesh position={[0, 0.5, -0.42]}>
-        <boxGeometry args={[0.36, 0.42, 0.78]} />
-        <meshStandardMaterial color={BODY_COLOR} roughness={0.45} />
-      </mesh>
-      {/* Seat */}
-      <mesh position={[0, 0.76, -0.36]}>
-        <boxGeometry args={[0.3, 0.1, 0.66]} />
-        <meshStandardMaterial color={TRIM_COLOR} roughness={0.7} />
-      </mesh>
-      {/* Leg shield, tilted back toward the rider */}
-      <mesh position={[0, 0.62, 0.46]} rotation={[-0.22, 0, 0]}>
-        <boxGeometry args={[0.4, 0.68, 0.07]} />
-        <meshStandardMaterial color={BODY_COLOR} roughness={0.45} />
-      </mesh>
-      {/* Delivery box */}
-      <mesh position={[0, 1.02, -0.62]}>
-        <boxGeometry args={[0.46, 0.44, 0.46]} />
-        <meshStandardMaterial color={BOX_COLOR} roughness={0.6} />
-      </mesh>
-    </>
+    <group ref={spinRef} position={position}>
+      <mesh geometry={geometry} material={material} castShadow />
+    </group>
   )
 }
 
-function Handlebars() {
-  return (
-    <>
-      {/* Steering column */}
-      <mesh position={[0, 0.82, 0]}>
-        <cylinderGeometry args={[0.03, 0.03, 0.42, 8]} />
-        <meshStandardMaterial color={METAL_COLOR} metalness={0.6} roughness={0.4} />
-      </mesh>
-      {/* Bars */}
-      <mesh position={[0, 1.03, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.02, 0.02, 0.66, 8]} />
-        <meshStandardMaterial color={TRIM_COLOR} roughness={0.7} />
-      </mesh>
-      {/* Headlight */}
-      <mesh position={[0, 0.97, 0.07]}>
-        <sphereGeometry args={[0.07, 12, 12]} />
-        <meshStandardMaterial color="#fff6d8" emissive="#ffe9a8" emissiveIntensity={0.7} />
-      </mesh>
-    </>
-  )
-}
+type WheelData = { wheelPositions: [number, number, number][] }
 
 /**
- * The scooter's nesting matches how it moves. The outer group carries position
- * and direction, the lean group tilts everything, and the steering group turns
- * only the front end. Each part inherits the movement of the groups around it.
+ * The bike's nesting matches how it moves. The outer group carries position and
+ * direction, the lean group tilts everything, and the steering group turns only
+ * the front end. Each part inherits the movement of the groups around it.
  */
 export function Scooter({
   ref,
@@ -176,6 +150,31 @@ export function Scooter({
   collisions: CollisionWorld
 }) {
   const input = useDriveInput()
+  const gl = useThree((state) => state.gl)
+  const reflection = getStreetReflection(gl)
+  const materials = useMemo(() => createMaterials(reflection), [reflection])
+  const { scene } = useGLTF(TRAFFIC_MODELS_URL)
+
+  const parts = useMemo(
+    () => ({
+      body: paintModel(getModel(scene, 'delivery'), DELIVERY_BIKE_COLOR),
+      front: paintModel(getModel(scene, 'delivery-front'), DELIVERY_BIKE_COLOR),
+    }),
+    [scene],
+  )
+  const wheelGeometry = useMemo(() => getModel(scene, 'delivery-wheel'), [scene])
+  const [frontAxle, rearAxle] = useMemo(() => {
+    const { wheelPositions } = scene.getObjectByName('delivery')?.userData as WheelData
+    return [...wheelPositions].sort((a, b) => b[2] - a[2])
+  }, [scene])
+
+  useEffect(
+    () => () => {
+      Object.values(materials).forEach((material) => material.dispose())
+      Object.values(parts).forEach((geometry) => geometry.dispose())
+    },
+    [materials, parts],
+  )
 
   const lean = useRef<Group>(null)
   const steering = useRef<Group>(null)
@@ -184,8 +183,12 @@ export function Scooter({
 
   useFrame((_, delta) => {
     const state = scooterState.current
-    if (useGameStore.getState().started) {
-      stepScooter(state, input.current, collisions, Math.min(delta, MAX_FRAME_TIME))
+    updateLights(materials, input.current.backward && state.speed > 0.5)
+    const { started, phase } = useGameStore.getState()
+    if (started) {
+      const handingOver = phase === 'collecting' || phase === 'handingOver'
+      const controls = handingOver ? HOLD_INPUT : input.current
+      stepScooter(state, controls, collisions, Math.min(delta, MAX_FRAME_TIME))
     }
 
     if (ref.current) {
@@ -205,12 +208,33 @@ export function Scooter({
     <group ref={ref}>
       <BlobShadow />
       <group ref={lean}>
-        <ScooterBody />
-        <Wheel spinRef={rearWheel} z={-0.62} />
-        <group ref={steering} position={[0, 0, 0.56]}>
-          <Handlebars />
-          <Wheel spinRef={frontWheel} z={0.14} />
+        <mesh geometry={parts.body} material={materials.bike} />
+        <Wheel
+          spinRef={rearWheel}
+          position={rearAxle}
+          geometry={wheelGeometry}
+          material={materials.wheel}
+        />
+        <mesh position={[0, 0.72, -0.9]} material={materials.tail}>
+          <boxGeometry args={[0.16, 0.05, 0.03]} />
+        </mesh>
+
+        {/* Everything that turns with the bars, moved so that it turns around the steering axis. */}
+        <group ref={steering} position={[0, 0, STEERING_Z]}>
+          <group position={[0, 0, -STEERING_Z]}>
+            <mesh geometry={parts.front} material={materials.bike} />
+            <Wheel
+              spinRef={frontWheel}
+              position={frontAxle}
+              geometry={wheelGeometry}
+              material={materials.wheel}
+            />
+            <mesh position={[0, 0.91, 0.62]} scale={[1, 1, 0.4]} material={materials.headlight}>
+              <sphereGeometry args={[0.07, 14, 12]} />
+            </mesh>
+          </group>
         </group>
+        <Rider scooter={scooterState} steerAngle={MAX_FRONT_WHEEL_ANGLE} reflection={reflection} />
       </group>
     </group>
   )

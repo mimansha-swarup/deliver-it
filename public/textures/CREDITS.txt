@@ -8,3 +8,9 @@ ground-color.jpg                        Grass Path 2       https://polyhaven.com
 leaf-color.jpg, leaf-alpha.jpg          Jacaranda Tree     https://polyhaven.com/a/jacaranda_tree
 grass-color.jpg, grass-alpha.jpg        Grass Medium 01    https://polyhaven.com/a/grass_medium_01
 bark-color.jpg                          Bark Brown 02      https://polyhaven.com/a/bark_brown_02
+
+From Downtown City MegaKit [Standard] by Quaternius (https://quaternius.com), licensed CC0 1.0. Resized for this project.
+
+concrete-color.jpg, concrete-normal.jpg  Concrete
+brick-color.jpg, brick-normal.jpg        Red Brick
+../models/city-kit.glb                   12 of the kit's models, packed by scripts/prepare_city_kit.py

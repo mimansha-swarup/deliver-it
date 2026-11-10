@@ -1,5 +1,5 @@
 import { FLOOR_HEIGHT, getFloors, hashString } from './buildingData'
-import type { PolygonFeature } from './mapData'
+import type { BuildingFeature } from './mapData'
 import type { Prop } from './props'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
@@ -18,13 +18,13 @@ function fitsOnRoof(outline: GroundPoint[], x: number, z: number): boolean {
   )
 }
 
-/** Puts black plastic tanks on most roofs, as on most Bengaluru homes. */
-export function generateRoofTanks(buildings: PolygonFeature[]): Prop[] {
+/** Puts black plastic tanks on most roofs, as on most Bengaluru homes. Offices don't get them. */
+export function generateRoofTanks(buildings: BuildingFeature[]): Prop[] {
   const tanks: Prop[] = []
 
   for (const building of buildings) {
     const ring = building.geometry.coordinates[0]
-    if (!isRingInPlayArea(ring)) continue
+    if (!isRingInPlayArea(ring) || building.kind === 'office') continue
 
     const hash = hashString(building.id)
     if (hash % 100 >= TANK_CHANCE) continue

@@ -71,6 +71,15 @@ export function createScooterState(): ScooterState {
   }
 }
 
+/** Brings the scooter to a gentle stop, while a parcel changes hands. */
+export const HOLD_INPUT: DriveInput = {
+  forward: false,
+  backward: false,
+  left: false,
+  right: false,
+  handbrake: true,
+}
+
 const NO_INPUT: DriveInput = {
   forward: false,
   backward: false,
@@ -92,8 +101,27 @@ function startCrash(state: ScooterState, side: number, strength: number) {
 }
 
 /**
+ * Turns a scooter that's pressed against something towards running along it.
+ * Steering fades out at low speed, so a nose against a wall can neither move nor
+ * turn without this. It goes the way the rider is steering, or else the nearest way.
+ */
+function nudgeAlongSurface(state: ScooterState, normalX: number, normalZ: number, dt: number) {
+  const towards = Math.atan2(normalZ, -normalX)
+  const turnA = angleBetween(state.heading, towards)
+  const turnB = angleBetween(state.heading, towards + Math.PI)
+
+  const wanted = Math.sign(state.steer)
+  const nearest = Math.abs(turnA) < Math.abs(turnB) ? turnA : turnB
+  const steered = Math.sign(turnA) === wanted ? turnA : turnB
+  const turn = wanted === 0 ? nearest : steered
+
+  state.heading += turn * (1 - Math.exp(-SCOOTER.wallNudgeRate * dt))
+}
+
+/**
  * Applies a hit from something that isn't a wall. `changeX` and `changeZ` are
  * the speed the hit adds, and `pushX` and `pushZ` move the scooter clear of it.
+ * It's called every frame the two touch, so `dt` is what a gentle press acts over.
  */
 export function applyImpact(
   state: ScooterState,
@@ -101,7 +129,15 @@ export function applyImpact(
   changeZ: number,
   pushX: number,
   pushZ: number,
+  dt: number,
 ) {
+  const pushLength = Math.hypot(pushX, pushZ)
+  if (pushLength > 0) {
+    const pressing =
+      state.velocityX * pushX + state.velocityZ * pushZ < 0 && state.crashLeft === 0
+    if (pressing) nudgeAlongSurface(state, pushX / pushLength, pushZ / pushLength, dt)
+  }
+
   state.x += pushX
   state.z += pushZ
   state.velocityX += changeX
@@ -283,6 +319,7 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
     const bounce = isCrash ? hitSpeed * SCOOTER.wallBounce : 0
     state.velocityX = normalX * bounce
     state.velocityZ = normalZ * bounce
+    if (!isCrash) nudgeAlongSurface(state, normalX, normalZ, dt)
     return
   }
 

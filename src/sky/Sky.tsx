@@ -11,7 +11,6 @@ import {
   formatClock,
   getSkyLook,
   stepSky,
-  WEATHERS,
   type Rgb,
 } from './skyLogic'
 
@@ -132,6 +131,9 @@ function setColor(color: THREE.Color, [red, green, blue]: Rgb) {
   color.setRGB(red, green, blue, THREE.SRGBColorSpace)
 }
 
+/** Past this much darkness, the phone shows a moon instead of a sun. */
+const NIGHT_ICON_LEVEL = 0.5
+
 /** Runs the clock and the weather, and paints the sky. Everything else reads `liveSky`. */
 export function Sky() {
   const { skyClouds, rainDrops } = useGameStore((state) => QUALITY_PRESETS[state.quality])
@@ -172,8 +174,12 @@ export function Sky() {
     if (scene.fog) setColor(scene.fog.color, look.horizon)
     dome.current?.position.copy(camera.position)
 
-    const clock = `${formatClock(sky.hours)} · ${WEATHERS[sky.weather].label}`
-    if (useGameStore.getState().clock !== clock) useGameStore.getState().setClock(clock)
+    const skyTime = formatClock(sky.hours)
+    const night = look.night > NIGHT_ICON_LEVEL
+    const shown = useGameStore.getState()
+    if (shown.skyTime !== skyTime || shown.weather !== sky.weather || shown.night !== night) {
+      shown.setSky(skyTime, sky.weather, night)
+    }
   })
 
   return (

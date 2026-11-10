@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { calculateReward } from '../missions/missionLogic'
 import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
+import type { WeatherName } from '../sky/skyLogic'
 import { livePlayer } from './livePlayer'
 import type { Quality } from './qualitySettings'
 
@@ -28,10 +29,15 @@ type GameState = Telemetry & {
   xp: number
   quality: Quality
   lastReward: Reward | null
+  /** What the order in the customer's hands will pay, once they've taken it. */
+  pendingReward: Reward | null
   /** Crashes on the current delivery. */
   crashes: number
-  /** The time and the weather, as shown on screen. */
-  clock: string
+  /** The time of day in the game, as shown on the phone. */
+  skyTime: string
+  weather: WeatherName
+  /** Whether it's dark, which turns the phone's sun into a moon. */
+  night: boolean
 
   startGame: () => void
   setQuality: (quality: Quality) => void
@@ -39,9 +45,11 @@ type GameState = Telemetry & {
   startMissions: (planner: MissionPlanner, fromX: number, fromZ: number) => void
   /** Moves the mission on when the scooter reaches the current stop. */
   arriveAtStop: (seconds: number) => void
+  /** Moves on once the parcel has changed hands. */
+  finishHandoff: () => void
   nextMission: () => void
   setTelemetry: (telemetry: Telemetry) => void
-  setClock: (clock: string) => void
+  setSky: (skyTime: string, weather: WeatherName, night: boolean) => void
   recordCrash: () => void
 }
 
@@ -66,7 +74,10 @@ export const useGameStore = create<GameState>()(
       xp: 0,
       quality: 'high',
       lastReward: null,
-      clock: '',
+      pendingReward: null,
+      skyTime: '',
+      weather: 'clear',
+      night: false,
 
       startGame: () => set({ started: true }),
 
@@ -79,14 +90,28 @@ export const useGameStore = create<GameState>()(
 
       arriveAtStop: (seconds) =>
         set((state) => {
-          if (state.phase === 'toPickup') return { phase: 'toCustomer' }
+          if (state.phase === 'toPickup') return { phase: 'collecting' }
           if (state.phase !== 'toCustomer' || !state.mission) return state
 
+          // The clock stops on arrival, so the handover can't cost the rider a bonus.
           const { onTimeSeconds, tier } = state.mission
-          const reward = calculateReward(seconds, onTimeSeconds, tier, state.crashes)
+          return {
+            phase: 'handingOver',
+            pendingReward: calculateReward(seconds, onTimeSeconds, tier, state.crashes),
+          }
+        }),
+
+      finishHandoff: () =>
+        set((state) => {
+          if (state.phase === 'collecting') return { phase: 'toCustomer' }
+
+          const reward = state.pendingReward
+          if (state.phase !== 'handingOver' || !reward) return state
+
           return {
             phase: 'delivered',
             lastReward: reward,
+            pendingReward: null,
             credits:
               state.credits +
               reward.baseCredits +
@@ -95,7 +120,7 @@ export const useGameStore = create<GameState>()(
               reward.cleanRideCredits,
             xp: state.xp + reward.xp,
           }
-    }),
+        }),
 
   nextMission: () =>
     set((state) => ({
@@ -109,7 +134,7 @@ export const useGameStore = create<GameState>()(
     })),
 
   setTelemetry: (telemetry) => set(telemetry),
-  setClock: (clock) => set({ clock }),
+  setSky: (skyTime, weather, night) => set({ skyTime, weather, night }),
   recordCrash: () => set((state) => ({ crashes: state.crashes + 1 })),
     }),
     {

@@ -24,7 +24,7 @@ export function DirectionArrow() {
     let shownAngle = 0
 
     const update = (time: number) => {
-      const delta = (time - previousTime) / 1000
+      const delta = Math.max(0, (time - previousTime) / 1000)
       previousTime = time
 
       const bearing = Math.atan2(liveRoute.aimX - livePlayer.x, liveRoute.aimZ - livePlayer.z)

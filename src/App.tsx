@@ -5,7 +5,7 @@ import { QUALITY_PRESETS } from './game/qualitySettings'
 import { DirectionArrow } from './ui/DirectionArrow'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Hud } from './ui/Hud'
-import { Minimap } from './ui/Minimap'
+import { Phone } from './ui/Phone'
 import { QualityPicker } from './ui/QualityPicker'
 import { TitleScreen } from './ui/TitleScreen'
 import { ViewDistance } from './world/ViewDistance'
@@ -23,11 +23,9 @@ function GameUi() {
       <Hud />
       <QualityPicker className="quality-hud" />
       <DirectionArrow />
-      <Suspense fallback={null}>
-        <Minimap />
-      </Suspense>
+      <Phone />
 
-      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · N skips time · M changes weather</p>
+      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · P phone · N skips time · M changes weather</p>
     </>
   )
 }
@@ -50,14 +48,15 @@ function App() {
         <GameUi />
       </ErrorBoundary>
 
-      <a
-        className="attribution"
-        href="https://www.openstreetmap.org/copyright"
-        target="_blank"
-        rel="noreferrer"
-      >
-        © OpenStreetMap contributors
-      </a>
+      <p className="attribution">
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+          © OpenStreetMap contributors
+        </a>
+        {' · '}
+        <a href={`${import.meta.env.BASE_URL}models/CREDITS.txt`} target="_blank" rel="noreferrer">
+          3D model credits
+        </a>
+      </p>
     </>
   )
 }
