@@ -2,7 +2,7 @@ import * as THREE from 'three'
 
 /** The T-shirt worn by the rider and the dark store's staff. */
 export const SHIRT_COLOR = '#121316'
-const SHIRT_PRINT = 'SILK'
+const SHIRT_PRINT = 'KILLS'
 const PRINT_COLOR = '#f4f3ef'
 const PRINT_FONT = "900 210px Impact, 'Arial Black', Arial, sans-serif"
 /** How narrow the letters get, and how far they lean. */

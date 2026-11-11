@@ -221,6 +221,14 @@ function engineForce(speed: number, boosting: boolean): number {
   return boosting ? engine + SCOOTER.boostAcceleration : engine
 }
 
+/**
+ * Slower than this, in metres per second, counts as stopped, so the throttle or
+ * reverse drives instead of braking. Without it, a crash's fading spin leaves a
+ * rounding-error speed such as -0.00000001 every frame. The throttle then
+ * "brakes" that to zero, again and again, and the scooter never moves off.
+ */
+const STOPPED_SPEED = 0.05
+
 /** Returns the new speed along the scooter's direction. */
 function applyControls(speed: number, state: ScooterState, input: DriveInput, dt: number): number {
   const boosting = state.boostLeft > 0
@@ -231,12 +239,12 @@ function applyControls(speed: number, state: ScooterState, input: DriveInput, dt
     return moveToward(speed, 0, drag * dt)
   }
   if (input.forward) {
-    if (speed < 0) return moveToward(speed, 0, SCOOTER.braking * dt)
+    if (speed < -STOPPED_SPEED) return moveToward(speed, 0, SCOOTER.braking * dt)
     if (speed > limit) return moveToward(speed, limit, SCOOTER.overspeedDrag * dt)
     return moveToward(speed, limit, engineForce(speed, boosting) * dt)
   }
   if (input.backward) {
-    if (speed > 0) return moveToward(speed, 0, SCOOTER.braking * dt)
+    if (speed > STOPPED_SPEED) return moveToward(speed, 0, SCOOTER.braking * dt)
     return moveToward(speed, -SCOOTER.maxReverseSpeed, SCOOTER.reverseAcceleration * dt)
   }
   return moveToward(speed, 0, (speed > limit ? SCOOTER.overspeedDrag : SCOOTER.coasting) * dt)

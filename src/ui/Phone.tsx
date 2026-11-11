@@ -4,6 +4,7 @@ import type { Mission, MissionPhase } from '../game/gameTypes'
 import { MISSION_RULES } from '../game/missionConfig'
 import { getCurrentStop } from '../missions/missionLogic'
 import { WEATHERS, type WeatherName } from '../sky/skyLogic'
+import { isTouchDevice } from '../game/touchDevice'
 import { PhoneMap } from './PhoneMap'
 
 const PHONE_KEY = 'KeyP'
@@ -217,7 +218,7 @@ export function Phone() {
             event.currentTarget.blur()
           }}
         >
-          {raised ? 'Put away · P' : 'Open · P'}
+          {isTouchDevice ? (raised ? 'Put away' : 'Open') : raised ? 'Put away · P' : 'Open · P'}
         </button>
       </div>
     </aside>

@@ -6,8 +6,11 @@ import { DirectionArrow } from './ui/DirectionArrow'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Hud } from './ui/Hud'
 import { Phone } from './ui/Phone'
+import { isTouchDevice } from './game/touchDevice'
 import { QualityPicker } from './ui/QualityPicker'
+import { RotatePrompt } from './ui/RotatePrompt'
 import { TitleScreen } from './ui/TitleScreen'
+import { TouchControls } from './ui/TouchControls'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 
@@ -25,7 +28,11 @@ function GameUi() {
       <DirectionArrow />
       <Phone />
 
-      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · P phone · N skips time · M changes weather</p>
+      {isTouchDevice ? (
+        <TouchControls />
+      ) : (
+        <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · P phone · N skips time · M changes weather</p>
+      )}
     </>
   )
 }
@@ -47,6 +54,8 @@ function App() {
 
         <GameUi />
       </ErrorBoundary>
+
+      {isTouchDevice && <RotatePrompt />}
 
       <p className="attribution">
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">

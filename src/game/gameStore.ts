@@ -6,6 +6,7 @@ import type { Mission, MissionPhase, Reward } from './gameTypes'
 import type { WeatherName } from '../sky/skyLogic'
 import { livePlayer } from './livePlayer'
 import type { Quality } from './qualitySettings'
+import { isTouchDevice } from './touchDevice'
 
 type Telemetry = {
   speedKmh: number
@@ -72,7 +73,8 @@ export const useGameStore = create<GameState>()(
       planner: null,
       credits: 0,
       xp: 0,
-      quality: 'high',
+      // Phones start on Low, as they have far less graphics power. A saved choice still wins.
+      quality: isTouchDevice ? 'low' : 'high',
       lastReward: null,
       pendingReward: null,
       skyTime: '',
