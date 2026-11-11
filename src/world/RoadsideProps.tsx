@@ -110,6 +110,68 @@ function createLampGeometry(): THREE.BufferGeometry {
   return lamp
 }
 
+/** The marketing poster on every lamp post, in metres. */
+const POSTER_URL = '/textures/poster-kills.jpg'
+const POSTER_WIDTH = 0.6
+const POSTER_HEIGHT = 0.9
+/** How high its bottom edge is, out of reach of passers-by. */
+const POSTER_BOTTOM = 2.2
+/** How far its middle sits from the post, towards the road, as boards strapped to poles do. */
+const POSTER_OUT = 0.38
+const BOARD_THICKNESS = 0.024
+const BOARD_EDGE = 0.025
+/** A spot in the poster's plain maroon corner, used to colour the board's edges. */
+const BOARD_UV = 0.03
+
+/**
+ * A poster board strapped to a lamp post. It faces along the road, both ways,
+ * so a rider sees it head-on when riding towards the post from either side.
+ *
+ * In a lamp's own space, +X runs along the road and +Z points out over it (see
+ * how `rotation` is worked out in props.ts). So the faces point along ±X, and
+ * the board sits a little way out along +Z.
+ *
+ * Each face is a flat rectangle with the whole image on it. The back face is
+ * the front turned, not mirrored, so the writing reads the right way from
+ * behind too. The board between them takes one colour from the image, so the
+ * whole poster is one shape with one texture, in one draw call.
+ */
+function createPosterGeometry(): THREE.BufferGeometry {
+  const middle = POSTER_BOTTOM + POSTER_HEIGHT / 2
+  const gap = BOARD_THICKNESS / 2 + 0.002
+
+  // A plane starts facing +Z. A quarter turn one way faces it along +X, the other way along -X.
+  const front = new THREE.PlaneGeometry(POSTER_WIDTH, POSTER_HEIGHT)
+  front.rotateY(Math.PI / 2)
+  front.translate(gap, middle, POSTER_OUT)
+
+  const back = new THREE.PlaneGeometry(POSTER_WIDTH, POSTER_HEIGHT)
+  back.rotateY(-Math.PI / 2)
+  back.translate(-gap, middle, POSTER_OUT)
+
+  const board = new THREE.BoxGeometry(
+    BOARD_THICKNESS,
+    POSTER_HEIGHT + BOARD_EDGE * 2,
+    POSTER_WIDTH + BOARD_EDGE * 2,
+  )
+  board.translate(0, middle, POSTER_OUT)
+  const uv = board.getAttribute('uv')
+  for (let index = 0; index < uv.count; index++) uv.setXY(index, BOARD_UV, BOARD_UV)
+
+  const poster = mergeGeometries([front, back, board])
+  if (!poster) throw new Error('Could not merge poster geometry')
+  front.dispose()
+  back.dispose()
+  board.dispose()
+  return poster
+}
+
+function preparePosterTexture(texture: THREE.Texture) {
+  texture.colorSpace = THREE.SRGBColorSpace
+  // Keeps the writing sharp when the poster is seen at an angle.
+  texture.anisotropy = 8
+}
+
 /**
  * Sway, plus two changes for leaf cards. The photo's green is reduced to light
  * and shade, so that each tree's own colour can tint it, flowers included. And
@@ -331,6 +393,8 @@ export function RoadsideProps({
   const [leafColor, leafAlpha, bark] = useTexture(FOLIAGE_TEXTURES, prepareFoliageTextures)
   const leaves = useMemo(() => ({ color: leafColor, alpha: leafAlpha }), [leafColor, leafAlpha])
   const lamp = useMemo(() => createLampGeometry(), [])
+  const poster = useMemo(() => createPosterGeometry(), [])
+  const posterImage = useTexture(POSTER_URL, preparePosterTexture)
   const tank = useMemo(() => createTankGeometry(), [])
   const bench = useMemo(() => createBenchGeometry(), [])
   const lampGlow = useMemo(() => createLampGlowGeometry(), [])
@@ -357,11 +421,12 @@ export function RoadsideProps({
       trunk.dispose()
       canopies.forEach((canopy) => canopy.dispose())
       lamp.dispose()
+      poster.dispose()
       lampGlow.dispose()
       tank.dispose()
       bench.dispose()
     },
-    [trunk, canopies, lamp, lampGlow, tank, bench],
+    [trunk, canopies, lamp, poster, lampGlow, tank, bench],
   )
 
   return (
@@ -387,6 +452,7 @@ export function RoadsideProps({
         />
       ))}
       <PropInstances props={props.lamps} geometry={lamp} color={LAMP_COLOR} sizeRange={0} />
+      <PropInstances props={props.lamps} geometry={poster} color="#ffffff" sizeRange={0} surface={posterImage} />
       <PropInstances props={props.lamps} geometry={lampGlow} sizeRange={0} glow />
       <PropInstances props={tanks} geometry={tank} colors={TANK_COLORS} sizeRange={0.3} />
       <PropInstances props={benches} geometry={bench} color="#ffffff" sizeRange={0} vertexColors />

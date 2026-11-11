@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { STATIONS } from '../audio/stations'
 import { persist } from 'zustand/middleware'
 import { calculateReward } from '../missions/missionLogic'
 import type { MissionPlanner } from '../missions/missionPlanner'
@@ -39,6 +40,10 @@ type GameState = Telemetry & {
   weather: WeatherName
   /** Whether it's dark, which turns the phone's sun into a moon. */
   night: boolean
+  /** The radio station on the phone, by its id. */
+  stationId: string
+  musicOn: boolean
+  hornsOn: boolean
 
   startGame: () => void
   setQuality: (quality: Quality) => void
@@ -52,6 +57,10 @@ type GameState = Telemetry & {
   setTelemetry: (telemetry: Telemetry) => void
   setSky: (skyTime: string, weather: WeatherName, night: boolean) => void
   recordCrash: () => void
+  /** Moves the radio one station along, forwards (1) or back (-1). */
+  changeStation: (direction: 1 | -1) => void
+  setMusicOn: (on: boolean) => void
+  setHornsOn: (on: boolean) => void
 }
 
 export const useGameStore = create<GameState>()(
@@ -80,6 +89,9 @@ export const useGameStore = create<GameState>()(
       skyTime: '',
       weather: 'clear',
       night: false,
+      stationId: STATIONS[0].id,
+      musicOn: true,
+      hornsOn: true,
 
       startGame: () => set({ started: true }),
 
@@ -138,13 +150,29 @@ export const useGameStore = create<GameState>()(
   setTelemetry: (telemetry) => set(telemetry),
   setSky: (skyTime, weather, night) => set({ skyTime, weather, night }),
   recordCrash: () => set((state) => ({ crashes: state.crashes + 1 })),
+  changeStation: (direction) =>
+    set((state) => {
+      const index = STATIONS.findIndex(({ id }) => id === state.stationId)
+      const next = (index + direction + STATIONS.length) % STATIONS.length
+      // Changing station is a way to turn the music back on.
+      return { stationId: STATIONS[next].id, musicOn: true }
+    }),
+  setMusicOn: (musicOn) => set({ musicOn }),
+  setHornsOn: (hornsOn) => set({ hornsOn }),
     }),
     {
       // Kept from the project's earlier name, so existing saves still load.
       name: 'slikk-it-progress',
       version: 1,
       // Only progress and settings are saved. Everything else starts fresh on each visit.
-      partialize: ({ credits, xp, quality }) => ({ credits, xp, quality }),
+      partialize: ({ credits, xp, quality, stationId, musicOn, hornsOn }) => ({
+        credits,
+        xp,
+        quality,
+        stationId,
+        musicOn,
+        hornsOn,
+      }),
     },
   ),
 )

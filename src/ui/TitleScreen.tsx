@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import { useGameStore } from '../game/gameStore'
-import { unlockAudio } from '../audio/horns'
+import { unlockAudio } from '../audio/audioEngine'
 import { enterLandscapeFullscreen } from '../game/fullscreen'
 import { isTouchDevice } from '../game/touchDevice'
 import { QualityPicker } from './QualityPicker'
@@ -11,6 +11,7 @@ const KEYBOARD_CONTROLS = [
   ['Hold Space and steer', 'Drift, then let go to boost'],
   ['P', 'Bring up your phone'],
   ['H', 'Honk'],
+  ['R', 'Change radio station'],
 ]
 
 const TOUCH_CONTROLS = [
@@ -19,6 +20,7 @@ const TOUCH_CONTROLS = [
   ['Hold Drift and steer', 'Drift, then let go to boost'],
   ['Tap the phone', 'Bring it up'],
   ['Horn', 'Honk'],
+  ['Phone, then ‹ ›', 'Radio and sound'],
 ]
 
 export function TitleScreen() {

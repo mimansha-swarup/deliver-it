@@ -137,26 +137,143 @@ function drawRoute(context: CanvasRenderingContext2D, view: View, color: string)
   context.stroke()
 }
 
-/** Draws the current stop, or pins it to the edge of the visible map if it's out of range. */
-function drawTarget(context: CanvasRenderingContext2D, view: View) {
+/** How far a pin's head sits above the spot it marks, and its size, in pixels. */
+const PIN_LIFT = 15
+const PIN_RADIUS = 9
+/** An off-map marker keeps this far from the edge, leaving room for its arrow. */
+const OFF_MAP_MARGIN = 34
+
+/** A small picture of what's at the stop: a parcel to collect, a house to deliver to. */
+function drawStopIcon(context: CanvasRenderingContext2D, x: number, y: number, pickup: boolean) {
+  context.fillStyle = '#10231a'
+  context.strokeStyle = '#10231a'
+  context.lineWidth = 1.4
+  context.beginPath()
+  if (pickup) {
+    // A box with its lid, a slightly wider strip on top.
+    context.fillRect(x - 4, y - 1.5, 8, 6)
+    context.fillRect(x - 5, y - 5, 10, 2.6)
+  } else {
+    context.moveTo(x, y - 5)
+    context.lineTo(x + 5, y - 0.5)
+    context.lineTo(x + 3.5, y - 0.5)
+    context.lineTo(x + 3.5, y + 4)
+    context.lineTo(x - 3.5, y + 4)
+    context.lineTo(x - 3.5, y - 0.5)
+    context.lineTo(x - 5, y - 0.5)
+    context.closePath()
+    context.fill()
+  }
+}
+
+/** A round marker with the stop's icon in it. */
+function drawBadge(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
+  context.fillStyle = color
+  context.strokeStyle = '#000000'
+  context.lineWidth = 2
+  context.beginPath()
+  context.arc(x, y, PIN_RADIUS, 0, Math.PI * 2)
+  context.fill()
+  context.stroke()
+  drawStopIcon(context, x, y, pickup)
+}
+
+/** A map pin: a badge on a point, with the point exactly on the stop. */
+function drawPin(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
+  context.fillStyle = color
+  context.strokeStyle = '#000000'
+  context.lineWidth = 2
+  context.beginPath()
+  context.moveTo(x, y)
+  context.lineTo(x - 5, y - PIN_LIFT + 4)
+  context.lineTo(x + 5, y - PIN_LIFT + 4)
+  context.closePath()
+  context.fill()
+  context.stroke()
+  drawBadge(context, x, y - PIN_LIFT, color, pickup)
+}
+
+/**
+ * A stop that's off the map sits at its edge, with an arrow pointing the way to
+ * it and how far it is by road. It pulses gently so it reads as "over there",
+ * not as a place on the map.
+ */
+function drawOffMap(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  color: string,
+  pickup: boolean,
+  time: number,
+) {
+  const pointX = Math.cos(angle)
+  const pointY = Math.sin(angle)
+  const nudge = Math.sin(time / 220) * 2
+  const tipX = x + pointX * (PIN_RADIUS + 10 + nudge)
+  const tipY = y + pointY * (PIN_RADIUS + 10 + nudge)
+  const baseX = x + pointX * (PIN_RADIUS + 1)
+  const baseY = y + pointY * (PIN_RADIUS + 1)
+
+  context.fillStyle = color
+  context.strokeStyle = '#000000'
+  context.lineWidth = 2
+  context.beginPath()
+  context.moveTo(tipX, tipY)
+  context.lineTo(baseX - pointY * 7, baseY + pointX * 7)
+  context.lineTo(baseX + pointY * 7, baseY - pointX * 7)
+  context.closePath()
+  context.fill()
+  context.stroke()
+  drawBadge(context, x, y, color, pickup)
+
+  const { distance } = useGameStore.getState()
+  const label = distance >= 1000 ? `${(distance / 1000).toFixed(1)} km` : `${distance} m`
+  context.font = '700 11px system-ui, sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  // The label goes on the side away from the arrow, so the two never overlap.
+  const labelX = x - pointX * 26
+  const labelY = y - pointY * 20
+  context.lineWidth = 3
+  context.strokeStyle = 'rgb(0 0 0 / 80%)'
+  context.strokeText(label, labelX, labelY)
+  context.fillStyle = '#ffffff'
+  context.fillText(label, labelX, labelY)
+}
+
+/** Draws the current stop as a pin, or at the edge with an arrow if it's off the map. */
+function drawTarget(context: CanvasRenderingContext2D, view: View, time: number) {
   const { mission, phase } = useGameStore.getState()
   const stop = getCurrentStop(mission, phase)
   if (!stop) return
+  const pickup = phase === 'toPickup'
 
   drawRoute(context, view, stop.color)
 
   const [x, y] = toScreen(view, stop.x, stop.z)
-  const sideways = view.width / 2 - EDGE_MARGIN
-  const upDown = y < 0 ? view.roomAbove : view.roomBelow
-  const scale = Math.min(1, sideways / Math.max(Math.abs(x), 1), upDown / Math.max(Math.abs(y), 1))
+  // A pin's head stands above its point, so it needs that much more room at the top.
+  const fitsAcross = Math.abs(x) <= view.width / 2 - EDGE_MARGIN
+  const fitsUpDown = y < 0 ? -y <= view.roomAbove - PIN_LIFT : y <= view.roomBelow
+  if (fitsAcross && fitsUpDown) {
+    drawPin(context, view.riderX + x, view.riderY + y, stop.color, pickup)
+    return
+  }
 
-  context.fillStyle = stop.color
-  context.strokeStyle = '#000000'
-  context.lineWidth = 2
-  context.beginPath()
-  context.arc(view.riderX + x * scale, view.riderY + y * scale, 7, 0, Math.PI * 2)
-  context.fill()
-  context.stroke()
+  // Slide it in along the line from the rider until it's inside, with room for the arrow.
+  const extra = OFF_MAP_MARGIN - EDGE_MARGIN
+  const sideways = view.width / 2 - EDGE_MARGIN - extra
+  const upDown = (y < 0 ? view.roomAbove : view.roomBelow) - extra
+  const scale = Math.min(1, sideways / Math.max(Math.abs(x), 1), upDown / Math.max(Math.abs(y), 1))
+  drawOffMap(
+    context,
+    view.riderX + x * scale,
+    view.riderY + y * scale,
+    Math.atan2(y, x),
+    stop.color,
+    pickup,
+    time,
+  )
 }
 
 /** Matches the canvas to the size it's shown at, which changes as the phone is raised. */
@@ -233,7 +350,7 @@ export function PhoneMap({ raised }: { raised: boolean }) {
       )
       context.restore()
 
-      drawTarget(context, view)
+      drawTarget(context, view, time)
       drawPlayer(context, view)
 
       frame = requestAnimationFrame(draw)

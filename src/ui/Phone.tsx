@@ -6,6 +6,8 @@ import { getCurrentStop } from '../missions/missionLogic'
 import { WEATHERS, type WeatherName } from '../sky/skyLogic'
 import { isTouchDevice } from '../game/touchDevice'
 import { PhoneMap } from './PhoneMap'
+import { useStation } from '../audio/useStation'
+import { RadioControls, VideoScreen } from './Radio'
 
 const PHONE_KEY = 'KeyP'
 /** The last stretch of the on-time limit, when the timer turns red. */
@@ -200,27 +202,42 @@ export function Phone() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
 
+  const station = useStation()
+  // The video has its own card, so the map is never covered: above the phone on a
+  // computer, and to its right on a phone held sideways. The CSS places it.
+  const videoCard = station.kind === 'video'
+  const videoAbove = videoCard && !isTouchDevice
+  const classes = ['phone', raised && 'phone-raised', videoAbove && 'phone-video-above'].filter(Boolean)
+
   return (
-    <aside className={raised ? 'phone phone-raised' : 'phone'} aria-label="Rider phone">
-      <div className="phone-screen">
-        <Suspense fallback={null}>
-          <PhoneMap raised={raised} />
-        </Suspense>
-        <StatusBar />
-        <OrderSheet raised={raised} />
-        <button
-          type="button"
-          className="phone-toggle"
-          aria-expanded={raised}
-          onClick={(event) => {
-            setRaised((value) => !value)
-            // Gives the keyboard back to the game, so Space doesn't press this button.
-            event.currentTarget.blur()
-          }}
-        >
-          {isTouchDevice ? (raised ? 'Put away' : 'Open') : raised ? 'Put away · P' : 'Open · P'}
-        </button>
-      </div>
-    </aside>
+    <>
+      <aside className={classes.join(' ')} aria-label="Rider phone">
+        <div className="phone-screen">
+          <Suspense fallback={null}>
+            <PhoneMap raised={raised} />
+          </Suspense>
+          <StatusBar />
+          <OrderSheet raised={raised} />
+          {raised && <RadioControls />}
+          <button
+            type="button"
+            className="phone-toggle"
+            aria-expanded={raised}
+            onClick={(event) => {
+              setRaised((value) => !value)
+              // Gives the keyboard back to the game, so Space doesn't press this button.
+              event.currentTarget.blur()
+            }}
+          >
+            {isTouchDevice ? (raised ? 'Put away' : 'Open') : raised ? 'Put away · P' : 'Open · P'}
+          </button>
+        </div>
+      </aside>
+      {videoCard && (
+        <aside className={raised ? 'music-card music-card-raised' : 'music-card'} aria-label="Music video">
+          <VideoScreen station={station} className="music-card-player" />
+        </aside>
+      )}
+    </>
   )
 }

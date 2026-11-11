@@ -1,4 +1,5 @@
 import { livePlayer } from '../game/livePlayer'
+import { getAudio } from './audioEngine'
 import type { VehicleKind } from '../traffic/trafficLogic'
 
 /**
@@ -57,39 +58,22 @@ const HORNS: Record<HornVoice, Horn> = {
   },
 }
 
-/** The whole mix's volume. Horns are loud, so this keeps them from being painful. */
-const MASTER_VOLUME = 0.22
 /** Horns closer than this sound at full volume, in metres. */
 const NEAR = 6
 /** The most horns sounding at once, so a jam doesn't become noise. */
 const MAX_PLAYING = 5
 const BEEP_GAP = 0.07
 
-let context: AudioContext | null = null
-let master: GainNode | null = null
 let playing = 0
-
-/**
- * Browsers only allow sound after the player has tapped or pressed something.
- * Call this from a click, such as Start riding.
- */
-export function unlockAudio() {
-  if (!context) {
-    context = new AudioContext()
-    master = context.createGain()
-    master.gain.value = MASTER_VOLUME
-    master.connect(context.destination)
-  }
-  void context.resume()
-}
 
 /** Where the rider is and which way they face. Sounds are placed relative to this. */
 export type Listener = { x: number; z: number; heading: number }
 
 /** Plays a horn at a place in the world. Further away is quieter, and it pans left or right. */
 export function playHorn(voice: HornVoice, x: number, z: number, listener: Listener) {
-  const audio = context
-  if (!audio || !master || audio.state !== 'running' || playing >= MAX_PLAYING) return
+  const buses = getAudio()
+  if (!buses || playing >= MAX_PLAYING) return
+  const audio = buses.context
 
   const horn = HORNS[voice]
   const offsetX = x - listener.x
@@ -115,7 +99,7 @@ export function playHorn(voice: HornVoice, x: number, z: number, listener: Liste
   panner.pan.value = right * 0.8
   const envelope = audio.createGain()
   envelope.gain.value = 0
-  filter.connect(envelope).connect(panner).connect(master)
+  filter.connect(envelope).connect(panner).connect(buses.sfx)
 
   let time = start
   for (const length of pattern) {

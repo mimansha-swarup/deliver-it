@@ -812,3 +812,128 @@ body,
 .touch-horn:active {
   background: rgb(255 216 77 / 35%);
 }
+
+/* The radio, along the bottom of the raised phone, above the Put away button. */
+.phone-raised .phone-sheet {
+  padding-bottom: 82px;
+}
+
+.phone-radio {
+  position: absolute;
+  right: 8px;
+  bottom: 34px;
+  left: 8px;
+  display: grid;
+  grid-template-columns: 28px 1fr 28px 30px 30px;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: 12px;
+  background: #2b2e35;
+}
+
+.phone .phone-radio-station {
+  display: grid;
+  min-width: 0;
+  text-align: center;
+}
+
+.phone-radio-station span {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-radio-station small {
+  overflow: hidden;
+  color: var(--phone-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-radio button {
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--phone-ink);
+  background: rgb(255 255 255 / 10%);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.phone-radio button[aria-pressed='false'] {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+/*
+ * On a computer the video has its own card just above the phone, as wide as the
+ * phone. The raised phone gives up some height on this station to make room.
+ */
+.phone-raised.phone-video-above {
+  height: min(640px, calc(100dvh - 246px));
+}
+
+.music-card {
+  --card-gap: 10px;
+
+  position: fixed;
+  left: 12px;
+  /* The tucked phone is 372 px tall and sits 12 px up. */
+  bottom: calc(12px + 372px + var(--card-gap));
+  width: 238px;
+  height: 200px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #000;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 50%);
+  transition:
+    width 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+    bottom 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.music-card-raised {
+  width: 316px;
+  bottom: calc(12px + min(640px, calc(100dvh - 246px)) + var(--card-gap));
+}
+
+.music-card-player,
+.music-card-player iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.music-card-failed {
+  padding: 16px;
+  color: #aeb2ba;
+  text-align: center;
+}
+
+/*
+ * On a phone held sideways, the card goes to the right of the rider's phone at
+ * the top, at YouTube's smallest allowed size, and moves along when it's raised.
+ */
+.touch .music-card {
+  top: max(8px, env(safe-area-inset-top));
+  bottom: auto;
+  left: calc(var(--edge-left) + 150px + 8px);
+  width: 200px;
+  height: 200px;
+  transition: left 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.touch .music-card-raised {
+  left: calc(var(--edge-left) + 280px + 8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-card {
+    transition: none;
+  }
+}
