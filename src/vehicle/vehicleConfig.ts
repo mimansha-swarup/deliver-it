@@ -72,6 +72,8 @@ export const SCOOTER = {
   crashTime: 1.7,
   /** The last part of that time is spent getting back up. */
   getUpTime: 0.6,
+  /** Faster than this, a crash throws the rider off, in m/s (about 14 km/h). Slower, they topple with it. */
+  throwOffSpeed: 4,
   /** How quickly the scooter skids to a stop on its side. */
   crashSkid: 1.6,
   /** How far it tips over in a crash, in radians. */

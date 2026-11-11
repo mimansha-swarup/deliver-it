@@ -65,6 +65,10 @@ type Moving = {
   tint: number
   /** A full 3D rotation, when physics has it tumbling. */
   rotation?: [number, number, number, number] | null
+  /** Not drawn, such as a thrown bike rider who is back on the bike. */
+  hidden?: boolean
+  /** A bike whose rider has been thrown off, so its seated rider isn't drawn. */
+  riderOff?: boolean
 }
 
 const transform = new THREE.Object3D()
@@ -81,9 +85,17 @@ function tintPaintOnly(shader: THREE.WebGLProgramParametersWithUniforms) {
   )
 }
 
-function writeTransforms(instances: THREE.InstancedMesh, items: Moving[], reach = Infinity) {
+function writeTransforms(
+  instances: THREE.InstancedMesh,
+  items: Moving[],
+  reach = Infinity,
+  isSeatedRider = false,
+) {
   items.forEach((item, index) => {
-    const inRange = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach
+    const inRange =
+      Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach &&
+      !item.hidden &&
+      !(isSeatedRider && item.riderOff)
     transform.position.set(item.x, item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
@@ -127,6 +139,7 @@ function MovingInstances({
   baked,
   reflection,
   reach,
+  seatedRider = false,
 }: {
   items: Moving[]
   geometry: THREE.BufferGeometry
@@ -137,13 +150,15 @@ function MovingInstances({
   reflection: THREE.Texture
   /** Copies further from the rider than this aren't drawn. */
   reach?: number
+  /** The rider sitting on a bike, who isn't drawn once thrown off. */
+  seatedRider?: boolean
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
   useInstanceColors(mesh, items, palette)
 
   useFrame(() => {
-    if (mesh.current) writeTransforms(mesh.current, items, reach)
+    if (mesh.current) writeTransforms(mesh.current, items, reach, seatedRider)
     if (material.current) updateReflection(material.current)
   })
 
@@ -205,15 +220,23 @@ function VehicleLights({ items, geometry }: { items: Moving[]; geometry: THREE.B
   )
 }
 
+/** How far a limp person's arms and legs fling out, in radians. Arms go further than legs. */
+const SPRAWL_ARM = 1.5
+const SPRAWL_LEG = 0.45
+/** Joints higher than this are shoulders, lower are hips. */
+const SHOULDER_ABOVE = 1.1
+
 /**
  * Walking happens on the graphics card. Each arm and leg rotates around its own
  * joint, by an amount that comes from that person's place in their stride.
+ * Someone knocked over goes limp instead: their arms fling out one forward and
+ * one back, and their legs part, by how limp they are (`aPerson.z`).
  * Clothes take the person's colour, and the rest take their skin tone.
  */
 function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.vertexShader = `
     attribute vec3 _limb;
-    attribute vec2 aPerson;
+    attribute vec3 aPerson;
     ${shader.vertexShader}
   `
     .replace(
@@ -225,7 +248,9 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
       '#include <begin_vertex>',
       `#include <begin_vertex>
       if (_limb.x != 0.0) {
-        float angle = sin(aPerson.x) * _limb.x * ${LIMB_SWING.toFixed(2)};
+        float walking = sin(aPerson.x) * _limb.x * ${LIMB_SWING.toFixed(2)};
+        float sprawl = _limb.x * (_limb.y > ${SHOULDER_ABOVE.toFixed(2)} ? ${SPRAWL_ARM.toFixed(2)} : ${SPRAWL_LEG.toFixed(2)});
+        float angle = mix(walking, sprawl, aPerson.z);
         float down = position.y - _limb.y;
         transformed.z = position.z * cos(angle) + down * sin(angle);
         transformed.y = _limb.y + down * cos(angle) - position.z * sin(angle);
@@ -233,19 +258,19 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
     )
 }
 
-/** Gives a body shape room for each person's place in their stride, and their skin tone. */
+/** Gives a body shape room for each person's place in their stride, skin tone and limpness. */
 function withPersonData(body: THREE.BufferGeometry, count: number): THREE.BufferGeometry {
   const geometry = body.clone()
   geometry.setAttribute(
     'aPerson',
-    new THREE.InstancedBufferAttribute(new Float32Array(count * 2), 2),
+    new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3),
   )
   return geometry
 }
 
 function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
   const attribute = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
-  people.forEach(({ stride, skin }, index) => attribute.setXY(index, stride, skin))
+  people.forEach(({ stride, skin, down }, index) => attribute.setXYZ(index, stride, skin, down))
   attribute.needsUpdate = true
 }
 
@@ -486,6 +511,11 @@ export function Traffic({
 
   const inPlay = useMemo(() => world.vehicles.slice(0, vehicles), [world, vehicles])
   const people = useMemo(() => world.pedestrians.slice(0, pedestrians), [world, pedestrians])
+  // Bike riders who can be thrown off. They're hidden while they're on the bike.
+  const thrownRiders = useMemo(
+    () => inPlay.flatMap(({ thrownRider }) => (thrownRider ? [thrownRider] : [])),
+    [inPlay],
+  )
   const crowds = useMemo(
     () => bodies.map((_, group) => people.filter((__, index) => index % bodies.length === group)),
     [bodies, people],
@@ -518,6 +548,7 @@ export function Traffic({
                 palette={palette}
                 castShadow={shadowSize > 0}
                 reflection={reflection}
+                seatedRider
               />
             )}
             <VehicleWheels items={items} wheels={wheels[kind]} />
@@ -536,6 +567,7 @@ export function Traffic({
       {bodies.map((body, group) => (
         <People key={body.uuid} items={crowds[group]} body={body} />
       ))}
+      {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} />}
     </>
   )
 }

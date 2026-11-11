@@ -7,12 +7,31 @@ type RigidBody = RAPIER.RigidBody
 
 export type Quaternion = [x: number, y: number, z: number, w: number]
 
+/** How something behaves once it's loose: how it grips, bounces and slows down. */
+export type CrashSurface = {
+  /** Grip against the ground. A body drags, rubber grips, metal on its side skids. */
+  friction: number
+  /** How much of a landing it bounces back. 0 is a dead thud. */
+  bounce: number
+  /** Slows sliding along, from air and scraping. */
+  slideDamping: number
+  /** Slows spinning. High for a floppy body, which can't keep rolling like a box. */
+  spinDamping: number
+}
+
 /** The size of something as a box, with the height of that box's middle above the ground. */
 export type CrashShape = {
   halfSize: [x: number, y: number, z: number]
   centre: number
   /** In kilograms. */
   mass: number
+  /** How it behaves when loose. Hard objects are used if this is left out. */
+  surface?: CrashSurface
+  /**
+   * A person on the ground. The rider's shape doesn't touch it, so riding on
+   * past a fallen body doesn't shove it down the road like a bulldozer.
+   */
+  body?: boolean
 }
 
 /** Anything that Rapier can take over. It writes the result straight back here. */
@@ -31,10 +50,20 @@ const GRAVITY = -9.81
 /** Walls are this tall. Nothing thrown in the game gets higher. */
 const WALL_HEIGHT = 12
 const FRICTION = 0.75
-const BOUNCE = 0.12
-/** Air and scraping slow everything a little, so that nothing rolls for ever. */
-const LINEAR_DAMPING = 0.12
-const SPIN_DAMPING = 0.5
+/*
+ * Collision groups. Rapier packs two masks into one number: the top 16 bits say
+ * which groups a shape is in, and the bottom 16 which groups it will touch. Two
+ * shapes touch only if each is in a group the other will touch.
+ */
+const EVERYTHING = 0xffff
+const RIDER_GROUP = 0x0002
+const BODY_GROUP = 0x0004
+const groups = (member: number, touches: number) => (member << 16) | touches
+const RIDER_GROUPS = groups(RIDER_GROUP, EVERYTHING & ~BODY_GROUP)
+const BODY_GROUPS = groups(BODY_GROUP, EVERYTHING & ~RIDER_GROUP)
+
+/** A hard object: some bounce, and air and scraping slow it a little, so that nothing rolls for ever. */
+const HARD_SURFACE: CrashSurface = { friction: FRICTION, bounce: 0.12, slideDamping: 0.12, spinDamping: 0.5 }
 /** Things that the arcade rules move are parked out of the way here when not in use. */
 const OUT_OF_THE_WAY = -60
 
@@ -49,8 +78,38 @@ function rotateVector([x, y, z, w]: Quaternion, vx: number, vy: number, vz: numb
   ]
 }
 
-function yawRotation(heading: number): Quaternion {
+export function yawRotation(heading: number): Quaternion {
   return [0, Math.sin(heading / 2), 0, Math.cos(heading / 2)]
+}
+
+/** Turns smoothly from one rotation to another, `amount` of the way, along the shortest path. */
+export function blendRotation(from: Quaternion, to: Quaternion, amount: number): Quaternion {
+  let [bx, by, bz, bw] = to
+  let cosine = from[0] * bx + from[1] * by + from[2] * bz + from[3] * bw
+  // A rotation and its negative are the same turn. Using the nearer one avoids going the long way round.
+  if (cosine < 0) {
+    ;[bx, by, bz, bw] = [-bx, -by, -bz, -bw]
+    cosine = -cosine
+  }
+  if (cosine > 0.9995) {
+    const mixed: Quaternion = [
+      from[0] + (bx - from[0]) * amount,
+      from[1] + (by - from[1]) * amount,
+      from[2] + (bz - from[2]) * amount,
+      from[3] + (bw - from[3]) * amount,
+    ]
+    const length = Math.hypot(...mixed)
+    return mixed.map((value) => value / length) as Quaternion
+  }
+  const angle = Math.acos(cosine)
+  const fromShare = Math.sin((1 - amount) * angle) / Math.sin(angle)
+  const toShare = Math.sin(amount * angle) / Math.sin(angle)
+  return [
+    from[0] * fromShare + bx * toShare,
+    from[1] * fromShare + by * toShare,
+    from[2] * fromShare + bz * toShare,
+    from[3] * fromShare + bw * toShare,
+  ]
 }
 
 /** How upright something is: 1 is standing, 0 is on its side, and -1 is on its roof. */
@@ -101,12 +160,14 @@ export function createCrashPhysics(R: RapierModule, collisions: CollisionWorld) 
   if (indices.length > 0) world.createCollider(R.ColliderDesc.trimesh(vertices, indices))
 
   /** A shape that follows the arcade rules. Something hitting it stops, and it doesn't care. */
-  const createPusher = (shape: CrashShape) => {
+  const createPusher = (shape: CrashShape, isRider = false) => {
     const body = world.createRigidBody(
       R.RigidBodyDesc.kinematicPositionBased().setTranslation(0, OUT_OF_THE_WAY, 0),
     )
     const [hx, hy, hz] = shape.halfSize
-    world.createCollider(R.ColliderDesc.cuboid(hx, hy, hz), body)
+    const collider = R.ColliderDesc.cuboid(hx, hy, hz)
+    if (isRider) collider.setCollisionGroups(RIDER_GROUPS)
+    world.createCollider(collider, body)
     return body
   }
 
@@ -122,7 +183,11 @@ export function createCrashPhysics(R: RapierModule, collisions: CollisionWorld) 
   }
 
   /** Makes something a real physical body, exactly where and however it's sitting. */
-  const addBody = (thing: Tumbler, { halfSize, centre, mass }: CrashShape, sleeping: boolean) => {
+  const addBody = (
+    thing: Tumbler,
+    { halfSize, centre, mass, surface = HARD_SURFACE, body: isBody = false }: CrashShape,
+    sleeping: boolean,
+  ) => {
     const rotation = thing.rotation ?? yawRotation(thing.heading)
     const [offsetX, offsetY, offsetZ] = rotateVector(rotation, 0, centre, 0)
     const [qx, qy, qz, qw] = rotation
@@ -130,18 +195,20 @@ export function createCrashPhysics(R: RapierModule, collisions: CollisionWorld) 
     const description = R.RigidBodyDesc.dynamic()
       .setTranslation(thing.x + offsetX, thing.lift + offsetY, thing.z + offsetZ)
       .setRotation({ x: qx, y: qy, z: qz, w: qw })
-      .setLinearDamping(LINEAR_DAMPING)
-      .setAngularDamping(SPIN_DAMPING)
+      .setLinearDamping(surface.slideDamping)
+      .setAngularDamping(surface.spinDamping)
       .setCcdEnabled(true)
       .setCanSleep(true)
       .setSleeping(sleeping)
     const body = world.createRigidBody(description)
 
     const [hx, hy, hz] = halfSize
-    world.createCollider(
-      R.ColliderDesc.cuboid(hx, hy, hz).setMass(mass).setFriction(FRICTION).setRestitution(BOUNCE),
-      body,
-    )
+    const collider = R.ColliderDesc.cuboid(hx, hy, hz)
+      .setMass(mass)
+      .setFriction(surface.friction)
+      .setRestitution(surface.bounce)
+    if (isBody) collider.setCollisionGroups(BODY_GROUPS)
+    world.createCollider(collider, body)
     thing.body = body
   }
 

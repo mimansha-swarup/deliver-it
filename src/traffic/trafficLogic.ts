@@ -1,5 +1,5 @@
-import type { CrashPhysics, CrashShape, Quaternion, Tumbler } from '../physics/crashPhysics'
-import { uprightness } from '../physics/crashPhysics'
+import type { CrashPhysics, CrashShape, CrashSurface, Quaternion, Tumbler } from '../physics/crashPhysics'
+import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics'
 import { applyImpact, getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
 import type { CollisionWorld } from '../world/collision'
@@ -73,17 +73,12 @@ export const TRAFFIC_RULES = {
   /** How hard vehicles brake for a red light, in metres per second squared. */
   signalBraking: 3,
 
-  /** How bouncy a hit is. 0 is a dead thud, and 1 is a perfect bounce. */
+  /** How bouncy a hit between machines is. 0 is a dead thud, and 1 is a perfect bounce. */
   bounciness: 0.25,
+  /** A body soaks up a hit rather than bouncing off it. */
+  bodyBounciness: 0.05,
   /** A knock of less than this doesn't launch anything, in metres per second. */
   launchKnock: 1,
-  /** How far a hit throws things upward and spins them, for each m/s of knock. */
-  throwUp: 0.45,
-  throwSpin: 0.9,
-  /** Anything heavier than this, in kilograms, is thrown less. */
-  easyTipMass: 200,
-  /** The most upward speed a hit can give, in metres per second. */
-  maxThrowUp: 4.5,
   /** How long a bike rider takes to get up, in seconds. */
   bikeDownTime: 3.5,
   /** The longest anything stays a real body before rejoining traffic, in seconds. */
@@ -109,6 +104,18 @@ export const TRAFFIC_RULES = {
   pedestrianKnock: 3,
   /** How long someone stays down after being hit, before getting up, in seconds. */
   pedestrianDownTime: 3,
+  /** How quickly someone goes limp when hit, per second, and how long getting up takes, in seconds. */
+  goLimpRate: 5,
+  getUpTime: 1.1,
+  /** How long a fallen vehicle takes to be stood back up, in seconds. */
+  rightingTime: 0.9,
+  /** A thrown bike rider walks back at this speed, in m/s, and gets on within this distance, in metres. */
+  walkBackSpeed: 1.6,
+  remountDistance: 1,
+  /** A bike rider comes off the seat with this much extra upward speed, in m/s. */
+  riderLaunchUp: 1.6,
+  /** Share of the bike's speed the rider carries on with as they're thrown. */
+  riderCarry: 0.9,
 }
 
 type Mover = {
@@ -143,6 +150,49 @@ const VEHICLE_MIX: VehicleKind[] = [
   'hatchback',
 ]
 
+/**
+ * How a kind of thing reacts to being knocked, for each m/s of knock. Real
+ * things are rarely thrown into the air. A hit at wheel or leg height mostly
+ * shoves the bottom along while the top lags, so things tip over, and then they
+ * slide. What differs is which way they tip easily:
+ * - People fall over any way.
+ * - Two-wheelers fall onto their side, but hardly ever go end over end.
+ * - Autos are tall and narrow, so they roll onto their side when hit from the
+ *   side, and rock but stay up when hit from behind.
+ * - Cars are low and wide, and mostly just get shoved.
+ */
+type ThrowStyle = {
+  /** Upward speed, and the most it can be, in m/s. */
+  lift: number
+  maxLift: number
+  /** Tipping speed sideways (roll) and end over end (pitch), and the most, in radians per second. */
+  roll: number
+  pitch: number
+  maxTip: number
+  /** A flat spin from being hit off-centre. */
+  yaw: number
+}
+
+const PERSON_THROW: ThrowStyle = { lift: 0.1, maxLift: 1.4, roll: 0.5, pitch: 0.5, maxTip: 4.5, yaw: 0.05 }
+const TWO_WHEELER_THROW: ThrowStyle = { lift: 0.04, maxLift: 0.7, roll: 0.7, pitch: 0.04, maxTip: 3.5, yaw: 0.12 }
+const AUTO_THROW: ThrowStyle = { lift: 0.03, maxLift: 0.5, roll: 0.35, pitch: 0.05, maxTip: 2.5, yaw: 0.08 }
+const CAR_THROW: ThrowStyle = { lift: 0.02, maxLift: 0.3, roll: 0.06, pitch: 0.02, maxTip: 0.8, yaw: 0.06 }
+
+/** How things slide once they're down. A body drags to a stop, a bike on its side skids further. */
+const BODY_SURFACE: CrashSurface = { friction: 0.75, bounce: 0, slideDamping: 0.2, spinDamping: 3 }
+const TWO_WHEELER_SURFACE: CrashSurface = { friction: 0.5, bounce: 0.05, slideDamping: 0.3, spinDamping: 1.5 }
+const AUTO_SURFACE: CrashSurface = { friction: 0.7, bounce: 0.05, slideDamping: 0.3, spinDamping: 1.2 }
+const CAR_SURFACE: CrashSurface = { friction: 0.8, bounce: 0.1, slideDamping: 0.2, spinDamping: 0.8 }
+
+export const THROW_STYLES: Record<VehicleKind, ThrowStyle> = {
+  sedan: CAR_THROW,
+  hatchback: CAR_THROW,
+  suv: CAR_THROW,
+  mpv: CAR_THROW,
+  auto: AUTO_THROW,
+  bike: TWO_WHEELER_THROW,
+}
+
 /** `mass` is in kilograms. A collision shares speed out according to these weights. */
 const VEHICLE_SHAPES: Record<
   VehicleKind,
@@ -152,43 +202,54 @@ const VEHICLE_SHAPES: Record<
     speed: 8,
     halfLength: 2.1,
     radius: 0.85,
-    crash: { halfSize: [0.85, 0.56, 2.05], centre: 0.78, mass: 1200 },
+    crash: { halfSize: [0.85, 0.56, 2.05], centre: 0.78, mass: 1200, surface: CAR_SURFACE },
   },
   hatchback: {
     speed: 8,
     halfLength: 1.8,
     radius: 0.85,
-    crash: { halfSize: [0.82, 0.6, 1.76], centre: 0.82, mass: 950 },
+    crash: { halfSize: [0.82, 0.6, 1.76], centre: 0.82, mass: 950, surface: CAR_SURFACE },
   },
   suv: {
     speed: 8,
     halfLength: 2.3,
     radius: 0.92,
-    crash: { halfSize: [0.92, 0.72, 2.25], centre: 0.92, mass: 1800 },
+    crash: { halfSize: [0.92, 0.72, 2.25], centre: 0.92, mass: 1800, surface: CAR_SURFACE },
   },
   mpv: {
     speed: 8,
     halfLength: 2,
     radius: 0.88,
-    crash: { halfSize: [0.86, 0.66, 1.96], centre: 0.86, mass: 1250 },
+    crash: { halfSize: [0.86, 0.66, 1.96], centre: 0.86, mass: 1250, surface: CAR_SURFACE },
   },
   auto: {
     speed: 6,
     halfLength: 1.3,
     radius: 0.75,
-    crash: { halfSize: [0.66, 0.78, 1.22], centre: 0.9, mass: 400 },
+    crash: { halfSize: [0.66, 0.78, 1.22], centre: 0.9, mass: 400, surface: AUTO_SURFACE },
   },
   bike: {
     speed: 9,
     halfLength: 0.95,
     radius: 0.4,
-    crash: { halfSize: [0.22, 0.62, 0.9], centre: 0.72, mass: 200 },
+    crash: { halfSize: [0.22, 0.62, 0.9], centre: 0.72, mass: 200, surface: TWO_WHEELER_SURFACE },
   },
 }
 
-const PARKED_SCOOTER_SHAPE: CrashShape = { halfSize: [0.2, 0.5, 0.74], centre: 0.53, mass: 110 }
+const PARKED_SCOOTER_SHAPE: CrashShape = {
+  halfSize: [0.2, 0.5, 0.74],
+  centre: 0.53,
+  mass: 110,
+  surface: TWO_WHEELER_SURFACE,
+}
 /** A standing person, as a box from the feet up, about 1.7 m tall. */
-const PERSON_SHAPE: CrashShape = { halfSize: [0.24, 0.84, 0.14], centre: 0.85, mass: 70 }
+const PERSON_SHAPE: CrashShape = {
+  halfSize: [0.24, 0.84, 0.14],
+  centre: 0.85,
+  mass: 70,
+  surface: BODY_SURFACE,
+  body: true,
+}
 /** How close the rider's middle gets to a person's middle before they touch. */
 const PERSON_HIT_DISTANCE = SCOOTER.collisionRadius + 0.3
 /**
@@ -232,6 +293,14 @@ export type Vehicle = Mover & {
   /** Seconds stuck behind the rider, and until it can honk again. */
   blockedTime: number
   honkWait: number
+  /** While righting itself after a crash: how it was lying, how high, and how far back up it is. */
+  fallen: Quaternion | null
+  fallenLift: number
+  rising: number
+  /** A two-wheeler's rider, who is thrown off in a crash. Null for everything else. */
+  thrownRider: Pedestrian | null
+  /** Whether the rider is off the bike, so the seated rider isn't drawn. */
+  riderOff: boolean
 }
 
 /** A horn sounding somewhere, waiting to be played by the sound code. */
@@ -243,12 +312,20 @@ export type Pedestrian = Mover & {
   rotation: Quaternion | null
   /** Seconds since they were knocked over. */
   downTime: number
+  /** How limp they are, from 0 walking to 1 sprawled. The drawing poses their arms and legs by it. */
+  down: number
+  /** While getting up: how they were lying, how high, and how far up they've got, from 0 to 1. */
+  fallen: Quaternion | null
+  fallenLift: number
+  rising: number
   dodgeX: number
   dodgeZ: number
   /** How far through the walking cycle they are, in radians. */
   stride: number
   /** How dark their skin is, as a number the colour is multiplied by. */
   skin: number
+  /** Not drawn. Used for a bike rider who is still on the bike. */
+  hidden?: boolean
 }
 
 /** Something standing loose on the ground, which anything can knock about. */
@@ -268,6 +345,8 @@ export type TrafficWorld = {
   random: () => number
   /** Horns that sounded this step. `Traffic` plays them and empties this. */
   honks: Honk[]
+  /** Where someone is lying in the road this step, which traffic stops for. */
+  downed: { x: number; z: number }[]
 }
 
 function angleBetween(from: number, to: number): number {
@@ -300,6 +379,32 @@ function findLaneInRing(
     if (distance >= min && distance <= max && isFree(lanes[index])) return index
   }
   return -1
+}
+
+/** A bike's rider, ready for when they're thrown off. Until then they're hidden and ride the bike. */
+function createThrownRider(random: () => number): Pedestrian {
+  return {
+    lane: -1,
+    along: 0,
+    speed: 0,
+    x: 0,
+    z: 0,
+    heading: 0,
+    lift: 0,
+    tint: random(),
+    dodgeX: 0,
+    dodgeZ: 0,
+    stride: 0,
+    skin: 0.6 + random() * 0.55,
+    body: null,
+    rotation: null,
+    downTime: 0,
+    down: 0,
+    fallen: null,
+    fallenLift: 0,
+    rising: 0,
+    hidden: true,
+  }
 }
 
 export function createTrafficWorld(
@@ -360,6 +465,11 @@ export function createTrafficWorld(
       shiftTarget: 0,
       blockedTime: 0,
       honkWait: random() * 3,
+      fallen: null,
+      fallenLift: 0,
+      rising: 0,
+      thrownRider: kind === 'bike' ? createThrownRider(random) : null,
+      riderOff: false,
     }
   })
 
@@ -379,6 +489,10 @@ export function createTrafficWorld(
     body: null,
     rotation: null,
     downTime: 0,
+    down: 0,
+    fallen: null,
+    fallenLift: 0,
+    rising: 0,
   }))
 
   const loose = parked.map(
@@ -393,7 +507,7 @@ export function createTrafficWorld(
     }),
   )
 
-  const riderPusher = physics.createPusher(RIDER_SHAPE)
+  const riderPusher = physics.createPusher(RIDER_SHAPE, true)
 
   return {
     physics,
@@ -407,6 +521,7 @@ export function createTrafficWorld(
     signalClock: 0,
     random,
     honks: [],
+    downed: [],
   }
 }
 
@@ -425,6 +540,9 @@ function advance(mover: Mover, lanes: Lane[], distance: number, random: () => nu
 
 /** The rider's size, for traffic deciding whether it can squeeze past. */
 const RIDER_HALF_LENGTH = 1
+/** Someone lying down, as traffic sees them: about a body's length, any way round. */
+const DOWNED_HALF_LENGTH = 0.9
+const DOWNED_RADIUS = 0.9
 /**
  * The space between this vehicle's front bumper and the back of whatever is in
  * its way, or Infinity. `sideways` asks "what if I moved over this far?", which
@@ -435,6 +553,7 @@ function findGapAhead(
   lane: Lane,
   others: Vehicle[],
   rider: ScooterState,
+  downed: { x: number; z: number }[],
   sideways = 0,
 ): { gap: number; blockedBy: 'rider' | 'queue' | 'crossing' | null } {
   let gap = Infinity
@@ -477,6 +596,8 @@ function findGapAhead(
   }
 
   check(rider.x, rider.z, RIDER_HALF_LENGTH, SCOOTER.collisionRadius, true)
+  // Nobody drives over someone lying in the road. Stuck behind them, they lean on the horn.
+  for (const body of downed) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, true)
   const ownPlace = others.indexOf(vehicle)
   others.forEach((other, place) => {
     if (other === vehicle || other.lane === -1) return
@@ -497,8 +618,9 @@ function stepCrashedVehicle(world: TrafficWorld, vehicle: Vehicle, rider: Scoote
   const settled = vehicle.body?.isSleeping() === true
   const isBike = vehicle.kind === 'bike'
   const upright = uprightness(vehicle.rotation) > 0.8
+  // A bike is picked up once its rider has walked back to it.
   const finished = isBike
-    ? vehicle.crashTime > rules.bikeDownTime
+    ? (vehicle.crashTime > rules.bikeDownTime && !vehicle.riderOff) || vehicle.crashTime > rules.maxCrashTime * 2
     : (settled && upright) || vehicle.crashTime > rules.maxCrashTime
   if (!finished) return
 
@@ -506,11 +628,104 @@ function stepCrashedVehicle(world: TrafficWorld, vehicle: Vehicle, rider: Scoote
   if (!isBike && !upright && !farAway) return
 
   physics.removeBody(vehicle)
-  vehicle.rotation = null
-  vehicle.lift = 0
   vehicle.recovery = 0
   // A wreck that can't drive away is cleared, and a new vehicle appears elsewhere.
-  if (!isBike && !upright) vehicle.lane = -1
+  if (!isBike && !upright) {
+    vehicle.lane = -1
+    vehicle.rotation = null
+    vehicle.lift = 0
+    return
+  }
+  if (vehicle.thrownRider) mountRider(vehicle, vehicle.thrownRider)
+  vehicle.fallen = vehicle.rotation ?? yawRotation(vehicle.heading)
+  vehicle.fallenLift = vehicle.lift
+  vehicle.rising = 0
+}
+
+/** A fallen vehicle is stood back up over a moment, rather than snapping upright. */
+function stepRightingVehicle(vehicle: Vehicle, dt: number) {
+  if (!vehicle.fallen) return
+  vehicle.rising = Math.min(1, vehicle.rising + dt / TRAFFIC_RULES.rightingTime)
+  const amount = smooth(vehicle.rising)
+  vehicle.rotation = blendRotation(vehicle.fallen, yawRotation(vehicle.heading), amount)
+  vehicle.lift = vehicle.fallenLift * (1 - amount)
+  if (vehicle.rising < 1) return
+  vehicle.fallen = null
+  vehicle.rotation = null
+  vehicle.lift = 0
+}
+
+/**
+ * Throws a bike's rider off as the bike is hit. They carry on with most of the
+ * bike's speed plus some of the knock, come up off the seat, and tumble.
+ */
+function throwRiderOff(
+  world: TrafficWorld,
+  vehicle: Vehicle,
+  thrown: Pedestrian,
+  bikeX: number,
+  bikeZ: number,
+  knockX: number,
+  knockZ: number,
+) {
+  const rules = TRAFFIC_RULES
+  thrown.x = vehicle.x
+  thrown.z = vehicle.z
+  // The same clothes as the rider drawn on the bike.
+  thrown.tint = vehicle.tint
+  thrown.heading = vehicle.heading
+  thrown.lift = 0.35
+  thrown.rotation = null
+  thrown.fallen = null
+  thrown.downTime = 0
+  thrown.down = 0.3
+  thrown.hidden = false
+  vehicle.riderOff = true
+
+  world.physics.addBody(thrown, PERSON_SHAPE, false)
+  const { velocity, spin } = throwFor(
+    knockX * 0.6,
+    knockZ * 0.6,
+    bikeX * rules.riderCarry,
+    bikeZ * rules.riderCarry,
+    PERSON_THROW,
+    thrown.heading,
+  )
+  velocity[1] += rules.riderLaunchUp
+  world.physics.launch(thrown, velocity, spin)
+}
+
+/** Puts a thrown rider back on their bike, and hides them again. */
+function mountRider(vehicle: Vehicle, thrown: Pedestrian) {
+  thrown.hidden = true
+  thrown.fallen = null
+  thrown.rotation = null
+  thrown.down = 0
+  vehicle.riderOff = false
+}
+
+/** A thrown rider lies there, gets up, and walks back to their bike. */
+function stepThrownRider(world: TrafficWorld, vehicle: Vehicle, thrown: Pedestrian, dt: number) {
+  if (thrown.body || thrown.fallen) {
+    stepKnockedPedestrian(world, thrown, dt)
+    return
+  }
+
+  const toBikeX = vehicle.x - thrown.x
+  const toBikeZ = vehicle.z - thrown.z
+  const distance = Math.hypot(toBikeX, toBikeZ)
+  if (distance <= TRAFFIC_RULES.remountDistance) {
+    // Waits by the bike a moment, then picks it up and gets on.
+    if (vehicle.body && vehicle.crashTime < TRAFFIC_RULES.bikeDownTime) return
+    mountRider(vehicle, thrown)
+    return
+  }
+
+  const step = Math.min(distance, TRAFFIC_RULES.walkBackSpeed * dt)
+  thrown.x += (toBikeX / distance) * step
+  thrown.z += (toBikeZ / distance) * step
+  thrown.heading = Math.atan2(toBikeX, toBikeZ)
+  thrown.stride += TRAFFIC_RULES.walkBackSpeed * 4.5 * dt
 }
 
 /**
@@ -519,9 +734,16 @@ function stepCrashedVehicle(world: TrafficWorld, vehicle: Vehicle, rider: Scoote
  * gap to the left (along the kerb), and take whichever leaves the most room.
  * With the way clear again, they drift back to their lane.
  */
-function squeezeThrough(vehicle: Vehicle, lane: Lane, active: Vehicle[], rider: ScooterState, dt: number) {
+function squeezeThrough(
+  vehicle: Vehicle,
+  lane: Lane,
+  active: Vehicle[],
+  rider: ScooterState,
+  downed: { x: number; z: number }[],
+  dt: number,
+) {
   const rules = TRAFFIC_RULES
-  const roomAt = (shift: number) => findGapAhead(vehicle, lane, active, rider, shift - vehicle.shift).gap
+  const roomAt = (shift: number) => findGapAhead(vehicle, lane, active, rider, downed, shift - vehicle.shift).gap
 
   const here = roomAt(vehicle.shiftTarget)
   if (here < rules.squeezeLookAt) {
@@ -570,9 +792,9 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
 
   const lane = roadLanes[vehicle.lane]
 
-  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, dt)
+  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, world.downed, dt)
 
-  const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider)
+  const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider, world.downed)
   const hasWaited = blockedBy === 'crossing' && vehicle.waiting > rules.patience
   const keep = vehicle.nimble ? rules.nimbleGap : rules.carGap
   const free = hasWaited ? vehicle.cruiseSpeed : Math.min(vehicle.cruiseSpeed, Math.max(0, gap - keep))
@@ -636,10 +858,11 @@ function resolveHit(
   overlap: number,
   [firstX, firstZ, firstMass]: [number, number, number],
   [secondX, secondZ, secondMass]: [number, number, number],
+  bounciness = TRAFFIC_RULES.bounciness,
 ): Impact {
   const firstShare = secondMass / (firstMass + secondMass)
   const closing = (firstX - secondX) * normalX + (firstZ - secondZ) * normalZ
-  const push = closing < 0 ? (-(1 + TRAFFIC_RULES.bounciness) * closing) / (1 / firstMass + 1 / secondMass) : 0
+  const push = closing < 0 ? (-(1 + bounciness) * closing) / (1 / firstMass + 1 / secondMass) : 0
 
   return {
     pushX: normalX * overlap * firstShare,
@@ -672,22 +895,48 @@ function vehicleVelocity(vehicle: Vehicle): [number, number] {
   return [Math.sin(vehicle.heading) * vehicle.speed, Math.cos(vehicle.heading) * vehicle.speed]
 }
 
-/** What a hit does to a loose thing: more spin and height the harder it was. */
-function throwFor(changeX: number, changeZ: number, baseX: number, baseZ: number, mass: number) {
-  const rules = TRAFFIC_RULES
-  const change = Math.hypot(changeX, changeZ)
-  // A heavy thing has a low, wide base, so the same knock tips it far less.
-  const tip = Math.min(1, rules.easyTipMass / mass)
-  const up = Math.min(change * rules.throwUp * tip, rules.maxThrowUp)
+/**
+ * What a knock does to something loose. It keeps the speed it had, plus the
+ * knock, and gets a little lift. Then it tips away from the hit, as its bottom
+ * is shoved and its top lags. How much it tips sideways and end over end
+ * depends on which way it's facing (`heading`) and on its `style`.
+ */
+function throwFor(
+  changeX: number,
+  changeZ: number,
+  baseX: number,
+  baseZ: number,
+  style: ThrowStyle,
+  heading: number,
+) {
+  const knock = Math.hypot(changeX, changeZ)
+  if (knock === 0) return { velocity: [baseX, 0, baseZ] as [number, number, number], spin: [0, 0, 0] as [number, number, number] }
+  const pushX = changeX / knock
+  const pushZ = changeZ / knock
+
+  // The push, split into along the thing (end over end) and across it (onto its side).
+  const forwardX = Math.sin(heading)
+  const forwardZ = Math.cos(heading)
+  const across = pushX * forwardZ - pushZ * forwardX
+  const along = pushX * forwardX + pushZ * forwardZ
+
+  // For the top to move in the direction (u, w), it turns about the axis (w, 0, -u).
+  const tipX = style.roll * across * forwardZ + style.pitch * along * forwardX
+  const tipZ = style.roll * across * -forwardX + style.pitch * along * forwardZ
+  const tipSpeed = Math.min(Math.hypot(tipX, tipZ) * knock, style.maxTip)
+  const tipLength = Math.hypot(tipX, tipZ) || 1
 
   return {
-    velocity: [baseX + changeX, up, baseZ + changeZ] as [number, number, number],
-    // Tips away from the hit, as if its feet stayed behind.
-    spin: [changeZ * rules.throwSpin * tip, change * 0.25, -changeX * rules.throwSpin * tip] as [
+    velocity: [baseX + changeX, Math.min(knock * style.lift, style.maxLift), baseZ + changeZ] as [
       number,
       number,
       number,
     ],
+    spin: [
+      (tipZ / tipLength) * tipSpeed,
+      knock * style.yaw * Math.sign(across * along || 1),
+      (-tipX / tipLength) * tipSpeed,
+    ] as [number, number, number],
   }
 }
 
@@ -717,9 +966,13 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt
     hit.otherZ,
     velocityX,
     velocityZ,
-    vehicle.crash.mass,
+    THROW_STYLES[vehicle.kind],
+    vehicle.heading,
   )
   world.physics.launch(vehicle, velocity, spin)
+  if (vehicle.thrownRider && !vehicle.riderOff) {
+    throwRiderOff(world, vehicle, vehicle.thrownRider, velocityX, velocityZ, hit.otherX, hit.otherZ)
+  }
   vehicle.speed = 0
   vehicle.crashTime = 0
 }
@@ -744,7 +997,7 @@ function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState, dt:
   applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ, dt)
   if (change < TRAFFIC_RULES.launchKnock) return
 
-  const thrown = throwFor(hit.otherX, hit.otherZ, velocity.x, velocity.z, PARKED_SCOOTER_SHAPE.mass)
+  const thrown = throwFor(hit.otherX, hit.otherZ, velocity.x, velocity.z, TWO_WHEELER_THROW, body.heading)
   world.physics.launch(body, thrown.velocity, thrown.spin)
 }
 
@@ -843,6 +1096,7 @@ function hitPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterSt
     PERSON_HIT_DISTANCE - distance,
     [0, 0, PERSON_SHAPE.mass],
     [rider.velocityX, rider.velocityZ, SCOOTER.mass],
+    TRAFFIC_RULES.bodyBounciness,
   )
   const knock = Math.hypot(hit.changeX, hit.changeZ)
 
@@ -858,29 +1112,71 @@ function hitPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterSt
   rider.impact = Math.max(rider.impact, Math.min(knock / 20, 0.6))
 
   world.physics.addBody(person, PERSON_SHAPE, false)
-  const { velocity, spin } = throwFor(hit.changeX, hit.changeZ, 0, 0, PERSON_SHAPE.mass)
+  const { velocity, spin } = throwFor(hit.changeX, hit.changeZ, 0, 0, PERSON_THROW, person.heading)
   world.physics.launch(person, velocity, spin)
   person.downTime = 0
 }
 
-/** Someone who was knocked over lies there a while, then gets up and walks back to their path. */
+/** Eases in and out, so a movement starts and ends gently instead of at full speed. */
+function smooth(amount: number): number {
+  return amount * amount * (3 - 2 * amount)
+}
+
+/**
+ * Someone who was knocked over goes limp as they fall, lies there a while, then
+ * gets up: they turn from however they're lying back to standing, over about a
+ * second, and walk back to their path from where they landed.
+ */
 function stepKnockedPedestrian(world: TrafficWorld, person: Pedestrian, dt: number) {
+  const rules = TRAFFIC_RULES
   const { physics, walkLanes } = world
-  physics.readBack(person, PERSON_SHAPE)
-  person.downTime += dt
 
-  const settled = person.body?.isSleeping() === true
-  const down = person.downTime > TRAFFIC_RULES.pedestrianDownTime
-  if (!down || (!settled && person.downTime < TRAFFIC_RULES.maxCrashTime)) return
+  if (person.body) {
+    physics.readBack(person, PERSON_SHAPE)
+    person.downTime += dt
+    person.down = Math.min(1, person.down + rules.goLimpRate * dt)
 
-  physics.removeBody(person)
+    const settled = person.body.isSleeping()
+    const ready = person.downTime > rules.pedestrianDownTime
+    if (!ready || (!settled && person.downTime < rules.maxCrashTime)) return
+
+    physics.removeBody(person)
+    person.fallen = person.rotation ?? yawRotation(person.heading)
+    person.fallenLift = person.lift
+    person.rising = 0
+    return
+  }
+
+  if (!person.fallen) return
+  person.rising = Math.min(1, person.rising + dt / rules.getUpTime)
+  const amount = smooth(person.rising)
+  person.rotation = blendRotation(person.fallen, yawRotation(person.heading), amount)
+  person.lift = person.fallenLift * (1 - amount)
+  person.down = 1 - amount
+  if (person.rising < 1) return
+
+  person.fallen = null
   person.rotation = null
   person.lift = 0
-
-  // They stand up where they landed, and walk back from there.
+  person.down = 0
+  // They walk back to their path from where they got up.
   const lane = walkLanes[person.lane]
+  if (!lane) return
   person.dodgeX = person.x - (lane.startX + lane.forwardX * person.along)
   person.dodgeZ = person.z - (lane.startZ + lane.forwardZ * person.along)
+}
+
+/** Collects everyone lying on the ground or getting up: knocked-over people, thrown bike riders, and the rider. */
+function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[], pedestrianCount: number) {
+  const downed = world.downed
+  downed.length = 0
+  for (const person of world.pedestrians.slice(0, pedestrianCount)) {
+    if (person.body || person.fallen) downed.push(person)
+  }
+  for (const { thrownRider, riderOff } of vehicles) {
+    if (thrownRider && riderOff) downed.push(thrownRider)
+  }
+  if (rider.rider.phase !== 'on') downed.push(rider.rider)
 }
 
 /** Advances everything. Only the first `vehicleCount` and `pedestrianCount` are in play. */
@@ -895,14 +1191,20 @@ export function stepTraffic(
   const rules = TRAFFIC_RULES
   const activeVehicles = world.vehicles.slice(0, vehicleCount)
   world.signalClock += dt
+  listDowned(world, rider, activeVehicles, pedestrianCount)
 
   for (const vehicle of activeVehicles) {
     const tooFar = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) > rules.vehicleRemoveAt
     if (vehicle.lane === -1 || tooFar) {
       if (vehicle.body) world.physics.removeBody(vehicle)
       vehicle.rotation = null
+      vehicle.fallen = null
       vehicle.lift = 0
       vehicle.lane = -1
+      if (vehicle.thrownRider) {
+        if (vehicle.thrownRider.body) world.physics.removeBody(vehicle.thrownRider)
+        mountRider(vehicle, vehicle.thrownRider)
+      }
       const isFree = ({ startX, startZ }: Lane) =>
         activeVehicles.every(
           (other) =>
@@ -926,8 +1228,14 @@ export function stepTraffic(
       vehicle.shiftTarget = 0
     }
 
+    if (vehicle.thrownRider && vehicle.riderOff) stepThrownRider(world, vehicle, vehicle.thrownRider, dt)
+
     if (vehicle.body) {
       stepCrashedVehicle(world, vehicle, rider, dt)
+      continue
+    }
+    if (vehicle.fallen) {
+      stepRightingVehicle(vehicle, dt)
       continue
     }
 
@@ -944,6 +1252,8 @@ export function stepTraffic(
     if (person.lane === -1 || tooFar) {
       if (person.body) world.physics.removeBody(person)
       person.rotation = null
+      person.fallen = null
+      person.down = 0
       person.lift = 0
       person.lane = -1
       const lane = findLaneInRing(walkLanes, rider.x, rider.z, rules.pedestrianSpawnMin, rules.pedestrianSpawnMax, random)
@@ -953,7 +1263,7 @@ export function stepTraffic(
       person.dodgeZ = 0
     }
 
-    if (person.body) {
+    if (person.body || person.fallen) {
       stepKnockedPedestrian(world, person, dt)
       continue
     }

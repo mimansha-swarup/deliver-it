@@ -46,6 +46,41 @@ export type ScooterState = {
   spin: number
   /** How hard the last hit was, from 0 to 1. It fades, and shakes the camera. */
   impact: number
+  /** The rider, who is thrown off in a hard crash. See `stepThrownRider`. */
+  rider: ThrownRider
+}
+
+/** What the rider is doing after coming off: in the air or sliding, lying still, getting up, walking back, getting on. */
+export type RiderPhase = 'on' | 'thrown' | 'lying' | 'rising' | 'walking' | 'mounting'
+
+export type ThrownRider = {
+  phase: RiderPhase
+  /** Seconds in this phase. */
+  time: number
+  /** Where their hips are, in the world, and how fast they're moving. */
+  x: number
+  y: number
+  z: number
+  velocityX: number
+  velocityY: number
+  velocityZ: number
+  /** Which way their body faces, around Y. */
+  heading: number
+  /** Forward roll: the axis it turns around (level, square to the throw), the angle, and how fast. */
+  rollAxisX: number
+  rollAxisZ: number
+  roll: number
+  rollSpeed: number
+  /** The roll they were lying at, which getting up turns back from. */
+  lyingRoll: number
+  /** Whether they've landed. After that they slide, and never go back to flying. */
+  onGround: boolean
+  /** How far off the scooter they are, for drawing: 1 is off, 0 is sitting on it. */
+  off: number
+  /** How limp they are, from 0 to 1. */
+  limp: number
+  /** Their place in a walking stride, in radians. */
+  stride: number
 }
 
 export function createScooterState(): ScooterState {
@@ -68,6 +103,26 @@ export function createScooterState(): ScooterState {
     crashCount: 0,
     spin: 0,
     impact: 0,
+    rider: {
+      phase: 'on',
+      time: 0,
+      x: 0,
+      y: 0,
+      z: 0,
+      velocityX: 0,
+      velocityY: 0,
+      velocityZ: 0,
+      heading: 0,
+      rollAxisX: 1,
+      rollAxisZ: 0,
+      roll: 0,
+      rollSpeed: 0,
+      lyingRoll: 0,
+      onGround: false,
+      off: 0,
+      limp: 0,
+      stride: 0,
+    },
   }
 }
 
@@ -88,7 +143,175 @@ const NO_INPUT: DriveInput = {
   handbrake: false,
 }
 
-function startCrash(state: ScooterState, side: number, strength: number) {
+/** The rider's hips, sitting or standing, and lying flat on the ground, in metres up. */
+const RIDER_HIP_HEIGHT = 0.93
+const LYING_HIP_HEIGHT = 0.17
+/** Where the seat is, from the scooter's middle, in metres back. Matches `HIP` in Rider.tsx. */
+const SEAT_BACK = 0.36
+/** Share of the scooter's speed the rider carries on with. */
+const RIDER_CARRY = 0.65
+/** A body sliding on tarmac slows by this much each second, in m/s. */
+const RIDER_SLIDE_FRICTION = 8.5
+const RIDER_RADIUS = 0.3
+/** How long each part of coming off takes, in seconds. */
+const RIDER_MIN_THROWN = 0.8
+const RIDER_LIE_TIME = 0.6
+const RIDER_RISE_TIME = 0.7
+const RIDER_MOUNT_TIME = 0.55
+const RIDER_WALK_SPEED = 4
+/** Close enough to the seat to get on, in metres. */
+const RIDER_REACH = 0.7
+
+/**
+ * Throws the rider off, over the bars. They carry on with most of the speed
+ * they had, come up off the seat, and roll forward, more the faster they were going.
+ */
+function throwRiderOff(state: ScooterState, travelX: number, travelZ: number) {
+  const rider = state.rider
+  const speed = Math.hypot(travelX, travelZ)
+  rider.phase = 'thrown'
+  rider.time = 0
+  rider.x = state.x - Math.sin(state.heading) * SEAT_BACK
+  rider.y = RIDER_HIP_HEIGHT
+  rider.z = state.z - Math.cos(state.heading) * SEAT_BACK
+  rider.velocityX = travelX * RIDER_CARRY
+  rider.velocityY = Math.min(1.2 + speed * 0.08, 2.6)
+  rider.velocityZ = travelZ * RIDER_CARRY
+  rider.heading = state.heading
+  // To roll forward along the travel (u, w), the body turns about the level axis (w, 0, -u).
+  rider.rollAxisX = travelZ / speed
+  rider.rollAxisZ = -travelX / speed
+  rider.roll = 0
+  rider.rollSpeed = Math.min(speed * 0.45, 6)
+  rider.onGround = false
+  rider.off = 1
+  rider.limp = 0.3
+}
+
+/** The nearest angle at which the body lies flat, face down or on its back. */
+function nearestLyingRoll(roll: number): number {
+  return Math.round((roll - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2
+}
+
+/**
+ * The thrown rider, step by step: through the air under gravity, then sliding
+ * to a stop, settling flat, lying still, getting up, walking back to the
+ * scooter, and getting on. It's simple maths rather than Rapier, as there's
+ * only one rider and the path matters more than the bounces.
+ */
+function stepThrownRider(state: ScooterState, collisions: CollisionWorld, dt: number) {
+  const rider = state.rider
+  rider.time += dt
+  const seatX = state.x - Math.sin(state.heading) * SEAT_BACK
+  const seatZ = state.z - Math.cos(state.heading) * SEAT_BACK
+
+  if (rider.phase === 'thrown') {
+    rider.limp = Math.min(1, rider.limp + dt * 5)
+    rider.x += rider.velocityX * dt
+    rider.z += rider.velocityZ * dt
+
+    // Hips are high when upright and low when flat, so the ground they rest on depends on the roll.
+    // Upside down counts as low too: nobody stays in a headstand.
+    const upright = Math.max(0, Math.cos(rider.roll))
+    const restHeight = LYING_HIP_HEIGHT + (RIDER_HIP_HEIGHT - LYING_HIP_HEIGHT) * upright * upright
+    if (!rider.onGround) {
+      rider.velocityY -= 9.81 * dt
+      rider.y += rider.velocityY * dt
+      rider.onGround = rider.y <= restHeight
+    }
+    const grounded = rider.onGround
+    if (grounded) {
+      // Rolling changes how high the hips rest, so they ease there rather than jumping, and never take off again.
+      rider.y += (restHeight - rider.y) * (1 - Math.exp(-12 * dt))
+      rider.velocityY = 0
+      const speed = Math.hypot(rider.velocityX, rider.velocityZ)
+      const slowed = Math.max(0, speed - RIDER_SLIDE_FRICTION * dt)
+      rider.velocityX *= speed > 0 ? slowed / speed : 0
+      rider.velocityZ *= speed > 0 ? slowed / speed : 0
+      // Rubbing on the ground stops the roll, and the body settles flat.
+      rider.rollSpeed *= Math.exp(-6 * dt)
+      rider.roll += (nearestLyingRoll(rider.roll) - rider.roll) * (1 - Math.exp(-9 * dt))
+    }
+    rider.roll += rider.rollSpeed * dt
+
+    // Walls stop a thrown rider dead.
+    const before = { x: rider.x, z: rider.z }
+    pushOutOfBuildings(collisions, rider, RIDER_RADIUS)
+    if (rider.x !== before.x || rider.z !== before.z) {
+      rider.velocityX = 0
+      rider.velocityZ = 0
+      // Hitting a wall stops most of the roll too.
+      rider.rollSpeed *= 0.3
+    }
+
+    const stopped = grounded && Math.hypot(rider.velocityX, rider.velocityZ) < 0.3
+    if (stopped && rider.time > RIDER_MIN_THROWN) {
+      rider.phase = 'lying'
+      rider.time = 0
+      // Whole turns don't matter once they're down, so getting up never turns them the long way round.
+      const lying = nearestLyingRoll(rider.roll)
+      rider.roll = Math.atan2(Math.sin(lying), Math.cos(lying))
+    }
+    return
+  }
+
+  if (rider.phase === 'lying') {
+    if (rider.time > RIDER_LIE_TIME) {
+      rider.phase = 'rising'
+      rider.time = 0
+      rider.lyingRoll = rider.roll
+    }
+    return
+  }
+
+  if (rider.phase === 'rising') {
+    const amount = Math.min(1, rider.time / RIDER_RISE_TIME)
+    const eased = amount * amount * (3 - 2 * amount)
+    rider.limp = 1 - eased
+    rider.y = LYING_HIP_HEIGHT + (RIDER_HIP_HEIGHT - LYING_HIP_HEIGHT) * eased
+    if (amount >= 1) {
+      rider.phase = 'walking'
+      rider.time = 0
+      rider.roll = 0
+      rider.y = RIDER_HIP_HEIGHT
+      rider.limp = 0
+      return
+    }
+    // Rolls back from flat to upright, by turning the lying angle down towards 0.
+    rider.roll = rider.lyingRoll * (1 - eased)
+    return
+  }
+
+  if (rider.phase === 'walking') {
+    const toSeatX = seatX - rider.x
+    const toSeatZ = seatZ - rider.z
+    const distance = Math.hypot(toSeatX, toSeatZ)
+    if (distance <= RIDER_REACH) {
+      rider.phase = 'mounting'
+      rider.time = 0
+      // The scooter is lifted back up while they climb on.
+      state.crashLeft = SCOOTER.getUpTime
+      return
+    }
+    const step = Math.min(distance, RIDER_WALK_SPEED * dt)
+    rider.x += (toSeatX / distance) * step
+    rider.z += (toSeatZ / distance) * step
+    rider.heading = Math.atan2(toSeatX, toSeatZ)
+    rider.stride += RIDER_WALK_SPEED * 3.2 * dt
+    return
+  }
+
+  if (rider.phase === 'mounting') {
+    rider.off = Math.max(0, 1 - rider.time / RIDER_MOUNT_TIME)
+    if (rider.off === 0) rider.phase = 'on'
+  }
+}
+
+/**
+ * `travelX` and `travelZ` are the speed just before the hit, which is what the
+ * rider carries on with if they're thrown off.
+ */
+function startCrash(state: ScooterState, side: number, strength: number, travelX: number, travelZ: number) {
   state.impact = Math.max(state.impact, Math.min(strength / 12, 1))
   if (state.crashLeft > 0) return
 
@@ -98,6 +321,7 @@ function startCrash(state: ScooterState, side: number, strength: number) {
   state.spin = state.crashSide * Math.min(strength * 0.5, 5)
   state.drifting = false
   state.boostLeft = 0
+  if (Math.hypot(travelX, travelZ) > SCOOTER.throwOffSpeed) throwRiderOff(state, travelX, travelZ)
 }
 
 /**
@@ -146,7 +370,8 @@ export function applyImpact(
   const change = Math.hypot(changeX, changeZ)
   state.impact = Math.max(state.impact, Math.min(change / 12, 1))
   if (change > SCOOTER.impactCrashSpeed) {
-    startCrash(state, changeX * Math.cos(state.heading) - changeZ * Math.sin(state.heading), change)
+    const side = changeX * Math.cos(state.heading) - changeZ * Math.sin(state.heading)
+    startCrash(state, side, change, state.velocityX - changeX, state.velocityZ - changeZ)
   }
 }
 
@@ -312,6 +537,8 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
 
   const alongX = state.velocityX - normalX * intoWall
   const alongZ = state.velocityZ - normalZ * intoWall
+  const travelX = state.velocityX
+  const travelZ = state.velocityZ
   state.velocityX = alongX
   state.velocityZ = alongZ
 
@@ -319,7 +546,8 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
   const isCrash = hitSpeed > SCOOTER.wallCrashSpeed
   if (isCrash) {
     // Which side the wall is on decides which way the scooter falls.
-    startCrash(state, normalX * Math.cos(state.heading) - normalZ * Math.sin(state.heading), hitSpeed)
+    const side = normalX * Math.cos(state.heading) - normalZ * Math.sin(state.heading)
+    startCrash(state, side, hitSpeed, travelX, travelZ)
   }
 
   const directness = hitSpeed / travelSpeed
@@ -393,6 +621,14 @@ export function stepScooter(
     state.velocityX *= skid
     state.velocityZ *= skid
     state.crashLeft = Math.max(0, state.crashLeft - dt)
+  }
+
+  if (state.rider.phase !== 'on') {
+    stepThrownRider(state, collisions, dt)
+    // The scooter stays on its side until the rider is back to pick it up.
+    const { phase } = state.rider as { phase: RiderPhase }
+    const away = phase !== 'on' && phase !== 'mounting'
+    if (away) state.crashLeft = Math.max(state.crashLeft, SCOOTER.getUpTime + 0.05)
   }
 
   state.heading += state.spin * dt

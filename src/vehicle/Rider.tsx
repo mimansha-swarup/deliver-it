@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { HIP } from './riderShape'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { createPrintTexture, SHIRT_COLOR } from './shirtPrint'
 
@@ -22,7 +23,6 @@ const PRINT_LIFT = 0.006
 const PRINT_TOP_RADIUS = 0.195
 const PRINT_BOTTOM_RADIUS = 0.186
 
-const HIP = new THREE.Vector3(0, 0.93, -0.36)
 const SHOULDER_HEIGHT = 1.39
 const SHOULDER_Z = -0.18
 /** How far the rider's back leans forward when sitting still, in radians. */
@@ -135,7 +135,26 @@ const hip = new THREE.Vector3()
 const foot = new THREE.Vector3()
 const joint = new THREE.Vector3()
 
-function placeArm(limb: LimbGroup, sign: number, steerAngle: number, crouch: number) {
+/** Off the scooter: how far a walking arm and leg swing, and how a limp body's limbs fall. */
+const ARM_SWING = 0.22
+const LEG_SWING = 0.3
+const offHand = new THREE.Vector3()
+const limpHand = new THREE.Vector3()
+
+/**
+ * `off` is how far off the scooter the rider is, `limp` how limp, and `stride`
+ * their place in a walking step. On the scooter the hands hold the grips. Off
+ * it, they swing at the sides while walking, or fling out when limp.
+ */
+function placeArm(
+  limb: LimbGroup,
+  sign: number,
+  steerAngle: number,
+  crouch: number,
+  off: number,
+  limp: number,
+  stride: number,
+) {
   const { upper, lower, middleJoint, end } = partsOf(limb)
   if (!end) return
 
@@ -148,6 +167,13 @@ function placeArm(limb: LimbGroup, sign: number, steerAngle: number, crouch: num
     GRIP.y,
     STEERING_Z - x * Math.sin(steerAngle) + GRIP.z * Math.cos(steerAngle),
   )
+
+  if (off > 0) {
+    offHand.set(sign * 0.25, SHOULDER_HEIGHT - 0.62, SHOULDER_Z - Math.sin(stride) * ARM_SWING * sign)
+    limpHand.set(sign * 0.62, SHOULDER_HEIGHT + 0.12, SHOULDER_Z + 0.12 * sign)
+    offHand.lerp(limpHand, limp)
+    hand.lerp(offHand, off)
+  }
 
   side.set(sign * 0.7, ELBOW_BEND.y, ELBOW_BEND.z)
   findJoint(joint, shoulder, hand, UPPER_ARM, FOREARM, side)
@@ -168,6 +194,19 @@ function placeLeg(limb: LimbGroup, sign: number, footPosition: THREE.Vector3) {
   placeLimb(lower, joint, footPosition)
   middleJoint.position.copy(joint)
   end.position.set(footPosition.x, footPosition.y - 0.03, footPosition.z + 0.05)
+}
+
+const offFoot = new THREE.Vector3()
+const limpFoot = new THREE.Vector3()
+
+/** Moves a foot from the scooter to where it is off it: under the hip while walking, or straight out when limp. */
+function placeOffFoot(footPosition: THREE.Vector3, sign: number, off: number, limp: number, stride: number) {
+  if (off === 0) return
+  const step = Math.sin(stride) * sign
+  offFoot.set(sign * 0.12, 0.05 + Math.max(0, step) * 0.08, HIP.z + step * LEG_SWING)
+  limpFoot.set(sign * 0.2, 0.02, HIP.z - 0.05)
+  offFoot.lerp(limpFoot, limp)
+  footPosition.lerp(offFoot, off)
 }
 
 /** The rider. Hands stay on the grips, and a foot comes down when the scooter stops. */
@@ -229,17 +268,20 @@ export function Rider({
     const wantsFoot = speed < FOOT_DOWN_SPEED && state.crashLeft === 0 ? 1 : 0
     footDown.current += (wantsFoot - footDown.current) * (1 - Math.exp(-FOOT_RESPONSE * delta))
 
-    placeArm(leftArm, 1, steer, crouch)
-    placeArm(rightArm, -1, steer, crouch)
+    const { off, limp, stride } = state.rider
+    placeArm(leftArm, 1, steer, crouch, off, limp, stride)
+    placeArm(rightArm, -1, steer, crouch, off, limp, stride)
     foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
+    placeOffFoot(foot, 1, off, limp, stride)
     placeLeg(leftLeg, 1, foot)
     foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
+    placeOffFoot(foot, -1, off, limp, stride)
     placeLeg(rightLeg, -1, foot)
 
-    // Leans into a bend harder than the scooter, and looks where it's going.
+    // Leans into a bend harder than the scooter, and looks where it's going. Off it, they stand up straight.
     if (body.current) {
-      body.current.rotation.z = -state.lean * 0.35
-      body.current.rotation.x = SIT_LEAN + crouch * 0.16
+      body.current.rotation.z = -state.lean * 0.35 * (1 - off)
+      body.current.rotation.x = (SIT_LEAN + crouch * 0.16) * (1 - off) + 0.05 * off
     }
     if (head.current) {
       head.current.rotation.y = state.steer * 0.3

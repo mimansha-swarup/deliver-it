@@ -2,7 +2,15 @@ import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { BufferGeometry, DoubleSide, Float32BufferAttribute, type Group } from 'three'
+import {
+  BufferGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type Group,
+} from 'three'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { getStreetReflection } from '../traffic/carModel'
@@ -14,6 +22,7 @@ import {
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
 import { Rider, STEERING_Z } from './Rider'
+import { HIP } from './riderShape'
 import { HOLD_INPUT, stepScooter, type ScooterState } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
 
@@ -135,6 +144,53 @@ function Wheel({
 
 type WheelData = { wheelPositions: [number, number, number][] }
 
+const seatHip = new Vector3()
+const seatTurn = new Quaternion()
+const thrownHip = new Vector3()
+const thrownTurn = new Quaternion()
+const roll = new Quaternion()
+const rollAxis = new Vector3()
+const unscaled = new Vector3(1, 1, 1)
+const riderWorld = new Matrix4()
+const hipOffset = new Matrix4()
+const toLean = new Matrix4()
+const UP = new Vector3(0, 1, 0)
+
+/**
+ * Puts the rider where they are. On the scooter, that's simply the seat. Once
+ * thrown, they have their own place and turn in the world, from
+ * `stepThrownRider`. The rider is still inside the scooter's lean group, so
+ * their world pose is turned into one relative to that group. While they're
+ * getting back on, the two poses blend by `rider.off`.
+ */
+function placeRider(root: Group, lean: Group, scooter: Group, state: ScooterState) {
+  const rider = state.rider
+  if (rider.off === 0) {
+    root.matrix.identity()
+    root.matrixWorldNeedsUpdate = true
+    return
+  }
+
+  scooter.updateMatrixWorld(true)
+  seatHip.copy(HIP).applyMatrix4(lean.matrixWorld)
+  lean.matrixWorld.decompose(thrownHip, seatTurn, unscaled)
+
+  thrownHip.set(rider.x, rider.y, rider.z)
+  rollAxis.set(rider.rollAxisX, 0, rider.rollAxisZ)
+  roll.setFromAxisAngle(rollAxis, rider.roll)
+  thrownTurn.setFromAxisAngle(UP, rider.heading).premultiply(roll)
+
+  thrownHip.lerp(seatHip, 1 - rider.off)
+  thrownTurn.slerp(seatTurn, 1 - rider.off)
+
+  // The rider's own space has its origin at the scooter's middle, so the hips are moved to the origin first.
+  hipOffset.makeTranslation(-HIP.x, -HIP.y, -HIP.z)
+  riderWorld.compose(thrownHip, thrownTurn, unscaled.set(1, 1, 1)).multiply(hipOffset)
+  toLean.copy(lean.matrixWorld).invert()
+  root.matrix.multiplyMatrices(toLean, riderWorld)
+  root.matrixWorldNeedsUpdate = true
+}
+
 /**
  * The bike's nesting matches how it moves. The outer group carries position and
  * direction, the lean group tilts everything, and the steering group turns only
@@ -177,6 +233,7 @@ export function Scooter({
   )
 
   const lean = useRef<Group>(null)
+  const riderRoot = useRef<Group>(null)
   const steering = useRef<Group>(null)
   const frontWheel = useRef<Group>(null)
   const rearWheel = useRef<Group>(null)
@@ -198,6 +255,9 @@ export function Scooter({
     if (lean.current) {
       lean.current.rotation.z = -state.lean
       lean.current.rotation.x = state.pitch
+    }
+    if (riderRoot.current && lean.current && ref.current) {
+      placeRider(riderRoot.current, lean.current, ref.current, state)
     }
     if (steering.current) steering.current.rotation.y = state.steer * MAX_FRONT_WHEEL_ANGLE
     if (frontWheel.current) frontWheel.current.rotation.x = state.wheelSpin
@@ -234,7 +294,9 @@ export function Scooter({
             </mesh>
           </group>
         </group>
-        <Rider scooter={scooterState} steerAngle={MAX_FRONT_WHEEL_ANGLE} reflection={reflection} />
+        <group ref={riderRoot} matrixAutoUpdate={false}>
+          <Rider scooter={scooterState} steerAngle={MAX_FRONT_WHEEL_ANGLE} reflection={reflection} />
+        </group>
       </group>
     </group>
   )
