@@ -5,6 +5,7 @@ import { QUALITY_PRESETS } from './game/qualitySettings'
 import { DirectionArrow } from './ui/DirectionArrow'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Hud } from './ui/Hud'
+import { PlayerHorn } from './ui/PlayerHorn'
 import { Phone } from './ui/Phone'
 import { isTouchDevice } from './game/touchDevice'
 import { QualityPicker } from './ui/QualityPicker'
@@ -24,6 +25,7 @@ function GameUi() {
   return (
     <>
       <Hud />
+      <PlayerHorn />
       <QualityPicker className="quality-hud" />
       <DirectionArrow />
       <Phone />
@@ -31,7 +33,7 @@ function GameUi() {
       {isTouchDevice ? (
         <TouchControls />
       ) : (
-        <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · P phone · N skips time · M changes weather</p>
+        <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · H honk · P phone · N skips time · M changes weather</p>
       )}
     </>
   )

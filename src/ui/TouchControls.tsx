@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { honkPlayerHorn } from '../audio/horns'
 import type { DriveInput } from '../vehicle/ScooterController'
 import { touchInput } from '../vehicle/touchInput'
 
@@ -96,6 +97,15 @@ export function TouchControls() {
       </div>
 
       <div className="touch-pedals">
+        <div
+          className="touch-button touch-horn"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            honkPlayerHorn()
+          }}
+        >
+          Horn
+        </div>
         <div className="touch-button touch-drift" data-control="handbrake">
           Drift
         </div>

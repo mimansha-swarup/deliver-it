@@ -799,3 +799,16 @@ body,
     animation: none;
   }
 }
+
+/* The horn sits above Brake, beside Drift. */
+.touch-horn {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 76px;
+  font-size: 11px;
+  color: #ffd84d;
+}
+
+.touch-horn:active {
+  background: rgb(255 216 77 / 35%);
+}

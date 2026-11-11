@@ -46,7 +46,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     rainDrops: 300,
     leafyTrees: false,
     grassTufts: 0,
-    vehicles: 6,
+    vehicles: 12,
     pedestrians: 10,
   },
   medium: {
@@ -63,7 +63,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     rainDrops: 700,
     leafyTrees: true,
     grassTufts: 1400,
-    vehicles: 12,
+    vehicles: 22,
     pedestrians: 22,
   },
   high: {
@@ -80,7 +80,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     rainDrops: 1400,
     leafyTrees: true,
     grassTufts: 3200,
-    vehicles: 18,
+    vehicles: 34,
     pedestrians: 36,
   },
 }

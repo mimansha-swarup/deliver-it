@@ -90,6 +90,9 @@ function createPerson(x: number, z: number, heading: number, tint: number, skin:
     dodgeZ: 0,
     stride: 0,
     skin,
+    body: null,
+    rotation: null,
+    downTime: 0,
   }
 }
 

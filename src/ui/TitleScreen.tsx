@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import { useGameStore } from '../game/gameStore'
+import { unlockAudio } from '../audio/horns'
 import { enterLandscapeFullscreen } from '../game/fullscreen'
 import { isTouchDevice } from '../game/touchDevice'
 import { QualityPicker } from './QualityPicker'
@@ -9,6 +10,7 @@ const KEYBOARD_CONTROLS = [
   ['S or down', 'Brake'],
   ['Hold Space and steer', 'Drift, then let go to boost'],
   ['P', 'Bring up your phone'],
+  ['H', 'Honk'],
 ]
 
 const TOUCH_CONTROLS = [
@@ -16,6 +18,7 @@ const TOUCH_CONTROLS = [
   ['Right thumb', 'Gas and brake'],
   ['Hold Drift and steer', 'Drift, then let go to boost'],
   ['Tap the phone', 'Bring it up'],
+  ['Horn', 'Honk'],
 ]
 
 export function TitleScreen() {
@@ -52,6 +55,8 @@ export function TitleScreen() {
             type="button"
             autoFocus
             onClick={() => {
+              // Sound is only allowed after a tap or click, and this is one.
+              unlockAudio()
               if (isTouchDevice) void enterLandscapeFullscreen()
               startGame()
             }}

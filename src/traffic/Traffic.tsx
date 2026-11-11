@@ -1,3 +1,4 @@
+import { playHorn } from '../audio/horns'
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -10,6 +11,7 @@ import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
 import { createWomanGeometry } from './peopleShapes'
 import {
+  takeHonks,
   LOOSE_DRAW_DISTANCE,
   stepTraffic,
   type Pedestrian,
@@ -490,7 +492,9 @@ export function Traffic({
   )
 
   useFrame((_, delta) => {
-    stepTraffic(world, scooter.current, vehicles, pedestrians, Math.min(delta, MAX_STEP))
+    const rider = scooter.current
+    stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP))
+    takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))
   })
 
   return (
