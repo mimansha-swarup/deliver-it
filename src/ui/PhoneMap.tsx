@@ -37,6 +37,8 @@ const GROUND_COLOR = '#22252a'
 const ROAD_COLOR = '#646a73'
 const BUILDING_COLOR = '#353940'
 const PARK_COLOR = '#284232'
+/** Military land, which can't be entered. */
+const RESTRICTED_COLOR = '#33362a'
 /** The road name pill sits this far below the status bar, in pixels. */
 const CURRENT_ROAD_GAP = 4
 /** How often the road you're on is looked up again, in milliseconds. */
@@ -68,6 +70,12 @@ function createMapImage(data: MapData): HTMLCanvasElement {
 
   context.fillStyle = GROUND_COLOR
   context.fillRect(0, 0, image.width, image.height)
+
+  context.fillStyle = RESTRICTED_COLOR
+  for (const zone of data.restricted) {
+    traceLine(context, zone.geometry.coordinates[0])
+    context.fill()
+  }
 
   context.fillStyle = PARK_COLOR
   for (const park of data.parks) {

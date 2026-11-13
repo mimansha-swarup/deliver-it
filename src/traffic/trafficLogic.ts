@@ -1140,6 +1140,73 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt
   vehicle.crashTime = 0
 }
 
+/**
+ * A crashed or righting vehicle is still solid. It's a real body by now, so the
+ * scooter bumps it by weight: a wrecked car stops you, a fallen bike gets shoved.
+ * (Rapier pushes the body; this stops the scooter, which Rapier doesn't move.)
+ */
+function blockRider(vehicle: Vehicle, rider: ScooterState, dt: number) {
+  const touch = touchVehicle(vehicle, rider.x, rider.z, SCOOTER.collisionRadius)
+  if (!touch) return
+  const velocity = vehicle.body?.linvel() ?? { x: 0, z: 0 }
+  const hit = resolveHit(
+    touch.normalX,
+    touch.normalZ,
+    touch.overlap,
+    [rider.velocityX, rider.velocityZ, SCOOTER.mass],
+    [velocity.x, velocity.z, vehicle.crash.mass],
+  )
+  applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ, dt)
+}
+
+/** The rider's body, once thrown off the scooter, is this wide for bumping into things, in metres. */
+const THROWN_RIDER_RADIUS = 0.3
+/** How bouncy the rider's body is against a vehicle: a little, as people are soft. */
+const THROWN_RIDER_BOUNCE = 0.25
+/** Thrown off, the rider clears anything this much lower than their hips, in metres. */
+const THROWN_RIDER_CLEARANCE = 0.15
+
+/**
+ * Once the rider has come off the scooter, vehicles and parked bikes stop them
+ * as walls do. Thrown high enough, they sail over. The rider is light, so a
+ * moving car doesn't slow for them here. Traffic already brakes for anyone down.
+ */
+function blockThrownRider(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[]) {
+  const body = rider.rider
+  if (body.phase === 'on' || body.phase === 'mounting') return
+
+  const bounceOff = (normalX: number, normalZ: number, overlap: number) => {
+    body.x += normalX * overlap
+    body.z += normalZ * overlap
+    const into = body.velocityX * normalX + body.velocityZ * normalZ
+    if (into >= 0) return
+    // Off the vehicle, keeping the speed along its side, as you'd slide along a car.
+    body.velocityX -= into * (1 + THROWN_RIDER_BOUNCE) * normalX
+    body.velocityZ -= into * (1 + THROWN_RIDER_BOUNCE) * normalZ
+    body.rollSpeed *= 0.4
+    if (-into > 2) soundImpact(world, body.x, body.z, -into)
+  }
+
+  for (const vehicle of vehicles) {
+    if (vehicle.lane === -1) continue
+    const top = vehicle.lift + vehicle.crash.centre + vehicle.crash.halfSize[1]
+    if (body.y > top + THROWN_RIDER_CLEARANCE) continue
+    const touch = touchVehicle(vehicle, body.x, body.z, THROWN_RIDER_RADIUS)
+    if (touch) bounceOff(touch.normalX, touch.normalZ, touch.overlap)
+  }
+
+  // Parked scooters: about a bike's length round, and waist high.
+  for (const parked of world.loose) {
+    if (body.y > PARKED_SCOOTER_SHAPE.centre + PARKED_SCOOTER_SHAPE.halfSize[1] + parked.lift + THROWN_RIDER_CLEARANCE) continue
+    const awayX = body.x - parked.x
+    const awayZ = body.z - parked.z
+    const distance = Math.hypot(awayX, awayZ)
+    const touching = LOOSE_HIT_DISTANCE - SCOOTER.collisionRadius + THROWN_RIDER_RADIUS
+    if (distance >= touching || distance === 0) continue
+    bounceOff(awayX / distance, awayZ / distance, touching - distance)
+  }
+}
+
 /** The rider feels a loose thing as a real weight, and sends it on its way. */
 function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState, dt: number) {
   const awayX = rider.x - body.x
@@ -1529,10 +1596,12 @@ export function stepTraffic(
 
     if (vehicle.body) {
       stepCrashedVehicle(world, vehicle, rider, dt)
+      if (vehicle.lane !== -1) blockRider(vehicle, rider, dt)
       continue
     }
     if (vehicle.fallen) {
       stepRightingVehicle(vehicle, dt)
+      blockRider(vehicle, rider, dt)
       continue
     }
 
@@ -1554,6 +1623,7 @@ export function stepTraffic(
   updateLoose(world, rider, dt)
   updatePushers(world, activeVehicles, rider)
   world.physics.step(dt)
+  blockThrownRider(world, rider, activeVehicles)
 
   for (const person of world.pedestrians.slice(0, pedestrianCount)) {
     const tooFar = Math.hypot(person.x - rider.x, person.z - rider.z) > rules.pedestrianRemoveAt

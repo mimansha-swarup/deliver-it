@@ -1,5 +1,6 @@
 import { takePreloadedFile } from '../game/preload'
 import { classifyBuildings, type BuildingKind } from './buildingKinds'
+import { cutOutRestricted, isRestricted } from './restricted'
 import type { LonLat } from './worldUtils'
 
 type Properties = Record<string, string | undefined>
@@ -31,6 +32,8 @@ export type MapData = {
   places: PointFeature[]
   /** Other outlines: housing colonies, campuses, land use. The phone map labels the named ones. */
   areas: PolygonFeature[]
+  /** Military land: walled off, with no roads or paths inside. */
+  restricted: PolygonFeature[]
 }
 
 const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
@@ -40,7 +43,7 @@ const GREEN_SPACES = new Set(['park', 'garden', 'playground', 'pitch'])
 const NOT_DRIVABLE = new Set(['footway', 'path'])
 
 function sortFeatures(features: Feature[]): MapData {
-  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [], areas: [] }
+  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [], areas: [], restricted: [] }
   const buildings: PolygonFeature[] = []
   const areas = data.areas
 
@@ -62,6 +65,9 @@ function sortFeatures(features: Feature[]): MapData {
   }
 
   data.buildings = classifyBuildings(buildings, data.places, areas)
+  data.restricted = areas.filter(isRestricted)
+  data.roads = cutOutRestricted(data.roads, data.restricted)
+  data.footways = cutOutRestricted(data.footways, data.restricted)
   return data
 }
 

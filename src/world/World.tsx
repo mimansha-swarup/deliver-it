@@ -25,6 +25,8 @@ import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
+import { RestrictedWall } from './RestrictedWall'
+import { addRestrictedWalls } from './restricted'
 import { RoadMarkings } from './RoadMarkings'
 import { createRoadGraph } from './roadGraph'
 import { Roads } from './Roads'
@@ -61,6 +63,8 @@ function getWorld(data: MapData, rapier: RapierModule) {
  */
 function buildWorld(data: MapData, rapier: RapierModule) {
   const collisions = createCollisionWorld(data.buildings)
+  // Military land is walled off first, so nothing is placed through its wall.
+  addRestrictedWalls(collisions, data.restricted)
   const mappedShops = generateShopFronts(data.places, collisions)
   const kit = placeCityKit(data.buildings, data.roads, collisions, mappedShops)
   const graph = createRoadGraph(data.roads)
@@ -100,6 +104,7 @@ export function World() {
       <GrassField data={data} />
       <Roads roads={data.roads} />
       <Kerbs roads={data.roads} collisions={collisions} />
+      <RestrictedWall zones={data.restricted} />
       <RoadMarkings roads={data.roads} />
       <Buildings buildings={data.buildings} />
       <HouseKitMesh kit={houses} />

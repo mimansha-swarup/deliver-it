@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
+import { useTexture } from '@react-three/drei'
 import * as THREE from 'three'
-import { chunkKey } from './chunks'
+import { pushBlock, squareFor, toBlockGeometries, type Square } from './blocks'
 import { ChunkedMesh } from './ChunkedMesh'
 import { isNearBuilding, type CollisionWorld } from './collision'
 import type { LineFeature } from './mapData'
+import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
 import { indexRoadPieces, isClearOfRoads, toRoadPieces, type RoadIndex, type RoadPiece } from './props'
 import { PAVEMENT_WIDTH } from './Roads'
 
@@ -23,60 +25,6 @@ const PAINTED_ROADS = new Set(['primary', 'secondary', 'tertiary', 'trunk'])
 const CONCRETE = [new THREE.Color('#928e86'), new THREE.Color('#87837b'), new THREE.Color('#9b978e')]
 const EDGING_COLOR = new THREE.Color('#7f7a71')
 const STRIPES = [new THREE.Color('#1d1e20'), new THREE.Color('#e7b51e')]
-
-const up = new THREE.Vector3(0, 1, 0)
-
-/** Triangles for one map square, with a colour and a normal at every corner. */
-type Square = { positions: number[]; normals: number[]; colors: number[] }
-
-function squareFor(squares: Map<number, Square>, x: number, z: number): Square {
-  const key = chunkKey(x, z)
-  let square = squares.get(key)
-  if (!square) {
-    square = { positions: [], normals: [], colors: [] }
-    squares.set(key, square)
-  }
-  return square
-}
-
-/**
- * A kerb block from `from` to `to` metres along a road edge. `alongX, alongZ`
- * is the way the road runs, `outX, outZ` points away from the road, and the
- * block reaches from `inner` to `outer` metres out. Only the faces you can see
- * are made: the top, the face towards the road and the face away from it.
- */
-function pushBlock(
-  square: Square,
-  [startX, startZ]: [number, number],
-  alongX: number,
-  alongZ: number,
-  outX: number,
-  outZ: number,
-  [from, to]: [number, number],
-  [inner, outer]: [number, number],
-  height: number,
-  color: THREE.Color,
-) {
-  const corner = (along: number, out: number, y: number) =>
-    new THREE.Vector3(startX + alongX * along + outX * out, y, startZ + alongZ * along + outZ * out)
-  const face = (points: THREE.Vector3[], normal: THREE.Vector3, shade: number) => {
-    const [a, b, c, d] = points
-    // Turn the corners round if they'd make the face point the wrong way (see Lesson 174).
-    const facing = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).dot(normal)
-    for (const point of facing >= 0 ? [a, b, c, a, c, d] : [a, d, c, a, c, b]) {
-      square.positions.push(point.x, point.y, point.z)
-      square.normals.push(normal.x, normal.y, normal.z)
-      square.colors.push(color.r * shade, color.g * shade, color.b * shade)
-    }
-  }
-  const outward = new THREE.Vector3(outX, 0, outZ)
-  const inward = outward.clone().negate()
-
-  face([corner(from, inner, height), corner(to, inner, height), corner(to, outer, height), corner(from, outer, height)], up, 1)
-  // The sides are a little darker, as the edge of a real kerb is in its own shadow.
-  face([corner(from, inner, 0), corner(to, inner, 0), corner(to, inner, height), corner(from, inner, height)], inward, 0.86)
-  face([corner(from, outer, 0), corner(to, outer, 0), corner(to, outer, height), corner(from, outer, height)], outward, 0.86)
-}
 
 /**
  * Walks along one edge of a road piece in short steps, and returns the stretches
@@ -163,18 +111,7 @@ function createKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THRE
     }
   }
 
-  return [...squares.values()].map(({ positions, normals, colors }) => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    // A byte for each number, as in the house kit: there are close to a million triangles of kerb.
-    geometry.setAttribute('normal', new THREE.BufferAttribute(Int8Array.from(normals, (value) => Math.round(value * 127)), 3, true))
-    geometry.setAttribute(
-      'color',
-      new THREE.BufferAttribute(Uint8Array.from(colors, (value) => Math.round(Math.min(1, value) * 255)), 3, true),
-    )
-    geometry.computeBoundingSphere()
-    return geometry
-  })
+  return toBlockGeometries(squares)
 }
 
 /**
@@ -199,6 +136,8 @@ function getKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THREE.B
  */
 export function Kerbs({ roads, collisions }: { roads: LineFeature[]; collisions: CollisionWorld }) {
   const geometries = useMemo(() => getKerbGeometries(roads, collisions), [roads, collisions])
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), [])
+  const photo = useTexture(CONCRETE_PHOTO, preparePlasterPhoto)
+  // Concrete grain on the grey kerbs, and wear showing through the paint on the striped ones.
+  const material = useMemo(() => createPlasterMaterial(photo, { tile: 1.5, strength: 1.8 }, { roughness: 0.92 }), [photo])
   return <ChunkedMesh geometries={geometries} material={material} maxDistance={KERB_DISTANCE} />
 }

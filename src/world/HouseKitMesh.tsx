@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
@@ -6,6 +7,7 @@ import { livePlayer, liveView } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { CHUNK_SIZE } from './chunks'
 import type { HouseKit } from './houseKit'
+import { createPlasterMaterial, PLASTER_PHOTO, preparePlasterPhoto } from './plaster'
 
 /** Chajjas are small, so past this they can't be told apart from the wall, in metres. */
 const CHAJJA_DISTANCE = 180
@@ -17,6 +19,11 @@ const KEEP_EXTRA = CHUNK_SIZE * 1.5
 const BUILD_BUDGET = 5
 /** While the squares right around the rider are missing, a frame may spend this long. */
 const URGENT_BUDGET = 40
+/**
+ * The plaster photo is soft, so its light and shade is boosted a good deal to
+ * match the house walls, whose paint is mixed with it more strongly.
+ */
+const KIT_PLASTER = { tile: 3, strength: 2.2 }
 
 type BuiltSquare = { main: THREE.Mesh; chajjas: THREE.Mesh }
 
@@ -29,8 +36,16 @@ type BuiltSquare = { main: THREE.Mesh; chajjas: THREE.Mesh }
  * behind are freed. Colours are stored on the shapes, so one material does every house.
  */
 export function HouseKitMesh({ kit }: { kit: HouseKit }) {
-  const { kitDetail, shadowSize } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), [])
+  const { kitDetail, shadowSize, surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const photo = useTexture(PLASTER_PHOTO, preparePlasterPhoto)
+  // Plaster grain on Medium and High. Low keeps flat paint, as its walls have no photo either.
+  const material = useMemo(
+    () =>
+      surfaces === 'plain'
+        ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })
+        : createPlasterMaterial(photo, KIT_PLASTER, { roughness: 0.9 }),
+    [photo, surfaces],
+  )
   const group = useRef<THREE.Group>(null)
   const built = useRef(new Map<number, BuiltSquare>())
 
@@ -72,6 +87,8 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
 
     // Show what's in reach, as ChunkedMesh does for the rest of the world.
     for (const { main, chajjas } of squares.values()) {
+      main.material = material
+      chajjas.material = material
       const sphere = main.geometry.boundingSphere
       const distance = sphere ? distanceTo(sphere.center.x, sphere.center.z) - sphere.radius : 0
       main.visible = distance < liveView.drawDistance
@@ -80,6 +97,7 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
     }
   })
 
+  // Squares are freed only when the kit goes. A change of quality only swaps the material.
   useEffect(() => {
     const squares = built.current
     return () => {
@@ -88,9 +106,9 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
         chajjas.geometry.dispose()
       }
       squares.clear()
-      material.dispose()
     }
-  }, [material])
+  }, [])
+  useEffect(() => () => material.dispose(), [material])
 
   return <group ref={group} />
 }
