@@ -24,6 +24,7 @@ import { generateRoadsideProps } from './props'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { HouseKitMesh } from './HouseKitMesh'
+import { Kerbs } from './Kerbs'
 import { RoadMarkings } from './RoadMarkings'
 import { createRoadGraph } from './roadGraph'
 import { Roads } from './Roads'
@@ -98,6 +99,7 @@ export function World() {
       <Parks data={data} />
       <GrassField data={data} />
       <Roads roads={data.roads} />
+      <Kerbs roads={data.roads} collisions={collisions} />
       <RoadMarkings roads={data.roads} />
       <Buildings buildings={data.buildings} />
       <HouseKitMesh kit={houses} />

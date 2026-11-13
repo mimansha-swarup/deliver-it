@@ -88,9 +88,27 @@ export const TRAFFIC_RULES = {
   /** How long a vehicle takes to get going again after a hit, in seconds. */
   recoveryTime: 2,
 
-  /** How quickly the drawn position catches up with the path, which rounds off corners. */
-  positionResponse: 8,
-  turnResponse: 6,
+  /**
+   * Everything steers: it aims at a point this far ahead on its path, in metres,
+   * turns towards it no tighter than its turning circle, and only ever moves the
+   * way it faces. Nothing slides sideways.
+   */
+  aimMin: 2.5,
+  aimMax: 7,
+  /** At speed, the aim point is this many seconds ahead. */
+  aimTime: 0.55,
+  /** The tightest turn each can make, as a radius in metres. */
+  carTurnRadius: 4.5,
+  nimbleTurnRadius: 2.4,
+  /** People turn on the spot, this fast, in radians per second, and look this far ahead, in metres. */
+  walkTurnRate: 5,
+  walkAim: 1.1,
+  /** How hard vehicles brake for a turn, and how fast they take a right-angle turn, in m/s² and m/s. */
+  cornerBraking: 2.5,
+  cornerSpeed: 4.5,
+  /** Something further than this from its path, in metres, heads straight back to it, this much faster than usual. */
+  lostDistance: 2.5,
+  catchUpPace: 1.4,
 
   /** Pedestrians step aside when the rider comes this close, by this much. */
   dodgeRange: 4,
@@ -120,6 +138,8 @@ export const TRAFFIC_RULES = {
 
 type Mover = {
   lane: number
+  /** The lane it will take after this one, once chosen. -1 or missing until then. */
+  nextLane?: number
   /** Metres along the lane. */
   along: number
   speed: number
@@ -370,6 +390,7 @@ function placeOnLane(mover: Mover, lanes: Lane[], laneIndex: number, random: () 
   const lane = lanes[laneIndex]
   const along = random() * lane.length
   mover.lane = laneIndex
+  mover.nextLane = -1
   mover.along = along
   mover.x = lane.startX + lane.forwardX * along
   mover.z = lane.startZ + lane.forwardZ * along
@@ -579,9 +600,100 @@ function advance(mover: Mover, lanes: Lane[], distance: number, random: () => nu
     const lane = lanes[mover.lane]
     if (lane.next.length === 0) return false
     mover.along -= lane.length
-    mover.lane = lane.next[Math.floor(random() * lane.next.length)]
+    mover.lane = pickNext(mover, lanes, random)
+    mover.nextLane = -1
   }
   return true
+}
+
+/**
+ * Which lane comes after this one. It's chosen early, so something steering
+ * round a corner already knows which way it's going.
+ */
+function pickNext(mover: Mover, lanes: Lane[], random: () => number): number {
+  const { next } = lanes[mover.lane]
+  if (next.length === 0) return -1
+  if (mover.nextLane === undefined || mover.nextLane < 0 || !next.includes(mover.nextLane)) {
+    mover.nextLane = next[Math.floor(random() * next.length)]
+  }
+  return mover.nextLane
+}
+
+/**
+ * The point `ahead` metres further along the path, carrying on into the next
+ * lane if this one ends first, and `shift` metres to the left of it.
+ */
+function pointAhead(mover: Mover, lanes: Lane[], ahead: number, shift: number, random: () => number): [number, number] {
+  let lane = lanes[mover.lane]
+  let along = mover.along + ahead
+  if (along > lane.length) {
+    const next = pickNext(mover, lanes, random)
+    if (next >= 0) {
+      along -= lane.length
+      lane = lanes[next]
+    } else {
+      along = lane.length
+    }
+  }
+  along = Math.min(along, lane.length)
+  return [
+    lane.startX + lane.forwardX * along + lane.forwardZ * shift,
+    lane.startZ + lane.forwardZ * along - lane.forwardX * shift,
+  ]
+}
+
+/**
+ * Moves something along its path the way a driver or walker would. It aims at
+ * a point a little ahead, turns towards it, no faster than `turnRate` allows,
+ * and moves `distance` straight ahead, so it never slides sideways. Corners come
+ * out as curves.
+ *
+ * Its place on the path (`along`) runs on separately, so the traffic rules are
+ * unchanged. If the body gets ahead of it, as it does when cutting a corner, it
+ * goes a little slower until they're back in step, and a little faster if behind.
+ */
+function steerAlong(
+  mover: Mover,
+  lanes: Lane[],
+  distance: number,
+  aim: number,
+  shift: number,
+  turnRate: number,
+  dt: number,
+  random: () => number,
+) {
+  const lane = lanes[mover.lane]
+  const pathX = lane.startX + lane.forwardX * mover.along + lane.forwardZ * shift
+  const pathZ = lane.startZ + lane.forwardZ * mover.along - lane.forwardX * shift
+
+  // Well away from its path, after a knock, or when the next path starts on the
+  // other pavement, it heads straight for its place on the path, a little quicker,
+  // as someone crossing the road does.
+  const lost = Math.hypot(pathX - mover.x, pathZ - mover.z) > TRAFFIC_RULES.lostDistance
+  const [aimX, aimZ] = lost ? [pathX, pathZ] : pointAhead(mover, lanes, aim, shift, random)
+  if (Math.hypot(aimX - mover.x, aimZ - mover.z) > 0.05) {
+    const wanted = Math.atan2(aimX - mover.x, aimZ - mover.z)
+    const turn = angleBetween(mover.heading, wanted)
+    const most = turnRate * dt
+    mover.heading += Math.max(-most, Math.min(most, turn))
+  }
+
+  // How far the body is ahead of its place on the path (negative is behind).
+  const ahead = (mover.x - pathX) * lane.forwardX + (mover.z - pathZ) * lane.forwardZ
+  const pace = lost ? TRAFFIC_RULES.catchUpPace : 1 - Math.max(-0.5, Math.min(0.8, ahead * 0.35))
+  const step = distance * pace
+  mover.x += Math.sin(mover.heading) * step
+  mover.z += Math.cos(mover.heading) * step
+}
+
+/** How sharply the path turns where this lane meets the next, in radians, and how far away that is. */
+function nextTurn(mover: Mover, lanes: Lane[], random: () => number): { angle: number; distance: number } {
+  const lane = lanes[mover.lane]
+  const next = pickNext(mover, lanes, random)
+  if (next < 0) return { angle: 0, distance: Infinity }
+  const after = lanes[next]
+  const angle = Math.abs(angleBetween(Math.atan2(lane.forwardX, lane.forwardZ), Math.atan2(after.forwardX, after.forwardZ)))
+  return { angle, distance: Math.max(0, lane.length - mover.along) }
 }
 
 /** The rider's size, for traffic deciding whether it can squeeze past. */
@@ -865,7 +977,11 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
         world.signalClock,
       )
   const held = Math.sqrt(2 * rules.signalBraking * toStop)
-  const target = Math.min(free, held) * vehicle.recovery
+  // Slow for a sharp turn ahead: a right angle at `cornerSpeed`, gentler bends faster.
+  const turn = nextTurn(vehicle, roadLanes, random)
+  const bendSpeed = turn.angle < 0.3 ? Infinity : rules.cornerSpeed * Math.max(0.6, (Math.PI / 2 / turn.angle) ** 0.7)
+  const forBend = Math.sqrt(bendSpeed * bendSpeed + 2 * rules.cornerBraking * turn.distance)
+  const target = Math.min(free, held, forBend) * vehicle.recovery
 
   const rate = target < vehicle.speed ? rules.braking : rules.acceleration
   const change = target - vehicle.speed
@@ -883,17 +999,11 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
     return
   }
 
-  const now = roadLanes[vehicle.lane]
-  // `shift` moves it sideways off the lane's line: positive left, negative right.
-  const pathX = now.startX + now.forwardX * vehicle.along + now.forwardZ * vehicle.shift
-  const pathZ = now.startZ + now.forwardZ * vehicle.along - now.forwardX * vehicle.shift
-  // After a hit it eases back to its lane, instead of snapping there.
-  const follow = (1 - Math.exp(-rules.positionResponse * dt)) * vehicle.recovery
-  vehicle.x += (pathX - vehicle.x) * follow
-  vehicle.z += (pathZ - vehicle.z) * follow
-
-  const wanted = Math.atan2(now.forwardX, now.forwardZ)
-  vehicle.heading += angleBetween(vehicle.heading, wanted) * (1 - Math.exp(-rules.turnResponse * dt))
+  // `shift` moves its line sideways: positive left, negative right. It steers over to it.
+  const aim = Math.max(rules.aimMin, Math.min(rules.aimMax, vehicle.speed * rules.aimTime))
+  // A vehicle turns no tighter than its turning circle, so the slower it goes, the slower it turns.
+  const radius = vehicle.nimble ? rules.nimbleTurnRadius : rules.carTurnRadius
+  steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift, vehicle.speed / radius, dt, random)
 }
 
 type Impact = { pushX: number; pushZ: number; changeX: number; changeZ: number; otherX: number; otherZ: number }
@@ -1119,12 +1229,11 @@ function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterS
     person.dodgeZ *= keep
   }
 
-  const follow = 1 - Math.exp(-rules.positionResponse * dt)
-  person.x += (pathX + person.dodgeX - person.x) * follow
-  person.z += (pathZ + person.dodgeZ - person.z) * follow
-
-  const wanted = Math.atan2(lane.forwardX, lane.forwardZ)
-  person.heading += angleBetween(person.heading, wanted) * (1 - Math.exp(-rules.turnResponse * dt))
+  // Stepping aside is a sideways shift of their path, which they walk over to, as anyone would.
+  const dodgeShift = person.dodgeX * lane.forwardZ - person.dodgeZ * lane.forwardX
+  // Someone stepping aside walks a little quicker to get out of the way.
+  const pace = person.speed + Math.min(1, Math.hypot(person.dodgeX, person.dodgeZ)) * 0.6
+  steerAlong(person, walkLanes, pace * dt, rules.walkAim, dodgeShift, rules.walkTurnRate, dt, random)
 
   person.stride += person.speed * 4.5 * dt
   person.lift = Math.abs(Math.sin(person.stride)) * 0.03
@@ -1214,8 +1323,21 @@ function hitPersonWithVehicle(world: TrafficWorld, vehicle: Vehicle, person: Ped
   person.downTime = 0
 }
 
-/** Walking people step around each other instead of through. Each moves half the overlap, back and aside. */
-function separatePeople(people: Pedestrian[]) {
+/** People notice someone coming this far off, in metres, and start stepping aside. */
+const PERSON_NOTICE = 2.2
+/**
+ * How quickly they step aside, in metres of sideways path per second, at the
+ * closest. It has to beat `returnSpeed`, which walks them back to their path all the while.
+ */
+const PERSON_SIDESTEP = 4
+
+/**
+ * Walking people step around each other instead of through. Each moves its own
+ * path aside, the two opposite ways, and steers over to it, so they pass each
+ * other as people on a footpath do. Only if they still end up touching are they
+ * pushed apart, which is rare.
+ */
+function separatePeople(people: Pedestrian[], dt: number) {
   for (let first = 0; first < people.length; first++) {
     const a = people[first]
     if (a.lane === -1 || a.body || a.fallen) continue
@@ -1225,14 +1347,21 @@ function separatePeople(people: Pedestrian[]) {
       const awayX = b.x - a.x
       const awayZ = b.z - a.z
       const distance = Math.hypot(awayX, awayZ)
-      if (distance >= PERSON_SPACING || distance === 0) continue
-      // Each steps back and to the side, the two opposite ways, so people meeting head-on slip past
-      // each other instead of standing nose to nose.
-      const half = (PERSON_SPACING - distance) / 2
+      if (distance >= PERSON_NOTICE || distance === 0) continue
       const backX = awayX / distance
       const backZ = awayZ / distance
-      shove(a, (-backX - backZ) * half, (-backZ + backX) * half)
-      shove(b, (backX + backZ) * half, (backZ - backX) * half)
+      // Each moves its path to its own right of the other, so two people meeting head-on pass
+      // left side to left side instead of standing nose to nose.
+      const step = ((PERSON_NOTICE - distance) / PERSON_NOTICE) * PERSON_SIDESTEP * dt
+      a.dodgeX += -backZ * step
+      a.dodgeZ += backX * step
+      b.dodgeX += backZ * step
+      b.dodgeZ += -backX * step
+      if (distance < PERSON_SPACING) {
+        const half = (PERSON_SPACING - distance) / 2
+        shove(a, -backX * half, -backZ * half)
+        shove(b, backX * half, backZ * half)
+      }
     }
   }
 }
@@ -1450,7 +1579,7 @@ export function stepTraffic(
     stepPedestrian(world, person, rider, dt)
     hitPedestrian(world, person, rider)
   }
-  separatePeople(world.pedestrians.slice(0, pedestrianCount))
+  separatePeople(world.pedestrians.slice(0, pedestrianCount), dt)
 }
 
 /** Records a hit to be heard. A knock of 10 m/s or more is as loud as it gets. */
