@@ -2,10 +2,11 @@ import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { MapData } from './mapData'
 import {
   createRandom,
-  distanceToPiece,
+  strayTint,
+  indexRoadPieces,
+  isClearOfRoads,
   toRoadPieces,
   type Prop,
-  type RoadPiece,
   type RoadsideProps,
 } from './props'
 import {
@@ -36,9 +37,7 @@ function toOutline(ring: MapData['parks'][number]['geometry']['coordinates'][num
   })
 }
 
-function isClearOf(pieces: RoadPiece[], x: number, z: number, gap: number): boolean {
-  return pieces.every((piece) => distanceToPiece(x, z, piece) > piece.width / 2 + gap)
-}
+
 
 /**
  * Adds trees and benches to the real parks on the map. Both are solid, and the
@@ -50,8 +49,9 @@ export function plantParks(
   props: RoadsideProps,
 ): Prop[] {
   const random = createRandom(20261107)
-  const roads = toRoadPieces(data.roads)
-  const paths = toRoadPieces(data.footways).map((piece) => ({ ...piece, width: PATH_WIDTH }))
+  const roads = indexRoadPieces(toRoadPieces(data.roads))
+  const pathPieces = toRoadPieces(data.footways).map((piece) => ({ ...piece, width: PATH_WIDTH }))
+  const paths = indexRoadPieces(pathPieces)
   const benches: Prop[] = []
 
   for (const park of data.parks) {
@@ -72,14 +72,14 @@ export function plantParks(
         if (random() > TREE_CHANCE) continue
         if (!isInsideOutline(outline, x, z) || !isInsideBounds(x, z, 3)) continue
         if (isNearBuilding(collisions, x, z, TREE_CLEARANCE)) continue
-        if (!isClearOf(roads, x, z, TREE_CLEARANCE) || !isClearOf(paths, x, z, TREE_CLEARANCE)) continue
+        if (!isClearOfRoads(roads, x, z, TREE_CLEARANCE) || !isClearOfRoads(paths, x, z, TREE_CLEARANCE)) continue
 
         addPost(collisions, x, z, TREE_TRUNK_RADIUS)
-        props.trees.push({ x, z, rotation, variation })
+        props.trees.push({ x, z, rotation, variation, tint: strayTint(props.trees.length) })
       }
     }
 
-    for (const piece of paths) {
+    for (const piece of pathPieces) {
       const [startX, startZ] = piece.start
       const [endX, endZ] = piece.end
       const length = Math.hypot(endX - startX, endZ - startZ)
@@ -94,7 +94,7 @@ export function plantParks(
         const z = startZ + forwardZ * along - forwardX * BENCH_OFFSET
         if (!isInsideOutline(outline, x, z)) continue
         if (isNearBuilding(collisions, x, z, BENCH_RADIUS + 0.3)) continue
-        if (!isClearOf(roads, x, z, BENCH_RADIUS)) continue
+        if (!isClearOfRoads(roads, x, z, BENCH_RADIUS)) continue
 
         addPost(collisions, x, z, BENCH_RADIUS)
         benches.push({ x, z, rotation: Math.atan2(-forwardZ, forwardX), variation: 0.5 })

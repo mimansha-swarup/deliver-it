@@ -15,10 +15,12 @@ export type GroundPoint = [x: number, z: number]
 export const WORLD_ORIGIN = { lon: 77.6502, lat: 12.9095 }
 
 /**
- * The playable rectangle in world coordinates, in metres. It follows the dense
- * part of the map, so it's long and thin, and it isn't centred on the origin.
+ * The playable rectangle in world coordinates, in metres: every building in the
+ * map file, with about 40 m to spare. The roads in the file run on further, and
+ * are cut off at its edge. It isn't centred on the origin, which stays where the
+ * first, smaller map put it, so that saved places don't move.
  */
-export const PLAY_AREA = { minX: -320, maxX: 280, minZ: -720, maxZ: 720 }
+export const PLAY_AREA = { minX: -3340, maxX: 360, minZ: -1720, maxZ: 1360 }
 
 export const PLAY_AREA_WIDTH = PLAY_AREA.maxX - PLAY_AREA.minX
 export const PLAY_AREA_DEPTH = PLAY_AREA.maxZ - PLAY_AREA.minZ

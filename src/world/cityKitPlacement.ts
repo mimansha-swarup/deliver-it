@@ -2,7 +2,7 @@ import { FLOOR_HEIGHT, getFloors, hashString } from './buildingData'
 import type { BuildingKind } from './buildingKinds'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { BuildingFeature, LineFeature } from './mapData'
-import { distanceToPiece, toRoadPieces } from './props'
+import { indexRoadPieces, isClearOfRoads, toRoadPieces } from './props'
 import type { ShopFront } from './shopFrontPlacement'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
@@ -239,7 +239,7 @@ export function placeCityKit(
   shopFronts: ShopFront[],
 ): KitPlacement[] {
   const placed: KitPlacement[] = []
-  const roadPieces = toRoadPieces(roads)
+  const roadIndex = indexRoadPieces(toRoadPieces(roads))
 
   for (const building of buildings) {
     const style = STYLES[building.kind]
@@ -287,9 +287,7 @@ export function placeCityKit(
     const [x, z] = pointOnEdge(front, doorSlot + across, PLANTER_GAP)
     const isClear =
       !isNearBuilding(collisions, x, z, PLANTER_RADIUS) &&
-      roadPieces.every(
-        (piece) => distanceToPiece(x, z, piece) > piece.width / 2 + PLANTER_ROAD_CLEARANCE,
-      ) &&
+      isClearOfRoads(roadIndex, x, z, PLANTER_ROAD_CLEARANCE) &&
       shopFronts.every((shop) => Math.hypot(shop.x - x, shop.z - z) > AWNING_CLEARANCE)
     if (!isClear) continue
 

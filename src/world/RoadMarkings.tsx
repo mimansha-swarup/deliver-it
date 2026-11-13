@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { ChunkedMesh } from './ChunkedMesh'
 import { createFlatGeometries, positionsFor, type ChunkedPositions } from './chunks'
 import type { LineFeature } from './mapData'
+import { PointGrid } from './props'
 import { clipToPlayArea, pushStrip } from './roadGeometry'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
 
@@ -35,9 +36,10 @@ function findJunctions(roads: LineFeature[]): GroundPoint[] {
 }
 
 function createMarkingGeometries(roads: LineFeature[]): THREE.BufferGeometry[] {
-  const junctions = findJunctions(roads)
-  const isNearJunction = ([x, z]: GroundPoint) =>
-    junctions.some(([jx, jz]) => Math.hypot(jx - x, jz - z) < JUNCTION_CLEARANCE)
+  // In a grid, as checking each dash against every junction in HSR took seconds.
+  const junctions = new PointGrid(JUNCTION_CLEARANCE)
+  for (const [x, z] of findJunctions(roads)) junctions.add(x, z)
+  const isNearJunction = ([x, z]: GroundPoint) => junctions.hasWithin(x, z, JUNCTION_CLEARANCE)
 
   const chunks: ChunkedPositions = new Map()
 

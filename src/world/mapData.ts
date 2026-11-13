@@ -29,6 +29,8 @@ export type MapData = {
   /** Parks, playgrounds and sports pitches. */
   parks: PolygonFeature[]
   places: PointFeature[]
+  /** Other outlines: housing colonies, campuses, land use. The phone map labels the named ones. */
+  areas: PolygonFeature[]
 }
 
 const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
@@ -38,9 +40,9 @@ const GREEN_SPACES = new Set(['park', 'garden', 'playground', 'pitch'])
 const NOT_DRIVABLE = new Set(['footway', 'path'])
 
 function sortFeatures(features: Feature[]): MapData {
-  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [] }
+  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [], areas: [] }
   const buildings: PolygonFeature[] = []
-  const areas: PolygonFeature[] = []
+  const areas = data.areas
 
   for (const feature of features) {
     const { geometry, properties } = feature

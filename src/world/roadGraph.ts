@@ -148,22 +148,23 @@ export function findNearestNode(graph: RoadGraph, x: number, z: number): number 
  * Dijkstra's algorithm, run outward from the destination. It records the way
  * home from every point at once, so wherever the rider goes, even off course,
  * the route is already known and nothing has to be searched for again.
+ *
+ * The next point to settle is always the nearest one not yet done. A heap hands
+ * that over without looking at every point: over all of HSR's 34,000 points,
+ * scanning them all each time took seconds.
  */
 export function createRouteField(graph: RoadGraph, destination: number): RouteField {
   const count = graph.xs.length
   const distance = new Float64Array(count).fill(Infinity)
   const nextNode = new Int32Array(count).fill(-1)
   const done = new Uint8Array(count)
+  const queue = new MinHeap()
   distance[destination] = 0
+  queue.push(destination, 0)
 
-  for (let round = 0; round < count; round++) {
-    let current = -1
-    for (let node = 0; node < count; node++) {
-      if (!done[node] && distance[node] < Infinity) {
-        if (current === -1 || distance[node] < distance[current]) current = node
-      }
-    }
-    if (current === -1) break
+  while (queue.size > 0) {
+    const current = queue.pop()
+    if (done[current]) continue
     done[current] = 1
 
     for (const { to, length } of graph.links[current]) {
@@ -171,9 +172,64 @@ export function createRouteField(graph: RoadGraph, destination: number): RouteFi
       if (throughCurrent < distance[to]) {
         distance[to] = throughCurrent
         nextNode[to] = current
+        // The old entry for `to` stays in the heap, and is skipped when it comes out as done.
+        queue.push(to, throughCurrent)
       }
     }
   }
 
   return { nextNode, distance }
+}
+
+/**
+ * A binary heap: a tree kept in an array, where each entry is no further than
+ * its children. The smallest is always at the front, and adding or taking one
+ * only moves entries along a single branch.
+ */
+class MinHeap {
+  private nodes: number[] = []
+  private keys: number[] = []
+
+  get size(): number {
+    return this.nodes.length
+  }
+
+  push(node: number, key: number) {
+    const { nodes, keys } = this
+    let at = nodes.length
+    nodes.push(node)
+    keys.push(key)
+    while (at > 0) {
+      const parent = (at - 1) >> 1
+      if (keys[parent] <= key) break
+      nodes[at] = nodes[parent]
+      keys[at] = keys[parent]
+      at = parent
+    }
+    nodes[at] = node
+    keys[at] = key
+  }
+
+  pop(): number {
+    const { nodes, keys } = this
+    const top = nodes[0]
+    const lastNode = nodes.pop() as number
+    const lastKey = keys.pop() as number
+    const size = nodes.length
+    if (size === 0) return top
+
+    let at = 0
+    for (;;) {
+      let child = at * 2 + 1
+      if (child >= size) break
+      if (child + 1 < size && keys[child + 1] < keys[child]) child++
+      if (keys[child] >= lastKey) break
+      nodes[at] = nodes[child]
+      keys[at] = keys[child]
+      at = child
+    }
+    nodes[at] = lastNode
+    keys[at] = lastKey
+    return top
+  }
 }

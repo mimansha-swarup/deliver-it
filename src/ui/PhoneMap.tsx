@@ -4,6 +4,7 @@ import { livePlayer, liveRoute } from '../game/livePlayer'
 import { getCurrentStop } from '../missions/missionLogic'
 import { loadMapData, type MapData } from '../world/mapData'
 import { getRoadWidth } from '../world/roadData'
+import { createMapLabels, CURRENT_ROAD_HEIGHT, drawCurrentRoad, drawMapLabels, findCurrentRoad } from './mapLabels'
 import {
   isRingInPlayArea,
   lonLatToWorld,
@@ -13,8 +14,11 @@ import {
   type LonLat,
 } from '../world/worldUtils'
 
-/** Resolution of the pre-drawn map image, in pixels per metre. */
-const IMAGE_SCALE = 2
+/**
+ * Resolution of the pre-drawn map image, in pixels per metre: 2 for a small map,
+ * less for a big one, so the image stays under about 16 million pixels (64 MB).
+ */
+const IMAGE_SCALE = Math.min(2, Math.sqrt(16_000_000 / (PLAY_AREA_WIDTH * PLAY_AREA_DEPTH)))
 /** How quickly the map turns to follow the bike. Higher is tighter. */
 const TURN_RESPONSE = 7
 /** How quickly the map zooms and shifts when the phone is raised or lowered. */
@@ -32,6 +36,11 @@ const EDGE_MARGIN = 14
 const GROUND_COLOR = '#22252a'
 const ROAD_COLOR = '#646a73'
 const BUILDING_COLOR = '#353940'
+const PARK_COLOR = '#284232'
+/** The road name pill sits this far below the status bar, in pixels. */
+const CURRENT_ROAD_GAP = 4
+/** How often the road you're on is looked up again, in milliseconds. */
+const CURRENT_ROAD_EVERY = 250
 const PLAYER_COLOR = '#ffffff'
 
 function toImage(position: LonLat): [number, number] {
@@ -51,14 +60,21 @@ function traceLine(context: CanvasRenderingContext2D, points: LonLat[]) {
 /** Draws the whole play area once. Each frame only has to rotate this image. */
 function createMapImage(data: MapData): HTMLCanvasElement {
   const image = document.createElement('canvas')
-  image.width = PLAY_AREA_WIDTH * IMAGE_SCALE
-  image.height = PLAY_AREA_DEPTH * IMAGE_SCALE
+  image.width = Math.ceil(PLAY_AREA_WIDTH * IMAGE_SCALE)
+  image.height = Math.ceil(PLAY_AREA_DEPTH * IMAGE_SCALE)
 
   const context = image.getContext('2d')
   if (!context) return image
 
   context.fillStyle = GROUND_COLOR
   context.fillRect(0, 0, image.width, image.height)
+
+  context.fillStyle = PARK_COLOR
+  for (const park of data.parks) {
+    if (!isRingInPlayArea(park.geometry.coordinates[0])) continue
+    traceLine(context, park.geometry.coordinates[0])
+    context.fill()
+  }
 
   context.strokeStyle = ROAD_COLOR
   context.lineCap = 'round'
@@ -249,8 +265,6 @@ function drawTarget(context: CanvasRenderingContext2D, view: View, time: number)
   if (!stop) return
   const pickup = phase === 'toPickup'
 
-  drawRoute(context, view, stop.color)
-
   const [x, y] = toScreen(view, stop.x, stop.z)
   // A pin's head stands above its point, so it needs that much more room at the top.
   const fitsAcross = Math.abs(x) <= view.width / 2 - EDGE_MARGIN
@@ -296,6 +310,7 @@ export function PhoneMap({ raised }: { raised: boolean }) {
   const raisedAmount = useRef(raised ? 1 : 0)
   const target = useRef(raised ? 1 : 0)
   const mapImage = useMemo(() => createMapImage(data), [data])
+  const labels = useMemo(() => createMapLabels(data), [data])
 
   useEffect(() => {
     target.current = raised ? 1 : 0
@@ -309,6 +324,8 @@ export function PhoneMap({ raised }: { raised: boolean }) {
     let frame = 0
     let previousTime = performance.now()
     let shownHeading = livePlayer.heading
+    let currentRoad: string | null = null
+    let lastRoadCheck = -Infinity
 
     const blend = ([tucked, up]: number[]) => tucked + (up - tucked) * raisedAmount.current
 
@@ -323,6 +340,12 @@ export function PhoneMap({ raised }: { raised: boolean }) {
       const [width, height] = fitCanvas(element)
       const pixelRatio = window.devicePixelRatio || 1
       const riderY = height * blend(RIDER_POSITION)
+      if (time - lastRoadCheck > CURRENT_ROAD_EVERY) {
+        lastRoadCheck = time
+        currentRoad = findCurrentRoad(labels, livePlayer.x, livePlayer.z, currentRoad)
+      }
+      // The road name pill takes some room at the top, which markers keep clear of.
+      const pillSpace = currentRoad ? CURRENT_ROAD_HEIGHT + CURRENT_ROAD_GAP : 0
       const view: View = {
         width,
         height,
@@ -331,7 +354,7 @@ export function PhoneMap({ raised }: { raised: boolean }) {
         pixelsPerMetre: 1 / blend(METRES_PER_PIXEL),
         // The world's +Z is down on the image, so a half turn puts "ahead" at the top.
         rotation: Math.PI + shownHeading,
-        roomAbove: riderY - STATUS_BAR_HEIGHT - EDGE_MARGIN,
+        roomAbove: riderY - STATUS_BAR_HEIGHT - pillSpace - EDGE_MARGIN,
         roomBelow: height * (1 - blend(SHEET_SHARE)) - riderY - EDGE_MARGIN,
       }
 
@@ -350,15 +373,31 @@ export function PhoneMap({ raised }: { raised: boolean }) {
       )
       context.restore()
 
+      // The route goes under the names, as in a map app, and the pins and rider go over them.
+      const { mission, phase } = useGameStore.getState()
+      const stop = getCurrentStop(mission, phase)
+      if (stop) drawRoute(context, view, stop.color)
+      drawMapLabels(context, labels, {
+        pixelsPerMetre: view.pixelsPerMetre,
+        centre: [livePlayer.x, livePlayer.z],
+        reach: Math.hypot(width, height) / view.pixelsPerMetre,
+        project: (x, z) => {
+          const [screenX, screenY] = toScreen(view, x, z)
+          return [view.riderX + screenX, view.riderY + screenY]
+        },
+        bounds: [4, STATUS_BAR_HEIGHT + pillSpace, width - 4, riderY + view.roomBelow + EDGE_MARGIN],
+        keepClear: [view.riderX, view.riderY, 14],
+      })
       drawTarget(context, view, time)
       drawPlayer(context, view)
+      if (currentRoad) drawCurrentRoad(context, currentRoad, width / 2, STATUS_BAR_HEIGHT + CURRENT_ROAD_GAP)
 
       frame = requestAnimationFrame(draw)
     }
 
     frame = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(frame)
-  }, [mapImage])
+  }, [mapImage, labels])
 
   return <canvas ref={canvas} className="phone-map" aria-label="Map of the route" />
 }

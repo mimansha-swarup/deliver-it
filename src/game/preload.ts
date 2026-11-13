@@ -16,7 +16,7 @@ const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
 type GameFile = { url: string; kb: number; kind: 'data' | 'model' | 'image' }
 
 const GAME_FILES: GameFile[] = [
-  { url: MAP_URL, kb: 1555, kind: 'data' },
+  { url: MAP_URL, kb: 14342, kind: 'data' },
   { url: '/models/traffic.glb', kb: 3019, kind: 'model' },
   { url: '/models/city-kit.glb', kb: 1634, kind: 'model' },
   { url: '/models/yamaha.glb', kb: 335, kind: 'model' },

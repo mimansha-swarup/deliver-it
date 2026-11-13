@@ -61,6 +61,11 @@ export function createCollisionWorld(buildings: PolygonFeature[]): CollisionWorl
   return world
 }
 
+/** A copy that later additions to the original don't change. The outlines themselves are shared, as they never change. */
+export function copyCollisionWorld(world: CollisionWorld): CollisionWorld {
+  return new Map([...world].map(([key, cell]) => [key, [...cell]]))
+}
+
 /** Adds a thin solid wall from one point to another, such as a compound wall. */
 export function addWall(world: CollisionWorld, [startX, startZ]: GroundPoint, [endX, endZ]: GroundPoint, thickness: number) {
   const length = Math.hypot(endX - startX, endZ - startZ)

@@ -109,6 +109,12 @@ function findKindsFromPlaces(
   places: PointFeature[],
 ): Map<string, BuildingKind> {
   const kinds = new Map<string, BuildingKind>()
+  // Each outline's box, so most buildings can be ruled out without measuring.
+  const boxes = outlines.map((outline) => {
+    const xs = outline.map(([x]) => x)
+    const zs = outline.map(([, z]) => z)
+    return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]
+  })
 
   for (const place of places) {
     const kind = kindFromUse(place.properties)
@@ -119,6 +125,8 @@ function findKindsFromPlaces(
     let nearestDistance = PLACE_REACH
 
     buildings.forEach((building, index) => {
+      const [minX, maxX, minZ, maxZ] = boxes[index]
+      if (x < minX - nearestDistance || x > maxX + nearestDistance || z < minZ - nearestDistance || z > maxZ + nearestDistance) return
       const distance = distanceToOutline(outlines[index], [x, z])
       if (distance >= nearestDistance) return
       nearest = building

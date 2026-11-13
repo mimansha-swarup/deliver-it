@@ -230,34 +230,71 @@ export function createVehicleGlowGeometry(
     positions.push(x, y, z)
     colors.push(r, g, b)
   }
-  const quad = (x: number, y: number, z: number, size: number, color: number[]) => {
-    add(x - size, y - size, z, color)
-    add(x + size, y - size, z, color)
-    add(x + size, y + size, z, color)
-    add(x - size, y - size, z, color)
-    add(x + size, y + size, z, color)
-    add(x - size, y + size, z, color)
+  /**
+   * A round lamp facing forward or back: a solid middle with a halo that fades to
+   * nothing, so it reads as a glowing light rather than a flat white square.
+   */
+  const lamp = (x: number, y: number, z: number, core: number, halo: number, color: number[]) => {
+    const SIDES = 12
+    const ring = (radius: number, step: number): [number, number] => [
+      x + Math.cos((step / SIDES) * Math.PI * 2) * radius,
+      y + Math.sin((step / SIDES) * Math.PI * 2) * radius,
+    ]
+    const none = [0, 0, 0]
+    for (let step = 0; step < SIDES; step++) {
+      const [innerAX, innerAY] = ring(core, step)
+      const [innerBX, innerBY] = ring(core, step + 1)
+      const [outerAX, outerAY] = ring(halo, step)
+      const [outerBX, outerBY] = ring(halo, step + 1)
+      add(x, y, z, color)
+      add(innerAX, innerAY, z, color)
+      add(innerBX, innerBY, z, color)
+      add(innerAX, innerAY, z, color)
+      add(outerAX, outerAY, z, none)
+      add(outerBX, outerBY, z, none)
+      add(innerAX, innerAY, z, color)
+      add(outerBX, outerBY, z, none)
+      add(innerBX, innerBY, z, color)
+    }
   }
 
   const white = [1.4, 1.3, 1]
   const red = [1.3, 0.1, 0.06]
   const lamps = apart === 0 ? [0] : [-apart, apart]
   for (const x of lamps) {
-    quad(x, height, front + 0.06, 0.1, white)
-    quad(x, height, back - 0.06, 0.08, red)
+    lamp(x, height, front + 0.06, 0.055, 0.13, white)
+    lamp(x, height, back - 0.06, 0.045, 0.1, red)
   }
 
-  // The beam: bright at the bumper, and gone by its far corners.
-  const reach = 11
-  const spread = 2.4
-  const near = [0.13, 0.12, 0.09]
-  const far = [0, 0, 0]
-  add(-0.6, 0.14, front, near)
-  add(spread, 0.14, front + reach, far)
-  add(0.6, 0.14, front, near)
-  add(-0.6, 0.14, front, near)
-  add(-spread, 0.14, front + reach, far)
-  add(spread, 0.14, front + reach, far)
+  // The pool of light on the road: a grid that fades towards its far end and both
+  // sides, so it has no edges. A flat shape fading only one way showed its sides as
+  // hard lines, like a trapezium painted on the road.
+  const BEAM = { reach: 11, startWidth: 0.7, spread: 0.21, height: 0.065, across: 8, ahead: 7 }
+  const brightest = [0.15, 0.14, 0.1]
+  const beamPoint = (across: number, ahead: number): [number, number, number, number[]] => {
+    const u = (across / BEAM.across) * 2 - 1
+    const share = ahead / BEAM.ahead
+    const distance = share * BEAM.reach
+    // Brightest in the middle a few metres out: it builds up from the bumper and fades away.
+    const sides = Math.pow(Math.max(0, 1 - u * u), 1.4)
+    const length = Math.min(1, share * 4) * Math.pow(1 - share, 1.6)
+    const strength = sides * length
+    return [
+      u * (BEAM.startWidth + distance * BEAM.spread),
+      BEAM.height,
+      front + distance,
+      brightest.map((value) => value * strength),
+    ]
+  }
+  for (let ahead = 0; ahead < BEAM.ahead; ahead++) {
+    for (let across = 0; across < BEAM.across; across++) {
+      const a = beamPoint(across, ahead)
+      const b = beamPoint(across + 1, ahead)
+      const c = beamPoint(across + 1, ahead + 1)
+      const d = beamPoint(across, ahead + 1)
+      for (const [x, y, z, color] of [a, b, c, a, c, d]) add(x, y, z, color)
+    }
+  }
 
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))

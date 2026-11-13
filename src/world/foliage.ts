@@ -174,3 +174,87 @@ export function createTrunkGeometry(): THREE.BufferGeometry {
   ;[trunk, ...branches, ...parts].forEach((part) => part.dispose())
   return merged
 }
+
+/**
+ * A bougainvillea spilling over a compound wall, in metres. X runs along the
+ * wall, Y is up from the wall's top, and Z points out to the road.
+ */
+const CREEPER_FLOWERS: Blob[] = [
+  [0, 0.2, 0.1, 0.5],
+  [0.75, 0.1, 0.22, 0.42],
+  [-0.8, 0.15, 0.2, 0.46],
+  [0.35, -0.3, 0.38, 0.36],
+  [-0.4, -0.35, 0.4, 0.34],
+  [1.3, 0, 0.12, 0.3],
+]
+const CREEPER_LEAVES: Blob[] = [
+  [0.2, 0.05, -0.15, 0.5],
+  [-0.6, 0, -0.1, 0.45],
+  [0.9, -0.05, -0.1, 0.4],
+  [-1.25, -0.1, 0.1, 0.3],
+  [0, -0.5, 0.3, 0.28],
+]
+/** Leaf cards are sized for trees, so a creeper is built this much too big, then shrunk. */
+const CREEPER_SCALE = 3.4
+
+function createCreeper(blobs: Blob[], leafy: boolean, seed: number): THREE.BufferGeometry {
+  const big = blobs.map(([x, y, z, radius]): Blob => [
+    x * CREEPER_SCALE,
+    y * CREEPER_SCALE,
+    z * CREEPER_SCALE,
+    radius * CREEPER_SCALE,
+  ])
+  const geometry = leafy ? createLeafyCanopy(big, seed) : createBlobs(big)
+  geometry.scale(1 / CREEPER_SCALE, 1 / CREEPER_SCALE, 1 / CREEPER_SCALE)
+  return geometry
+}
+
+/** The green and the flowering halves of a bougainvillea, which are tinted separately. */
+export function createCreeperGeometries(leafy: boolean): { leaves: THREE.BufferGeometry; flowers: THREE.BufferGeometry } {
+  return {
+    leaves: createCreeper(CREEPER_LEAVES, leafy, 3101),
+    flowers: createCreeper(CREEPER_FLOWERS, leafy, 3102),
+  }
+}
+
+/** Fallen petals under a tree in flower: small flat diamonds, thickest near the trunk. */
+export function createPetalGeometry(): THREE.BufferGeometry {
+  const random = createRandom(4401)
+  const positions: number[] = []
+  const normals: number[] = []
+  const colors: number[] = []
+  const PETALS = 260
+  const REACH = 3.6
+  const HEIGHT = 0.065
+
+  for (let petal = 0; petal < PETALS; petal++) {
+    // Squaring nothing spreads them evenly; this bunches them a little towards the middle.
+    const distance = 0.5 + Math.pow(random(), 0.75) * REACH
+    const angle = random() * Math.PI * 2
+    const x = Math.cos(angle) * distance
+    const z = Math.sin(angle) * distance
+    // A petal is longer than it is wide: about 12 cm by 6 cm.
+    const size = 0.04 + random() * 0.035
+    const turn = random() * Math.PI
+    const alongX = Math.cos(turn) * size
+    const alongZ = Math.sin(turn) * size
+    const shade = 0.75 + random() * 0.25
+    const corners = [
+      [x - alongX, z - alongZ],
+      [x - alongZ * 0.5, z + alongX * 0.5],
+      [x + alongX, z + alongZ],
+      [x + alongZ * 0.5, z - alongX * 0.5],
+    ]
+    for (const index of [0, 1, 2, 0, 2, 3]) {
+      positions.push(corners[index][0], HEIGHT, corners[index][1])
+      normals.push(0, 1, 0)
+      colors.push(shade, shade, shade)
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  return geometry
+}

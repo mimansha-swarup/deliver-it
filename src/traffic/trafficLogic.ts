@@ -386,12 +386,44 @@ function findLaneInRing(
   random: () => number,
   isFree: (lane: Lane) => boolean = () => true,
 ): number {
+  // Only lanes starting in grid squares that reach the ring are tried. Picking from
+  // every lane in HSR, most would be kilometres away.
+  const grid = getLaneGrid(lanes)
+  const nearby: number[] = []
+  for (let cellX = Math.floor((x - max) / LANE_CELL); cellX <= Math.floor((x + max) / LANE_CELL); cellX++) {
+    for (let cellZ = Math.floor((z - max) / LANE_CELL); cellZ <= Math.floor((z + max) / LANE_CELL); cellZ++) {
+      const cell = grid.get(laneCellKey(cellX, cellZ))
+      if (cell) nearby.push(...cell)
+    }
+  }
+  if (nearby.length === 0) return -1
+
   for (let attempt = 0; attempt < 60; attempt++) {
-    const index = Math.floor(random() * lanes.length)
+    const index = nearby[Math.floor(random() * nearby.length)]
     const distance = Math.hypot(lanes[index].startX - x, lanes[index].startZ - z)
     if (distance >= min && distance <= max && isFree(lanes[index])) return index
   }
   return -1
+}
+
+/** Lanes are sorted by where they start into squares this wide, in metres. */
+const LANE_CELL = 60
+const laneCellKey = (cellX: number, cellZ: number) => (cellX + 5000) * 10000 + (cellZ + 5000)
+const laneGrids = new WeakMap<Lane[], Map<number, number[]>>()
+
+/** Each list of lanes gets its grid the first time it's searched. Lanes never move, so it's kept. */
+function getLaneGrid(lanes: Lane[]): Map<number, number[]> {
+  let grid = laneGrids.get(lanes)
+  if (grid) return grid
+  grid = new Map()
+  lanes.forEach(({ startX, startZ }, index) => {
+    const key = laneCellKey(Math.floor(startX / LANE_CELL), Math.floor(startZ / LANE_CELL))
+    const cell = grid?.get(key)
+    if (cell) cell.push(index)
+    else grid?.set(key, [index])
+  })
+  laneGrids.set(lanes, grid)
+  return grid
 }
 
 /** A bike's rider, ready for when they're thrown off. Until then they're hidden and ride the bike. */

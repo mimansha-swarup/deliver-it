@@ -1,10 +1,10 @@
 import * as THREE from 'three'
 import { FLOOR_HEIGHT, getFloors, getKitColor, hashString, hasStilts } from './buildingData'
-import { addWall, isNearBuilding, type CollisionWorld } from './collision'
-import { chunkKey } from './chunks'
+import { addWall, copyCollisionWorld, isNearBuilding, type CollisionWorld } from './collision'
+import { chunkCentre, chunkKey } from './chunks'
 import { FACADE_LOOKS } from './facadeTextures'
 import type { BuildingFeature, LineFeature } from './mapData'
-import { distanceToPiece, toRoadPieces, type Prop, type RoadPiece } from './props'
+import { indexRoadPieces, isClearOfRoads, toRoadPieces, type Prop, type RoadIndex } from './props'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
 /**
@@ -75,6 +75,10 @@ const CORE_DOOR_COLOR = new THREE.Color('#6b6e72')
 
 const COMPOUND = { height: 1.4, thickness: 0.15, gate: 3.0, pillar: 0.38, pillarHeight: 1.7, pavement: 1.6 }
 /** Too little room between house and pavement for a compound wall, and the most it ever stands out. */
+/** Bougainvillea needs this much wall, in metres, and grows on this share of houses, in percent. */
+const CREEPER = { minWall: 3.2, chance: 34 }
+/** How far out from the wall a kolam's middle is, and the share of houses with one. */
+const KOLAM = { out: 0.95, chance: 45 }
 const MIN_YARD = 1.2
 const MAX_YARD = 4
 /** Walls shorter than this get nothing. */
@@ -104,6 +108,12 @@ class Builder {
   positions: number[] = []
   normals: number[] = []
   colors: number[] = []
+  /** A builder that isn't enabled ignores every shape, for working out where things go without their triangles. */
+  readonly enabled: boolean
+
+  constructor(enabled = true) {
+    this.enabled = enabled
+  }
 
   /**
    * A flat four-cornered face, given in order around its edge. A face only shows
@@ -112,6 +122,7 @@ class Builder {
    * and turned round if it's wrong.
    */
   quad(points: THREE.Vector3[], normal: THREE.Vector3, color: THREE.Color) {
+    if (!this.enabled) return
     const [a, b, c, d] = points
     const facing = edgeB.subVectors(b, a).cross(edgeC.subVectors(c, a)).dot(normal)
     const order = facing >= 0 ? [a, b, c, a, c, d] : [a, d, c, a, c, b]
@@ -124,6 +135,7 @@ class Builder {
 
   /** A flat shape of any outline, lying level at `height`, facing up. */
   floor(outline: GroundPoint[], height: number, color: THREE.Color) {
+    if (!this.enabled) return
     const contour = outline.map(([x, z]) => new THREE.Vector2(x, z))
     const up = new THREE.Vector3(0, 1, 0)
     for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(contour, [])) {
@@ -137,11 +149,19 @@ class Builder {
     }
   }
 
+  /**
+   * Normals and colours are stored as one byte per number, not four: a normal's
+   * -1 to 1 as -127 to 127, a colour's 0 to 1 as 0 to 255. `normalized` tells the
+   * GPU to turn them back. It halves the memory, which adds up over millions of corners.
+   */
   toGeometry(): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3))
-    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3))
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3))
+    geometry.setAttribute('normal', new THREE.BufferAttribute(Int8Array.from(this.normals, (value) => Math.round(value * 127)), 3, true))
+    geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(Uint8Array.from(this.colors, (value) => Math.round(Math.min(1, Math.max(0, value)) * 255)), 3, true),
+    )
     geometry.computeBoundingSphere()
     return geometry
   }
@@ -250,13 +270,13 @@ function windowCentres(wall: Wall, bayWidth = BAY, halfWidth = WINDOW_HALF_WIDTH
 }
 
 /** How far out from the middle of a wall the road starts, or Infinity if there's no road that way. */
-function distanceToRoad(wall: Wall, pieces: RoadPiece[]): number {
+function distanceToRoad(wall: Wall, roads: RoadIndex): number {
   const middleX = wall.start[0] + wall.alongX * wall.length * 0.5
   const middleZ = wall.start[1] + wall.alongZ * wall.length * 0.5
   for (let out = 0.5; out <= ROAD_SEARCH; out += 0.5) {
     const x = middleX + wall.outX * out
     const z = middleZ + wall.outZ * out
-    if (pieces.some((piece) => distanceToPiece(x, z, piece) <= piece.width / 2)) return out
+    if (!isClearOfRoads(roads, x, z, 0)) return out
   }
   return Infinity
 }
@@ -275,46 +295,90 @@ export type ShopUnit = {
 }
 
 export type HouseKit = {
-  /** Balconies, parapets, roof rooms, doors and compound walls: one geometry per map square. */
-  main: THREE.BufferGeometry[]
-  /** Chajjas, one geometry per map square, drawn only up close and on Medium or High. */
-  chajjas: THREE.BufferGeometry[]
+  /** The map squares that have kit in them, with their middles. */
+  squares: { key: number; x: number; z: number }[]
+  /**
+   * Builds the shapes for one map square: balconies, parapets, roof rooms, doors
+   * and compound walls in `main`, and the many small chajjas on their own, as
+   * they're drawn only up close. Squares are built as the rider comes near.
+   */
+  buildSquare: (key: number) => { main: THREE.BufferGeometry; chajjas: THREE.BufferGeometry }
   /** Water tanks, on the roof rooms. */
   tanks: Prop[]
   /** The shops along the fronts of shop buildings. */
   shopUnits: ShopUnit[]
   /** Bikes and cars parked under blocks of flats. They're out of reach, inside the building's footprint. */
   stiltParking: StiltVehicle[]
+  /** Bougainvillea growing over compound walls. `y` is the top of the wall. */
+  creepers: Prop[]
+  /** Kolams drawn on the pavement outside gates. */
+  kolams: Prop[]
 }
 
 export type StiltVehicle = { x: number; z: number; rotation: number; variation: number; car: boolean }
 
+/** The dark store's front, whose building is left as it is. */
+type Skip = { x: number; z: number; rotation: number }
+
 /**
- * Builds the kit for every house in play. Compound walls are added to the
- * collision world as it goes, so it must run before anything that looks for
- * clear ground beside buildings, such as trees, lamps and parked scooters.
+ * Plans the kit for every house in play: where the tanks, shops, parked
+ * vehicles, bougainvillea and kolams go. Compound walls are added to the
+ * collision world, so it must run before anything that looks for clear ground
+ * beside buildings, such as trees, lamps and parked scooters.
+ *
+ * The shapes themselves aren't built here. The whole of HSR has over 6 million
+ * triangles of kit, far too much to keep in memory, so `buildSquare` builds one
+ * map square at a time, as the rider comes near.
  */
-export function buildHouseKit(
+export function planHouseKit(
   buildings: BuildingFeature[],
   roads: LineFeature[],
   collisions: CollisionWorld,
-  /** The dark store's front, whose building is left as it is. */
-  skip?: { x: number; z: number; rotation: number },
+  skip?: Skip,
 ): HouseKit {
-  const roadPieces = toRoadPieces(roads)
-  const main = new Map<number, Builder>()
-  const chajjas = new Map<number, Builder>()
+  const roadIndex = indexRoadPieces(toRoadPieces(roads))
+  // A square built later must come out exactly as planned now, so it looks at the world as it
+  // is now, before compound walls, trees and lamps are added.
+  const lookup = copyCollisionWorld(collisions)
+  const idle = new Builder(false)
+  const plan = dressBuildings(buildings, roadIndex, lookup, skip, () => [idle, idle])
+
+  for (const [start, end] of plan.compoundWalls) addWall(collisions, start, end, COMPOUND.thickness + 0.1)
+
+  return {
+    squares: [...plan.byChunk.keys()].map((key) => ({ key, ...chunkCentre(key) })),
+    buildSquare: (key) => {
+      const kit = new Builder()
+      const shades = new Builder()
+      dressBuildings(plan.byChunk.get(key) ?? [], roadIndex, lookup, skip, () => [kit, shades])
+      return { main: kit.toGeometry(), chajjas: shades.toGeometry() }
+    },
+    tanks: plan.tanks,
+    shopUnits: plan.shopUnits,
+    stiltParking: plan.stiltParking,
+    creepers: plan.creepers,
+    kolams: plan.kolams,
+  }
+}
+
+/**
+ * Dresses each building: works out its front, door, balconies, shops and roof,
+ * adds their shapes to the builders for its map square, and lists what else it
+ * places. It gives the same answer every time for the same building.
+ */
+function dressBuildings(
+  buildings: BuildingFeature[],
+  roadIndex: RoadIndex,
+  lookup: CollisionWorld,
+  skip: Skip | undefined,
+  buildersFor: (key: number) => [kit: Builder, shades: Builder],
+) {
+  const byChunk = new Map<number, BuildingFeature[]>()
   const tanks: Prop[] = []
   const shopUnits: ShopUnit[] = []
   const stiltParking: StiltVehicle[] = []
-  const builderFor = (squares: Map<number, Builder>, key: number) => {
-    let builder = squares.get(key)
-    if (!builder) {
-      builder = new Builder()
-      squares.set(key, builder)
-    }
-    return builder
-  }
+  const creepers: Prop[] = []
+  const kolams: Prop[] = []
   // Compound walls go into the collision world only after every house is built, so one
   // house's wall can't make its neighbour think its own walls are hidden.
   const compoundWalls: [GroundPoint, GroundPoint][] = []
@@ -336,7 +400,7 @@ export function buildHouseKit(
     ) {
       continue
     }
-    const walls = toWalls(outline, collisions)
+    const walls = toWalls(outline, lookup)
     if (walls.length === 0) continue
 
     const hash = hashString(building.id)
@@ -347,24 +411,18 @@ export function buildHouseKit(
     const centreX = outline.reduce((sum, [x]) => sum + x, 0) / outline.length
     const centreZ = outline.reduce((sum, [, z]) => sum + z, 0) / outline.length
     const key = chunkKey(centreX, centreZ)
-    const kit = builderFor(main, key)
-    const shades = builderFor(chajjas, key)
+    const [kit, shades] = buildersFor(key)
+    const inSquare = byChunk.get(key)
+    if (inSquare) inSquare.push(building)
+    else byChunk.set(key, [building])
 
-    // Only roads within reach of this house need checking.
-    const near = roadPieces.filter(
-      ({ start, end }) =>
-        Math.min(start[0], end[0]) < centreX + 40 &&
-        Math.max(start[0], end[0]) > centreX - 40 &&
-        Math.min(start[1], end[1]) < centreZ + 40 &&
-        Math.max(start[1], end[1]) > centreZ - 40,
-    )
 
     // The front is the seen wall nearest a road, facing it. If none faces a road, the longest seen wall.
     let front: Wall | null = null
     let frontGap = Infinity
     for (const wall of walls) {
       if (!wall.exposed) continue
-      const gap = distanceToRoad(wall, near)
+      const gap = distanceToRoad(wall, roadIndex)
       if (gap < frontGap || (gap === frontGap && wall.length > (front?.length ?? 0))) {
         front = wall
         frontGap = gap
@@ -580,18 +638,28 @@ export function buildHouseKit(
       compoundWalls.push([at(wallStart, middleOut), at(wallEnd, middleOut)])
       compoundWalls.push([at(wallStart, 0), at(wallStart, yard)])
       compoundWalls.push([at(wallEnd, 0), at(wallEnd, yard)])
+
+      // Bougainvillea over the longer stretch of wall, on about one house in three.
+      const rotation = Math.atan2(front.outX, front.outZ)
+      const stretches: [number, number][] = [
+        [wallStart, gateFrom - COMPOUND.pillar],
+        [gateTo + COMPOUND.pillar, wallEnd],
+      ]
+      const [from, to] = stretches[0][1] - stretches[0][0] > stretches[1][1] - stretches[1][0] ? stretches[0] : stretches[1]
+      if (to - from >= CREEPER.minWall && (hash >>> 9) % 100 < CREEPER.chance) {
+        const [x, z] = at((from + to) / 2, middleOut)
+        creepers.push({ x, y: COMPOUND.height - 0.05, z, rotation, variation: ((hash >>> 3) % 1000) / 1000 })
+      }
+
+      // A kolam on the pavement outside the gate, as is drawn fresh each morning.
+      if (!isApartment && (hash >>> 14) % 100 < KOLAM.chance) {
+        const [x, z] = at((gateFrom + gateTo) / 2, yard + COMPOUND.thickness + KOLAM.out)
+        kolams.push({ x, z, rotation, variation: ((hash >>> 6) % 1000) / 1000 })
+      }
     }
   }
 
-  for (const [start, end] of compoundWalls) addWall(collisions, start, end, COMPOUND.thickness + 0.1)
-
-  return {
-    main: [...main.values()].map((builder) => builder.toGeometry()),
-    chajjas: [...chajjas.values()].map((builder) => builder.toGeometry()),
-    tanks,
-    shopUnits,
-    stiltParking,
-  }
+  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, compoundWalls }
 }
 
 /** A square post standing at a point, its sides square to `facing`. */

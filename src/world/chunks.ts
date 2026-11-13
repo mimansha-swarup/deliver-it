@@ -13,6 +13,14 @@ export function chunkKey(x: number, z: number): number {
   return (Math.floor(x / CHUNK_SIZE) + 500) * 1000 + (Math.floor(z / CHUNK_SIZE) + 500)
 }
 
+/** The middle of a map square, from its number. */
+export function chunkCentre(key: number): { x: number; z: number } {
+  return {
+    x: (Math.floor(key / 1000) - 500 + 0.5) * CHUNK_SIZE,
+    z: ((key % 1000) - 500 + 0.5) * CHUNK_SIZE,
+  }
+}
+
 /** Triangle corners waiting to become geometry, sorted by map square. */
 export type ChunkedPositions = Map<number, number[]>
 

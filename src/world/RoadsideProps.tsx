@@ -6,30 +6,25 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
-import type { Prop, RoadsideProps as Props } from './props'
+import { CANOPY_HEX, GREEN_TINTS, type Prop, type RoadsideProps as Props } from './props'
 import { box, merge } from './simpleShapes'
-import { createCanopyGeometries, createLeafyCanopyGeometries, createTrunkGeometry } from './foliage'
+import {
+  createCanopyGeometries,
+  createCreeperGeometries,
+  createLeafyCanopyGeometries,
+  createPetalGeometry,
+  createTrunkGeometry,
+} from './foliage'
 import { windUniforms } from './wind'
 
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'
-const CANOPY_COLORS = [
-  // Mostly greens...
-  '#4f7a3a',
-  '#5e8a3f',
-  '#3f6d3b',
-  '#6c9347',
-  '#47803f',
-  '#7a9c45',
-  '#356339',
-  '#588f4c',
-  // ...and some in flower, like the city's gulmohar, tabebuia and jacaranda.
-  '#d9542b',
-  '#e3c23d',
-  '#d77fa1',
-  '#8e6fc1',
-].map((color) => new THREE.Color(color))
-
+const CANOPY_COLORS = CANOPY_HEX.map((color) => new THREE.Color(color))
+/** Bougainvillea: mostly magenta, with the odd orange or white one. */
+const CREEPER_COLORS = ['#d81e73', '#e0457b', '#c2278f', '#d81e73', '#f08a2c', '#f4f1ea'].map(
+  (color) => new THREE.Color(color),
+)
+const CREEPER_LEAF_COLORS = ['#3f6d3b', '#4f7a3a', '#47803f'].map((color) => new THREE.Color(color))
 const TANK_COLORS = ['#17181a', '#1d1e21', '#222327', '#2a5fa8', '#e6e4dc'].map(
   (color) => new THREE.Color(color),
 )
@@ -45,8 +40,13 @@ const TREE_KINDS = 3
 
 const GLOW_COLOR = new THREE.Color('#ffc67a')
 const GLOW_RADIUS = 7
-const GLOW_HEIGHT = 0.12
+/** Just above the road (0.05), so it lights the ground without covering the bottom of what stands on it. */
+const GLOW_HEIGHT = 0.065
 const GLOW_SIDES = 16
+/** How bright the middle of a lamp's pool is. */
+const GLOW_CENTRE = 0.42
+/** Where the bulb is, in a lamp's own space. */
+const BULB: [number, number, number] = [1.5, 6.33, 0]
 /** Where the lamp's light lands, under the head at the end of its arm. */
 const GLOW_OFFSET = 1.5
 
@@ -77,6 +77,8 @@ function addSway(shader: THREE.WebGLProgramParametersWithUniforms) {
   )
 }
 
+/** Behind the title screen, props are drawn this far out, in metres. The whole map's worth would be too many. */
+const TITLE_PROP_REACH = 400
 /** The list of what's nearby is only rebuilt after the rider moves this far, in metres. */
 const REFRESH_DISTANCE = 20
 
@@ -215,12 +217,31 @@ function createLampGlowGeometry(): THREE.BufferGeometry {
     colors.push(GLOW_COLOR.r * brightness, GLOW_COLOR.g * brightness, GLOW_COLOR.b * brightness)
   }
 
-  for (let side = 0; side < GLOW_SIDES; side++) {
-    const start = (side / GLOW_SIDES) * Math.PI * 2
-    const end = ((side + 1) / GLOW_SIDES) * Math.PI * 2
-    add(GLOW_OFFSET, GLOW_HEIGHT, 0, 0.3)
-    add(GLOW_OFFSET + Math.cos(end) * GLOW_RADIUS, GLOW_HEIGHT, Math.sin(end) * GLOW_RADIUS, 0)
-    add(GLOW_OFFSET + Math.cos(start) * GLOW_RADIUS, GLOW_HEIGHT, Math.sin(start) * GLOW_RADIUS, 0)
+  // Rings from the middle out, each dimmer than the last on a bell curve, so the
+  // pool has no rim. A straight fade to a hard edge read as a flat painted disc.
+  const RINGS = 7
+  const ringRadius = (ring: number) => (ring / RINGS) * GLOW_RADIUS
+  const ringLight = (ring: number) => GLOW_CENTRE * Math.exp(-3 * (ring / RINGS) ** 2) * (1 - ring / RINGS)
+  const at = (ring: number, side: number): [number, number] => {
+    const angle = (side / GLOW_SIDES) * Math.PI * 2
+    return [GLOW_OFFSET + Math.cos(angle) * ringRadius(ring), Math.sin(angle) * ringRadius(ring)]
+  }
+  for (let ring = 0; ring < RINGS; ring++) {
+    for (let side = 0; side < GLOW_SIDES; side++) {
+      const [ax, az] = at(ring, side)
+      const [bx, bz] = at(ring, side + 1)
+      const [cx, cz] = at(ring + 1, side + 1)
+      const [dx, dz] = at(ring + 1, side)
+      const inner = ringLight(ring)
+      const outer = ringLight(ring + 1)
+      // Corners in this order face up, the side three.js draws.
+      add(ax, GLOW_HEIGHT, az, inner)
+      add(bx, GLOW_HEIGHT, bz, inner)
+      add(cx, GLOW_HEIGHT, cz, outer)
+      add(ax, GLOW_HEIGHT, az, inner)
+      add(cx, GLOW_HEIGHT, cz, outer)
+      add(dx, GLOW_HEIGHT, dz, outer)
+    }
   }
 
   const pool = new THREE.BufferGeometry()
@@ -243,6 +264,96 @@ function createLampGlowGeometry(): THREE.BufferGeometry {
   return merged
 }
 
+/** Shared by the lamps' cone and halo materials, updated once a frame. */
+const lampUniforms = {
+  uNight: { value: 0 },
+  uRain: { value: 0 },
+  uBulb: { value: new THREE.Vector3(...BULB) },
+  uColor: { value: GLOW_COLOR.clone() },
+}
+
+/** The light falling from a lamp: an open cone from the bulb to the ground. */
+function createLightConeGeometry(): THREE.BufferGeometry {
+  const [x, y, z] = BULB
+  const cone = new THREE.CylinderGeometry(0.12, 3.4, y - 0.1, 20, 1, true)
+  cone.translate(x, (y - 0.1) / 2 + 0.05, z)
+  return cone
+}
+
+/**
+ * The cone is brightest where you look straight through it and fades to nothing
+ * at its edges, as haze lit from inside does. Its sides face out from its middle,
+ * so how directly a side faces the camera says how much lit air you're looking
+ * through. Rain makes the air hazier, so the cone shows more.
+ */
+function createLightConeMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: lampUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    vertexShader: `
+      varying float vFacing;
+      varying float vHeight;
+      void main() {
+        mat4 model = modelMatrix * instanceMatrix;
+        vec4 world = model * vec4(position, 1.0);
+        vec3 normal = normalize(mat3(model) * normal);
+        vFacing = abs(dot(normal, normalize(cameraPosition - world.xyz)));
+        vHeight = uv.y;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      uniform float uNight;
+      uniform float uRain;
+      uniform vec3 uColor;
+      varying float vFacing;
+      varying float vHeight;
+      void main() {
+        float strength = pow(vFacing, 3.0) * mix(0.35, 1.0, vHeight) * smoothstep(0.0, 0.15, vHeight);
+        gl_FragColor = vec4(uColor * strength * uNight * (0.3 + uRain * 0.35), 1.0);
+      }
+    `,
+  })
+}
+
+/** A square that always turns to face the camera, for the glow round each bulb. */
+function createHaloGeometry(): THREE.BufferGeometry {
+  return new THREE.PlaneGeometry(1.8, 1.8)
+}
+
+function createHaloMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: lampUniforms,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `
+      uniform vec3 uBulb;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        // Put the bulb in camera space, then spread the corners out flat to the screen.
+        vec4 centre = viewMatrix * modelMatrix * instanceMatrix * vec4(uBulb, 1.0);
+        gl_Position = projectionMatrix * (centre + vec4(position.xy, 0.0, 0.0));
+      }
+    `,
+    fragmentShader: `
+      uniform float uNight;
+      uniform float uRain;
+      uniform vec3 uColor;
+      varying vec2 vUv;
+      void main() {
+        float distance = length(vUv - 0.5) * 2.0;
+        float glow = exp(-distance * distance * 7.0) * (1.0 - smoothstep(0.8, 1.0, distance));
+        gl_FragColor = vec4(uColor * glow * uNight * (0.55 + uRain * 0.3), 1.0);
+      }
+    `,
+  })
+}
+
 /**
  * Draws many copies of one shape in a single draw call. Each copy only needs a
  * transform matrix: its position, rotation and size packed into 16 numbers.
@@ -250,7 +361,7 @@ function createLampGlowGeometry(): THREE.BufferGeometry {
  * Only copies near the rider are written into the list, and `count` tells the
  * GPU to stop there. In the title screen's aerial view, everything is drawn.
  */
-function PropInstances({
+export function PropInstances({
   props,
   geometry,
   color,
@@ -261,6 +372,8 @@ function PropInstances({
   vertexColors = false,
   surface,
   leaves,
+  flat = false,
+  material,
 }: {
   props: Prop[]
   geometry: THREE.BufferGeometry
@@ -276,6 +389,10 @@ function PropInstances({
   leaves?: { color: THREE.Texture; alpha: THREE.Texture }
   /** Draws a light that adds to the scene and shows only at night. */
   glow?: boolean
+  /** Lies on the ground, such as fallen petals: drawn over the road, and casts no shadow. */
+  flat?: boolean
+  /** A ready-made material, such as a shader for lamp light. It casts and takes no shadows. */
+  material?: THREE.Material
 }) {
   const { treeShadows, propDistance } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const started = useGameStore((state) => state.started)
@@ -292,7 +409,7 @@ function PropInstances({
       instances.visible = liveSky.look.night > 0.01
     }
 
-    const reach = started ? propDistance : Infinity
+    const reach = started ? propDistance : TITLE_PROP_REACH
     const last = lastRefresh.current
     if (
       last &&
@@ -304,16 +421,16 @@ function PropInstances({
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
 
     let count = 0
-    for (const { x, y = 0, z, rotation, variation } of props) {
+    for (const { x, y = 0, z, rotation, variation, tint, size = 1 } of props) {
       if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
 
       transform.position.set(x, y, z)
       transform.rotation.y = rotation
-      transform.scale.setScalar(1 - sizeRange / 2 + variation * sizeRange)
+      transform.scale.setScalar((1 - sizeRange / 2 + variation * sizeRange) * size)
       transform.updateMatrix()
       instances.setMatrixAt(count, transform.matrix)
       if (colors) {
-        instances.setColorAt(count, colors[Math.floor(variation * colors.length * 0.999)])
+        instances.setColorAt(count, colors[tint ?? Math.floor(variation * colors.length * 0.999)])
       }
       count++
     }
@@ -328,10 +445,12 @@ function PropInstances({
       ref={mesh}
       args={[geometry, undefined, props.length]}
       frustumCulled={false}
-      castShadow={treeShadows && !glow}
-      receiveShadow={!glow}
+      castShadow={treeShadows && !glow && !flat && !material}
+      receiveShadow={!glow && !material}
     >
-      {glow ? (
+      {material ? (
+        <primitive object={material} attach="material" />
+      ) : glow ? (
         <meshBasicMaterial
           ref={glowMaterial}
           vertexColors
@@ -340,15 +459,18 @@ function PropInstances({
           depthWrite={false}
           fog={false}
           polygonOffset
-          polygonOffsetFactor={-6}
-          polygonOffsetUnits={-6}
+          polygonOffsetFactor={-3}
+          polygonOffsetUnits={-3}
         />
       ) : (
         <meshStandardMaterial
           color={colors ? '#ffffff' : color}
           roughness={0.95}
-          flatShading={!leaves}
-          vertexColors={vertexColors || !!leaves}
+          flatShading={!leaves && !flat}
+          polygonOffset={flat}
+          polygonOffsetFactor={flat ? -4 : 0}
+          polygonOffsetUnits={flat ? -4 : 0}
+          vertexColors={vertexColors || !!leaves || flat}
           map={leaves?.color ?? surface ?? null}
           alphaMap={leaves?.alpha ?? null}
           alphaTest={leaves ? LEAF_CUTOFF : 0}
@@ -379,10 +501,13 @@ export function RoadsideProps({
   props,
   tanks,
   benches,
+  creepers,
 }: {
   props: Props
   tanks: Prop[]
   benches: Prop[]
+  /** Bougainvillea on compound walls. */
+  creepers: Prop[]
 }) {
   const { leafyTrees } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
@@ -398,13 +523,24 @@ export function RoadsideProps({
   const tank = useMemo(() => createTankGeometry(), [])
   const bench = useMemo(() => createBenchGeometry(), [])
   const lampGlow = useMemo(() => createLampGlowGeometry(), [])
+  const lightCone = useMemo(() => createLightConeGeometry(), [])
+  const lightConeMaterial = useMemo(() => createLightConeMaterial(), [])
+  const halo = useMemo(() => createHaloGeometry(), [])
+  const haloMaterial = useMemo(() => createHaloMaterial(), [])
+  const petals = useMemo(() => createPetalGeometry(), [])
+  const creeper = useMemo(() => createCreeperGeometries(leafyTrees), [leafyTrees])
+  // Petals lie under the trees in flower, and take their colour.
+  const treesInFlower = useMemo(
+    () => props.trees.filter(({ tint }) => tint !== undefined && tint >= GREEN_TINTS),
+    [props.trees],
+  )
   const windPhase = useRef(0)
 
   // Each kind of tree needs its own instanced mesh, as a mesh holds one shape.
   const treesByKind = useMemo(
     () =>
       canopies.map((_, kind) =>
-        props.trees.filter(({ variation }) => Math.floor(variation * 997) % TREE_KINDS === kind),
+        props.trees.filter(({ variation, kind: shape }) => (shape ?? Math.floor(variation * 997) % TREE_KINDS) === kind),
       ),
     [canopies, props.trees],
   )
@@ -414,6 +550,8 @@ export function RoadsideProps({
     windPhase.current += Math.min(delta, 0.1) * (1 + liveSky.wind * 2.5)
     windUniforms.uWindPhase.value = windPhase.current
     windUniforms.uWindStrength.value = liveSky.wind
+    lampUniforms.uNight.value = liveSky.look.night
+    lampUniforms.uRain.value = liveSky.rain
   })
 
   useEffect(
@@ -423,10 +561,17 @@ export function RoadsideProps({
       lamp.dispose()
       poster.dispose()
       lampGlow.dispose()
+      lightCone.dispose()
+      lightConeMaterial.dispose()
+      halo.dispose()
+      haloMaterial.dispose()
       tank.dispose()
       bench.dispose()
+      petals.dispose()
+      creeper.leaves.dispose()
+      creeper.flowers.dispose()
     },
-    [trunk, canopies, lamp, poster, lampGlow, tank, bench],
+    [trunk, canopies, lamp, poster, lampGlow, lightCone, lightConeMaterial, halo, haloMaterial, tank, bench, petals, creeper],
   )
 
   return (
@@ -451,9 +596,30 @@ export function RoadsideProps({
           leaves={leafyTrees ? leaves : undefined}
         />
       ))}
+      <PropInstances props={treesInFlower} geometry={petals} colors={CANOPY_COLORS} sizeRange={0.5} flat />
+      <PropInstances
+        key={`creeper-leaves-${leafyTrees}`}
+        props={creepers}
+        geometry={creeper.leaves}
+        colors={CREEPER_LEAF_COLORS}
+        sizeRange={0.4}
+        sway
+        leaves={leafyTrees ? leaves : undefined}
+      />
+      <PropInstances
+        key={`creeper-flowers-${leafyTrees}`}
+        props={creepers}
+        geometry={creeper.flowers}
+        colors={CREEPER_COLORS}
+        sizeRange={0.4}
+        sway
+        leaves={leafyTrees ? leaves : undefined}
+      />
       <PropInstances props={props.lamps} geometry={lamp} color={LAMP_COLOR} sizeRange={0} />
       <PropInstances props={props.lamps} geometry={poster} color="#ffffff" sizeRange={0} surface={posterImage} />
       <PropInstances props={props.lamps} geometry={lampGlow} sizeRange={0} glow />
+      <PropInstances props={props.lamps} geometry={lightCone} sizeRange={0} material={lightConeMaterial} />
+      <PropInstances props={props.lamps} geometry={halo} sizeRange={0} material={haloMaterial} />
       <PropInstances props={tanks} geometry={tank} colors={TANK_COLORS} sizeRange={0.3} />
       <PropInstances props={benches} geometry={bench} color="#ffffff" sizeRange={0} vertexColors />
     </>

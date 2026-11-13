@@ -150,11 +150,16 @@ export function createCrashPhysics(R: RapierModule, collisions: CollisionWorld) 
     world.createCollider(R.ColliderDesc.cuboid(hx, hy, hz).setTranslation(x, y, z).setFriction(FRICTION))
 
   const { minX, maxX, minZ, maxZ } = PLAY_AREA
-  fixed(0, -1, 0, 3000, 1, 3000)
-  fixed(minX - 1, 5, 0, 1, 5, 3000)
-  fixed(maxX + 1, 5, 0, 1, 5, 3000)
-  fixed(0, 5, minZ - 1, 3000, 5, 1)
-  fixed(0, 5, maxZ + 1, 3000, 5, 1)
+  const middleX = (minX + maxX) / 2
+  const middleZ = (minZ + maxZ) / 2
+  // Half the width and depth, with a little over at each end so the corners close.
+  const halfX = (maxX - minX) / 2 + 2
+  const halfZ = (maxZ - minZ) / 2 + 2
+  fixed(middleX, -1, middleZ, halfX, 1, halfZ)
+  fixed(minX - 1, 5, middleZ, 1, 5, halfZ)
+  fixed(maxX + 1, 5, middleZ, 1, 5, halfZ)
+  fixed(middleX, 5, minZ - 1, halfX, 5, 1)
+  fixed(middleX, 5, maxZ + 1, halfX, 5, 1)
 
   const { vertices, indices } = createWallMesh(collisions)
   if (indices.length > 0) world.createCollider(R.ColliderDesc.trimesh(vertices, indices))

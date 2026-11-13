@@ -243,8 +243,8 @@ function VehicleLights({ items, geometry }: { items: Moving[]; geometry: THREE.B
         depthWrite={false}
         fog={false}
         polygonOffset
-        polygonOffsetFactor={-6}
-        polygonOffsetUnits={-6}
+        polygonOffsetFactor={-3}
+        polygonOffsetUnits={-3}
       />
     </instancedMesh>
   )
