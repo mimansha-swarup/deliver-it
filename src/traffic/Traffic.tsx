@@ -14,6 +14,7 @@ import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
+import { STEERING_Z } from '../vehicle/Rider'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
@@ -33,13 +34,14 @@ import {
   createParkedScooterGeometry,
   createVehicleGlowGeometry,
 } from './vehicleShapes'
+import { CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
 
 
-const CAR_COLORS = ['#e8e8e8', '#b9bcc2', '#30343b', '#8c2f2f', '#2f4f7f', '#d8d2c4', '#f4f4f2']
 /** An auto's colours come from its model, so its tint changes nothing. */
 const AUTO_COLORS = ['#ffffff']
 const BIKE_COLORS = ['#1c3fd1', '#b3201e', '#1a1b1e', '#e8e8e8', '#2e7d4f']
-const PARKED_COLORS = ['#c8c9cc', '#2f3136', '#8c2f2f', '#2f4f7f', '#e6e4dc', '#3d6b4f']
+/** Parked scooters are detailed, and smaller than a few pixels past this, in metres. */
+const PARKED_DRAW_DISTANCE = 90
 const CLOTHES_COLORS = [
   '#c04a4a',
   '#3f6fa8',
@@ -83,22 +85,6 @@ type Moving = {
 
 const transform = new THREE.Object3D()
 
-/** Only the paint takes a vehicle's colour, so glass, tyres and lights keep their own. */
-function tintPaintOnly(shader: THREE.WebGLProgramParametersWithUniforms) {
-  shader.vertexShader = `
-    attribute float _paint;
-    ${shader.vertexShader}
-  `.replace(
-    '#include <color_vertex>',
-    `vColor = vec4(1.0);
-    // Each copy's own colour only exists once one has been set, so the shader checks before using it.
-    #ifdef USE_INSTANCING_COLOR
-      vColor.rgb = color.rgb * mix(vec3(1.0), instanceColor.rgb, _paint);
-    #else
-      vColor.rgb = color.rgb;
-    #endif`,
-  )
-}
 
 function writeTransforms(
   instances: THREE.InstancedMesh,
@@ -120,6 +106,30 @@ function writeTransforms(
     instances.setMatrixAt(index, transform.matrix)
   })
   instances.instanceMatrix.needsUpdate = true
+}
+
+/**
+ * For a long list of which only a few are near: writes just the near ones, one
+ * after another, and draws only that many. A copy shrunk to nothing still costs
+ * the GPU all its corners, which for 700 detailed scooters is far too many.
+ */
+function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: number, palette: string[]) {
+  const color = new THREE.Color()
+  let drawn = 0
+  for (const item of items) {
+    if (item.hidden || Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) >= reach) continue
+    transform.position.set(item.x, item.lift, item.z)
+    if (item.rotation) transform.quaternion.set(...item.rotation)
+    else transform.rotation.set(0, item.heading, 0)
+    transform.scale.setScalar(1)
+    transform.updateMatrix()
+    instances.setMatrixAt(drawn, transform.matrix)
+    instances.setColorAt(drawn, color.set(palette[Math.floor(item.tint * palette.length * 0.999)]))
+    drawn++
+  }
+  instances.count = drawn
+  instances.instanceMatrix.needsUpdate = true
+  if (instances.instanceColor) instances.instanceColor.needsUpdate = true
 }
 
 function updateReflection(material: THREE.MeshStandardMaterial) {
@@ -155,6 +165,7 @@ function MovingInstances({
   reflection,
   reach,
   seatedRider = false,
+  nearestOnly = false,
 }: {
   items: Moving[]
   geometry: THREE.BufferGeometry
@@ -167,13 +178,17 @@ function MovingInstances({
   reach?: number
   /** The rider sitting on a bike, who isn't drawn once thrown off. */
   seatedRider?: boolean
+  /** Draw only the copies within `reach`, for long lists of detailed shapes. */
+  nearestOnly?: boolean
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
   useInstanceColors(mesh, items, palette)
 
   useFrame(() => {
-    if (mesh.current) writeTransforms(mesh.current, items, reach, seatedRider)
+    if (!mesh.current) return
+    if (nearestOnly && reach !== undefined) writeNearest(mesh.current, items, reach, palette)
+    else writeTransforms(mesh.current, items, reach, seatedRider)
     if (material.current) updateReflection(material.current)
   })
 
@@ -592,8 +607,8 @@ export function Traffic({
   )
   // These two are still built in code, so they need freeing. Loaded models don't.
   const drawn = useMemo(
-    () => ({ rider: createBikeRiderGeometry(), parked: createParkedScooterGeometry() }),
-    [],
+    () => ({ rider: createBikeRiderGeometry(), parked: createParkedScooterGeometry(scene, STEERING_Z) }),
+    [scene],
   )
   const lights = useMemo(
     () => ({
@@ -673,8 +688,10 @@ export function Traffic({
         geometry={drawn.parked}
         palette={PARKED_COLORS}
         castShadow={false}
+        baked
         reflection={reflection}
-        reach={LOOSE_DRAW_DISTANCE}
+        reach={Math.min(LOOSE_DRAW_DISTANCE, PARKED_DRAW_DISTANCE)}
+        nearestOnly
       />
       {bodies.map((body, group) => (
         <People key={body.uuid} items={crowds[group]} body={body} />

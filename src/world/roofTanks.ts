@@ -18,13 +18,14 @@ function fitsOnRoof(outline: GroundPoint[], x: number, z: number): boolean {
   )
 }
 
-/** Puts black plastic tanks on most roofs, as on most Bengaluru homes. Offices don't get them. */
+/** Puts black plastic tanks on most roofs. Offices don't get them, and houses and shops get theirs from the house kit. */
 export function generateRoofTanks(buildings: BuildingFeature[]): Prop[] {
   const tanks: Prop[] = []
 
   for (const building of buildings) {
     const ring = building.geometry.coordinates[0]
-    if (!isRingInPlayArea(ring) || building.kind === 'office') continue
+    // Houses and shops get theirs from the house kit, on top of the staircase room.
+    if (!isRingInPlayArea(ring) || building.kind === 'office' || building.kind === 'house' || building.kind === 'shop' || building.kind === 'apartment') continue
 
     const hash = hashString(building.id)
     if (hash % 100 >= TANK_CHANCE) continue

@@ -39,6 +39,11 @@ const GAME_FILES: GameFile[] = [
     ['leaf-alpha', 300],
     ['bark-color', 118],
     ['poster-kills', 81],
+    ['board-kirana', 91],
+    ['board-darshini', 91],
+    ['board-chai', 87],
+    ['board-bakery', 93],
+    ['board-pharmacy', 91],
   ].map(([name, kb]) => ({ url: `/textures/${name}.jpg`, kb: kb as number, kind: 'image' as const })),
 ]
 

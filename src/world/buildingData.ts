@@ -6,6 +6,49 @@ import { lonLatToLocal } from './worldUtils'
 export const FLOOR_HEIGHT = 3.2
 
 /**
+ * House paint, as HSR's independent houses mostly are: off-white, cream and
+ * beige, with now and then a pale pastel or a bolder colour. Repeats make the
+ * common ones more likely. Shared by the walls and the house kit's details, so a
+ * house's balconies and compound wall match its walls.
+ */
+export const HOUSE_COLORS = [
+  '#f1ead8', // off-white
+  '#f1ead8',
+  '#efe3bf', // cream
+  '#efe3bf',
+  '#e9dcc3', // beige
+  '#e9dcc3',
+  '#f3e6c4', // pale yellow
+  '#e6c9a8', // sand
+  '#dfe3dc', // pale grey-green
+  '#d9c2b8', // dusty pink
+  '#cfd9e2', // pale blue
+  '#ecd27e', // turmeric
+]
+
+/** Blocks of flats: whites, greys and the odd pale blue or sand, a little cooler than houses. */
+export const APARTMENT_COLORS = ['#ece6da', '#e8e0d0', '#d8d4cc', '#c9c5bb', '#b9c7cc', '#e0d3c0', '#f0ece4']
+
+/** The paint colour of a house, the same every time for the same house. */
+export function getHouseColor(building: { id: string }): string {
+  return HOUSE_COLORS[hashString(building.id) % HOUSE_COLORS.length]
+}
+
+/** The paint of any building the house kit dresses, matching its walls. */
+export function getKitColor(building: { id: string; kind: string }): string {
+  if (building.kind === 'apartment') return APARTMENT_COLORS[hashString(building.id) % APARTMENT_COLORS.length]
+  return getHouseColor(building)
+}
+
+/**
+ * Whether a building stands on stilts: an open ground floor of pillars with
+ * parking underneath, as nearly every HSR block of flats does.
+ */
+export function hasStilts(building: BuildingFeature): boolean {
+  return building.kind === 'apartment' && getFloors(building) >= 3
+}
+
+/**
  * Turns text into a stable number (FNV-1a hash). A building's "random" height
  * and colour come from its id, so it looks the same on every page load.
  */

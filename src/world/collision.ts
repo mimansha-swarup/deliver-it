@@ -61,6 +61,20 @@ export function createCollisionWorld(buildings: PolygonFeature[]): CollisionWorl
   return world
 }
 
+/** Adds a thin solid wall from one point to another, such as a compound wall. */
+export function addWall(world: CollisionWorld, [startX, startZ]: GroundPoint, [endX, endZ]: GroundPoint, thickness: number) {
+  const length = Math.hypot(endX - startX, endZ - startZ)
+  if (length === 0) return
+  const sideX = (-(endZ - startZ) / length) * (thickness / 2)
+  const sideZ = ((endX - startX) / length) * (thickness / 2)
+  addFootprint(world, [
+    [startX + sideX, startZ + sideZ],
+    [endX + sideX, endZ + sideZ],
+    [endX - sideX, endZ - sideZ],
+    [startX - sideX, startZ - sideZ],
+  ])
+}
+
 /** Adds a small solid post, such as a tree trunk or a lamp post. */
 export function addPost(world: CollisionWorld, x: number, z: number, radius: number) {
   const sides = 6
@@ -108,8 +122,23 @@ function measureFootprint(footprint: Footprint, x: number, z: number) {
   return { nearestX, nearestZ, distance: Math.sqrt(nearestSquared), inside }
 }
 
-/** Where a wall is, and the direction pointing away from the building. */
-export type WallSpot = { x: number; z: number; normalX: number; normalZ: number; length: number }
+/**
+ * Where a wall is, and the direction pointing away from the building. `startX`,
+ * `startZ` and `alongX`, `alongZ` give the wall's start and direction, and `offset`
+ * is how far along it the nearest point is, so things can be kept within its ends.
+ */
+export type WallSpot = {
+  x: number
+  z: number
+  normalX: number
+  normalZ: number
+  length: number
+  startX: number
+  startZ: number
+  alongX: number
+  alongZ: number
+  offset: number
+}
 
 /** Finds the closest wall to a point, or null if none is within `reach`. */
 export function findNearestWall(
@@ -151,6 +180,11 @@ export function findNearestWall(
             normalX: facesOut ? sideX : -sideX,
             normalZ: facesOut ? sideZ : -sideZ,
             length,
+            startX: ax,
+            startZ: az,
+            alongX: (bx - ax) / length,
+            alongZ: (bz - az) / length,
+            offset: clamped * length,
           }
         }
       }

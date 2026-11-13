@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
-import { FLOOR_HEIGHT, getFloors, hashString } from './buildingData'
+import { APARTMENT_COLORS, FLOOR_HEIGHT, getFloors, hashString, hasStilts, HOUSE_COLORS } from './buildingData'
 import type { BuildingKind } from './buildingKinds'
 import { ChunkedMesh } from './ChunkedMesh'
 import { chunkKey } from './chunks'
@@ -27,26 +27,19 @@ const KIND_STYLES: Record<BuildingKind, KindStyle> = {
   house: {
     ground: 'house',
     upper: 'house',
-    // Bright paint, as homes here so often are.
-    colors: toColors([
-      '#efe3bf', // cream
-      '#e6c9a8', // sand
-      '#d9b8ae', // dusty pink
-      '#d6a184', // terracotta
-      '#b7d1bd', // mint
-      '#c7bcdc', // lilac
-      '#ecd27e', // turmeric
-    ]),
+    // HSR's own palette, shared with the house kit so balconies match their walls.
+    colors: toColors(HOUSE_COLORS),
   },
   apartment: {
     ground: 'stilts',
     upper: 'apartment',
-    colors: toColors(['#e8e0d0', '#d8d4cc', '#c9c5bb', '#b9c7cc', '#e0d3c0']),
+    colors: toColors(APARTMENT_COLORS),
   },
+  // Shops are houses with shops on the ground floor, so they're painted the same upstairs.
   shop: {
     ground: 'shopfront',
-    upper: 'shopFloors',
-    colors: toColors(['#d7cfc3', '#c5b8a6', '#b8c0c4', '#d3c098', '#c9a79b']),
+    upper: 'house',
+    colors: toColors(HOUSE_COLORS),
   },
   office: {
     ground: 'office',
@@ -128,6 +121,8 @@ function createBuildingParts(building: BuildingFeature): BuildingPart[] {
   const color = colors[hashString(building.id) % colors.length]
   const floors = getFloors(building)
 
+  // On stilts the ground floor is open: pillars and parking from the house kit, under the floors above.
+  if (hasStilts(building)) return [createFloors(shape, 1, floors, upper, color)]
   if (ground === upper || floors <= 1) return [createFloors(shape, 0, floors, ground, color)]
   return [
     createFloors(shape, 0, 1, ground, color),

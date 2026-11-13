@@ -44,14 +44,9 @@ type Style = {
 }
 
 const STYLES: Partial<Record<BuildingKind, Style>> = {
-  apartment: { cornice: 'Cornice_Brick_Center', door: 'DoorFrame_Wooden' },
+  // Blocks of flats get the house kit instead: stilts, balconies, a terrace (see houseKit.ts).
   civic: { cornice: 'Cornice_Trim_Center', door: 'DoorFrame_Wooden' },
-  shop: {
-    cornice: 'Cornice_Trim_Center',
-    door: 'DoorFrame_Metal_Single',
-    ground: ['Metal_FirstFloor_Window', 'Metal_FirstFloor_Window', 'Metal_FirstFloor_Wall'],
-    upper: ['Brick_Window_Square_Single', 'Brick_Plain_3_noWear'],
-  },
+  // Shops are HSR houses with shops below, so they get the house kit instead (see houseKit.ts).
   office: {
     cornice: 'Cornice_Metal_Center',
     door: 'DoorFrame_Metal_Single',
@@ -201,10 +196,21 @@ function placeWall(
   }
 }
 
-/** Covers the seam where two kit walls meet at a corner. */
-function placeCorner(placed: KitPlacement[], edge: Edge, floors: number) {
+/** How much room a corner column needs beyond an awning's end, in metres. */
+const COLUMN_CLEARANCE = 1
+
+/**
+ * Covers the seam where two kit walls meet at a corner. Next to an awning, the
+ * column is left out on the two floors the awning and its sign reach, or it
+ * would cut straight through them.
+ */
+function placeCorner(placed: KitPlacement[], edge: Edge, floors: number, shopFronts: ShopFront[]) {
   for (const [x, z] of [edge.start, edge.end]) {
+    const nearAwning = shopFronts.some(
+      (front) => Math.hypot(front.x - x, front.z - z) < front.width / 2 + COLUMN_CLEARANCE,
+    )
     for (let floor = 0; floor < floors; floor++) {
+      if (floor <= 1 && nearAwning) continue
       placed.push({
         piece: 'Metal_Column_Center',
         x: x + edge.normalX * WALL_DEPTH * 0.5,
@@ -259,7 +265,7 @@ export function placeCityKit(
       if (!hasWalls) continue
 
       placeWall(placed, building.id, edge, style, floors, edge === front ? doorSlot : undefined, shopFronts)
-      placeCorner(placed, edge, floors)
+      placeCorner(placed, edge, floors, shopFronts)
     }
 
     const [doorX, doorZ] = pointOnEdge(front, doorSlot, WALL_DEPTH)

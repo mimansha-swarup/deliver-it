@@ -22,14 +22,18 @@ import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
 import { generateRoadsideProps } from './props'
 import { generateRoofTanks } from './roofTanks'
+import { buildHouseKit } from './houseKit'
+import { HouseKitMesh } from './HouseKitMesh'
 import { RoadMarkings } from './RoadMarkings'
 import { createRoadGraph } from './roadGraph'
 import { Roads } from './Roads'
 import { RoadsideProps } from './RoadsideProps'
 import { ShopFronts } from './ShopFronts'
-import { generateShopFronts } from './shopFrontPlacement'
+import { StiltParking } from './StiltParking'
+import { fillShopUnits, generateShopFronts } from './shopFrontPlacement'
 
 const SIGNAL_POLE_RADIUS = 0.1
+const MENU_BOARD_RADIUS = 0.35
 
 export function World() {
   const data = use(loadMapData())
@@ -37,23 +41,28 @@ export function World() {
 
   // Trees and lamps are solid, so they're added to the collision world as they're placed.
   // Awnings and kit pieces go first, while the collision world holds nothing but buildings.
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store } = useMemo(() => {
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses } = useMemo(() => {
     const collisions = createCollisionWorld(data.buildings)
-    const shopFronts = generateShopFronts(data.places, collisions)
-    const kit = placeCityKit(data.buildings, data.roads, collisions, shopFronts)
+    const mappedShops = generateShopFronts(data.places, collisions)
+    const kit = placeCityKit(data.buildings, data.roads, collisions, mappedShops)
     const graph = createRoadGraph(data.roads)
     const signalNodes = createTrafficSignals(graph).junctions.map(({ node }) => node)
     const start: [number, number] = [SCOOTER_SPAWN.x, SCOOTER_SPAWN.z]
-    const store = findDarkStore(data.buildings, graph, collisions, shopFronts, start, signalNodes)
+    const store = findDarkStore(data.buildings, graph, collisions, mappedShops, start, signalNodes)
     addDarkStorePosts(collisions, store)
+    // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
+    const houses = buildHouseKit(data.buildings, data.roads, collisions, store)
+    const shopFronts = fillShopUnits(houses.shopUnits, mappedShops)
+    // Menu boards on the pavement are solid too.
+    for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
     const props = generateRoadsideProps(data.roads, collisions, shopFronts)
     const benches = plantParks(data, collisions, props)
     const physics = createCrashPhysics(rapier, collisions)
     const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics)
     // After the lanes, as a pole by the kerb would otherwise close the pavement path beside it.
     for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
-    const tanks = generateRoofTanks(data.buildings)
-    return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store }
+    const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
+    return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses }
   }, [data, rapier])
 
   return (
@@ -66,6 +75,8 @@ export function World() {
       <Roads roads={data.roads} />
       <RoadMarkings roads={data.roads} />
       <Buildings buildings={data.buildings} />
+      <HouseKitMesh kit={houses} />
+      <StiltParking vehicles={houses.stiltParking} />
       <CityKit placements={kit} />
       <DarkStoreBuilding store={store} />
       <RoadsideProps props={props} tanks={tanks} benches={benches} />

@@ -7,7 +7,7 @@ import { getNoise } from './instruments'
  * an octave down for body, filtered noise for the rasp, and a lowpass filter
  * that opens up under throttle, the way an engine gets brighter when you open it up.
  */
-export type EngineKind = 'scooter' | 'car' | 'auto' | 'bike'
+export type EngineKind = 'scooter' | 'car' | 'suv' | 'auto' | 'bike'
 
 type Profile = {
   /** Firing rate at idle and at full revs, in hertz. */
@@ -27,6 +27,8 @@ const PROFILES: Record<EngineKind, Profile> = {
   scooter: { idleHz: 42, topHz: 135, wave: 'sawtooth', dullHz: 500, brightHz: 1900, rasp: 0.12, loudness: 0.5 },
   // Cars hum lower and smoother.
   car: { idleHz: 30, topHz: 78, wave: 'triangle', dullHz: 300, brightHz: 800, rasp: 0.05, loudness: 0.45 },
+  // An SUV's bigger diesel: lower still, with more growl and a little clatter.
+  suv: { idleHz: 24, topHz: 60, wave: 'sawtooth', dullHz: 220, brightHz: 650, rasp: 0.1, loudness: 0.55 },
   // An auto rickshaw's two-stroke rattle: square, low and raspy.
   auto: { idleHz: 28, topHz: 55, wave: 'square', dullHz: 600, brightHz: 1300, rasp: 0.35, loudness: 0.4 },
   // A commuter motorbike: higher and sharper.

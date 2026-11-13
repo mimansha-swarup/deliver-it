@@ -88,20 +88,28 @@ function paintHouse(context: CanvasRenderingContext2D) {
   fill(context, 'rgb(0 0 0 / 30%)', [30, 96, 68, 2])
 }
 
-/** A balcony on every floor: a slab, a railing and a glass door set back in shade. */
+/**
+ * A wide window in each bay of a block of flats, from 0.9 m to 2.85 m above
+ * its floor. The balconies out front are real shapes from the house kit (see
+ * buildApartment), so nothing here is painted to look like one.
+ */
 function paintApartment(context: CanvasRenderingContext2D) {
   paintFloorBand(context)
 
-  fill(context, 'rgb(0 0 0 / 40%)', [8, 8, 112, 96])
-  fill(context, FRAME, [20, 14, 88, 90])
-  paintGlass(context, [24, 18, 80, 86])
-  fill(context, FRAME, [62, 18, 4, 86])
+  const grime = context.createLinearGradient(0, 96, 0, 122)
+  grime.addColorStop(0, 'rgb(40 34 28 / 20%)')
+  grime.addColorStop(1, 'rgb(40 34 28 / 0%)')
+  context.fillStyle = grime
+  context.fillRect(20, 96, 88, 26)
 
-  fill(context, IRON, [8, 66, 112, 3])
-  for (let x = 12; x < 120; x += 8) fill(context, IRON, [x, 66, 2, 38])
+  fill(context, FRAME, [20, 14, 88, 78])
+  paintGlass(context, [24, 18, 80, 70])
+  fill(context, FRAME, [62, 18, 4, 70])
+  fill(context, 'rgb(0 0 0 / 30%)', [24, 18, 80, 4])
+  for (let x = 30; x < 104; x += 9) fill(context, IRON, [x, 18, 2, 70])
 
-  fill(context, '#e4e2dc', [0, 104, 128, 10])
-  fill(context, 'rgb(0 0 0 / 30%)', [0, 114, 128, 3])
+  fill(context, '#d8d6cf', [16, 92, 96, 4])
+  fill(context, 'rgb(0 0 0 / 30%)', [16, 96, 96, 2])
 }
 
 /** The open parking level under a block of flats: pillars, shade and a tube light. */
@@ -189,7 +197,7 @@ export const FACADE_LOOKS: Record<FacadeLook, LookStyle> = {
     roughness: 0.85,
     bumpy: true,
     paint: paintApartment,
-    glow: [24, 18, 80, 46],
+    glow: [24, 18, 80, 70],
     litShare: 0.5,
     glowColors: WARM_GLOW,
   },

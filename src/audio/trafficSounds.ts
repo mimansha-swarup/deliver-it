@@ -15,7 +15,7 @@ const REPICK_EVERY = 0.4
 const ENGINE_FOR: Record<VehicleKind, EngineKind> = {
   sedan: 'car',
   hatchback: 'car',
-  suv: 'car',
+  suv: 'suv',
   mpv: 'car',
   auto: 'auto',
   bike: 'bike',
