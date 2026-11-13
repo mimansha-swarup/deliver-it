@@ -1,4 +1,4 @@
-import type { DeliveryTier, Mission, MissionPhase, MissionStop, Reward } from '../game/gameTypes'
+import type { Mission, MissionPhase, MissionStop, Reward } from '../game/gameTypes'
 import { MISSION_RULES } from '../game/missionConfig'
 
 /** The stop the player is heading for, or null when there isn't one. */
@@ -14,24 +14,31 @@ export function hasArrived(distance: number, speed: number): boolean {
 }
 
 /**
- * The base reward is paid in full on every delivery, however many crashes there
- * were. Distance, time and a clean ride only add to it.
+ * The base reward is paid in full on every delivery, once per customer, however
+ * many crashes there were. Distance, time, a clean ride and working after dark
+ * only add to it. A rush order's bonus is bigger, and missing it costs nothing.
  */
 export function calculateReward(
   seconds: number,
-  onTimeSeconds: number,
-  tier: DeliveryTier,
+  mission: Pick<Mission, 'kind' | 'tier' | 'dropCount' | 'onTimeSeconds'>,
   crashes = 0,
+  nightPay = false,
 ): Reward {
+  const rules = MISSION_RULES
+  const { kind, tier, dropCount, onTimeSeconds } = mission
   const onTime = seconds <= onTimeSeconds
+  const rush = kind === 'rush'
+  const baseCredits = rules.baseCredits * dropCount
 
   return {
-    baseCredits: MISSION_RULES.baseCredits,
+    kind,
+    baseCredits,
     distanceCredits: tier.extraCredits,
-    onTimeCredits: onTime ? MISSION_RULES.onTimeCredits : 0,
-    cleanRideCredits: crashes === 0 ? MISSION_RULES.cleanRideCredits : 0,
+    onTimeCredits: onTime ? rules.onTimeCredits + (rush ? rules.rushExtraCredits : 0) : 0,
+    cleanRideCredits: crashes === 0 ? rules.cleanRideCredits : 0,
+    nightCredits: nightPay ? Math.round((baseCredits + tier.extraCredits) * rules.nightPayShare) : 0,
     crashes,
-    xp: MISSION_RULES.baseXp + tier.extraXp,
+    xp: rules.baseXp * dropCount + tier.extraXp + (rush && onTime ? rules.rushExtraXp : 0),
     seconds,
     onTime,
   }

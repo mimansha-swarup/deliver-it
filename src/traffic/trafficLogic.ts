@@ -193,7 +193,11 @@ export const THROW_STYLES: Record<VehicleKind, ThrowStyle> = {
   bike: TWO_WHEELER_THROW,
 }
 
-/** `mass` is in kilograms. A collision shares speed out according to these weights. */
+/**
+ * `mass` is in kilograms. A collision shares speed out according to these weights.
+ * Each crash box runs from the ground up to the roof, so a vehicle lying on it
+ * rests on its wheels instead of sinking them into the road.
+ */
 const VEHICLE_SHAPES: Record<
   VehicleKind,
   { speed: number; halfLength: number; radius: number; crash: CrashShape }
@@ -202,37 +206,37 @@ const VEHICLE_SHAPES: Record<
     speed: 8,
     halfLength: 2.1,
     radius: 0.85,
-    crash: { halfSize: [0.85, 0.56, 2.05], centre: 0.78, mass: 1200, surface: CAR_SURFACE },
+    crash: { halfSize: [0.85, 0.67, 2.05], centre: 0.67, mass: 1200, surface: CAR_SURFACE },
   },
   hatchback: {
     speed: 8,
     halfLength: 1.8,
     radius: 0.85,
-    crash: { halfSize: [0.82, 0.6, 1.76], centre: 0.82, mass: 950, surface: CAR_SURFACE },
+    crash: { halfSize: [0.82, 0.71, 1.76], centre: 0.71, mass: 950, surface: CAR_SURFACE },
   },
   suv: {
     speed: 8,
     halfLength: 2.3,
     radius: 0.92,
-    crash: { halfSize: [0.92, 0.72, 2.25], centre: 0.92, mass: 1800, surface: CAR_SURFACE },
+    crash: { halfSize: [0.92, 0.82, 2.25], centre: 0.82, mass: 1800, surface: CAR_SURFACE },
   },
   mpv: {
     speed: 8,
     halfLength: 2,
     radius: 0.88,
-    crash: { halfSize: [0.86, 0.66, 1.96], centre: 0.86, mass: 1250, surface: CAR_SURFACE },
+    crash: { halfSize: [0.86, 0.76, 1.96], centre: 0.76, mass: 1250, surface: CAR_SURFACE },
   },
   auto: {
     speed: 6,
     halfLength: 1.3,
     radius: 0.75,
-    crash: { halfSize: [0.66, 0.78, 1.22], centre: 0.9, mass: 400, surface: AUTO_SURFACE },
+    crash: { halfSize: [0.66, 0.84, 1.22], centre: 0.84, mass: 400, surface: AUTO_SURFACE },
   },
   bike: {
     speed: 9,
     halfLength: 0.95,
     radius: 0.4,
-    crash: { halfSize: [0.22, 0.62, 0.9], centre: 0.72, mass: 200, surface: TWO_WHEELER_SURFACE },
+    crash: { halfSize: [0.22, 0.67, 0.9], centre: 0.67, mass: 200, surface: TWO_WHEELER_SURFACE },
   },
 }
 
@@ -252,6 +256,10 @@ const PERSON_SHAPE: CrashShape = {
 }
 /** How close the rider's middle gets to a person's middle before they touch. */
 const PERSON_HIT_DISTANCE = SCOOTER.collisionRadius + 0.3
+/** A person, as other things see them: a circle this wide, in metres. */
+const PERSON_RADIUS = 0.3
+/** Walking people keep at least this far apart, middle to middle, in metres. */
+const PERSON_SPACING = 0.6
 /**
  * The rider's shape for pushing things, which doesn't react to being pushed back.
  * It's kept small on purpose. A hit has to be noticed by `hitLoose` or `hitRider`
@@ -306,6 +314,9 @@ export type Vehicle = Mover & {
 /** A horn sounding somewhere, waiting to be played by the sound code. */
 export type Honk = { x: number; z: number; kind: VehicleKind }
 
+/** Something was hit hard enough to hear, with a strength from 0 to 1. */
+export type HitSound = { x: number; z: number; strength: number }
+
 export type Pedestrian = Mover & {
   /** Rapier's body for them while they've been knocked over, or null while walking. */
   body: Tumbler['body']
@@ -345,8 +356,10 @@ export type TrafficWorld = {
   random: () => number
   /** Horns that sounded this step. `Traffic` plays them and empties this. */
   honks: Honk[]
-  /** Where someone is lying in the road this step, which traffic stops for. */
-  downed: { x: number; z: number }[]
+  /** Hits this step, to be heard. `Traffic` plays them and empties this. */
+  impacts: HitSound[]
+  /** Every person traffic must stop for this step, walking or down. See `listDowned`. */
+  downed: Obstacle[]
 }
 
 function angleBetween(from: number, to: number): number {
@@ -521,6 +534,7 @@ export function createTrafficWorld(
     signalClock: 0,
     random,
     honks: [],
+    impacts: [],
     downed: [],
   }
 }
@@ -543,6 +557,9 @@ const RIDER_HALF_LENGTH = 1
 /** Someone lying down, as traffic sees them: about a body's length, any way round. */
 const DOWNED_HALF_LENGTH = 0.9
 const DOWNED_RADIUS = 0.9
+
+/** A person traffic must not drive into. `lying` makes them a body's length; standing, they're narrow. */
+type Obstacle = { x: number; z: number; lying: boolean }
 /**
  * The space between this vehicle's front bumper and the back of whatever is in
  * its way, or Infinity. `sideways` asks "what if I moved over this far?", which
@@ -553,7 +570,7 @@ function findGapAhead(
   lane: Lane,
   others: Vehicle[],
   rider: ScooterState,
-  downed: { x: number; z: number }[],
+  downed: Obstacle[],
   sideways = 0,
 ): { gap: number; blockedBy: 'rider' | 'queue' | 'crossing' | null } {
   let gap = Infinity
@@ -597,7 +614,10 @@ function findGapAhead(
 
   check(rider.x, rider.z, RIDER_HALF_LENGTH, SCOOTER.collisionRadius, true)
   // Nobody drives over someone lying in the road. Stuck behind them, they lean on the horn.
-  for (const body of downed) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, true)
+  for (const body of downed) {
+    if (body.lying) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, true)
+    else check(body.x, body.z, PERSON_RADIUS, PERSON_RADIUS, true)
+  }
   const ownPlace = others.indexOf(vehicle)
   others.forEach((other, place) => {
     if (other === vehicle || other.lane === -1) return
@@ -739,7 +759,7 @@ function squeezeThrough(
   lane: Lane,
   active: Vehicle[],
   rider: ScooterState,
-  downed: { x: number; z: number }[],
+  downed: Obstacle[],
   dt: number,
 ) {
   const rules = TRAFFIC_RULES
@@ -959,6 +979,7 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt
   if (Math.hypot(hit.otherX, hit.otherZ) < TRAFFIC_RULES.launchKnock) return
 
   // Hit hard enough, it stops being a car on rails and becomes a real object.
+  soundImpact(world, vehicle.x, vehicle.z, Math.hypot(hit.otherX, hit.otherZ) * 2)
   world.physics.hidePusher(vehicle.pusher as NonNullable<Tumbler['body']>)
   world.physics.addBody(vehicle, vehicle.crash, false)
   const { velocity, spin } = throwFor(
@@ -997,6 +1018,7 @@ function hitLoose(world: TrafficWorld, body: LooseBody, rider: ScooterState, dt:
   applyImpact(rider, hit.changeX, hit.changeZ, hit.pushX, hit.pushZ, dt)
   if (change < TRAFFIC_RULES.launchKnock) return
 
+  soundImpact(world, body.x, body.z, change * 2)
   const thrown = throwFor(hit.otherX, hit.otherZ, velocity.x, velocity.z, TWO_WHEELER_THROW, body.heading)
   world.physics.launch(body, thrown.velocity, thrown.spin)
 }
@@ -1101,20 +1123,119 @@ function hitPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterSt
   const knock = Math.hypot(hit.changeX, hit.changeZ)
 
   if (knock < TRAFFIC_RULES.pedestrianKnock) {
-    // A gentle bump only moves them aside.
-    person.dodgeX += hit.pushX
-    person.dodgeZ += hit.pushZ
+    // A gentle bump moves them aside, all the way, so the scooter never ends up inside them.
+    const overlap = PERSON_HIT_DISTANCE - distance
+    shove(person, normalX * overlap, normalZ * overlap)
     return
   }
 
   rider.velocityX += hit.otherX
   rider.velocityZ += hit.otherZ
   rider.impact = Math.max(rider.impact, Math.min(knock / 20, 0.6))
+  soundImpact(world, person.x, person.z, knock)
 
   world.physics.addBody(person, PERSON_SHAPE, false)
   const { velocity, spin } = throwFor(hit.changeX, hit.changeZ, 0, 0, PERSON_THROW, person.heading)
   world.physics.launch(person, velocity, spin)
   person.downTime = 0
+}
+
+/** Moves a walking person by this much, and keeps it as a step aside so they don't snap back. */
+function shove(person: Pedestrian, x: number, z: number) {
+  person.x += x
+  person.z += z
+  person.dodgeX += x
+  person.dodgeZ += z
+}
+
+/**
+ * A vehicle meets someone walking. Moving, it knocks them over, by weight like
+ * any other hit, and the driver brakes hard and leans on the horn. Crawling, it
+ * just nudges them aside. Either way, nobody passes through anybody.
+ */
+function hitPersonWithVehicle(world: TrafficWorld, vehicle: Vehicle, person: Pedestrian) {
+  const touch = touchVehicle(vehicle, person.x, person.z, PERSON_RADIUS)
+  if (!touch) return
+
+  const { normalX, normalZ, overlap } = touch
+  const [velocityX, velocityZ] = vehicleVelocity(vehicle)
+  const hit = resolveHit(
+    normalX,
+    normalZ,
+    overlap,
+    [0, 0, PERSON_SHAPE.mass],
+    [velocityX, velocityZ, vehicle.crash.mass],
+    TRAFFIC_RULES.bodyBounciness,
+  )
+  const knock = Math.hypot(hit.changeX, hit.changeZ)
+  if (knock < TRAFFIC_RULES.pedestrianKnock) {
+    shove(person, normalX * overlap, normalZ * overlap)
+    return
+  }
+
+  vehicle.speed *= 0.4
+  world.honks.push({ x: vehicle.x, z: vehicle.z, kind: vehicle.kind })
+  soundImpact(world, person.x, person.z, knock)
+  world.physics.addBody(person, PERSON_SHAPE, false)
+  const { velocity, spin } = throwFor(hit.changeX, hit.changeZ, 0, 0, PERSON_THROW, person.heading)
+  world.physics.launch(person, velocity, spin)
+  person.downTime = 0
+}
+
+/** Walking people step around each other instead of through. Each moves half the overlap, back and aside. */
+function separatePeople(people: Pedestrian[]) {
+  for (let first = 0; first < people.length; first++) {
+    const a = people[first]
+    if (a.lane === -1 || a.body || a.fallen) continue
+    for (let second = first + 1; second < people.length; second++) {
+      const b = people[second]
+      if (b.lane === -1 || b.body || b.fallen) continue
+      const awayX = b.x - a.x
+      const awayZ = b.z - a.z
+      const distance = Math.hypot(awayX, awayZ)
+      if (distance >= PERSON_SPACING || distance === 0) continue
+      // Each steps back and to the side, the two opposite ways, so people meeting head-on slip past
+      // each other instead of standing nose to nose.
+      const half = (PERSON_SPACING - distance) / 2
+      const backX = awayX / distance
+      const backZ = awayZ / distance
+      shove(a, (-backX - backZ) * half, (-backZ + backX) * half)
+      shove(b, (backX + backZ) * half, (backZ - backX) * half)
+    }
+  }
+}
+
+/** Whether two driving vehicles overlap: three circles along one, against the other's capsule. */
+function vehiclesOverlap(a: Vehicle, b: Vehicle): boolean {
+  const reach = a.halfLength + b.halfLength + a.radius + b.radius
+  if (Math.hypot(a.x - b.x, a.z - b.z) > reach) return false
+  const forwardX = Math.sin(a.heading)
+  const forwardZ = Math.cos(a.heading)
+  const spine = Math.max(0, a.halfLength - a.radius)
+  for (const along of [-spine, 0, spine]) {
+    if (touchVehicle(b, a.x + forwardX * along, a.z + forwardZ * along, a.radius)) return true
+  }
+  return false
+}
+
+/**
+ * Whether this vehicle must stop to keep out of another. The gap rules keep
+ * queues apart, but at a crossing, or with a bike squeezing past, two can still
+ * meet. Then whichever has the other in front of it stops. If they're side by
+ * side, the one earlier in the list goes first.
+ */
+function mustGiveWay(vehicle: Vehicle, others: Vehicle[]): boolean {
+  const forwardX = Math.sin(vehicle.heading)
+  const forwardZ = Math.cos(vehicle.heading)
+  const ownPlace = others.indexOf(vehicle)
+  return others.some((other, place) => {
+    if (other === vehicle || other.lane === -1 || other.body || other.fallen) return false
+    if (!vehiclesOverlap(vehicle, other)) return false
+    const toOtherX = other.x - vehicle.x
+    const toOtherZ = other.z - vehicle.z
+    const ahead = (toOtherX * forwardX + toOtherZ * forwardZ) / (Math.hypot(toOtherX, toOtherZ) || 1)
+    return ahead > 0.3 || (ahead > -0.3 && place < ownPlace)
+  })
 }
 
 /** Eases in and out, so a movement starts and ends gently instead of at full speed. */
@@ -1166,17 +1287,32 @@ function stepKnockedPedestrian(world: TrafficWorld, person: Pedestrian, dt: numb
   person.dodgeZ = person.z - (lane.startZ + lane.forwardZ * person.along)
 }
 
-/** Collects everyone lying on the ground or getting up: knocked-over people, thrown bike riders, and the rider. */
+/**
+ * Collects every person traffic must not drive into: anyone lying down or
+ * getting up, thrown bike riders, the rider when off the scooter, and people
+ * walking. Walkers are usually on the pavement, out of a vehicle's path, so
+ * they only count when they step into it, such as on a corner.
+ */
 function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[], pedestrianCount: number) {
+  // The entries are kept and refilled each step, rather than made new 60 times a second.
   const downed = world.downed
-  downed.length = 0
+  let count = 0
+  const add = (x: number, z: number, lying: boolean) => {
+    const entry = (downed[count] ??= { x: 0, z: 0, lying: false })
+    entry.x = x
+    entry.z = z
+    entry.lying = lying
+    count++
+  }
   for (const person of world.pedestrians.slice(0, pedestrianCount)) {
-    if (person.body || person.fallen) downed.push(person)
+    if (person.lane !== -1) add(person.x, person.z, !!(person.body || person.fallen))
   }
   for (const { thrownRider, riderOff } of vehicles) {
-    if (thrownRider && riderOff) downed.push(thrownRider)
+    if (thrownRider && riderOff) add(thrownRider.x, thrownRider.z, true)
   }
-  if (rider.rider.phase !== 'on') downed.push(rider.rider)
+  const { phase, x, z } = rider.rider
+  if (phase !== 'on') add(x, z, phase !== 'walking')
+  downed.length = count
 }
 
 /** Advances everything. Only the first `vehicleCount` and `pedestrianCount` are in play. */
@@ -1239,8 +1375,19 @@ export function stepTraffic(
       continue
     }
 
+    if (mustGiveWay(vehicle, activeVehicles)) {
+      vehicle.speed = 0
+      maybeHonk(world, vehicle, rider, false, dt)
+      continue
+    }
     stepVehicle(world, vehicle, activeVehicles, rider, dt)
-    if (vehicle.lane !== -1) hitRider(world, vehicle, rider, dt)
+    if (vehicle.lane === -1) continue
+    hitRider(world, vehicle, rider, dt)
+    for (const person of world.pedestrians.slice(0, pedestrianCount)) {
+      if (person.lane === -1 || person.body || person.fallen) continue
+      if (Math.abs(person.x - vehicle.x) > 4 || Math.abs(person.z - vehicle.z) > 4) continue
+      hitPersonWithVehicle(world, vehicle, person)
+    }
   }
 
   updateLoose(world, rider, dt)
@@ -1271,6 +1418,18 @@ export function stepTraffic(
     stepPedestrian(world, person, rider, dt)
     hitPedestrian(world, person, rider)
   }
+  separatePeople(world.pedestrians.slice(0, pedestrianCount))
+}
+
+/** Records a hit to be heard. A knock of 10 m/s or more is as loud as it gets. */
+function soundImpact(world: TrafficWorld, x: number, z: number, knock: number) {
+  world.impacts.push({ x, z, strength: Math.min(1, knock / 10) })
+}
+
+/** Hands each hit that happened this step to `play`, then forgets them. */
+export function takeImpacts(world: TrafficWorld, play: (impact: HitSound) => void) {
+  world.impacts.forEach(play)
+  world.impacts.length = 0
 }
 
 /** Hands each horn that sounded this step to `play`, then forgets them. */

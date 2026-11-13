@@ -1,89 +1,58 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import type { ScooterState } from './ScooterController'
 
-const BEAM_LENGTH = 26
-/** Half the beam's angle, in radians. */
-const BEAM_SPREAD = 0.5
-const RINGS = 7
-const SPOKES = 8
-const BEAM_HEIGHT = 0.13
-const BEAM_BRIGHTNESS = 0.3
-const BEAM_COLOR = new THREE.Color('#fff0cf')
+/** Brightness at full night, in candela, as three.js measures lights. */
+export const HEADLIGHT_INTENSITY = 110
+/** Beyond this, in metres, a headlight lights nothing. */
+export const HEADLIGHT_RANGE = 34
+/** Half the beam's angle, and how soft its edge is, from 0 hard to 1 soft. */
+export const HEADLIGHT_ANGLE = 0.5
+export const HEADLIGHT_SOFTNESS = 0.65
+export const HEADLIGHT_COLOR = '#fff0cf'
+/** How high the lamp is, and how far ahead and down it aims. */
+const LAMP_HEIGHT = 0.95
+const LAMP_FORWARD = 0.7
+const AIM_AHEAD = 18
 
 /**
- * A curved grid over the road. Each point's brightness fades out towards the far
- * edge and both sides, so the beam has no hard outline.
- */
-function createBeamGeometry(): THREE.BufferGeometry {
-  const positions: number[] = []
-  const colors: number[] = []
-
-  const add = (ring: number, spoke: number) => {
-    const along = ring / RINGS
-    const across = (spoke / SPOKES) * 2 - 1
-    const angle = across * BEAM_SPREAD
-    const distance = 1 + along * BEAM_LENGTH
-
-    positions.push(Math.sin(angle) * distance, BEAM_HEIGHT, Math.cos(angle) * distance)
-    const brightness = BEAM_BRIGHTNESS * (1 - along) ** 1.5 * (1 - across * across)
-    colors.push(BEAM_COLOR.r * brightness, BEAM_COLOR.g * brightness, BEAM_COLOR.b * brightness)
-  }
-
-  for (let ring = 0; ring < RINGS; ring++) {
-    for (let spoke = 0; spoke < SPOKES; spoke++) {
-      add(ring, spoke)
-      add(ring + 1, spoke)
-      add(ring, spoke + 1)
-      add(ring, spoke + 1)
-      add(ring + 1, spoke)
-      add(ring + 1, spoke + 1)
-    }
-  }
-
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  return geometry
-}
-
-/**
- * A fake headlight: a shape painted on the road, which adds light to whatever is
- * under it. A real light would have to be worked out on every surface, for little gain.
+ * The scooter's headlight: a real spotlight, so it lights whatever it falls on,
+ * the road, walls, people and other vehicles. It's always in the scene and only
+ * turned up at night, because adding or removing a light makes three.js rebuild
+ * every material, which would cause a hitch at dusk.
  */
 export function Headlight({ scooter }: { scooter: RefObject<ScooterState> }) {
-  const geometry = useMemo(() => createBeamGeometry(), [])
-  const mesh = useRef<THREE.Mesh>(null)
-  const material = useRef<THREE.MeshBasicMaterial>(null)
+  const light = useRef<THREE.SpotLight>(null)
+  const target = useRef<THREE.Object3D>(null)
 
-  useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => {
+    if (light.current && target.current) light.current.target = target.current
+  }, [])
 
   useFrame(() => {
-    if (!mesh.current || !material.current) return
-
+    if (!light.current || !target.current) return
     const { x, z, heading } = scooter.current
-    mesh.current.position.set(x, 0, z)
-    mesh.current.rotation.y = heading
-    mesh.current.visible = liveSky.look.night > 0.01
-    material.current.opacity = liveSky.look.night
+    const forwardX = Math.sin(heading)
+    const forwardZ = Math.cos(heading)
+    light.current.position.set(x + forwardX * LAMP_FORWARD, LAMP_HEIGHT, z + forwardZ * LAMP_FORWARD)
+    target.current.position.set(x + forwardX * AIM_AHEAD, 0, z + forwardZ * AIM_AHEAD)
+    light.current.intensity = HEADLIGHT_INTENSITY * liveSky.look.night
   })
 
   return (
-    <mesh ref={mesh} geometry={geometry} frustumCulled={false}>
-      <meshBasicMaterial
-        ref={material}
-        vertexColors
-        transparent
-        side={THREE.DoubleSide}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        fog={false}
-        polygonOffset
-        polygonOffsetFactor={-6}
-        polygonOffsetUnits={-6}
+    <>
+      <spotLight
+        ref={light}
+        color={HEADLIGHT_COLOR}
+        intensity={0}
+        distance={HEADLIGHT_RANGE}
+        angle={HEADLIGHT_ANGLE}
+        penumbra={HEADLIGHT_SOFTNESS}
+        decay={1}
       />
-    </mesh>
+      <object3D ref={target} />
+    </>
   )
 }

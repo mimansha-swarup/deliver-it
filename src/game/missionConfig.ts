@@ -13,6 +13,18 @@ export const MISSION_RULES = {
 
   /** Extra credits for finishing on time. Missing it costs nothing. */
   onTimeCredits: 25,
+  /** A rush order's timer is this share of a normal one, and on time it pays this much more. */
+  rushTimeShare: 0.7,
+  rushExtraCredits: 40,
+  rushExtraXp: 10,
+  /** After dark, once unlocked, base and distance pay go up by this share. */
+  nightPayShare: 0.25,
+  /** How often an order is a rush or a double drop, once unlocked. */
+  rushChance: 0.25,
+  doubleChance: 0.2,
+  /** A double drop's second customer is this far from the first by road, in metres. */
+  secondDropMin: 120,
+  secondDropMax: 500,
   /** Extra credits for a delivery with no crashes. Crashing never costs anything else. */
   cleanRideCredits: 10,
   /** The route speed the on-time limit is based on, in metres per second. */
@@ -36,9 +48,9 @@ export const MISSION_RULES = {
  * add up to 1. The extras are paid on top of the base reward, never instead of it.
  */
 export const DELIVERY_TIERS: DeliveryTier[] = [
-  { label: 'Local', minRoute: 180, maxRoute: 450, chance: 0.5, extraCredits: 0, extraXp: 0 },
-  { label: 'Across town', minRoute: 450, maxRoute: 900, chance: 0.35, extraCredits: 35, extraXp: 15 },
-  { label: 'Long haul', minRoute: 900, maxRoute: 1500, chance: 0.15, extraCredits: 80, extraXp: 35 },
+  { label: 'Local', minLevel: 1, minRoute: 180, maxRoute: 450, chance: 0.5, extraCredits: 0, extraXp: 0 },
+  { label: 'Across town', minLevel: 1, minRoute: 450, maxRoute: 900, chance: 0.35, extraCredits: 35, extraXp: 15 },
+  { label: 'Long haul', minLevel: 2, minRoute: 900, maxRoute: 1500, chance: 0.15, extraCredits: 80, extraXp: 35 },
 ]
 
 /** A fictional name. No real shop or brand appears in the game. */

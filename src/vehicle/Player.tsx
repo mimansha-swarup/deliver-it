@@ -13,6 +13,7 @@ import type { RoadGraph } from '../world/roadGraph'
 import { Traffic } from '../traffic/Traffic'
 import { TrafficLights } from '../traffic/TrafficLights'
 import type { TrafficWorld } from '../traffic/trafficLogic'
+import { PlayerSounds } from '../audio/PlayerSounds'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
@@ -38,6 +39,7 @@ export function Player({ store, collisions, graph, traffic }: PlayerProps) {
     <>
       <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} />
       <Headlight scooter={scooterState} />
+      <PlayerSounds scooter={scooterState} />
       <SkidMarks scooter={scooterState} />
       {started ? (
         <FollowCamera scooter={scooterState} collisions={collisions} />

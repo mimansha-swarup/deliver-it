@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { findColour, HELMETS } from '../game/garage'
+import { useGameStore } from '../game/gameStore'
 import { HIP } from './riderShape'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
+import { tuning } from './tuning'
 import { createPrintTexture, SHIRT_COLOR } from './shirtPrint'
 
 const SKIN = '#b98a68'
@@ -257,13 +260,19 @@ export function Rider({
     () => () => Object.values(materials).forEach((material) => material.dispose()),
     [materials],
   )
+
+  // The helmet colour bought at the Garage. Only the colour changes, so the material is kept.
+  const helmetId = useGameStore((state) => state.helmetId)
+  useEffect(() => {
+    materials.helmet.color.set(findColour(HELMETS, helmetId).color)
+  }, [materials, helmetId])
   useEffect(() => () => printTexture.dispose(), [printTexture])
 
   useFrame((_, delta) => {
     const state = scooter.current
     const speed = getTravelSpeed(state)
     const steer = state.steer * steerAngle
-    const crouch = Math.min(speed / 14, 1) * (state.boostLeft > 0 ? 1 : 0.45)
+    const crouch = Math.min(speed / tuning.maxSpeed, 1) * (state.boostLeft > 0 ? 1 : 0.45)
 
     const wantsFoot = speed < FOOT_DOWN_SPEED && state.crashLeft === 0 ? 1 : 0
     footDown.current += (wantsFoot - footDown.current) * (1 - Math.exp(-FOOT_RESPONSE * delta))

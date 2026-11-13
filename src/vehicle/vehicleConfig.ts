@@ -2,7 +2,7 @@ import { PLAY_AREA } from '../world/worldUtils'
 
 /** Everything that affects how the scooter feels. Speeds are in metres per second. */
 export const SCOOTER = {
-  maxSpeed:  14, //14, // about 50 km/h
+  maxSpeed: 15.56, // 56 km/h. It was 14, about 50 km/h.
   maxReverseSpeed: 3,
   /** Engine pull from a standstill, and what's left of it near top speed. */
   acceleration: 6.5,

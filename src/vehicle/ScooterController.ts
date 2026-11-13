@@ -1,4 +1,5 @@
 import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import { currentGrip, tuning } from './tuning'
 import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMITS } from './vehicleConfig'
 
 export type DriveInput = {
@@ -410,7 +411,7 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
     state.driftTime = 0
   }
 
-  const targetGrip = input.handbrake ? SCOOTER.driftGrip : SCOOTER.grip
+  const targetGrip = input.handbrake ? SCOOTER.driftGrip : currentGrip()
   state.grip = moveToward(state.grip, targetGrip, SCOOTER.gripChangeRate * dt)
   state.boostLeft = Math.max(0, state.boostLeft - dt)
 }
@@ -420,7 +421,7 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * dt)
 
   const absoluteSpeed = Math.abs(state.speed)
-  const speedRatio = Math.min(absoluteSpeed / SCOOTER.maxSpeed, 1)
+  const speedRatio = Math.min(absoluteSpeed / tuning.maxSpeed, 1)
   const steeringFade = Math.min(absoluteSpeed / SCOOTER.fullSteeringSpeed, 1)
   const driftBoost = state.drifting ? SCOOTER.driftTurnBoost : 1
   const turnRate =
@@ -440,9 +441,9 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
 }
 
 function engineForce(speed: number, boosting: boolean): number {
-  const ratio = clamp(speed / SCOOTER.maxSpeed, 0, 1)
+  const ratio = clamp(speed / tuning.maxSpeed, 0, 1)
   const engine =
-    SCOOTER.acceleration + (SCOOTER.topEndAcceleration - SCOOTER.acceleration) * ratio * ratio
+    tuning.acceleration + (tuning.topEndAcceleration - tuning.acceleration) * ratio * ratio
   return boosting ? engine + SCOOTER.boostAcceleration : engine
 }
 
@@ -457,19 +458,19 @@ const STOPPED_SPEED = 0.05
 /** Returns the new speed along the scooter's direction. */
 function applyControls(speed: number, state: ScooterState, input: DriveInput, dt: number): number {
   const boosting = state.boostLeft > 0
-  const limit = SCOOTER.maxSpeed + (boosting ? SCOOTER.boostSpeed : 0)
+  const limit = tuning.maxSpeed + (boosting ? SCOOTER.boostSpeed : 0)
 
   if (input.handbrake) {
     const drag = input.forward ? SCOOTER.powerSlideDrag : SCOOTER.handbrake
     return moveToward(speed, 0, drag * dt)
   }
   if (input.forward) {
-    if (speed < -STOPPED_SPEED) return moveToward(speed, 0, SCOOTER.braking * dt)
+    if (speed < -STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
     if (speed > limit) return moveToward(speed, limit, SCOOTER.overspeedDrag * dt)
     return moveToward(speed, limit, engineForce(speed, boosting) * dt)
   }
   if (input.backward) {
-    if (speed > STOPPED_SPEED) return moveToward(speed, 0, SCOOTER.braking * dt)
+    if (speed > STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
     return moveToward(speed, -SCOOTER.maxReverseSpeed, SCOOTER.reverseAcceleration * dt)
   }
   return moveToward(speed, 0, (speed > limit ? SCOOTER.overspeedDrag : SCOOTER.coasting) * dt)
@@ -501,7 +502,7 @@ function updateVelocity(state: ScooterState, input: DriveInput, dt: number) {
       ? SCOOTER.powerSlideRecovery
       : 0
     : SCOOTER.slideRecovery
-  const limit = SCOOTER.maxSpeed + (state.boostLeft > 0 ? SCOOTER.boostSpeed : 0)
+  const limit = tuning.maxSpeed + (state.boostLeft > 0 ? SCOOTER.boostSpeed : 0)
   if (nextSpeed > 0 && nextSpeed < limit) {
     const recovered = nextSpeed + (Math.abs(slip) - Math.abs(nextSlip)) * recovery
     nextSpeed = Math.min(recovered, limit)
@@ -586,7 +587,7 @@ function updateBodyMotion(state: ScooterState, input: DriveInput, dt: number) {
     return
   }
 
-  const speedRatio = Math.min(Math.abs(state.speed) / SCOOTER.maxSpeed, 1)
+  const speedRatio = Math.min(Math.abs(state.speed) / tuning.maxSpeed, 1)
 
   const cornerLean = state.steer * Math.min(speedRatio * 1.5, 1) * SCOOTER.maxLean
   const slideLean = clamp(-state.slip / 6, -1, 1) * 0.15

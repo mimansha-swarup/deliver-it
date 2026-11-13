@@ -2,9 +2,8 @@
   "name": "Deliver It",
   "short_name": "Deliver It",
   "start_url": "/",
-  "display": "fullscreen",
-  "orientation": "landscape",
-  "background_color": "#0f1115",
-  "theme_color": "#0f1115",
+  "display": "standalone",
+  "background_color": "#170910",
+  "theme_color": "#170910",
   "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }

@@ -1,18 +1,17 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGameStore } from './game/gameStore'
+import { preloadGame } from './game/preload'
 import { QUALITY_PRESETS } from './game/qualitySettings'
 import { DirectionArrow } from './ui/DirectionArrow'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Hud } from './ui/Hud'
+import { MessageToast } from './ui/MessageToast'
 import { PlayerHorn } from './ui/PlayerHorn'
 import { RadioPlayer } from './ui/Radio'
 import { Phone } from './ui/Phone'
-import { isTouchDevice } from './game/touchDevice'
 import { QualityPicker } from './ui/QualityPicker'
-import { RotatePrompt } from './ui/RotatePrompt'
 import { TitleScreen } from './ui/TitleScreen'
-import { TouchControls } from './ui/TouchControls'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 
@@ -26,23 +25,26 @@ function GameUi() {
   return (
     <>
       <Hud />
+      <MessageToast />
       <PlayerHorn />
       <RadioPlayer />
       <QualityPicker className="quality-hud" />
       <DirectionArrow />
       <Phone />
 
-      {isTouchDevice ? (
-        <TouchControls />
-      ) : (
-        <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · H honk · R radio · P phone · N skips time · M changes weather</p>
-      )}
+      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · H honk · R radio · P phone · N skips time · M changes weather</p>
     </>
   )
 }
 
 function App() {
   const { pixelRatio } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const stage = useGameStore((state) => state.loading.stage)
+  const worldFilesReady = stage === 'building' || stage === 'ready'
+
+  useEffect(() => {
+    void preloadGame(useGameStore.getState().setLoading)
+  }, [])
 
   return (
     <>
@@ -51,15 +53,16 @@ function App() {
           <color attach="background" args={[SKY_COLOR]} />
           <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
           <ViewDistance />
-          <Suspense fallback={null}>
-            <World />
-          </Suspense>
+          {/* The world is built once its files are downloaded, so it never downloads them twice. */}
+          {worldFilesReady && (
+            <Suspense fallback={null}>
+              <World />
+            </Suspense>
+          )}
         </Canvas>
 
         <GameUi />
       </ErrorBoundary>
-
-      {isTouchDevice && <RotatePrompt />}
 
       <p className="attribution">
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">

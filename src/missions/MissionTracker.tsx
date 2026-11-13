@@ -2,7 +2,9 @@ import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer } from '../game/livePlayer'
+import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
 import { MISSION_RULES } from '../game/missionConfig'
+import type { MissionPlanner } from './missionPlanner'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { getCurrentStop, hasArrived } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
@@ -10,8 +12,19 @@ import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 /** How often the HUD gets new numbers. Far less often than the game runs. */
 const TELEMETRY_INTERVAL = 0.1
 
+/** How often riding is added to today's distance goal, in seconds. */
+const RIDE_REPORT_INTERVAL = 2
+
 /** Longest a single frame may count for, so a hidden tab doesn't run the clock. */
 const MAX_FRAME_TIME = 0.1
+
+/** Whether the rider has stopped by the dark store, where the Garage opens. */
+function isAtStore(planner: MissionPlanner | null, x: number, z: number, speed: number): boolean {
+  if (!planner) return false
+  const { graph, store } = planner
+  const kerb = Math.hypot(graph.xs[store.node] - x, graph.zs[store.node] - z)
+  return kerb <= GARAGE_RANGE && speed <= GARAGE_MAX_SPEED
+}
 
 /** Watches the scooter every frame and moves the mission on. Draws nothing. */
 export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }) {
@@ -19,6 +32,9 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const sinceTelemetry = useRef(0)
   const currentMission = useRef(1)
   const countedCrashes = useRef(0)
+  const ridden = useRef(0)
+  const sinceRideReport = useRef(0)
+  const wasBoosting = useRef(false)
 
   useFrame((_, delta) => {
     const game = useGameStore.getState()
@@ -60,6 +76,20 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       clearLiveRoute()
     }
 
+    // Riding and drift boosts count towards today's shift.
+    if (game.started) {
+      ridden.current += travelSpeed * frameTime
+      sinceRideReport.current += frameTime
+      if (sinceRideReport.current >= RIDE_REPORT_INTERVAL && ridden.current > 0) {
+        game.recordRide(ridden.current)
+        ridden.current = 0
+        sinceRideReport.current = 0
+      }
+      const boosting = state.boostLeft > 0
+      if (boosting && !wasBoosting.current) game.recordBoost()
+      wasBoosting.current = boosting
+    }
+
     sinceTelemetry.current += frameTime
     if (sinceTelemetry.current >= TELEMETRY_INTERVAL) {
       sinceTelemetry.current = 0
@@ -71,6 +101,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         drifting: state.drifting,
         boosting: state.boostLeft > 0,
         crashed: state.crashLeft > 0,
+        atStore: isAtStore(game.planner, state.x, state.z, travelSpeed),
       })
     }
   })

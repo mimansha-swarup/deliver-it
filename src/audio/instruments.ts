@@ -17,7 +17,7 @@ export function midiToHz(note: number): number {
 const noiseBuffers = new WeakMap<BaseAudioContext, AudioBuffer>()
 
 /** One second of white noise, made once and shared by every drum. */
-function getNoise(context: BaseAudioContext): AudioBuffer {
+export function getNoise(context: BaseAudioContext): AudioBuffer {
   let buffer = noiseBuffers.get(context)
   if (!buffer) {
     buffer = context.createBuffer(1, context.sampleRate, context.sampleRate)

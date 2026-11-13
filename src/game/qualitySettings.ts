@@ -29,6 +29,8 @@ type QualityPreset = {
   grassTufts: number
   vehicles: number
   pedestrians: number
+  /** How many of the nearest vehicles get a real headlight at night, which lights what it hits. */
+  carLights: number
 }
 
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
@@ -48,6 +50,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     grassTufts: 0,
     vehicles: 12,
     pedestrians: 10,
+    carLights: 0,
   },
   medium: {
     label: 'Medium',
@@ -65,6 +68,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     grassTufts: 1400,
     vehicles: 22,
     pedestrians: 22,
+    carLights: 2,
   },
   high: {
     label: 'High',
@@ -82,6 +86,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     grassTufts: 3200,
     vehicles: 34,
     pedestrians: 36,
+    carLights: 4,
   },
 }
 

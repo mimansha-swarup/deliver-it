@@ -1,4 +1,5 @@
-import type { DeliveryTier, Mission, MissionStop, WaitingCustomer } from '../game/gameTypes'
+import type { DeliveryTier, Drop, Mission, MissionStop, OrderKind, WaitingCustomer } from '../game/gameTypes'
+import { UNLOCK_LEVELS } from '../game/progression'
 import { DARK_STORE_NAME, DELIVERY_TIERS, MISSION_RULES } from '../game/missionConfig'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
@@ -16,7 +17,8 @@ export type MissionPlanner = {
   store: DarkStore
   /** Finds the route to a road point, remembering each one so it's only worked out once. */
   getRouteField: (node: number) => RouteField
-  planMission: (fromX: number, fromZ: number) => Mission
+  /** Plans an order from wherever the rider is. Their `level` decides what kinds of order can come up. */
+  planMission: (fromX: number, fromZ: number, level: number) => Mission
 }
 
 /** How far back from the road's edge a customer stands, in metres, best first. */
@@ -27,13 +29,24 @@ function pickRandom<T>(items: T[], random: () => number): T {
   return items[Math.floor(random() * items.length)]
 }
 
-function rollTier(random: () => number): DeliveryTier {
-  let roll = random()
-  for (const tier of DELIVERY_TIERS) {
+/** Picks a length of trip by chance, from those the rider's level allows. */
+function rollTier(level: number, random: () => number): DeliveryTier {
+  const allowed = DELIVERY_TIERS.filter(({ minLevel }) => minLevel <= level)
+  const total = allowed.reduce((sum, { chance }) => sum + chance, 0)
+  let roll = random() * total
+  for (const tier of allowed) {
     roll -= tier.chance
     if (roll < 0) return tier
   }
-  return DELIVERY_TIERS[0]
+  return allowed[0]
+}
+
+/** Rush orders and double drops come up now and then, once the rider's level allows them. */
+function rollKind(level: number, random: () => number): OrderKind {
+  const roll = random()
+  if (level >= UNLOCK_LEVELS.doubleDrop && roll < MISSION_RULES.doubleChance) return 'double'
+  if (level >= UNLOCK_LEVELS.rush && roll > 1 - MISSION_RULES.rushChance) return 'rush'
+  return 'standard'
 }
 
 /**
@@ -99,7 +112,30 @@ export function createMissionPlanner(
     return { x: graph.xs[node], z: graph.zs[node], rotation: 0, look: random(), tint: random() }
   }
 
-  const planMission = (fromX: number, fromZ: number): Mission => {
+  const customerStop = (node: number) => {
+    const road = graph.roadNames[node]
+    return createStop(
+      node,
+      road ? `Customer on ${road}` : 'The customer',
+      'Deliver the order',
+      'Slow down to deliver',
+      MISSION_RULES.customerColor,
+    )
+  }
+
+  /** A second customer for a double drop: a short ride on from the first, and not on top of them. */
+  const findSecondDrop = (first: number): number | null => {
+    const fromFirst = getRouteField(first)
+    const options = stopNodes.filter(
+      (node) =>
+        node !== first &&
+        fromFirst.distance[node] >= MISSION_RULES.secondDropMin &&
+        fromFirst.distance[node] <= MISSION_RULES.secondDropMax,
+    )
+    return options.length > 0 ? pickRandom(options, random) : null
+  }
+
+  const planMission = (fromX: number, fromZ: number, level: number): Mission => {
     const start = findNearestNode(graph, fromX, fromZ)
 
     const isFarFromLast = (node: number) =>
@@ -116,15 +152,29 @@ export function createMissionPlanner(
       )
 
     // Not every length of trip is always available, so try the others too.
-    const wanted = rollTier(random)
-    const tier = [wanted, ...DELIVERY_TIERS].find((option) => customersFor(option).length > 0) ?? wanted
+    const wanted = rollTier(level, random)
+    const allowed = DELIVERY_TIERS.filter(({ minLevel }) => minLevel <= level)
+    const tier = [wanted, ...allowed].find((option) => customersFor(option).length > 0) ?? wanted
     const customer = pickRandom(customersFor(tier), random)
-    lastCustomer = customer
 
-    const routeLength = fromStore.distance[start] + fromStore.distance[customer]
-    const road = graph.roadNames[customer]
+    let kind = rollKind(level, random)
+    const second = kind === 'double' ? findSecondDrop(customer) : null
+    if (kind === 'double' && second === null) kind = 'standard'
+    const nextDrops: Drop[] =
+      second === null ? [] : [{ customer: customerStop(second), waiting: findWaitingSpot(second) }]
+    lastCustomer = second ?? customer
+
+    let routeLength = fromStore.distance[start] + fromStore.distance[customer]
+    if (second !== null) routeLength += getRouteField(customer).distance[second]
+    const normalTime = Math.max(
+      MISSION_RULES.minOnTimeSeconds,
+      Math.ceil(routeLength / MISSION_RULES.onTimeRouteSpeed),
+    )
 
     return {
+      kind,
+      nextDrops,
+      dropCount: 1 + nextDrops.length,
       tier,
       pickup: createStop(
         store.node,
@@ -133,18 +183,9 @@ export function createMissionPlanner(
         'Slow down to collect',
         MISSION_RULES.pickupColor,
       ),
-      customer: createStop(
-        customer,
-        road ? `Customer on ${road}` : 'The customer',
-        'Deliver the order',
-        'Slow down to deliver',
-        MISSION_RULES.customerColor,
-      ),
+      customer: customerStop(customer),
       waiting: findWaitingSpot(customer),
-      onTimeSeconds: Math.max(
-        MISSION_RULES.minOnTimeSeconds,
-        Math.ceil(routeLength / MISSION_RULES.onTimeRouteSpeed),
-      ),
+      onTimeSeconds: kind === 'rush' ? Math.ceil(normalTime * MISSION_RULES.rushTimeShare) : normalTime,
     }
   }
 

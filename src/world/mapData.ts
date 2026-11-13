@@ -1,3 +1,4 @@
+import { takePreloadedFile } from '../game/preload'
 import { classifyBuildings, type BuildingKind } from './buildingKinds'
 import type { LonLat } from './worldUtils'
 
@@ -63,12 +64,20 @@ function sortFeatures(features: Feature[]): MapData {
 }
 
 async function fetchMapData(): Promise<MapData> {
-  const response = await fetch(MAP_URL)
-  if (!response.ok) {
-    throw new Error(`Could not load ${MAP_URL}: HTTP ${response.status}`)
+  // The title screen's loader usually has it already. Otherwise, download it here.
+  const preloaded = takePreloadedFile(MAP_URL)
+  let text: string
+  if (preloaded) {
+    text = new TextDecoder().decode(preloaded)
+  } else {
+    const response = await fetch(MAP_URL)
+    if (!response.ok) {
+      throw new Error(`Could not load ${MAP_URL}: HTTP ${response.status}`)
+    }
+    text = await response.text()
   }
 
-  const { features } = (await response.json()) as { features: Feature[] }
+  const { features } = JSON.parse(text) as { features: Feature[] }
   const data = sortFeatures(features)
 
   const buildingKinds: Partial<Record<BuildingKind, number>> = {}

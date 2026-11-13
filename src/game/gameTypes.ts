@@ -23,6 +23,8 @@ export type MissionStop = {
 
 export type DeliveryTier = {
   label: string
+  /** The rider must be at least this level for orders this long. */
+  minLevel: number
   minRoute: number
   maxRoute: number
   chance: number
@@ -42,20 +44,38 @@ export type WaitingCustomer = {
   tint: number
 }
 
+/**
+ * A standard order; a rush order, with a tighter timer and a bigger on-time
+ * bonus; or a double drop, with two customers on the one trip.
+ */
+export type OrderKind = 'standard' | 'rush' | 'double'
+
+/** A customer to deliver to, and the person waiting there. */
+export type Drop = { customer: MissionStop; waiting: WaitingCustomer }
+
 export type Mission = {
+  kind: OrderKind
   tier: DeliveryTier
   pickup: MissionStop
+  /** The customer being delivered to now. */
   customer: MissionStop
   waiting: WaitingCustomer
+  /** Customers still to come after this one, on a double drop. */
+  nextDrops: Drop[]
+  /** How many customers the order has in all. Each pays the base reward. */
+  dropCount: number
   /** Finish within this time for the bonus. It depends on the route's length. */
   onTimeSeconds: number
 }
 
 export type Reward = {
+  kind: OrderKind
   baseCredits: number
   distanceCredits: number
   onTimeCredits: number
   cleanRideCredits: number
+  /** Extra for working after dark, once it's unlocked. */
+  nightCredits: number
   crashes: number
   xp: number
   seconds: number

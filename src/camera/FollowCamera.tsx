@@ -4,7 +4,7 @@ import { PerspectiveCamera, Vector3 } from 'three'
 import { liveShot } from '../game/livePlayer'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getTravelSpeed } from '../vehicle/ScooterController'
-import { SCOOTER } from '../vehicle/vehicleConfig'
+import { tuning } from '../vehicle/tuning'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 
 const DISTANCE_BEHIND = 5.2
@@ -41,6 +41,10 @@ const SHOT_RESPONSE = 3.5
 
 /** How far the camera rattles in the hardest hit, in metres. */
 const SHAKE_SIZE = 0.35
+/** How quickly the camera moves over to a thrown rider, and back to the scooter. */
+const RIDER_FOLLOW_RESPONSE = 3.5
+/** Where the camera looks on a rider who's down: lower than on the scooter. */
+const RIDER_LOOK_HEIGHT = 0.6
 
 /** Walks backwards from the scooter and returns how far the camera can go. */
 function findClearDistance(
@@ -76,18 +80,27 @@ export function FollowCamera({
   const introStart = useRef<Vector3 | null>(null)
   const introTime = useRef(0)
   const shotAmount = useRef(0)
+  /** 0 follows the scooter, 1 follows the rider, while they're off it after a crash. */
+  const onRider = useRef(0)
 
   useFrame(({ camera, clock }, delta) => {
     const state = scooter.current
     introStart.current ??= new Vector3().copy(camera.position)
     const travelSpeed = getTravelSpeed(state)
 
+    // After a crash, follow the rider rather than the scooter, and come back once they're on it again.
+    const riderOff = state.rider.phase !== 'on' && state.rider.phase !== 'mounting'
+    onRider.current += ((riderOff ? 1 : 0) - onRider.current) * (1 - Math.exp(-RIDER_FOLLOW_RESPONSE * delta))
+    const follow = onRider.current
+    const focusX = state.x + (state.rider.x - state.x) * follow
+    const focusZ = state.z + (state.rider.z - state.z) * follow
+
     // In a slide, look partly along the direction of travel, so the scooter is
     // seen turned sideways against it.
     const slipAngle = travelSpeed > 3 ? Math.atan2(state.slip, Math.max(state.speed, 1)) : 0
-    const targetHeading = state.heading - slipAngle * SLIDE_FOLLOW
-
-    const previous = cameraHeading.current ?? targetHeading
+    const previous = cameraHeading.current ?? state.heading
+    // While the rider is off, the camera holds its direction instead of spinning with the fallen scooter.
+    const targetHeading = riderOff ? previous : state.heading - slipAngle * SLIDE_FOLLOW
 
     // Moves a fraction of the remaining gap, in a way that doesn't depend on frame rate.
     const heading = previous + (targetHeading - previous) * (1 - Math.exp(-TURN_RESPONSE * delta))
@@ -96,7 +109,7 @@ export function FollowCamera({
     const forwardX = Math.sin(heading)
     const forwardZ = Math.cos(heading)
 
-    const clearDistance = findClearDistance(collisions, state.x, state.z, forwardX, forwardZ)
+    const clearDistance = findClearDistance(collisions, focusX, focusZ, forwardX, forwardZ)
     const distance =
       clearDistance < cameraDistance.current
         ? clearDistance // Snap in, or the wall would be visible for a moment.
@@ -104,7 +117,7 @@ export function FollowCamera({
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
 
-    camera.position.set(state.x - forwardX * distance, HEIGHT, state.z - forwardZ * distance)
+    camera.position.set(focusX - forwardX * distance, HEIGHT, focusZ - forwardZ * distance)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -118,9 +131,11 @@ export function FollowCamera({
       camera.position.lerp(introStart.current, 1 - eased)
     }
 
-    let lookX = state.x + forwardX * LOOK_AHEAD
-    let lookY: number = LOOK_HEIGHT
-    let lookZ = state.z + forwardZ * LOOK_AHEAD
+    // On the rider, look at them rather than ahead of them.
+    const lookAhead = LOOK_AHEAD * (1 - follow)
+    let lookX = focusX + forwardX * lookAhead
+    let lookY: number = LOOK_HEIGHT + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT) * follow
+    let lookZ = focusZ + forwardZ * lookAhead
 
     // Eases across to a set shot and back, so that it never cuts.
     const shotTarget = liveShot.active ? 1 : 0
@@ -138,7 +153,7 @@ export function FollowCamera({
     camera.lookAt(lookX, lookY, lookZ)
 
     if (camera instanceof PerspectiveCamera) {
-      const targetFov = BASE_FOV + SPEED_FOV * Math.min(travelSpeed / SCOOTER.maxSpeed, 1.2)
+      const targetFov = BASE_FOV + SPEED_FOV * Math.min(travelSpeed / tuning.maxSpeed, 1.2)
       camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-FOV_RESPONSE * delta))
       camera.updateProjectionMatrix()
     }

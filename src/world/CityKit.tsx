@@ -155,4 +155,4 @@ export function CityKit({ placements }: { placements: KitPlacement[] }) {
   )
 }
 
-useGLTF.preload(KIT_URL)
+// Not preloaded here: the title screen's loader downloads it (src/game/preload.ts).

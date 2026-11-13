@@ -11,11 +11,11 @@ import {
   Vector3,
   type Group,
 } from 'three'
+import { findColour, PAINTS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { getStreetReflection } from '../traffic/carModel'
 import {
-  DELIVERY_BIKE_COLOR,
   getModel,
   paintModel,
   TRAFFIC_MODELS_URL,
@@ -23,6 +23,7 @@ import {
 import type { CollisionWorld } from '../world/collision'
 import { Rider, STEERING_Z } from './Rider'
 import { HIP } from './riderShape'
+import { tuning } from './tuning'
 import { HOLD_INPUT, stepScooter, type ScooterState } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
 
@@ -211,12 +212,15 @@ export function Scooter({
   const materials = useMemo(() => createMaterials(reflection), [reflection])
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
 
+  // The paint bought at the Garage. Changing it repaints a fresh copy of the model.
+  const paintId = useGameStore((state) => state.paintId)
+  const paint = findColour(PAINTS, paintId).color
   const parts = useMemo(
     () => ({
-      body: paintModel(getModel(scene, 'delivery'), DELIVERY_BIKE_COLOR),
-      front: paintModel(getModel(scene, 'delivery-front'), DELIVERY_BIKE_COLOR),
+      body: paintModel(getModel(scene, 'delivery'), paint),
+      front: paintModel(getModel(scene, 'delivery-front'), paint),
     }),
-    [scene],
+    [scene, paint],
   )
   const wheelGeometry = useMemo(() => getModel(scene, 'delivery-wheel'), [scene])
   const [frontAxle, rearAxle] = useMemo(() => {
@@ -241,6 +245,7 @@ export function Scooter({
   useFrame((_, delta) => {
     const state = scooterState.current
     updateLights(materials, input.current.backward && state.speed > 0.5)
+    tuning.wetness = liveSky.rain
     const { started, phase } = useGameStore.getState()
     if (started) {
       const handingOver = phase === 'collecting' || phase === 'handingOver'

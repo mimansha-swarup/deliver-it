@@ -1,19 +1,18 @@
 /**
- * Whether this is a phone or tablet, which gets the on-screen buttons and the
- * landscape layout. Everything else, including touchscreen laptops, keeps the
- * keyboard layout.
+ * Whether this is a phone or tablet. Deliver It is played with a keyboard on a
+ * computer, so a phone or tablet gets a short page saying so instead of the game.
  *
  * Two things must both be true:
  * - The browser says it's a mobile device. iPads claim to be Macs, so a "Mac"
  *   with a touchscreen counts too, as no real Mac has one.
  * - The main pointer is a finger ("coarse"), not a mouse or trackpad ("fine").
- *   So a phone with a mouse plugged in keeps the keyboard layout.
+ *   So a touchscreen laptop still gets the game.
  *
- * Adding `?touch` to the address forces the phone layout, to try it on a computer.
+ * Adding `?mobile` to the address shows the phone page on a computer, to check it.
  */
 function detectMobile(): boolean {
   if (typeof window === 'undefined') return false
-  if (new URLSearchParams(window.location.search).has('touch')) return true
+  if (new URLSearchParams(window.location.search).has('mobile')) return true
 
   const { userAgent, maxTouchPoints } = navigator
   // Chrome and Edge say directly. Safari and Firefox don't have this yet.
@@ -27,4 +26,4 @@ function detectMobile(): boolean {
   return mobileBrowser && window.matchMedia('(pointer: coarse)').matches
 }
 
-export const isTouchDevice = detectMobile()
+export const isMobileDevice = detectMobile()

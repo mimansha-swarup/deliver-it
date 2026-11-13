@@ -1,4 +1,12 @@
+import {
+  HEADLIGHT_ANGLE,
+  HEADLIGHT_COLOR,
+  HEADLIGHT_INTENSITY,
+  HEADLIGHT_RANGE,
+  HEADLIGHT_SOFTNESS,
+} from '../vehicle/Headlight'
 import { playHorn } from '../audio/horns'
+import { playImpact, updateTrafficSounds } from '../audio/trafficSounds'
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
@@ -12,10 +20,12 @@ import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
 import { createWomanGeometry } from './peopleShapes'
 import {
   takeHonks,
+  takeImpacts,
   LOOSE_DRAW_DISTANCE,
   stepTraffic,
   type Pedestrian,
   type TrafficWorld,
+  type Vehicle,
   type VehicleKind,
 } from './trafficLogic'
 import {
@@ -81,7 +91,12 @@ function tintPaintOnly(shader: THREE.WebGLProgramParametersWithUniforms) {
   `.replace(
     '#include <color_vertex>',
     `vColor = vec4(1.0);
-    vColor.rgb = color.rgb * mix(vec3(1.0), instanceColor.rgb, _paint);`,
+    // Each copy's own colour only exists once one has been set, so the shader checks before using it.
+    #ifdef USE_INSTANCING_COLOR
+      vColor.rgb = color.rgb * mix(vec3(1.0), instanceColor.rgb, _paint);
+    #else
+      vColor.rgb = color.rgb;
+    #endif`,
   )
 }
 
@@ -220,6 +235,97 @@ function VehicleLights({ items, geometry }: { items: Moving[]; geometry: THREE.B
   )
 }
 
+/** Only vehicles this close to the rider can get one of the real headlights, in metres. */
+const CAR_LIGHT_REACH = 70
+
+/**
+ * A few real spotlights, handed each frame to the vehicles nearest the rider, so
+ * their headlights light up the road, walls and people they point at. Further
+ * vehicles keep only their painted glow, which is far cheaper. There's always
+ * the same number of lights, turned down to nothing by day, as changing the
+ * count makes three.js rebuild every material.
+ */
+function CarHeadlights({ items, count }: { items: Vehicle[]; count: number }) {
+  const lights = useRef<(THREE.SpotLight | null)[]>([])
+  const targets = useRef<(THREE.Object3D | null)[]>([])
+
+  useEffect(() => {
+    lights.current.forEach((light, index) => {
+      const target = targets.current[index]
+      if (light && target) light.target = target
+    })
+  }, [count])
+
+  // Reused every frame: which vehicles have a light, so picking them makes no garbage.
+  const chosen = useRef<(Vehicle | null)[]>([])
+
+  useFrame(() => {
+    const night = liveSky.look.night
+    const picked = chosen.current
+    picked.length = count
+    picked.fill(null)
+
+    // Picks the nearest few, one at a time, skipping any already picked. With a handful of
+    // lights and a few dozen vehicles, that's cheaper than sorting.
+    if (night > 0.01) {
+      for (let slot = 0; slot < count; slot++) {
+        let best: Vehicle | null = null
+        let bestDistance = CAR_LIGHT_REACH
+        for (const item of items) {
+          if (item.lane === -1 || item.body || item.fallen || picked.includes(item)) continue
+          const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
+          if (distance < bestDistance) {
+            best = item
+            bestDistance = distance
+          }
+        }
+        picked[slot] = best
+      }
+    }
+
+    lights.current.forEach((light, index) => {
+      const target = targets.current[index]
+      if (!light || !target) return
+      const vehicle = picked[index]
+      if (!vehicle) {
+        light.intensity = 0
+        return
+      }
+      const forwardX = Math.sin(vehicle.heading)
+      const forwardZ = Math.cos(vehicle.heading)
+      const front = vehicle.halfLength
+      light.position.set(vehicle.x + forwardX * front, 0.85, vehicle.z + forwardZ * front)
+      target.position.set(vehicle.x + forwardX * (front + 18), 0, vehicle.z + forwardZ * (front + 18))
+      light.intensity = HEADLIGHT_INTENSITY * night
+    })
+  })
+
+  return (
+    <>
+      {Array.from({ length: count }, (_, index) => (
+        <group key={index}>
+          <spotLight
+            ref={(light) => {
+              lights.current[index] = light
+            }}
+            color={HEADLIGHT_COLOR}
+            intensity={0}
+            distance={HEADLIGHT_RANGE}
+            angle={HEADLIGHT_ANGLE}
+            penumbra={HEADLIGHT_SOFTNESS}
+            decay={1}
+          />
+          <object3D
+            ref={(target) => {
+              targets.current[index] = target
+            }}
+          />
+        </group>
+      ))}
+    </>
+  )
+}
+
 /** How far a limp person's arms and legs fling out, in radians. Arms go further than legs. */
 const SPRAWL_ARM = 1.5
 const SPRAWL_LEG = 0.45
@@ -242,7 +348,11 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
     .replace(
       '#include <color_vertex>',
       `vColor = vec4(1.0);
-      vColor.rgb = color.rgb * (_limb.z > 0.5 ? instanceColor.rgb : vec3(aPerson.y));`,
+      #ifdef USE_INSTANCING_COLOR
+        vColor.rgb = color.rgb * (_limb.z > 0.5 ? instanceColor.rgb : vec3(aPerson.y));
+      #else
+        vColor.rgb = color.rgb * (_limb.z > 0.5 ? vec3(1.0) : vec3(aPerson.y));
+      #endif`,
     )
     .replace(
       '#include <begin_vertex>',
@@ -447,7 +557,7 @@ export function Traffic({
   scooter: RefObject<ScooterState>
   world: TrafficWorld
 }) {
-  const { vehicles, pedestrians, shadowSize } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { vehicles, pedestrians, shadowSize, carLights } = useGameStore((state) => QUALITY_PRESETS[state.quality])
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
@@ -525,6 +635,8 @@ export function Traffic({
     const rider = scooter.current
     stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP))
     takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))
+    takeImpacts(world, ({ x, z, strength }) => playImpact(x, z, strength, rider))
+    updateTrafficSounds(inPlay, rider, Math.min(delta, MAX_STEP))
   })
 
   return (
@@ -568,9 +680,9 @@ export function Traffic({
         <People key={body.uuid} items={crowds[group]} body={body} />
       ))}
       {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} />}
+      <CarHeadlights items={inPlay} count={carLights} />
     </>
   )
 }
 
-useGLTF.preload(TRAFFIC_MODELS_URL)
-useGLTF.preload(YAMAHA_MODEL_URL)
+// Models aren't preloaded here: the title screen's loader downloads them (src/game/preload.ts).

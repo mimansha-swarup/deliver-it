@@ -43,18 +43,39 @@ function Speedometer() {
   )
 }
 
+/** Says what the new level opens up. */
+function LevelUp() {
+  const levelUp = useGameStore((state) => state.lastLevelUp)
+  if (!levelUp) return null
+
+  return (
+    <div className="hud-level-up" role="status">
+      <strong>Level up! You're level {levelUp.level}</strong>
+      {levelUp.unlocks.length > 0 && (
+        <ul>
+          {levelUp.unlocks.map((unlock) => (
+            <li key={unlock}>{unlock}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function DeliveryComplete() {
   const reward = useGameStore((state) => state.lastReward)
   const nextMission = useGameStore((state) => state.nextMission)
 
   if (!reward) return null
+  const title = reward.kind === 'double' ? 'Both orders delivered' : 'Order delivered'
 
   return (
     <section className="hud-card hud-results">
-      <h1>Order delivered</h1>
+      <h1>{title}</h1>
       <p className="hud-detail">Delivered in {formatTime(Math.floor(reward.seconds))}</p>
+      <LevelUp />
       <dl>
-        <dt>Delivery reward</dt>
+        <dt>{reward.kind === 'double' ? 'Delivery reward × 2' : 'Delivery reward'}</dt>
         <dd>+{reward.baseCredits} credits</dd>
         {reward.distanceCredits > 0 && (
           <>
@@ -62,8 +83,14 @@ function DeliveryComplete() {
             <dd>+{reward.distanceCredits} credits</dd>
           </>
         )}
-        <dt>On-time bonus</dt>
+        <dt>{reward.kind === 'rush' ? 'Rush bonus' : 'On-time bonus'}</dt>
         <dd>{reward.onTime ? `+${reward.onTimeCredits} credits` : 'Missed'}</dd>
+        {reward.nightCredits > 0 && (
+          <>
+            <dt>Night shift</dt>
+            <dd>+{reward.nightCredits} credits</dd>
+          </>
+        )}
         <dt>Clean ride</dt>
         <dd>
           {reward.crashes === 0

@@ -38,7 +38,7 @@ export function RadioPlayer() {
   return null
 }
 
-/** Gives the keyboard back to the game after a tap, so Space doesn't press the button again. */
+/** Gives the keyboard back to the game after a click, so Space doesn't press the button again. */
 function blurAfter(action: () => void) {
   return (event: React.MouseEvent<HTMLButtonElement>) => {
     action()
@@ -62,7 +62,7 @@ export function RadioControls() {
       </button>
       <p className="phone-radio-station">
         <span>{musicOn ? station.name : 'Music off'}</span>
-        <small>{musicOn ? station.tagline : 'Tap ♪ to turn it on'}</small>
+        <small>{musicOn ? station.tagline : 'Click ♪ to turn it on'}</small>
       </p>
       <button type="button" aria-label="Next station" onClick={blurAfter(() => changeStation(1))}>
         ›
@@ -78,10 +78,11 @@ export function RadioControls() {
       <button
         type="button"
         aria-pressed={hornsOn}
-        aria-label={hornsOn ? 'Turn horns off' : 'Turn horns on'}
+        aria-label={hornsOn ? 'Turn sound effects off' : 'Turn sound effects on'}
+        title="Sound effects: engines, horns, skids and the city"
         onClick={blurAfter(() => setHorns(!hornsOn))}
       >
-        📯
+        🔊
       </button>
     </section>
   )
@@ -143,8 +144,7 @@ function startingFrom(videos: string[], first: string): string[] {
 /**
  * YouTube's player. YouTube's rules say it must stay visible and at least
  * 200 × 200 pixels while it plays, so it's never hidden or shrunk to play sound
- * alone. It has its own card: above the rider's phone on a computer, and to its
- * right on a phone held sideways.
+ * alone. It has its own card, just above the rider's phone.
  */
 export function VideoScreen({ station, className }: { station: VideoStation; className: string }) {
   const holder = useRef<HTMLDivElement>(null)

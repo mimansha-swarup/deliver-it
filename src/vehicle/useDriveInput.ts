@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { DriveInput } from './ScooterController'
-import { touchInput } from './touchInput'
 
 const KEY_BINDINGS: Record<string, keyof DriveInput> = {
   KeyW: 'forward',
@@ -19,24 +18,11 @@ function noKeysPressed(): DriveInput {
 }
 
 /**
- * Tracks which controls are held, from the keyboard and the on-screen buttons.
- * The result lives in a ref, so presses don't re-render React. The game loop
- * simply reads `current` every frame.
+ * Tracks which keys are held. The result lives in a ref, so key presses don't
+ * re-render React. The game loop simply reads `current` every frame.
  */
 export function useDriveInput() {
   const keys = useRef(noKeysPressed())
-  // One object, refilled on each read, so riding doesn't create garbage every frame.
-  const [input] = useState(() => {
-    const combined = noKeysPressed()
-    return {
-      get current(): DriveInput {
-        for (const control of Object.keys(combined) as (keyof DriveInput)[]) {
-          combined[control] = keys.current[control] || touchInput[control]
-        }
-        return combined
-      },
-    }
-  })
 
   useEffect(() => {
     const setKey = (event: KeyboardEvent, pressed: boolean) => {
@@ -64,5 +50,5 @@ export function useDriveInput() {
     }
   }, [])
 
-  return input
+  return keys
 }
