@@ -21,10 +21,11 @@ export const PAVEMENT_WIDTH = 3
 const PAVEMENT_HEIGHT = 0.03
 const PLAIN_ROAD_COLOR = new THREE.Color('#66676b')
 const TEXTURED_ROAD_COLOR = new THREE.Color('#a4a4a6')
-const PAVEMENT_COLOR = '#ffffff'
+/** The paver photo is a warm beige. This cools it towards the grey concrete of HSR's footpaths. */
+const PAVEMENT_COLOR = '#c8c8c6'
 /** How wide one repeat of each texture is on the ground, in metres. */
 const ROAD_TILE = 8
-const PAVEMENT_TILE = 2.5
+const PAVEMENT_TILE = 1.8
 
 const ROAD_TEXTURES = ['/textures/road-color.jpg', '/textures/road-normal.jpg']
 const PAVEMENT_TEXTURES = ['/textures/pavement-color.jpg', '/textures/pavement-normal.jpg']

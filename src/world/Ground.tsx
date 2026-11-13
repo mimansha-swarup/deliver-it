@@ -10,7 +10,13 @@ const GROUND_MARGIN = 2000
 const GROUND_WIDTH = PLAY_AREA_WIDTH + GROUND_MARGIN * 2
 const GROUND_DEPTH = PLAY_AREA_DEPTH + GROUND_MARGIN * 2
 const GROUND_CENTRE: [number, number, number] = [(PLAY_AREA.minX + PLAY_AREA.maxX) / 2, 0, (PLAY_AREA.minZ + PLAY_AREA.maxZ) / 2]
-const PLAIN_COLOR = '#97907a'
+const PLAIN_COLOR = '#6e5444'
+/**
+ * The photo is a pale dusty soil. A colour multiplies a texture, so this turns it
+ * into Bengaluru's red earth, as it looks on a dry verge: dusty and dulled, not
+ * orange, so it sits between the grey paving and the green of the plants.
+ */
+const SOIL_TINT = '#a07a63'
 /** How wide one repeat of the texture is, in metres. */
 const GROUND_TILE = 16
 
@@ -29,7 +35,7 @@ export function Ground() {
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: surfaces === 'plain' ? PLAIN_COLOR : '#ffffff',
+        color: surfaces === 'plain' ? PLAIN_COLOR : SOIL_TINT,
         map: surfaces === 'plain' ? null : texture,
         roughness: 1,
       }),
