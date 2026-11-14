@@ -206,7 +206,7 @@ export const useGameStore = create<GameState>()(
       crashes: 0,
 
       started: false,
-      loading: { loadedKb: 0, totalKb: TOTAL_KB, stage: 'downloading' },
+      loading: { loadedKb: 0, totalKb: TOTAL_KB, stage: 'downloading', mapReady: false },
       phase: 'toPickup',
       missionNumber: 1,
       mission: null,

@@ -7,12 +7,8 @@ import { isNearBuilding, type CollisionWorld } from './collision'
 import type { LineFeature } from './mapData'
 import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
 import { indexRoadPieces, isClearOfRoads, toRoadPieces, type RoadIndex, type RoadPiece } from './props'
-import { PAVEMENT_WIDTH } from './Roads'
+import { EDGING, KERB, PAVEMENT_WIDTH } from './surface'
 
-/** The kerb between the road and the pavement: its width and how far it stands above the ground, in metres. */
-const KERB = { width: 0.18, height: 0.13 }
-/** The low concrete edge between the pavement and the soil. */
-const EDGING = { width: 0.12, height: 0.07 }
 /** Painted kerbs alternate black and yellow in blocks this long, in metres. */
 const STRIPE = 0.9
 /** Kerbs are checked against other roads, buildings and walls at points this far apart, in metres. */

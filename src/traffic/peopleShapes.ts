@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { colored, merge } from '../world/simpleShapes'
+import { HIP } from './gait'
 
 /** What a part of a person does when they walk. */
 type Part = {
@@ -19,18 +20,17 @@ const WHITE = '#ffffff'
 const TROUSERS = '#333c4b'
 const SHOES = '#1c1a18'
 
-const HIP = 0.86
 const SHOULDER = 1.38
 
-function cylinder(top: number, bottom: number, height: number, x: number, y: number, z = 0) {
-  const geometry = new THREE.CylinderGeometry(top, bottom, height, 7, 1)
+function cylinder(top: number, bottom: number, height: number, x: number, y: number, z = 0, rings = 1) {
+  const geometry = new THREE.CylinderGeometry(top, bottom, height, 7, rings)
   geometry.translate(x, y, z)
   return geometry
 }
 
-function ball(radius: number, y: number, z = 0) {
+function ball(radius: number, y: number, z = 0, x = 0) {
   const geometry = new THREE.SphereGeometry(radius, 8, 6)
-  geometry.translate(0, y, z)
+  geometry.translate(x, y, z)
   return geometry
 }
 
@@ -84,7 +84,7 @@ export function createManGeometry(): THREE.BufferGeometry {
     { geometry: cylinder(0.205, 0.17, 0.62, 0, 1.13), color: WHITE, clothing: 1 },
     ...[-1, 1].flatMap((side): Part[] => [
       {
-        geometry: cylinder(0.09, 0.065, 0.8, side * 0.095, HIP - 0.4),
+        geometry: cylinder(0.09, 0.065, 0.8, side * 0.095, HIP - 0.4, 0, 2),
         color: TROUSERS,
         swing: side,
         joint: HIP,
@@ -104,10 +104,17 @@ export function createManGeometry(): THREE.BufferGeometry {
 export function createWomanGeometry(): THREE.BufferGeometry {
   return build([
     ...head,
-    { geometry: ball(0.12, 1.635, -0.015), color: HAIR },
-    { geometry: ball(0.07, 1.6, -0.14), color: HAIR },
+    // The hair sits up and back, and clearly bigger than the head. Two balls nearly the same size,
+    // nearly in the same place, fight over which is in front, and the face came out in patches.
+    { geometry: ball(0.13, 1.63, -0.035), color: HAIR },
+    { geometry: ball(0.07, 1.6, -0.16), color: HAIR },
     { geometry: cylinder(0.185, 0.16, 0.56, 0, 1.14), color: WHITE, clothing: 1 },
     { geometry: cylinder(0.165, 0.27, 0.86, 0, 0.45), color: WHITE, clothing: 1 },
-    ...arms(false),
+    // Half sleeves, as a kurta has, rounded over the shoulder, and hands at the ends of the arms.
+    ...arms(true),
+    ...[-1, 1].flatMap((side): Part[] => [
+      { geometry: ball(0.056, SHOULDER - 0.01, 0, side * 0.235), color: WHITE, clothing: 1, swing: -side, joint: SHOULDER },
+      { geometry: ball(0.042, SHOULDER - 0.62, 0, side * 0.235), color: SKIN, swing: -side, joint: SHOULDER },
+    ]),
   ])
 }

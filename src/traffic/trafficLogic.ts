@@ -2,9 +2,10 @@ import type { CrashPhysics, CrashShape, CrashSurface, Quaternion, Tumbler } from
 import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics'
 import { applyImpact, getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
-import type { CollisionWorld } from '../world/collision'
+import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
 import type { Prop } from '../world/props'
 import type { RoadGraph } from '../world/roadGraph'
+import { STRIDE_PER_METRE } from './gait'
 import { createLanes, type Lane } from './lanes'
 import { createTrafficSignals, findStopAhead, type TrafficSignals } from './trafficSignals'
 
@@ -93,13 +94,23 @@ export const TRAFFIC_RULES = {
    * turns towards it no tighter than its turning circle, and only ever moves the
    * way it faces. Nothing slides sideways.
    */
-  aimMin: 2.5,
+  aimMin: 1.2,
   aimMax: 7,
   /** At speed, the aim point is this many seconds ahead. */
   aimTime: 0.55,
   /** The tightest turn each can make, as a radius in metres. */
   carTurnRadius: 4.5,
   nimbleTurnRadius: 2.4,
+  /**
+   * A curve round a corner can come out a little tighter than the turning circle, where the lanes
+   * are short, so vehicles may turn this share tighter than it to keep to the curve.
+   */
+  steeringSlack: 0.45,
+  /** Driving traffic keeps this share of its half-width clear of walls. */
+  wallMargin: 0.7,
+  /** Stuck against a wall this many seconds, and further than this from the rider, in metres, a vehicle is replaced. */
+  pinnedTime: 3,
+  pinnedRemoveDistance: 30,
   /** People turn on the spot, this fast, in radians per second, and look this far ahead, in metres. */
   walkTurnRate: 5,
   walkAim: 1.1,
@@ -140,6 +151,8 @@ type Mover = {
   lane: number
   /** The lane it will take after this one, once chosen. -1 or missing until then. */
   nextLane?: number
+  /** The lane it came from, for finishing the curve round the corner between them. -1 or missing if none. */
+  prevLane?: number
   /** Metres along the lane. */
   along: number
   speed: number
@@ -311,6 +324,8 @@ export type Vehicle = Mover & {
   cruiseSpeed: number
   halfLength: number
   waiting: number
+  /** Seconds it has spent pressed against a wall. See `stepVehicle`. */
+  pinned: number
   /** Two-wheelers and autos weave through gaps. Cars keep to their lane. */
   nimble: boolean
   /** Ignores red lights. */
@@ -351,8 +366,10 @@ export type Pedestrian = Mover & {
   rising: number
   dodgeX: number
   dodgeZ: number
-  /** How far through the walking cycle they are, in radians. */
+  /** How far through the walking cycle they are, in radians. A whole turn is two steps. */
   stride: number
+  /** How much they're walking, from 0 standing still to 1 walking. Unset is walking. */
+  walking?: number
   /** How dark their skin is, as a number the colour is multiplied by. */
   skin: number
   /** Not drawn. Used for a bike rider who is still on the bike. */
@@ -364,6 +381,8 @@ export type LooseBody = Tumbler & { tint: number }
 
 export type TrafficWorld = {
   physics: CrashPhysics
+  /** Buildings and walls, which driving traffic is kept out of. */
+  collisions: CollisionWorld
   riderPusher: NonNullable<Tumbler['body']>
   loose: LooseBody[]
   roadLanes: Lane[]
@@ -391,6 +410,7 @@ function placeOnLane(mover: Mover, lanes: Lane[], laneIndex: number, random: () 
   const along = random() * lane.length
   mover.lane = laneIndex
   mover.nextLane = -1
+  mover.prevLane = -1
   mover.along = along
   mover.x = lane.startX + lane.forwardX * along
   mover.z = lane.startZ + lane.forwardZ * along
@@ -525,6 +545,7 @@ export function createTrafficWorld(
       cruiseSpeed: speed * (0.85 + random() * 0.3),
       halfLength,
       waiting: 0,
+      pinned: 0,
       nimble,
       rebel: random() < rebelShare,
       shift: 0,
@@ -577,6 +598,7 @@ export function createTrafficWorld(
 
   return {
     physics,
+    collisions,
     riderPusher,
     loose,
     roadLanes,
@@ -600,6 +622,7 @@ function advance(mover: Mover, lanes: Lane[], distance: number, random: () => nu
     const lane = lanes[mover.lane]
     if (lane.next.length === 0) return false
     mover.along -= lane.length
+    mover.prevLane = mover.lane
     mover.lane = pickNext(mover, lanes, random)
     mover.nextLane = -1
   }
@@ -620,26 +643,142 @@ function pickNext(mover: Mover, lanes: Lane[], random: () => number): number {
 }
 
 /**
- * The point `ahead` metres further along the path, carrying on into the next
- * lane if this one ends first, and `shift` metres to the left of it.
+ * The curve that takes a vehicle round the corner from one lane to the next.
+ * Lanes are straight, and meet at a sharp corner, which no car can follow. So
+ * the corner is rounded off: the curve leaves the first lane `leg` metres before
+ * the point where the two lanes' lines cross, and joins the second `leg` metres
+ * after it, bending through that point (a quadratic Bézier curve, which stays
+ * inside the corner's triangle). A leg of r × tan(angle / 2) makes the curve
+ * about as tight as a turning circle of radius r, the tightest a car turns.
+ *
+ * `enter` is where on the first lane it starts, `exit` where on the second it
+ * ends, and `span` how much lane distance it stands for, so a place on the lanes
+ * maps onto it.
  */
-function pointAhead(mover: Mover, lanes: Lane[], ahead: number, shift: number, random: () => number): [number, number] {
-  let lane = lanes[mover.lane]
-  let along = mover.along + ahead
-  if (along > lane.length) {
-    const next = pickNext(mover, lanes, random)
-    if (next >= 0) {
-      along -= lane.length
-      lane = lanes[next]
-    } else {
-      along = lane.length
+type Corner = {
+  enter: number
+  exit: number
+  span: number
+  startX: number
+  startZ: number
+  cornerX: number
+  cornerZ: number
+  endX: number
+  endZ: number
+}
+
+/** Corners are worked out once, and kept per set of lanes and turning circle. */
+const cornerCache = new WeakMap<Lane[], Map<number, Map<number, Corner | null>>>()
+/** Lanes that turn less than this, in radians, are just followed. Near U-turns are left to the steering. */
+const GENTLEST_CORNER = 0.2
+const SHARPEST_CORNER = 2.8
+/** If the two lanes' lines cross further than this from where they join, in metres, it isn't a corner to round. */
+const CORNER_REACH = 6
+
+function findCorner(lanes: Lane[], from: number, to: number, radius: number): Corner | null {
+  let byRadius = cornerCache.get(lanes)
+  if (!byRadius) cornerCache.set(lanes, (byRadius = new Map()))
+  let cache = byRadius.get(radius)
+  if (!cache) byRadius.set(radius, (cache = new Map()))
+  const key = from * 1_000_000 + to
+  const known = cache.get(key)
+  if (known !== undefined) return known
+
+  const a = lanes[from]
+  const b = lanes[to]
+  const cross = a.forwardX * b.forwardZ - a.forwardZ * b.forwardX
+  const angle = Math.atan2(Math.abs(cross), a.forwardX * b.forwardX + a.forwardZ * b.forwardZ)
+  let corner: Corner | null = null
+  if (angle > GENTLEST_CORNER && angle < SHARPEST_CORNER) {
+    // Where the lines cross: `onA` metres along the first lane, and `onB` along the second.
+    const dx = b.startX - a.startX
+    const dz = b.startZ - a.startZ
+    const onA = (dx * b.forwardZ - dz * b.forwardX) / cross
+    const onB = (dx * a.forwardZ - dz * a.forwardX) / cross
+    // The curve keeps to the far half of the first lane and the near half of the second, clear of their other corners.
+    const leg = Math.min(radius * Math.tan(angle / 2), onA - a.length / 2, b.length / 2 - onB)
+    if (Math.abs(onA - a.length) < CORNER_REACH && Math.abs(onB) < CORNER_REACH && leg > 0.5) {
+      const cornerX = a.startX + a.forwardX * onA
+      const cornerZ = a.startZ + a.forwardZ * onA
+      corner = {
+        enter: onA - leg,
+        exit: onB + leg,
+        span: a.length - (onA - leg) + onB + leg,
+        startX: cornerX - a.forwardX * leg,
+        startZ: cornerZ - a.forwardZ * leg,
+        cornerX,
+        cornerZ,
+        endX: cornerX + b.forwardX * leg,
+        endZ: cornerZ + b.forwardZ * leg,
+      }
     }
   }
-  along = Math.min(along, lane.length)
+  cache.set(key, corner)
+  return corner
+}
+
+/** A point on the curve, `t` from 0 to 1, moved `shift` to the left of the way it's heading there. */
+function pointOnCorner(corner: Corner, t: number, shift: number): [number, number] {
+  const u = Math.min(1, Math.max(0, t))
+  const x = (1 - u) * (1 - u) * corner.startX + 2 * u * (1 - u) * corner.cornerX + u * u * corner.endX
+  const z = (1 - u) * (1 - u) * corner.startZ + 2 * u * (1 - u) * corner.cornerZ + u * u * corner.endZ
+  if (shift === 0) return [x, z]
+  const tangentX = (1 - u) * (corner.cornerX - corner.startX) + u * (corner.endX - corner.cornerX)
+  const tangentZ = (1 - u) * (corner.cornerZ - corner.startZ) + u * (corner.endZ - corner.cornerZ)
+  const length = Math.hypot(tangentX, tangentZ) || 1
+  return [x + (tangentZ / length) * shift, z - (tangentX / length) * shift]
+}
+
+/**
+ * Where on its path a place on a lane is. Mostly that's the lane itself, but
+ * near a corner it's on the curve round it: the end of a lane leads into the
+ * curve to `next`, and the start of one comes out of the curve from `previous`.
+ * `radius` 0 means no curves, for people, who simply turn on the spot.
+ */
+function pathPoint(
+  lanes: Lane[],
+  laneIndex: number,
+  along: number,
+  previous: number,
+  next: number,
+  radius: number,
+  shift: number,
+): [number, number] {
+  const lane = lanes[laneIndex]
+  if (radius > 0) {
+    const ahead = next >= 0 ? findCorner(lanes, laneIndex, next, radius) : null
+    if (ahead && along > ahead.enter) return pointOnCorner(ahead, (along - ahead.enter) / ahead.span, shift)
+    const behind = previous >= 0 ? findCorner(lanes, previous, laneIndex, radius) : null
+    if (behind && along < behind.exit) {
+      return pointOnCorner(behind, (lanes[previous].length - behind.enter + along) / behind.span, shift)
+    }
+  }
   return [
     lane.startX + lane.forwardX * along + lane.forwardZ * shift,
     lane.startZ + lane.forwardZ * along - lane.forwardX * shift,
   ]
+}
+
+/**
+ * The point `ahead` metres further along the path, carrying on into the next
+ * lane if this one ends first, and `shift` metres to the left of it.
+ */
+function pointAhead(
+  mover: Mover,
+  lanes: Lane[],
+  ahead: number,
+  shift: number,
+  radius: number,
+  random: () => number,
+): [number, number] {
+  const lane = lanes[mover.lane]
+  const next = pickNext(mover, lanes, random)
+  const along = mover.along + ahead
+  if (along <= lane.length || next < 0) {
+    return pathPoint(lanes, mover.lane, Math.min(along, lane.length), mover.prevLane ?? -1, next, radius, shift)
+  }
+  const nextLane = lanes[next]
+  return pathPoint(lanes, next, Math.min(along - lane.length, nextLane.length), mover.lane, -1, radius, shift)
 }
 
 /**
@@ -659,18 +798,18 @@ function steerAlong(
   aim: number,
   shift: number,
   turnRate: number,
+  cornerRadius: number,
   dt: number,
   random: () => number,
 ) {
   const lane = lanes[mover.lane]
-  const pathX = lane.startX + lane.forwardX * mover.along + lane.forwardZ * shift
-  const pathZ = lane.startZ + lane.forwardZ * mover.along - lane.forwardX * shift
+  const [pathX, pathZ] = pathPoint(lanes, mover.lane, mover.along, mover.prevLane ?? -1, mover.nextLane ?? -1, cornerRadius, shift)
 
   // Well away from its path, after a knock, or when the next path starts on the
   // other pavement, it heads straight for its place on the path, a little quicker,
   // as someone crossing the road does.
   const lost = Math.hypot(pathX - mover.x, pathZ - mover.z) > TRAFFIC_RULES.lostDistance
-  const [aimX, aimZ] = lost ? [pathX, pathZ] : pointAhead(mover, lanes, aim, shift, random)
+  const [aimX, aimZ] = lost ? [pathX, pathZ] : pointAhead(mover, lanes, aim, shift, cornerRadius, random)
   if (Math.hypot(aimX - mover.x, aimZ - mover.z) > 0.05) {
     const wanted = Math.atan2(aimX - mover.x, aimZ - mover.z)
     const turn = angleBetween(mover.heading, wanted)
@@ -889,7 +1028,7 @@ function stepThrownRider(world: TrafficWorld, vehicle: Vehicle, thrown: Pedestri
   thrown.x += (toBikeX / distance) * step
   thrown.z += (toBikeZ / distance) * step
   thrown.heading = Math.atan2(toBikeX, toBikeZ)
-  thrown.stride += TRAFFIC_RULES.walkBackSpeed * 4.5 * dt
+  thrown.stride += step * STRIDE_PER_METRE
 }
 
 /**
@@ -999,11 +1138,22 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
     return
   }
 
-  // `shift` moves its line sideways: positive left, negative right. It steers over to it.
-  const aim = Math.max(rules.aimMin, Math.min(rules.aimMax, vehicle.speed * rules.aimTime))
-  // A vehicle turns no tighter than its turning circle, so the slower it goes, the slower it turns.
+  // Corners are rounded to about the vehicle's turning circle (see `findCorner`), and it follows that
+  // curve. It turns no tighter than a little inside that circle, so the slower it goes, the slower it turns.
   const radius = vehicle.nimble ? rules.nimbleTurnRadius : rules.carTurnRadius
-  steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift, vehicle.speed / radius, dt, random)
+  const aim = Math.max(rules.aimMin, Math.min(rules.aimMax, vehicle.speed * rules.aimTime))
+  const turnRate = vehicle.speed / (radius * rules.steeringSlack)
+  // `shift` moves its line sideways: positive left, negative right. It steers over to it.
+  steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift, turnRate, radius, dt, random)
+  // If a tight corner still carries it wide, the wall stops it, rather than it driving through.
+  const beforeX = vehicle.x
+  const beforeZ = vehicle.z
+  pushOutOfBuildings(world.collisions, vehicle, vehicle.radius * rules.wallMargin)
+  const pushed = vehicle.x !== beforeX || vehicle.z !== beforeZ
+  vehicle.pinned = pushed ? vehicle.pinned + dt : Math.max(0, vehicle.pinned - dt)
+  // One that stays stuck, out of the rider's sight, is taken away, and a new one appears elsewhere.
+  const unseen = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) > rules.pinnedRemoveDistance
+  if (vehicle.pinned > rules.pinnedTime && unseen) vehicle.lane = -1
 }
 
 type Impact = { pushX: number; pushZ: number; changeX: number; changeZ: number; otherX: number; otherZ: number }
@@ -1300,10 +1450,12 @@ function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterS
   const dodgeShift = person.dodgeX * lane.forwardZ - person.dodgeZ * lane.forwardX
   // Someone stepping aside walks a little quicker to get out of the way.
   const pace = person.speed + Math.min(1, Math.hypot(person.dodgeX, person.dodgeZ)) * 0.6
-  steerAlong(person, walkLanes, pace * dt, rules.walkAim, dodgeShift, rules.walkTurnRate, dt, random)
+  const fromX = person.x
+  const fromZ = person.z
+  steerAlong(person, walkLanes, pace * dt, rules.walkAim, dodgeShift, rules.walkTurnRate, 0, dt, random)
 
-  person.stride += person.speed * 4.5 * dt
-  person.lift = Math.abs(Math.sin(person.stride)) * 0.03
+  // Strides follow the ground actually covered, so the feet stay planted when they hurry or slow.
+  person.stride += Math.hypot(person.x - fromX, person.z - fromZ) * STRIDE_PER_METRE
 }
 
 /**
@@ -1587,6 +1739,7 @@ export function stepTraffic(
       placeOnLane(vehicle, roadLanes, lane, random)
       vehicle.speed = vehicle.cruiseSpeed
       vehicle.waiting = 0
+      vehicle.pinned = 0
       vehicle.recovery = 1
       vehicle.shift = 0
       vehicle.shiftTarget = 0

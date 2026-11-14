@@ -59,6 +59,16 @@ export const SCOOTER = {
   pitchRate: 0.5,
 
   wheelRadius: 0.296,
+  /** Where the axles are, in metres forward of the scooter's middle. From the model. */
+  frontAxle: 0.654,
+  rearAxle: -0.564,
+  /**
+   * A tyre rolls up a step over a little forward travel: this much height per
+   * metre. A 13 cm kerb takes about a quarter of a metre, as a real wheel does.
+   */
+  climbPerMetre: 0.55,
+  /** Even at a crawl, a tyre gets up a step this fast, in metres per second. */
+  climbAtCrawl: 0.3,
 
   /** The scooter counts as a circle of this radius when it hits things. */
   collisionRadius: 0.6,

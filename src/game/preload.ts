@@ -2,10 +2,10 @@ import * as THREE from 'three'
 import { loadRapier } from '../physics/rapier'
 
 /**
- * Downloads everything the game needs before the world is built, so the title
- * screen can show real progress. Each file goes into three.js's own cache under
- * the key its loader looks for (`file:` for models, `image:` for textures). When
- * the world then asks for it, three.js finds it there and doesn't download it again.
+ * Downloads everything the game needs, from the moment the title screen opens,
+ * so it can show real progress and the world is ready sooner after Play. Each
+ * file ends up in three.js's own cache under the key its loader looks for
+ * (`file:` for models, `image:` for textures), so the world never downloads it again.
  *
  * Sizes are what each file weighs today, in kilobytes, for the progress bar. If a
  * file changes, the bar is only slightly off; nothing breaks. In development, a
@@ -53,14 +53,22 @@ const PHYSICS_KB = 1400
 /** Everything the loader downloads, in kilobytes, so the title screen can show it before it starts. */
 export const TOTAL_KB = GAME_FILES.reduce((sum, { kb }) => sum + kb, 0) + PHYSICS_KB
 
-export type LoadStage = 'downloading' | 'physics' | 'building' | 'ready' | 'error'
-export type LoadProgress = { loadedKb: number; totalKb: number; stage: LoadStage; error?: string }
+export type LoadStage = 'downloading' | 'downloaded' | 'error'
+export type LoadProgress = {
+  loadedKb: number
+  totalKb: number
+  stage: LoadStage
+  /** The map and the physics engine are in, which is all the world needs to start building. */
+  mapReady: boolean
+  error?: string
+}
 
 /** The map, kept here so the map loader can read it without downloading it again. */
-const files = new Map<string, ArrayBuffer>()
+let mapFile: Promise<ArrayBuffer> | null = null
 
-export function takePreloadedFile(url: string): ArrayBuffer | undefined {
-  return files.get(url)
+/** The map's bytes, once the loader has them, or null if the loader hasn't started. */
+export function waitForPreloadedMap(): Promise<ArrayBuffer> | null {
+  return mapFile
 }
 
 /** Reads a response a chunk at a time, reporting bytes as they arrive. */
@@ -86,25 +94,43 @@ async function download(url: string, onBytes: (bytes: number) => void): Promise<
   return whole.buffer
 }
 
-/** Turns downloaded image bytes into the ready-to-use image three.js's TextureLoader would make. */
-function toImage(bytes: ArrayBuffer): Promise<HTMLImageElement> {
+/**
+ * Models and textures go through three.js's own loaders, the same ones the world
+ * uses. If the world asks for a file while it's still coming down, the loader
+ * hands it the download already under way instead of starting another: the file
+ * loader keeps a list of requests in flight, and the image loader puts each image
+ * in the cache the moment it starts. So the world can start building before
+ * everything has arrived, and nothing downloads twice.
+ */
+function loadModel(url: string, onBytes: (bytes: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
-    const image = new Image()
-    const address = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }))
-    image.onload = () => {
-      URL.revokeObjectURL(address)
-      resolve(image)
-    }
-    image.onerror = () => reject(new Error('An image could not be read'))
-    image.src = address
+    const loader = new THREE.FileLoader()
+    loader.setResponseType('arraybuffer')
+    let seen = 0
+    loader.load(
+      url,
+      () => resolve(),
+      (event) => {
+        onBytes(event.loaded - seen)
+        seen = event.loaded
+      },
+      () => reject(new Error(`${url} could not be downloaded`)),
+    )
+  })
+}
+
+function loadImage(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    new THREE.ImageLoader().load(url, () => resolve(), undefined, () => reject(new Error(`${url} could not be downloaded`)))
   })
 }
 
 let running: Promise<void> | null = null
 
 /**
- * Starts the download, once. `report` hears progress as it happens. Files come
- * down a few at a time, so one slow file doesn't hold up the bar.
+ * Starts the download, once, as the page opens. `report` hears progress as it
+ * happens. Files come down a few at a time, the map first, as the world can't
+ * start building without it.
  */
 export function preloadGame(report: (progress: LoadProgress) => void): Promise<void> {
   if (running) return running
@@ -113,30 +139,45 @@ export function preloadGame(report: (progress: LoadProgress) => void): Promise<v
   const totalKb = TOTAL_KB
   let loadedKb = 0
   let filesLeft = GAME_FILES.length
-  const send = (stage: LoadStage) => report({ loadedKb: Math.min(loadedKb, totalKb), totalKb, stage })
+  let mapIn = false
+  let physicsIn = false
+  const send = () =>
+    report({
+      loadedKb: Math.min(loadedKb, totalKb),
+      totalKb,
+      stage: filesLeft > 0 || !physicsIn ? 'downloading' : 'downloaded',
+      mapReady: mapIn && physicsIn,
+    })
 
   const fetchOne = async ({ url, kb, kind }: GameFile) => {
     // Bytes count towards the bar, but never past the file's listed size, so a
     // compressed or changed file can't push the bar back or over.
     let counted = 0
-    const bytes = await download(url, (chunk) => {
-      const add = Math.min(chunk / 1024, kb - counted)
+    const count = (bytes: number) => {
+      const add = Math.min(bytes / 1024, kb - counted)
       counted += add
       loadedKb += add
-      send('downloading')
-    })
-    loadedKb += kb - counted
+      send()
+    }
 
-    if (kind === 'data') files.set(url, bytes)
-    if (kind === 'model') THREE.Cache.add(`file:${url}`, bytes)
-    if (kind === 'image') THREE.Cache.add(`image:${url}`, await toImage(bytes))
+    if (kind === 'data') {
+      mapFile = download(url, count)
+      await mapFile
+      mapIn = true
+    } else if (kind === 'model') {
+      await loadModel(url, count)
+    } else {
+      await loadImage(url)
+    }
+    loadedKb += kb - counted
     filesLeft--
-    send(filesLeft > 0 ? 'downloading' : 'physics')
+    send()
   }
 
   const physics = loadRapier().then(() => {
     loadedKb += PHYSICS_KB
-    send(filesLeft > 0 ? 'downloading' : 'physics')
+    physicsIn = true
+    send()
   })
 
   // Four at a time: enough to keep the connection busy, few enough to show steady progress.
@@ -145,19 +186,25 @@ export function preloadGame(report: (progress: LoadProgress) => void): Promise<v
     for (let file = queue.shift(); file; file = queue.shift()) await fetchOne(file)
   }
 
-  send('downloading')
+  send()
   running = Promise.all([physics, ...Array.from({ length: 4 }, worker)])
-    .then(() => send('building'))
+    .then(() => undefined)
     .catch((error: unknown) => {
       running = null
-      report({ loadedKb, totalKb, stage: 'error', error: error instanceof Error ? error.message : String(error) })
+      report({
+        loadedKb,
+        totalKb,
+        stage: 'error',
+        mapReady: mapIn && physicsIn,
+        error: error instanceof Error ? error.message : String(error),
+      })
     })
 
   if (import.meta.env.DEV) {
     const listed = new Set(GAME_FILES.map(({ url }) => url))
     THREE.DefaultLoadingManager.onStart = (url) => {
       if (!listed.has(url) && !url.startsWith('blob:') && !url.startsWith('data:')) {
-        console.warn(`[preload] ${url} isn't in GAME_FILES, so it downloads after the loader finishes.`)
+        console.warn(`[preload] ${url} isn't in GAME_FILES, so it downloads on its own.`)
       }
     }
   }

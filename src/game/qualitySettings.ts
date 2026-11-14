@@ -8,7 +8,11 @@ export type KitDetail = 0 | 1 | 2
 
 type QualityPreset = {
   label: string
-  /** Rendering resolution, as [lowest, highest] pixels per screen point. */
+  /**
+   * Rendering resolution, as [lowest, highest] pixels per screen point. The
+   * game starts at the screen's own, within this range, and AdaptiveResolution
+   * goes lower if frames come in late.
+   */
   pixelRatio: [number, number]
   /** Sun shadow detail in pixels, or 0 for no shadows. */
   shadowSize: number
@@ -72,7 +76,9 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
   },
   high: {
     label: 'High',
-    pixelRatio: [1, 2],
+    // Not 2 on a sharp screen: that's four times the pixels of 1, and costs
+    // more than shadows, for a difference that's hard to see while riding.
+    pixelRatio: [1, 1.5],
     shadowSize: 4096,
     windows: true,
     surfaces: 'bumps',

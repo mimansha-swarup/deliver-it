@@ -18,6 +18,8 @@ export type Prop = {
   tint?: number
   /** Which tree shape it uses. Left out, `variation` picks one. */
   kind?: number
+  /** How wide it is, in metres, for things drawn to fit their space, such as kolams. Left out, it's the usual width. */
+  width?: number
   /** A size multiplier, on top of the difference `variation` makes. */
   size?: number
 }
@@ -212,6 +214,19 @@ function someRoadNear(index: RoadIndex, x: number, z: number, reach: number, vis
 /** True when a point is more than `gap` metres from the edge of every road. */
 export function isClearOfRoads(index: RoadIndex, x: number, z: number, gap: number): boolean {
   return !someRoadNear(index, x, z, gap, (piece) => distanceToPiece(x, z, piece) <= piece.width / 2 + gap)
+}
+
+/**
+ * How far a point is outside the nearest road's edge, in metres: negative on a
+ * road. Roads further than `reach` aren't looked for, and then it returns `reach`.
+ */
+export function nearestRoadEdge(index: RoadIndex, x: number, z: number, reach: number): number {
+  let nearest = reach
+  someRoadNear(index, x, z, reach, (piece) => {
+    nearest = Math.min(nearest, distanceToPiece(x, z, piece) - piece.width / 2)
+    return false
+  })
+  return nearest
 }
 
 /**

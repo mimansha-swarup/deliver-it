@@ -10,6 +10,7 @@ import { MissionTracker } from '../missions/MissionTracker'
 import type { CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
 import type { RoadGraph } from '../world/roadGraph'
+import type { Surface } from '../world/surface'
 import { Traffic } from '../traffic/Traffic'
 import { TrafficLights } from '../traffic/TrafficLights'
 import type { TrafficWorld } from '../traffic/trafficLogic'
@@ -24,9 +25,10 @@ type PlayerProps = {
   collisions: CollisionWorld
   graph: RoadGraph
   traffic: TrafficWorld
+  surface: Surface
 }
 
-export function Player({ store, collisions, graph, traffic }: PlayerProps) {
+export function Player({ store, collisions, graph, traffic, surface }: PlayerProps) {
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
@@ -37,7 +39,7 @@ export function Player({ store, collisions, graph, traffic }: PlayerProps) {
 
   return (
     <>
-      <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} />
+      <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} surface={surface} />
       <Headlight scooter={scooterState} />
       <PlayerSounds scooter={scooterState} />
       <SkidMarks scooter={scooterState} />

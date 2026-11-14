@@ -6,6 +6,7 @@ import { useGameStore } from '../game/gameStore'
 import type { MissionPhase, WaitingCustomer } from '../game/gameTypes'
 import { liveShot } from '../game/livePlayer'
 import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
+import { STRIDE_PER_METRE } from '../traffic/gait'
 import { createWomanGeometry } from '../traffic/peopleShapes'
 import { People } from '../traffic/Traffic'
 import type { Pedestrian } from '../traffic/trafficLogic'
@@ -89,6 +90,7 @@ function createPerson(x: number, z: number, heading: number, tint: number, skin:
     dodgeX: 0,
     dodgeZ: 0,
     stride: 0,
+    walking: 0,
     skin,
     body: null,
     rotation: null,
@@ -112,14 +114,15 @@ function walkTo(person: Pedestrian, x: number, z: number, speed: number, dt: num
   const distance = Math.hypot(awayX, awayZ)
 
   if (distance < 0.05) {
-    person.stride = 0
+    person.walking = 0
     return true
   }
 
   const step = Math.min(distance, speed * dt)
   person.x += (awayX / distance) * step
   person.z += (awayZ / distance) * step
-  person.stride += speed * 4.5 * dt
+  person.stride += step * STRIDE_PER_METRE
+  person.walking = 1
   turnTowards(person, Math.atan2(awayX, awayZ), dt)
   return false
 }
@@ -138,7 +141,9 @@ function setLift(person: Pedestrian, lift: number) {
 
 /** Shifting on their feet, as anyone waiting for a parcel does. */
 function fidget(person: Pedestrian, time: number) {
-  person.stride = Math.sin(time * 1.4) * 0.5
+  // A hint of a step, coming and going: their weight shifting from foot to foot.
+  person.stride = Math.PI / 2
+  person.walking = 0.12 + Math.sin(time * 1.4) * 0.1
 }
 
 function createParcelGeometry(): THREE.BufferGeometry {

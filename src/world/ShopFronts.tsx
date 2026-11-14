@@ -323,18 +323,15 @@ function updateGlow(boards: THREE.MeshStandardMaterial, rooms: THREE.MeshStandar
   rooms.emissiveIntensity = liveSky.look.night * INTERIOR_GLOW
 }
 
-/** Starts loading the photo boards, calling `done` with each once it can be drawn. */
+/**
+ * Starts loading the photo boards, calling `done` with each once it can be drawn.
+ * Through three.js's image loader, which hands back the page's own download if
+ * it's done or still under way, rather than starting another.
+ */
 function loadPhotos(done: (type: ShopType, image: HTMLImageElement) => void) {
+  const loader = new THREE.ImageLoader()
   for (const type of PHOTO_TYPES) {
-    const url = PHOTO_BOARDS[type] as string
-    const cached = THREE.Cache.get(`image:${url}`) as HTMLImageElement | undefined
-    if (cached) {
-      done(type, cached)
-      continue
-    }
-    const image = new Image()
-    image.onload = () => done(type, image)
-    image.src = url
+    loader.load(PHOTO_BOARDS[type] as string, (image) => done(type, image))
   }
 }
 

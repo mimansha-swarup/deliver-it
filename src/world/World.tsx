@@ -1,4 +1,5 @@
-import { use } from 'react'
+import { Suspense, use, useEffect, type ReactNode } from 'react'
+import { markPartBuilt, useLaunch, type WorldPart } from '../game/launch'
 import { Sky } from '../sky/Sky'
 import { createCrashPhysics } from '../physics/crashPhysics'
 import { loadRapier } from '../physics/rapier'
@@ -17,6 +18,7 @@ import { addDarkStorePosts, findDarkStore } from './darkStore'
 import { GrassField } from './GrassField'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
+import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
@@ -26,6 +28,8 @@ import { planHouseKit } from './houseKit'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
 import { RestrictedWall } from './RestrictedWall'
+import { ConstructionSites } from './ConstructionSites'
+import { findConstructionSites } from './sitePlacement'
 import { addRestrictedWalls } from './restricted'
 import { RoadMarkings } from './RoadMarkings'
 import { createRoadGraph } from './roadGraph'
@@ -74,6 +78,8 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   addDarkStorePosts(collisions, store)
   // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
   const houses = planHouseKit(data.buildings, data.roads, collisions, store)
+  // Building sites take open plots before trees and lamps do, and are solid to them.
+  const sites = findConstructionSites(data, collisions)
   const shopFronts = fillShopUnits(houses.shopUnits, mappedShops)
   // Menu boards on the pavement are solid too.
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
@@ -86,37 +92,61 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // After the lanes, as a pole by the kerb would otherwise close the pavement path beside it.
   for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life }
+  const surface = createSurface(data.roads)
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface }
+}
+
+/** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
+function Built({ name }: { name: WorldPart }) {
+  useEffect(() => markPartBuilt(name), [name])
+  return null
+}
+
+/** One part of the world, with its own Suspense boundary. */
+function Part({ name, children }: { name: WorldPart; children: ReactNode }) {
+  return (
+    <Suspense fallback={null}>
+      {children}
+      <Built name={name} />
+    </Suspense>
+  )
 }
 
 export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life } = getWorld(data, rapier)
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface } = getWorld(data, rapier)
+  useEffect(() => useLaunch.setState({ planned: true }), [])
 
+  // Each part has its own Suspense boundary, the player and traffic included.
+  // While a part's textures or models load, it "suspends". Without a boundary of
+  // its own, React would throw away every part not yet on screen and redo it,
+  // rebuilding their shapes each time. With one, the parts that are ready go on
+  // screen, and only the part still loading waits.
   return (
     <>
-      <Sky />
-      <Lighting />
-      <Ground />
-      <Parks data={data} />
-      <GrassField data={data} />
-      <Roads roads={data.roads} />
-      <Kerbs roads={data.roads} collisions={collisions} />
-      <RestrictedWall zones={data.restricted} />
-      <RoadMarkings roads={data.roads} />
-      <Buildings buildings={data.buildings} />
-      <HouseKitMesh kit={houses} />
-      <StiltParking vehicles={houses.stiltParking} />
-      <CityKit placements={kit} />
-      <DarkStoreBuilding store={store} />
-      <RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} />
-      <StreetLife life={life} kolams={houses.kolams} />
-      <Cables props={props} collisions={collisions} />
-      <ShopFronts shopFronts={shopFronts} />
-      <Boundary />
-      <Player store={store} collisions={collisions} graph={graph} traffic={traffic} />
+      <Part name="sky"><Sky /></Part>
+      <Part name="lighting"><Lighting /></Part>
+      <Part name="ground"><Ground /></Part>
+      <Part name="parks"><Parks data={data} /></Part>
+      <Part name="grass"><GrassField data={data} /></Part>
+      <Part name="roads"><Roads roads={data.roads} /></Part>
+      <Part name="kerbs"><Kerbs roads={data.roads} collisions={collisions} /></Part>
+      <Part name="restrictedWall"><RestrictedWall zones={data.restricted} /></Part>
+      <Part name="sites"><ConstructionSites sites={sites} /></Part>
+      <Part name="markings"><RoadMarkings roads={data.roads} /></Part>
+      <Part name="buildings"><Buildings buildings={data.buildings} /></Part>
+      <Part name="houses"><HouseKitMesh kit={houses} /></Part>
+      <Part name="stilts"><StiltParking vehicles={houses.stiltParking} /></Part>
+      <Part name="cityKit"><CityKit placements={kit} /></Part>
+      <Part name="darkStore"><DarkStoreBuilding store={store} /></Part>
+      <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} /></Part>
+      <Part name="streetLife"><StreetLife life={life} kolams={houses.kolams} /></Part>
+      <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
+      <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
+      <Part name="boundary"><Boundary /></Part>
+      <Part name="player"><Player store={store} collisions={collisions} graph={graph} traffic={traffic} surface={surface} /></Part>
     </>
   )
 }

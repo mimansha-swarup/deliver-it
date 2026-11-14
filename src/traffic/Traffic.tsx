@@ -12,12 +12,14 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
+import { PAVEMENT_HEIGHT, ROAD_HEIGHT } from '../world/surface'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { STEERING_Z } from '../vehicle/Rider'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
+import { GAIT, HIP, KNEE } from './gait'
 import { createWomanGeometry } from './peopleShapes'
 import {
   takeHonks,
@@ -66,8 +68,6 @@ const LOWEST_STEER_SPEED = 2
 
 /** Longest a single frame may count for, so a hidden tab doesn't move everything at once. */
 const MAX_STEP = 0.05
-/** How far an arm or leg swings on each step, in radians. */
-const LIMB_SWING = 0.5
 
 type Moving = {
   x: number
@@ -91,13 +91,14 @@ function writeTransforms(
   items: Moving[],
   reach = Infinity,
   isSeatedRider = false,
+  ground = ROAD_HEIGHT,
 ) {
   items.forEach((item, index) => {
     const inRange =
       Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach &&
       !item.hidden &&
       !(isSeatedRider && item.riderOff)
-    transform.position.set(item.x, item.lift, item.z)
+    transform.position.set(item.x, ground + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
     // Size zero is the cheapest way to skip one copy of an instanced shape.
@@ -118,7 +119,7 @@ function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: nu
   let drawn = 0
   for (const item of items) {
     if (item.hidden || Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) >= reach) continue
-    transform.position.set(item.x, item.lift, item.z)
+    transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
     transform.scale.setScalar(1)
@@ -347,17 +348,75 @@ const SPRAWL_LEG = 0.45
 /** Joints higher than this are shoulders, lower are hips. */
 const SHOULDER_ABOVE = 1.1
 
+const glsl = (value: number) => value.toFixed(4)
+
 /**
- * Walking happens on the graphics card. Each arm and leg rotates around its own
- * joint, by an amount that comes from that person's place in their stride.
- * Someone knocked over goes limp instead: their arms fling out one forward and
- * one back, and their legs part, by how limp they are (`aPerson.z`).
- * Clothes take the person's colour, and the rest take their skin tone.
+ * The walk, in GLSL, run for every corner of every person. `footAt` is where a
+ * foot is at a point in its stride (forward of the hip, and height off the
+ * ground), from `GAIT`. `legAngles` then finds the thigh and shin angles that put
+ * the foot there: inverse kinematics, the same law of cosines the rider's arms
+ * use (`findJoint` in Rider.tsx), done here as angles. `turnForward` swings a
+ * point about a joint, positive angles carrying what hangs below it forwards.
+ */
+const WALK_FUNCTIONS = /* glsl */ `
+  const float STANCE = ${glsl(GAIT.stance)};
+  const float REACH = ${glsl(GAIT.reach)};
+  // The knee sits this share of the way up from the sole to the hip.
+  const float KNEE_SHARE = ${glsl(KNEE / HIP)};
+  const float PI = 3.14159265;
+
+  vec2 footAt(float phase) {
+    if (phase < STANCE) {
+      // Planted, sliding back under the body. Rolling from heel to toe raises it a little at either end.
+      float through = 2.0 * phase / STANCE - 1.0;
+      return vec2(-REACH * through, 0.03 * through * through);
+    }
+    float swing = (phase - STANCE) / (1.0 - STANCE);
+    float eased = swing * swing * (3.0 - 2.0 * swing);
+    return vec2(REACH * (2.0 * eased - 1.0), 0.03 + ${glsl(GAIT.footLift)} * sin(PI * swing));
+  }
+
+  float walkDip(float stride) {
+    float bothDown = (STANCE - 0.5) / 2.0;
+    return -${glsl(GAIT.hipDip)} * (0.5 + 0.5 * cos(4.0 * PI * (stride / (2.0 * PI) - bothDown)));
+  }
+
+  // Returns (thigh, shin) angles from straight down, forwards positive, for a leg whose hip
+  // stands \`legLength\` above the ground and has dipped by \`dip\`.
+  vec2 legAngles(vec2 foot, float legLength, float dip) {
+    float SHIN = legLength * KNEE_SHARE;
+    float THIGH = legLength - SHIN;
+    vec2 toFoot = vec2(foot.x, foot.y - legLength - dip);
+    float reach = min(length(toFoot), THIGH + SHIN - 0.001);
+    float aim = atan(toFoot.x, -toFoot.y);
+    float atHip = acos(clamp((THIGH * THIGH + reach * reach - SHIN * SHIN) / (2.0 * THIGH * reach), -1.0, 1.0));
+    float atKnee = acos(clamp((THIGH * THIGH + SHIN * SHIN - reach * reach) / (2.0 * THIGH * SHIN), -1.0, 1.0));
+    float thigh = aim + atHip;
+    return vec2(thigh, thigh - (PI - atKnee));
+  }
+
+  // (z, y) about a joint at height jointY.
+  vec2 turnForward(vec2 point, float jointY, float angle) {
+    float down = point.y - jointY;
+    float c = cos(angle);
+    float s = sin(angle);
+    return vec2(point.x * c - down * s, jointY + point.x * s + down * c);
+  }
+`
+
+/**
+ * Walking happens on the graphics card. Each foot follows its stride (planted,
+ * then lifted and swung forward), the knee and hip bend to reach it, and each
+ * arm swings against the leg on its side. Someone standing (`aPerson.w` 0)
+ * keeps their feet under them. Someone knocked over goes limp instead: their
+ * arms fling out one forward and one back, and their legs part, by how limp they
+ * are (`aPerson.z`). Clothes take the person's colour, and the rest take their skin tone.
  */
 function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.vertexShader = `
     attribute vec3 _limb;
-    attribute vec3 aPerson;
+    attribute vec4 aPerson;
+    ${WALK_FUNCTIONS}
     ${shader.vertexShader}
   `
     .replace(
@@ -372,30 +431,54 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
     .replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
+      float walking = aPerson.w * (1.0 - aPerson.z);
+      // The hips dip as weight passes from foot to foot, and the whole body with them.
+      float dip = walkDip(aPerson.x) * walking;
       if (_limb.x != 0.0) {
-        float walking = sin(aPerson.x) * _limb.x * ${LIMB_SWING.toFixed(2)};
-        float sprawl = _limb.x * (_limb.y > ${SHOULDER_ABOVE.toFixed(2)} ? ${SPRAWL_ARM.toFixed(2)} : ${SPRAWL_LEG.toFixed(2)});
-        float angle = mix(walking, sprawl, aPerson.z);
-        float down = position.y - _limb.y;
-        transformed.z = position.z * cos(angle) + down * sin(angle);
-        transformed.y = _limb.y + down * cos(angle) - position.z * sin(angle);
-      }`,
+        bool isArm = _limb.y > ${glsl(SHOULDER_ABOVE)};
+        // Legs swing +1 on the left and -1 on the right; arms the other way round. Less than 1 is a
+        // part that only half follows, such as the cloth where a leg meets the body.
+        float side = isArm ? -_limb.x : _limb.x;
+        float follow = abs(_limb.x);
+        float phase = fract(aPerson.x / (2.0 * PI) + (side > 0.0 ? 0.0 : 0.5));
+        vec2 foot = mix(vec2(0.0), footAt(phase), walking);
+        vec2 point = vec2(position.z, position.y);
+        if (isArm) {
+          float swing = -${glsl(GAIT.armSwing)} * foot.x / REACH * follow;
+          float angle = mix(swing, -_limb.x * ${glsl(SPRAWL_ARM)}, aPerson.z);
+          point = turnForward(point, _limb.y, angle);
+        } else {
+          // The leg reaches from the dipped hip down to the foot on the ground. Each model has its
+          // own hip height, carried in \`_limb.y\`.
+          float hipY = _limb.y;
+          float kneeY = hipY * KNEE_SHARE;
+          vec2 angles = legAngles(foot, hipY, dip) * follow;
+          float sprawl = -_limb.x * ${glsl(SPRAWL_LEG)};
+          angles = mix(angles, vec2(sprawl), aPerson.z);
+          // The shin bends at the knee first, then the whole leg turns at the hip.
+          if (position.y < kneeY) point = turnForward(point, kneeY, angles.y - angles.x);
+          point = turnForward(point, hipY, angles.x);
+        }
+        transformed.z = point.x;
+        transformed.y = point.y;
+      }
+      transformed.y += dip;`,
     )
 }
 
-/** Gives a body shape room for each person's place in their stride, skin tone and limpness. */
+/** Gives a body shape room for each person's place in their stride, skin tone, limpness and how much they're walking. */
 function withPersonData(body: THREE.BufferGeometry, count: number): THREE.BufferGeometry {
   const geometry = body.clone()
   geometry.setAttribute(
     'aPerson',
-    new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3),
+    new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4),
   )
   return geometry
 }
 
 function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
   const attribute = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
-  people.forEach(({ stride, skin, down }, index) => attribute.setXYZ(index, stride, skin, down))
+  people.forEach(({ stride, skin, down, walking = 1 }, index) => attribute.setXYZW(index, stride, skin, down, walking))
   attribute.needsUpdate = true
 }
 
@@ -404,11 +487,14 @@ export function People({
   items,
   body,
   palette = CLOTHES_COLORS,
+  ground = PAVEMENT_HEIGHT,
 }: {
   items: Pedestrian[]
   body: THREE.BufferGeometry
   /** The colours their clothes can be. */
   palette?: string[]
+  /** The surface they walk on, in metres up. Pedestrians keep to the pavement. */
+  ground?: number
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const geometry = useMemo(() => withPersonData(body, items.length), [body, items.length])
@@ -418,7 +504,7 @@ export function People({
 
   useFrame(() => {
     if (!mesh.current) return
-    writeTransforms(mesh.current, items)
+    writeTransforms(mesh.current, items, Infinity, false, ground)
     writeStrides(geometry, items)
   })
 
@@ -496,7 +582,7 @@ function VehicleWheels({ items, wheels }: { items: Moving[]; wheels: WheelSet })
       // A tumbling vehicle's wheels stop being driven, and simply go with it.
       if (!item.rotation) updateWheelState(state, item, wheels, step)
 
-      transform.position.set(item.x, item.lift, item.z)
+      transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
       if (item.rotation) transform.quaternion.set(...item.rotation)
       else transform.rotation.set(0, item.heading, 0)
       transform.scale.setScalar(1)
@@ -696,7 +782,7 @@ export function Traffic({
       {bodies.map((body, group) => (
         <People key={body.uuid} items={crowds[group]} body={body} />
       ))}
-      {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} />}
+      {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} ground={ROAD_HEIGHT} />}
       <CarHeadlights items={inPlay} count={carLights} />
     </>
   )

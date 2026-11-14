@@ -11,14 +11,10 @@ import { createFlatGeometries, positionsFor, splitLongPiece, type ChunkedPositio
 import type { LineFeature } from './mapData'
 import { getRoadWidth } from './roadData'
 import { clipToPlayArea, pushStrip, pushTriangle } from './roadGeometry'
+import { PAVEMENT_HEIGHT, PAVEMENT_WIDTH, ROAD_HEIGHT } from './surface'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
 
-/** Just above the ground, so the two surfaces don't flicker against each other. */
-const ROAD_HEIGHT = 0.05
 const JOINT_SIDES = 12
-/** A pavement runs under each road, showing this far past the edge on both sides. */
-export const PAVEMENT_WIDTH = 3
-const PAVEMENT_HEIGHT = 0.03
 const PLAIN_ROAD_COLOR = new THREE.Color('#66676b')
 const TEXTURED_ROAD_COLOR = new THREE.Color('#a4a4a6')
 /** The paver photo is a warm beige. This cools it towards the grey concrete of HSR's footpaths. */

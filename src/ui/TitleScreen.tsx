@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { unlockAudio } from '../audio/audioEngine'
 import { useGameStore } from '../game/gameStore'
-import type { LoadProgress } from '../game/preload'
+import { useLaunch } from '../game/launch'
 import { levelFromXp } from '../game/progression'
 import { QualityPicker } from './QualityPicker'
 
@@ -27,14 +27,6 @@ function megabytes(kb: number): string {
   return (kb / 1024).toFixed(1)
 }
 
-/** What the Start button says while the game is getting ready. */
-function loadingLabel({ stage, loadedKb, totalKb }: LoadProgress, worldReady: boolean): string {
-  if (worldReady) return 'Start riding'
-  if (stage === 'downloading') return `Downloading the city ${Math.floor((loadedKb / totalKb) * 100)}%`
-  if (stage === 'physics') return 'Starting the physics engine'
-  return 'Building HSR Layout'
-}
-
 /** The wordmark's underline: a stretch of road, dashed down the middle, curving up at the end. */
 function RoadUnderline() {
   return (
@@ -46,23 +38,22 @@ function RoadUnderline() {
 }
 
 /**
- * The title screen: screenshots from the game behind, the name, and a Start
- * button that is also the download bar. It fills as the game downloads, says
- * when the world is being built, and becomes Start riding once it's ready.
+ * The title screen: screenshots from the game behind, the name, and a Play
+ * button that works straight away. The game downloads in the background from
+ * the moment the page opens, and the line under the button shows how far it's
+ * got. Play brings up the loading screen, which builds the city.
  */
 export function TitleScreen() {
   const loading = useGameStore((state) => state.loading)
-  const worldReady = useGameStore((state) => state.mission !== null)
   const credits = useGameStore((state) => state.credits)
   const xp = useGameStore((state) => state.xp)
-  const startGame = useGameStore((state) => state.startGame)
   const [shown, setShown] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
 
-  const start = () => {
+  const play = () => {
     // Sound is only allowed after a click or key press, and this is one.
     unlockAudio()
-    startGame()
+    useLaunch.setState({ requested: true })
   }
 
   useEffect(() => {
@@ -70,19 +61,20 @@ export function TitleScreen() {
     return () => window.clearInterval(timer)
   }, [])
 
-  // Enter starts the game from anywhere on the page, once it's ready.
+  const failed = loading.stage === 'error'
+
+  // Enter plays from anywhere on the page.
   useEffect(() => {
-    if (!worldReady) return
+    if (failed) return
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Enter' && !event.repeat && !helpOpen) start()
+      if (event.key === 'Enter' && !event.repeat && !helpOpen) play()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   })
 
-  const failed = loading.stage === 'error'
-  const share = worldReady ? 1 : loading.loadedKb / loading.totalKb
-  const building = !worldReady && (loading.stage === 'building' || loading.stage === 'physics')
+  const downloaded = loading.stage === 'downloaded'
+  const percent = Math.floor((loading.loadedKb / loading.totalKb) * 100)
 
   return (
     <main className="title-screen">
@@ -121,20 +113,9 @@ export function TitleScreen() {
               Download failed. Try again
             </button>
           ) : (
-            <button
-              type="button"
-              className="title-start"
-              data-ready={worldReady}
-              data-building={building}
-              disabled={!worldReady}
-              onClick={start}
-              autoFocus={worldReady}
-            >
-              <span className="title-start-fill" style={{ transform: `scaleX(${share})` }} aria-hidden="true" />
-              <span className="title-start-label" role="status">
-                {loadingLabel(loading, worldReady)}
-              </span>
-              {worldReady && <kbd>Enter</kbd>}
+            <button type="button" className="title-start" data-ready="true" onClick={play}>
+              <span className="title-start-label">Play</span>
+              <kbd>Enter</kbd>
             </button>
           )}
           <button
@@ -147,12 +128,18 @@ export function TitleScreen() {
           </button>
         </div>
 
+        {!failed && (
+          <div className="title-download" role="status">
+            <span className="title-download-bar" aria-hidden="true">
+              <span style={{ transform: `scaleX(${downloaded ? 1 : loading.loadedKb / loading.totalKb})` }} />
+            </span>
+            {downloaded
+              ? 'City downloaded'
+              : `Downloading the city in the background: ${percent}%, ${megabytes(loading.loadedKb)} of ${megabytes(loading.totalKb)} MB`}
+          </div>
+        )}
         <p className="title-facts">
-          {failed
-            ? `The download stopped: ${loading.error}. Check your connection.`
-            : worldReady
-              ? 'Free, and it runs in your browser.'
-              : `Free, and it runs in your browser. ${megabytes(loading.loadedKb)} of ${megabytes(loading.totalKb)} MB downloaded.`}
+          {failed ? `The download stopped: ${loading.error}. Check your connection.` : 'Free, and it runs in your browser.'}
         </p>
       </section>
 

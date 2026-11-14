@@ -10,7 +10,7 @@ import { lonLatToWorld, type GroundPoint } from './worldUtils'
 const DASH_LENGTH = 2
 const GAP_LENGTH = 3.5
 const DASH_WIDTH = 0.14
-const MARKING_HEIGHT = 0.07
+const MARKING_HEIGHT = 0.06
 
 /** Markings stop this far from a junction, in metres. */
 const JUNCTION_CLEARANCE = 6

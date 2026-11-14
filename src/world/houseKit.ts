@@ -4,7 +4,8 @@ import { addWall, copyCollisionWorld, isNearBuilding, type CollisionWorld } from
 import { chunkCentre, chunkKey } from './chunks'
 import { FACADE_LOOKS } from './facadeTextures'
 import type { BuildingFeature, LineFeature } from './mapData'
-import { indexRoadPieces, isClearOfRoads, toRoadPieces, type Prop, type RoadIndex } from './props'
+import { indexRoadPieces, isClearOfRoads, nearestRoadEdge, toRoadPieces, type Prop, type RoadIndex } from './props'
+import { KERB } from './surface'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
 /**
@@ -77,8 +78,11 @@ const COMPOUND = { height: 1.4, thickness: 0.15, gate: 3.0, pillar: 0.38, pillar
 /** Too little room between house and pavement for a compound wall, and the most it ever stands out. */
 /** Bougainvillea needs this much wall, in metres, and grows on this share of houses, in percent. */
 const CREEPER = { minWall: 3.2, chance: 34 }
-/** How far out from the wall a kolam's middle is, and the share of houses with one. */
-const KOLAM = { out: 0.95, chance: 45 }
+/**
+ * Kolams: the share of houses with one, how wide one is at most, and the
+ * smallest worth drawing, in metres. Each keeps this gap from the wall and the kerb.
+ */
+const KOLAM = { chance: 45, size: 1.5, smallest: 0.9, gap: 0.06 }
 const MIN_YARD = 1.2
 const MAX_YARD = 4
 /** Walls shorter than this get nothing. */
@@ -651,10 +655,23 @@ function dressBuildings(
         creepers.push({ x, y: COMPOUND.height - 0.05, z, rotation, variation: ((hash >>> 3) % 1000) / 1000 })
       }
 
-      // A kolam on the pavement outside the gate, as is drawn fresh each morning.
+      // A kolam on the pavement outside the gate, as is drawn fresh each morning. It's drawn
+      // between the wall and the kerb, so it's as wide as the pavement there allows, and
+      // left out where the pavement is too narrow, rather than running under the kerb.
       if (!isApartment && (hash >>> 14) % 100 < KOLAM.chance) {
-        const [x, z] = at((gateFrom + gateTo) / 2, yard + COMPOUND.thickness + KOLAM.out)
-        kolams.push({ x, z, rotation, variation: ((hash >>> 6) % 1000) / 1000 })
+        const gateMiddle = (gateFrom + gateTo) / 2
+        const wallFace = yard + COMPOUND.thickness
+        // Measured at its middle and both sides, as the road needn't run square to the wall.
+        const room = (side: number) => {
+          const [faceX, faceZ] = at(gateMiddle + (side * KOLAM.size) / 2, wallFace)
+          return nearestRoadEdge(roadIndex, faceX, faceZ, KOLAM.size * 3)
+        }
+        const pavement = Math.min(room(-1), room(0), room(1)) - KERB.width - KOLAM.gap * 2
+        const size = Math.min(KOLAM.size, pavement)
+        if (size >= KOLAM.smallest) {
+          const [x, z] = at(gateMiddle, wallFace + KOLAM.gap + size / 2)
+          kolams.push({ x, z, rotation, variation: ((hash >>> 6) % 1000) / 1000, width: size })
+        }
       }
     }
   }

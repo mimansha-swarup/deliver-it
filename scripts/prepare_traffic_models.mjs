@@ -26,14 +26,20 @@ const WHITE = [1, 1, 1]
 const BOX_WHITE = [0.82, 0.82, 0.8]
 /** How far the simplified shape may drift, as a share of the model's size. */
 const MAX_SHAPE_ERROR = 0.02
+/** Faces meeting at more than this angle, in radians, keep a crisp edge between them. See `smoothNormals`. */
+const CREASE = (50 * Math.PI) / 180
 
+/*
+ * Cars are wrapped on a fine grid (about 2 cm) and kept at 24,000 to 28,000 triangles. On a 3.5 cm
+ * grid at half that, door lines, lights and the grille smeared away and the panels looked dented.
+ */
 const VEHICLES = [
   {
     name: 'sedan',
     folder: '2022_maruti_suzuki_swift_dzire',
     length: 4.2,
-    triangles: 14000,
-    wrapCell: 0.035,
+    triangles: 28000,
+    wrapCell: 0.021,
     dropMaterial: /seats_|speedometer|sidewall/,
     dropNode: /^(movsteer|seats_|sidewall|dashboard|speedometer)/,
     wheelNode: /^wheel_rf(\.\d+)?$/,
@@ -42,8 +48,8 @@ const VEHICLES = [
     name: 'hatchback',
     folder: '2020_maruti_suzuki_alto_800',
     length: 3.6,
-    triangles: 12000,
-    wrapCell: 0.03,
+    triangles: 24000,
+    wrapCell: 0.018,
     dropMaterial: /seat|^dash|^mate|steering|dore2/,
     dropNode: /^(dash|mate|steering)/,
     wheelNode: /^wheel(\.\d+)?$/,
@@ -52,8 +58,8 @@ const VEHICLES = [
     name: 'suv',
     folder: '2022_mahindra_scorpio-n',
     length: 4.6,
-    triangles: 14000,
-    wrapCell: 0.035,
+    triangles: 28000,
+    wrapCell: 0.021,
     dropMaterial: /_int_|sunroof_m/,
     dropNode: /^movsteer/,
     wheelNode: /^wheel_rf(\.\d+)?$/,
@@ -62,8 +68,8 @@ const VEHICLES = [
     name: 'mpv',
     folder: 'renault_triber',
     length: 4,
-    triangles: 14000,
-    wrapCell: 0.035,
+    triangles: 28000,
+    wrapCell: 0.021,
     dropMaterial: /seat|^dash|^int\.|roof_int|misc|glossy|^mate|^sell/,
     dropNode: /^(int|prtseat|dashmax|roof int|seat\d|mate)\b/,
     wheelNode: /^wheels$/,
@@ -121,18 +127,18 @@ const VEHICLES = [
 const PEOPLE = [
   {
     name: 'man',
-    folder: 'indian_man_in_dhoti',
+    // A man in a kurta and pyjama. He replaced the man in the dhoti, whose dhoti was a huge sheet
+    // reaching his shoulders, with no legs under it, and whose skeleton was 1.6 times his size.
+    folder: 'indian_male_character',
     height: 1.72,
-    triangles: 3500,
-    // His skeleton already stands relaxed, so his arms stay as they are.
-    keepPose: true,
-    clothes: /^Material$|^Material\.001$/,
-    dropMaterial: /Teeth/,
-    looseCloth: /^Material\.00[12]$/,
-    // His arms already hang away from his body, so a full swing would fling them out.
-    armSwing: 0.4,
-    // The dhoti in this file is far too wide and reaches his chest.
-    refit: { pattern: /^Material\.00[12]$/, squeeze: 0.56, waistAbove: 0.1 },
+    // His face and hands need a few more triangles than the others to read at all.
+    triangles: 4500,
+    // Only his kurta takes each person's colour. Its border and his pyjama keep theirs.
+    clothes: /^Kurta$/,
+    dropMaterial: /teeth|cornea/,
+    rig: 'rigify',
+    // His hair has no colour in the file, so it would come out white. Linear colour, near black.
+    colors: { Hairs: [0.012, 0.01, 0.008] },
   },
   {
     name: 'teen',
@@ -648,6 +654,38 @@ function shrinkWrap(soup, cell) {
 }
 
 /** Removes triangles until it reaches the target, keeping colours and shape where it can. */
+/**
+ * Works out each corner's normal again from the finished surface: the average
+ * of the faces round it, weighted by their size. The shrink-wrapped skin takes
+ * its normals from whichever original panel each corner snapped to, and
+ * neighbouring corners can snap to different panels, which shaded a smooth
+ * door as if it were dented. Faces turned further than `crease` from the
+ * corner's old normal are left out, so real edges, such as a bonnet's, stay crisp.
+ */
+function smoothNormals(soup, crease) {
+  const limit = Math.cos(crease)
+  const faceNormals = []
+  for (let at = 0; at < soup.indices.length; at += 3) {
+    const [a, b, c] = [0, 1, 2].map((k) => new THREE.Vector3().fromArray(soup.positions, soup.indices[at + k] * 3))
+    // The cross product's length is twice the face's area, which is the weighting wanted.
+    faceNormals.push(new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)))
+  }
+  const sums = Array.from({ length: soup.count }, () => new THREE.Vector3())
+  const old = new THREE.Vector3()
+  const unit = new THREE.Vector3()
+  for (let face = 0; face < faceNormals.length; face++) {
+    unit.copy(faceNormals[face]).normalize()
+    for (let k = 0; k < 3; k++) {
+      const corner = soup.indices[face * 3 + k]
+      old.fromArray(soup.normals, corner * 3).normalize()
+      if (old.dot(unit) >= limit) sums[corner].add(faceNormals[face])
+    }
+  }
+  sums.forEach((sum, corner) => {
+    if (sum.lengthSq() > 0) sum.normalize().toArray(soup.normals, corner * 3)
+  })
+}
+
 function simplify(soup, triangles) {
   const count = soup.count
   const positions = new Float32Array(soup.positions)
@@ -882,6 +920,41 @@ function bakeVehicle(spec, folder) {
   return soup
 }
 
+/**
+ * The bones the script needs, by the name each kind of skeleton gives them. `side` is 'Left' or
+ * 'Right'. Mixamo's names (LeftUpLeg) are the usual. Rigify, as Blender's MB-Lab characters use, calls
+ * them DEF-thigh_L and so on, and moves much of the body with "muscle" bones that hang off the
+ * pelvis and shoulders rather than off the limb, so those are listed as part of each limb too.
+ */
+const RIGS = {
+  mixamo: {
+    upLeg: (side) => `${side}UpLeg`,
+    arm: (side) => `${side}Arm`,
+    foreArm: (side) => `${side}ForeArm`,
+    hand: (side) => `${side}Hand`,
+    foot: (side) => `${side}Foot`,
+    toe: (side) => `${side}ToeBase`,
+    legParts: null,
+    armParts: null,
+  },
+  rigify: {
+    upLeg: (side) => `DEF-thigh_${side[0]}`,
+    arm: (side) => `DEF-upperarm_${side[0]}`,
+    foreArm: (side) => `DEF-lowerarm_${side[0]}`,
+    hand: (side) => `DEF-hand_${side[0]}`,
+    foot: (side) => `DEF-foot_${side[0]}`,
+    toe: (side) => `DEF-toes_${side[0]}`,
+    // Thigh and lower-leg muscles; forearm, biceps and triceps.
+    legParts: (side) => new RegExp(`^DEF-(lgs|lwrl)_muscle_\\d+_${side[0]}(_|$)`),
+    armParts: (side) => new RegExp(`^DEF-(lwrm|bcs|tcs)_muscle_\\d+_${side[0]}(_|$)`),
+  },
+}
+
+/** A bone by its plain name, which an exporter may have prefixed (`mixamorig:`) or numbered (`_57`). */
+function boneNamed(name) {
+  return new RegExp(`(^|:)${name}(_\\d+)?$`)
+}
+
 function findJoint(gltf, skin, pattern) {
   const joint = skin.joints.find((index) => pattern.test(gltf.nodes[index].name ?? ''))
   if (joint === undefined) throw new Error(`No joint matching ${pattern}`)
@@ -897,21 +970,20 @@ function collectDescendants(gltf, root) {
 }
 
 /** Pulls loose cloth in around the body, and brings its top down to the waist. */
-function refitCloth(soup, shares, refit, hipHeight) {
-  if (!refit) return
-
-  const corners = [...shares].filter(([, share]) => share.refits).map(([corner]) => corner)
-  const heights = corners.map((corner) => soup.positions[corner * 3 + 1])
-  const low = Math.min(...heights)
-  const high = Math.max(...heights)
-  const waist = hipHeight + refit.waistAbove
-
-  for (const corner of corners) {
-    const at = corner * 3
-    soup.positions[at] *= refit.squeeze
-    soup.positions[at + 1] = low + ((soup.positions[at + 1] - low) / (high - low)) * (waist - low)
-    soup.positions[at + 2] *= refit.squeeze
-  }
+/**
+ * A straight line from a joint's height to where it is on the mesh, fitted by
+ * least squares to every joint that moves enough of the mesh on its own.
+ */
+function fitJointsToMesh(heldBy, jointHeight) {
+  const pairs = [...heldBy]
+    .filter(([, heights]) => heights.length >= 20)
+    .map(([joint, heights]) => [jointHeight(joint), heights.reduce((sum, y) => sum + y, 0) / heights.length])
+  const count = pairs.length
+  const meanX = pairs.reduce((sum, [x]) => sum + x, 0) / count
+  const meanY = pairs.reduce((sum, [, y]) => sum + y, 0) / count
+  const spread = pairs.reduce((sum, [x]) => sum + (x - meanX) ** 2, 0)
+  const slope = pairs.reduce((sum, [x, y]) => sum + (x - meanX) * (y - meanY), 0) / spread
+  return (y) => meanY + slope * (y - meanX)
 }
 
 function bakePerson(spec, folder) {
@@ -926,9 +998,11 @@ function bakePerson(spec, folder) {
   const inverseBinds = readAccessor(model, skin.inverseBindMatrices)
 
   const worldPoint = (joint) => new THREE.Vector3().setFromMatrixPosition(model.world[joint])
-  const armOf = (side) => findJoint(gltf, skin, new RegExp(`(^|:)${side}Arm(_|$)`))
-  const handOf = (side) => findJoint(gltf, skin, new RegExp(`(^|:)${side}Hand(_|$)`))
-  const legOf = (side) => findJoint(gltf, skin, new RegExp(`(^|:)${side}UpLeg(_|$)`))
+  const rig = RIGS[spec.rig ?? 'mixamo']
+  const bone = (part, side) => findJoint(gltf, skin, boneNamed(rig[part](side)))
+  const armOf = (side) => bone('arm', side)
+  const handOf = (side) => bone('hand', side)
+  const legOf = (side) => bone('upLeg', side)
 
   // Bring each arm down: first turn it at the shoulder, and then at the elbow.
   const posed = model.world.map((matrix) => matrix?.clone())
@@ -951,7 +1025,7 @@ function bakePerson(spec, folder) {
   }
 
   for (const side of spec.keepPose ? [] : ['Left', 'Right']) {
-    const elbow = findJoint(gltf, skin, new RegExp(`(^|:)${side}ForeArm(_|$)`))
+    const elbow = bone('foreArm', side)
     hang(armOf(side), elbow)
     hang(elbow, handOf(side))
   }
@@ -959,14 +1033,22 @@ function bakePerson(spec, folder) {
   const jointMatrices = skin.joints.map((joint, slot) =>
     posed[joint].clone().multiply(new THREE.Matrix4().fromArray(inverseBinds, slot * 16)),
   )
+  // Everything below each hip and shoulder, and any muscle bones the rig hangs elsewhere.
+  const limb = (root, parts) => {
+    const found = collectDescendants(gltf, root)
+    if (parts) for (const joint of skin.joints) if (parts.test(gltf.nodes[joint].name ?? '')) found.add(joint)
+    return found
+  }
   const groups = {
-    leftLeg: collectDescendants(gltf, legOf('Left')),
-    rightLeg: collectDescendants(gltf, legOf('Right')),
-    leftArm: collectDescendants(gltf, armOf('Left')),
-    rightArm: collectDescendants(gltf, armOf('Right')),
+    leftLeg: limb(legOf('Left'), rig.legParts?.('Left')),
+    rightLeg: limb(legOf('Right'), rig.legParts?.('Right')),
+    leftArm: limb(armOf('Left'), rig.armParts?.('Left')),
+    rightArm: limb(armOf('Right'), rig.armParts?.('Right')),
   }
   const shares = new Map()
   const soup = new Soup()
+  // For each joint, the heights of the corners it moves most, to find where the joint is on the mesh.
+  const heldBy = new Map()
 
   for (const { node } of skinned) {
     if (node.skin !== skinIndex) continue
@@ -979,10 +1061,15 @@ function bakePerson(spec, folder) {
       const weights = readAccessor(model, primitive.attributes.WEIGHTS_0)
       const blended = new THREE.Matrix4()
 
+      // Weights are scaled to add up to 1. A few corners in some files have none at all, which would
+      // squash them to nothing (and break the maths), so those simply follow their first bone.
       const matrixOf = (corner) => {
         const out = blended.elements.fill(0)
+        let total = 0
+        for (let slot = 0; slot < 4; slot++) total += weights[corner * 4 + slot]
+        if (total < 1e-6) return blended.copy(jointMatrices[joints[corner * 4]])
         for (let slot = 0; slot < 4; slot++) {
-          const weight = weights[corner * 4 + slot]
+          const weight = weights[corner * 4 + slot] / total
           if (weight === 0) continue
           const elements = jointMatrices[joints[corner * 4 + slot]].elements
           for (let at = 0; at < 16; at++) out[at] += elements[at] * weight
@@ -990,27 +1077,54 @@ function bakePerson(spec, folder) {
         return blended
       }
 
-      const first = addPrimitive(model, soup, primitive, matrixOf, () => ({ color: null, paint: false }))
+      const first = addPrimitive(model, soup, primitive, matrixOf, (name) => ({ color: spec.colors?.[name] ?? null, paint: false }))
       const isClothing = spec.clothes.test(material.name)
-      const looseness = spec.looseCloth?.test(material.name) ? 0.3 : 1
-      const refits = spec.refit?.pattern.test(material.name) ?? false
 
       for (let corner = 0; corner < soup.count - first; corner++) {
-        const share = { leftLeg: 0, rightLeg: 0, leftArm: 0, rightArm: 0, looseness, isClothing, refits }
+        const share = { leftLeg: 0, rightLeg: 0, leftArm: 0, rightArm: 0, isClothing }
+        let strongest = -1
+        let strongestWeight = 0
         for (let slot = 0; slot < 4; slot++) {
           const joint = skin.joints[joints[corner * 4 + slot]]
+          const weight = weights[corner * 4 + slot]
           for (const group of Object.keys(groups)) {
-            if (groups[group].has(joint)) share[group] += weights[corner * 4 + slot]
+            if (groups[group].has(joint)) share[group] += weight
           }
+          if (weight > strongestWeight) [strongest, strongestWeight] = [joint, weight]
         }
         shares.set(first + corner, share)
+        if (strongestWeight > 0.8) {
+          const heights = heldBy.get(strongest) ?? []
+          heights.push(soup.positions[(first + corner) * 3 + 1])
+          heldBy.set(strongest, heights)
+        }
       }
     }
   }
 
+  // Parts that hang rigidly off a bone rather than being skinned to it, such as the kurta man's
+  // hair on his head bone, move with that bone. Without this he came out bald.
+  const isJoint = new Set(skin.joints)
+  const onBone = (index) => {
+    for (let at = model.parents[index]; at !== undefined; at = model.parents[at]) if (isJoint.has(at)) return true
+    return false
+  }
+  gltf.nodes.forEach((node, index) => {
+    if (node.mesh === undefined || node.skin !== undefined || !onBone(index)) return
+    for (const primitive of gltf.meshes[node.mesh].primitives) {
+      const material = gltf.materials[primitive.material]
+      if (spec.dropMaterial?.test(material.name)) continue
+      const first = addPrimitive(model, soup, primitive, () => posed[index], (name) => ({ color: spec.colors?.[name] ?? null, paint: false }))
+      const isClothing = spec.clothes.test(material.name)
+      for (let corner = first; corner < soup.count; corner++) {
+        shares.set(corner, { leftLeg: 0, rightLeg: 0, leftArm: 0, rightArm: 0, isClothing })
+      }
+    }
+  })
+
   // Stand them on the ground at the right height, facing +Z.
-  const foot = worldPoint(findJoint(gltf, skin, /(^|:)LeftFoot(_|$)/))
-  const toe = worldPoint(findJoint(gltf, skin, /(^|:)LeftToeBase(_|$)/))
+  const foot = worldPoint(bone('foot', 'Left'))
+  const toe = worldPoint(bone('toe', 'Left'))
   const facing = Math.atan2(toe.x - foot.x, toe.z - foot.z)
   const box = getBounds(soup)
   const scale = spec.height / box.getSize(new THREE.Vector3()).y
@@ -1021,9 +1135,14 @@ function bakePerson(spec, folder) {
     .multiply(new THREE.Matrix4().makeTranslation(-hips.x, -box.min.y, -hips.z))
   transformSoup(soup, fit)
 
-  const hipHeight = hips.clone().applyMatrix4(fit).y
-  refitCloth(soup, shares, spec.refit, hipHeight)
-  const shoulderHeight = worldPoint(armOf('Left')).applyMatrix4(fit).y
+  // The skeleton and the mesh needn't be at the same scale: the man in the dhoti's skeleton is about
+  // 1.6 times his mesh, so his hips came out at 1.47 m on a 1.72 m man. So the joint heights are taken
+  // onto the mesh by a straight-line fit between each joint's height and the middle height of the
+  // corners it moves most. It's exact where they agree, and corrects them where they don't.
+  const onMesh = fitJointsToMesh(heldBy, (joint) => pointOf(joint).y)
+  const meshHeight = (y) => (onMesh(y) - box.min.y) * scale
+  const hipHeight = meshHeight(hips.y)
+  const shoulderHeight = meshHeight(worldPoint(armOf('Left')).y)
   const leftSide = worldPoint(legOf('Left')).applyMatrix4(fit).x > 0 ? 1 : -1
 
   // The swing the game's walking shader reads: one side forward, the other back.
@@ -1032,7 +1151,7 @@ function bakePerson(spec, folder) {
     const arms = -(share.leftArm - share.rightArm) * leftSide * (spec.armSwing ?? 1)
     const isArm = share.leftArm + share.rightArm > share.leftLeg + share.rightLeg
     const at = corner * 3
-    soup.limbs[at] = (isArm ? arms : legs * share.looseness)
+    soup.limbs[at] = isArm ? arms : legs
     soup.limbs[at + 1] = isArm ? shoulderHeight : hipHeight
     soup.limbs[at + 2] = share.isClothing ? 1 : 0
   }
@@ -1143,6 +1262,7 @@ async function main() {
       if (broken.length) console.log(spec.name, 'has bad numbers in', broken)
       const welded = weld(spec.wrapCell ? shrinkWrap(baked, spec.wrapCell) : baked)
       const { result, error } = simplify(welded, spec.triangles)
+      if (spec.wrapCell) smoothNormals(result, CREASE)
       const size = getBounds(result).getSize(new THREE.Vector3())
       console.log(
         spec.name.padEnd(10),

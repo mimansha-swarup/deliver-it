@@ -6,7 +6,7 @@ import { useGameStore } from '../game/gameStore'
 import { livePlayer } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { getRoadWidth } from './roadData'
-import { PAVEMENT_WIDTH } from './Roads'
+import { PAVEMENT_WIDTH } from './surface'
 import type { MapData } from './mapData'
 import {
   isRingInPlayArea,

@@ -1,4 +1,4 @@
-import { takePreloadedFile } from '../game/preload'
+import { waitForPreloadedMap } from '../game/preload'
 import { classifyBuildings, type BuildingKind } from './buildingKinds'
 import { cutOutRestricted, isRestricted } from './restricted'
 import type { LonLat } from './worldUtils'
@@ -72,8 +72,8 @@ function sortFeatures(features: Feature[]): MapData {
 }
 
 async function fetchMapData(): Promise<MapData> {
-  // The title screen's loader usually has it already. Otherwise, download it here.
-  const preloaded = takePreloadedFile(MAP_URL)
+  // The page's loader is usually downloading it already. Otherwise, download it here.
+  const preloaded = await waitForPreloadedMap()
   let text: string
   if (preloaded) {
     text = new TextDecoder().decode(preloaded)

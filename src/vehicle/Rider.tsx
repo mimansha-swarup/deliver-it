@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
-import { HIP } from './riderShape'
+import { HIP, JOG, type Probe } from './riderShape'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { tuning } from './tuning'
 import { createPrintTexture, SHIRT_COLOR } from './shirtPrint'
@@ -138,16 +138,48 @@ const hip = new THREE.Vector3()
 const foot = new THREE.Vector3()
 const joint = new THREE.Vector3()
 
-/** Off the scooter: how far a walking arm and leg swing, and how a limp body's limbs fall. */
+/** Off the scooter: how far a jogging hand swings forward and back, in metres. */
 const ARM_SWING = 0.22
-const LEG_SWING = 0.3
 const offHand = new THREE.Vector3()
 const limpHand = new THREE.Vector3()
 
+/** The shoulders, from the hips, as they are sitting on the scooter. */
+const SHOULDER_UP = SHOULDER_HEIGHT - HIP.y
+const SHOULDER_FORWARD = SHOULDER_Z - HIP.z
+
+/** Where each foot is in a jog, from `jogFoot`: forward of the hip, height off the ground, and how much weight is on it. */
+type FootStep = { forward: number; lift: number; load: number }
+const leftStep: FootStep = { forward: 0, lift: 0, load: 0 }
+const rightStep: FootStep = { forward: 0, lift: 0, load: 0 }
+
 /**
- * `off` is how far off the scooter the rider is, `limp` how limp, and `stride`
- * their place in a walking step. On the scooter the hands hold the grips. Off
- * it, they swing at the sides while walking, or fling out when limp.
+ * Where a foot is at this point in a jogging stride. For `JOG.stance` of the
+ * stride it's planted, sliding back under the hip as fast as the body runs
+ * forward, so it doesn't skate. Then it lifts and swings through to land in
+ * front again. The right foot is half a stride behind the left.
+ */
+function jogFoot(step: FootStep, stride: number, sign: number) {
+  const turns = stride / (Math.PI * 2) + (sign > 0 ? 0 : 0.5)
+  const phase = turns - Math.floor(turns)
+  if (phase < JOG.stance) {
+    step.forward = JOG.reach * (1 - (2 * phase) / JOG.stance)
+    step.lift = 0
+    step.load = Math.sin((Math.PI * phase) / JOG.stance)
+    return
+  }
+  const swing = (phase - JOG.stance) / (1 - JOG.stance)
+  const eased = swing * swing * (3 - 2 * swing)
+  step.forward = JOG.reach * (2 * eased - 1)
+  step.lift = JOG.footLift * Math.sin(Math.PI * swing)
+  step.load = 0
+}
+
+/**
+ * `off` is how far off the scooter the rider is, `limp` how limp, and `jog` how
+ * much they're jogging. On the scooter the hands hold the grips. Off it, they
+ * hang, pump back and forth against the legs while jogging, or fling out when limp.
+ * `torso` is how far the body leans forward, and `bob` how far the hips have
+ * sunk, which the shoulders follow.
  */
 function placeArm(
   limb: LimbGroup,
@@ -156,12 +188,21 @@ function placeArm(
   crouch: number,
   off: number,
   limp: number,
-  stride: number,
+  jog: number,
+  step: FootStep,
+  torso: number,
+  bob: number,
 ) {
   const { upper, lower, middleJoint, end } = partsOf(limb)
   if (!end) return
 
-  shoulder.set(sign * SHOULDER_WIDTH, SHOULDER_HEIGHT - crouch * 0.08, SHOULDER_Z + crouch * 0.08)
+  // Off the scooter, the shoulders turn with the torso about the hips, from where they are when sitting.
+  const turn = (torso - SIT_LEAN) * off
+  shoulder.set(
+    sign * SHOULDER_WIDTH,
+    HIP.y + bob + SHOULDER_UP * Math.cos(turn) - SHOULDER_FORWARD * Math.sin(turn) - crouch * 0.08,
+    HIP.z + SHOULDER_UP * Math.sin(turn) + SHOULDER_FORWARD * Math.cos(turn) + crouch * 0.08,
+  )
 
   // The grip swings around the steering column as the bars turn.
   const x = sign * GRIP.x
@@ -172,8 +213,14 @@ function placeArm(
   )
 
   if (off > 0) {
-    offHand.set(sign * 0.25, SHOULDER_HEIGHT - 0.62, SHOULDER_Z - Math.sin(stride) * ARM_SWING * sign)
-    limpHand.set(sign * 0.62, SHOULDER_HEIGHT + 0.12, SHOULDER_Z + 0.12 * sign)
+    // Hanging at the side, or, jogging, bent at the elbow and swinging against the leg on the same side.
+    const swing = (-step.forward / JOG.reach) * ARM_SWING
+    offHand.set(
+      sign * (0.25 - 0.04 * jog),
+      shoulder.y - 0.62 + 0.24 * jog,
+      shoulder.z + (0.14 + swing) * jog,
+    )
+    limpHand.set(sign * 0.62, shoulder.y + 0.12, shoulder.z + 0.12 * sign)
     offHand.lerp(limpHand, limp)
     hand.lerp(offHand, off)
   }
@@ -186,11 +233,11 @@ function placeArm(
   end.position.copy(hand)
 }
 
-function placeLeg(limb: LimbGroup, sign: number, footPosition: THREE.Vector3) {
+function placeLeg(limb: LimbGroup, sign: number, footPosition: THREE.Vector3, bob: number) {
   const { upper, lower, middleJoint, end } = partsOf(limb)
   if (!end) return
 
-  hip.set(sign * 0.1, HIP.y, HIP.z)
+  hip.set(sign * 0.1, HIP.y + bob, HIP.z)
   side.set(sign * 0.25, KNEE_BEND.y, KNEE_BEND.z)
   findJoint(joint, hip, footPosition, THIGH, SHIN, side)
   placeLimb(upper, hip, joint)
@@ -202,25 +249,38 @@ function placeLeg(limb: LimbGroup, sign: number, footPosition: THREE.Vector3) {
 const offFoot = new THREE.Vector3()
 const limpFoot = new THREE.Vector3()
 
-/** Moves a foot from the scooter to where it is off it: under the hip while walking, or straight out when limp. */
-function placeOffFoot(footPosition: THREE.Vector3, sign: number, off: number, limp: number, stride: number) {
+/** Moves a foot from the scooter to where it is off it: under the hip standing, in its stride jogging, or straight out when limp. */
+function placeOffFoot(footPosition: THREE.Vector3, sign: number, off: number, limp: number, jog: number, step: FootStep) {
   if (off === 0) return
-  const step = Math.sin(stride) * sign
-  offFoot.set(sign * 0.12, 0.05 + Math.max(0, step) * 0.08, HIP.z + step * LEG_SWING)
+  offFoot.set(sign * 0.12, 0.05 + step.lift * jog, HIP.z + step.forward * jog)
   limpFoot.set(sign * 0.2, 0.02, HIP.z - 0.05)
   offFoot.lerp(limpFoot, limp)
   footPosition.lerp(offFoot, off)
 }
 
-/** The rider. Hands stay on the grips, and a foot comes down when the scooter stops. */
+/** Where the hips, waist, chest and helmet are in the body group. */
+const BODY_PROBE_POINTS = [
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 0.25, 0.05),
+  new THREE.Vector3(0, 0.52, 0.05),
+  new THREE.Vector3(0, 0.72, 0.06),
+]
+
+/**
+ * The rider. Hands stay on the grips, and a foot comes down when the scooter
+ * stops. Each frame it also fills `probes`, in the rider's own space, so the
+ * scooter can keep the body out of the ground when it falls or is thrown.
+ */
 export function Rider({
   scooter,
   steerAngle,
   reflection,
+  probes,
 }: {
   scooter: RefObject<ScooterState>
   steerAngle: number
   reflection: THREE.Texture
+  probes: Probe[]
 }) {
   const body = useRef<THREE.Group>(null)
   const head = useRef<THREE.Group>(null)
@@ -277,25 +337,44 @@ export function Rider({
     const wantsFoot = speed < FOOT_DOWN_SPEED && state.crashLeft === 0 ? 1 : 0
     footDown.current += (wantsFoot - footDown.current) * (1 - Math.exp(-FOOT_RESPONSE * delta))
 
-    const { off, limp, stride } = state.rider
-    placeArm(leftArm, 1, steer, crouch, off, limp, stride)
-    placeArm(rightArm, -1, steer, crouch, off, limp, stride)
-    foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
-    placeOffFoot(foot, 1, off, limp, stride)
-    placeLeg(leftLeg, 1, foot)
-    foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
-    placeOffFoot(foot, -1, off, limp, stride)
-    placeLeg(rightLeg, -1, foot)
+    const { off, limp, stride, pace } = state.rider
+    // Jogging back, the hips sit a little low on bent knees, and sink a little more as each foot lands.
+    const jog = Math.min(1, pace / JOG.speed) * (1 - limp)
+    jogFoot(leftStep, stride, 1)
+    jogFoot(rightStep, stride, -1)
+    const bob = -(JOG.crouch + JOG.sink * Math.max(leftStep.load, rightStep.load)) * jog * off
+    // Leans into a bend harder than the scooter. Off it, they stand up straight, or lean into a jog.
+    const torso = (SIT_LEAN + crouch * 0.16) * (1 - off) + (0.05 + 0.2 * jog) * off
 
-    // Leans into a bend harder than the scooter, and looks where it's going. Off it, they stand up straight.
+    placeArm(leftArm, 1, steer, crouch, off, limp, jog, leftStep, torso, bob)
+    probes[4].point.copy(joint)
+    probes[6].point.copy(hand)
+    placeArm(rightArm, -1, steer, crouch, off, limp, jog, rightStep, torso, bob)
+    probes[5].point.copy(joint)
+    probes[7].point.copy(hand)
+    foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
+    placeOffFoot(foot, 1, off, limp, jog, leftStep)
+    placeLeg(leftLeg, 1, foot, bob)
+    probes[8].point.copy(joint)
+    probes[10].point.copy(foot)
+    foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
+    placeOffFoot(foot, -1, off, limp, jog, rightStep)
+    placeLeg(rightLeg, -1, foot, bob)
+    probes[9].point.copy(joint)
+    probes[11].point.copy(foot)
+
     if (body.current) {
+      body.current.position.y = HIP.y + bob
       body.current.rotation.z = -state.lean * 0.35 * (1 - off)
-      body.current.rotation.x = (SIT_LEAN + crouch * 0.16) * (1 - off) + 0.05 * off
+      body.current.rotation.x = torso
+      body.current.updateMatrix()
+      BODY_PROBE_POINTS.forEach((point, index) => probes[index].point.copy(point).applyMatrix4(body.current!.matrix))
     }
+    // Looks where it's going: the head turns back against the torso's lean, so the eyes stay level.
     if (head.current) {
-      head.current.rotation.y = state.steer * 0.3
-      head.current.rotation.z = state.lean * 0.45
-      head.current.rotation.x = -SIT_LEAN - crouch * 0.18 + 0.08
+      head.current.rotation.y = state.steer * 0.3 * (1 - off)
+      head.current.rotation.z = state.lean * 0.45 * (1 - off)
+      head.current.rotation.x = -torso - crouch * 0.02 * (1 - off) + 0.08
     }
   })
 

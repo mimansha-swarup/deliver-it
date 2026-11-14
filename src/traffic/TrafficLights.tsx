@@ -170,7 +170,7 @@ export function TrafficLights({ world }: { world: TrafficWorld }) {
 
       {/* Basic materials ignore the sun, which is what makes a lamp look lit. */}
       <instancedMesh ref={lamps} args={[undefined, undefined, posts.length * LAMPS_PER_POST]} frustumCulled={false}>
-        <sphereGeometry args={[LAMP_RADIUS, 12, 8]} />
+        <sphereGeometry args={[LAMP_RADIUS, 8, 5]} />
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
 

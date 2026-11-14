@@ -188,9 +188,8 @@ function createKolamTexture(): THREE.CanvasTexture {
 function createKolamGeometries(kolams: Prop[]): THREE.BufferGeometry[] {
   const builder = new QuadBuilder()
   const up = new THREE.Vector3(0, 1, 0)
-  const half = KOLAM_SIZE / 2
-
-  for (const { x, z, rotation, variation } of kolams) {
+  for (const { x, z, rotation, variation, width = KOLAM_SIZE } of kolams) {
+    const half = width / 2
     // Square to the gate: `out` points to the road, `side` runs along the wall.
     const outX = Math.sin(rotation) * half
     const outZ = Math.cos(rotation) * half
