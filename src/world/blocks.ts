@@ -70,6 +70,21 @@ export function pushBlock(
 }
 
 
+/**
+ * One triangle with a normal at each corner, turned round if needed so that it
+ * faces the way its normals point (see Lesson 174).
+ */
+export function pushSmoothTriangle(square: Square, points: THREE.Vector3[], normals: THREE.Vector3[], color: THREE.Color) {
+  const [a, b, c] = points
+  const facing = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).dot(normals[0])
+  const order = facing >= 0 ? [0, 1, 2] : [0, 2, 1]
+  for (const index of order) {
+    square.positions.push(points[index].x, points[index].y, points[index].z)
+    square.normals.push(normals[index].x, normals[index].y, normals[index].z)
+    square.colors.push(color.r, color.g, color.b)
+  }
+}
+
 /** Turns the collected squares into geometries, with normals and colours a byte each. */
 export function toBlockGeometries(squares: Map<number, Square>): THREE.BufferGeometry[] {
   return [...squares.values()].map(({ positions, normals, colors }) => {

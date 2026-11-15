@@ -3,6 +3,7 @@ import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics
 import { applyImpact, getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
 import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import { BREAKER, breakerHeight } from '../world/roadFeatures'
 import type { Prop } from '../world/props'
 import type { RoadGraph } from '../world/roadGraph'
 import { STRIDE_PER_METRE } from './gait'
@@ -114,6 +115,9 @@ export const TRAFFIC_RULES = {
   /** People turn on the spot, this fast, in radians per second, and look this far ahead, in metres. */
   walkTurnRate: 5,
   walkAim: 1.1,
+  /** How fast cars, and then two-wheelers and autos, cross a speed breaker, in m/s. */
+  breakerSpeed: 2.2,
+  breakerSpeedNimble: 3.5,
   /** How hard vehicles brake for a turn, and how fast they take a right-angle turn, in m/s² and m/s. */
   cornerBraking: 2.5,
   cornerSpeed: 4.5,
@@ -383,6 +387,8 @@ export type TrafficWorld = {
   physics: CrashPhysics
   /** Buildings and walls, which driving traffic is kept out of. */
   collisions: CollisionWorld
+  /** For each road lane, where along it its speed breakers are, in metres. */
+  breakers: number[][]
   riderPusher: NonNullable<Tumbler['body']>
   loose: LooseBody[]
   roadLanes: Lane[]
@@ -498,6 +504,7 @@ export function createTrafficWorld(
   collisions: CollisionWorld,
   parked: Prop[],
   physics: CrashPhysics,
+  breakersOnLink: (from: number, to: number) => number[] = () => [],
   random: () => number = Math.random,
 ): TrafficWorld {
   const roadLanes = createLanes(graph, collisions, {
@@ -599,6 +606,7 @@ export function createTrafficWorld(
   return {
     physics,
     collisions,
+    breakers: roadLanes.map((lane) => breakersOnLink(lane.startNode, lane.endNode)),
     riderPusher,
     loose,
     roadLanes,
@@ -823,6 +831,33 @@ function steerAlong(
   const step = distance * pace
   mover.x += Math.sin(mover.heading) * step
   mover.z += Math.cos(mover.heading) * step
+}
+
+/**
+ * How far ahead the next speed breaker is, in metres, on this lane or the next,
+ * measured from the vehicle's middle. Infinity if there's none that close. One
+ * just behind the middle still counts as here, so the vehicle stays slow until
+ * it's over.
+ */
+function breakerAhead(world: TrafficWorld, vehicle: Vehicle, random: () => number): number {
+  const behind = vehicle.halfLength + BREAKER.halfDepth
+  let nearest = Infinity
+  for (const at of world.breakers[vehicle.lane]) {
+    if (at > vehicle.along - behind) nearest = Math.min(nearest, Math.max(0, at - vehicle.along))
+  }
+  if (nearest < Infinity) return nearest
+  const next = pickNext(vehicle, world.roadLanes, random)
+  if (next < 0) return Infinity
+  const toEnd = world.roadLanes[vehicle.lane].length - vehicle.along
+  for (const at of world.breakers[next]) nearest = Math.min(nearest, toEnd + at)
+  return nearest
+}
+
+/** How high a breaker lifts a vehicle here: the hump under its middle, as its wheels straddle it. */
+function breakerLift(world: TrafficWorld, vehicle: Vehicle): number {
+  let lift = 0
+  for (const at of world.breakers[vehicle.lane]) lift = Math.max(lift, breakerHeight(vehicle.along - at))
+  return lift
 }
 
 /** How sharply the path turns where this lane meets the next, in radians, and how far away that is. */
@@ -1116,11 +1151,15 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
         world.signalClock,
       )
   const held = Math.sqrt(2 * rules.signalBraking * toStop)
+  // Slow for a speed breaker ahead, on this lane or the next, and crawl over it.
+  const bump = breakerAhead(world, vehicle, random)
+  const bumpSpeed = vehicle.nimble ? rules.breakerSpeedNimble : rules.breakerSpeed
+  const forBump = Math.sqrt(bumpSpeed * bumpSpeed + 2 * rules.cornerBraking * Math.max(0, bump - vehicle.halfLength))
   // Slow for a sharp turn ahead: a right angle at `cornerSpeed`, gentler bends faster.
   const turn = nextTurn(vehicle, roadLanes, random)
   const bendSpeed = turn.angle < 0.3 ? Infinity : rules.cornerSpeed * Math.max(0.6, (Math.PI / 2 / turn.angle) ** 0.7)
   const forBend = Math.sqrt(bendSpeed * bendSpeed + 2 * rules.cornerBraking * turn.distance)
-  const target = Math.min(free, held, forBend) * vehicle.recovery
+  const target = Math.min(free, held, forBend, forBump) * vehicle.recovery
 
   const rate = target < vehicle.speed ? rules.braking : rules.acceleration
   const change = target - vehicle.speed
@@ -1145,6 +1184,9 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const turnRate = vehicle.speed / (radius * rules.steeringSlack)
   // `shift` moves its line sideways: positive left, negative right. It steers over to it.
   steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift, turnRate, radius, dt, random)
+  // Up and over a breaker. The body rises with the hump under its middle.
+  vehicle.lift = breakerLift(world, vehicle)
+
   // If a tight corner still carries it wide, the wall stops it, rather than it driving through.
   const beforeX = vehicle.x
   const beforeZ = vehicle.z

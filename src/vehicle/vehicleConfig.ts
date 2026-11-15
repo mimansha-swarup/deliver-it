@@ -69,6 +69,22 @@ export const SCOOTER = {
   climbPerMetre: 0.55,
   /** Even at a crawl, a tyre gets up a step this fast, in metres per second. */
   climbAtCrawl: 0.3,
+  /**
+   * The share of a tyre's upward speed, rolling up a hump, that it keeps once over
+   * the top. The suspension soaks up the rest. A breaker at 40 km/h is a small hop.
+   */
+  launchShare: 0.35,
+  /** The most upward speed a tyre leaves the ground with, in m/s: a hop of about 7 cm. A kerb at speed would otherwise throw it 30 cm. */
+  maxLaunch: 1.2,
+  /** Landing faster than this, in m/s, is a jolt. Each jolt takes up to this share of the speed. */
+  joltSpeed: 0.9,
+  landingSpeedLoss: 0.12,
+  /** How wet the ground must be to splash, from 0 to 1, and how fast the scooter must go, in m/s. */
+  splashWetness: 0.25,
+  splashSpeed: 3,
+  /** A puddle takes this share of the tyres' grip, which comes back at this rate, each second. */
+  puddleGripLoss: 0.6,
+  puddleGripReturn: 2.5,
 
   /** The scooter counts as a circle of this radius when it hits things. */
   collisionRadius: 0.6,

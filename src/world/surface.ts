@@ -1,5 +1,6 @@
 import type { LineFeature } from './mapData'
 import { indexRoadPieces, nearestRoadEdge, toRoadPieces, type RoadIndex } from './props'
+import type { RoadFeatures } from './roadFeatures'
 
 /**
  * How high each surface stands, in metres above the soil (y = 0). Roads sit a
@@ -15,25 +16,30 @@ export const KERB = { width: 0.18, height: 0.13 }
 /** The low concrete edge between the pavement and the soil. */
 export const EDGING = { width: 0.12, height: 0.07 }
 
-/** How high the ground is at any point, for wheels and feet to stand on. */
-export type Surface = { heightAt: (x: number, z: number) => number }
+/**
+ * How high the ground is at any point, for wheels and feet to stand on, and how
+ * much of a puddle's hollow is there (see `RoadFeatures.wetAt`).
+ */
+export type Surface = { heightAt: (x: number, z: number) => number; wetAt: (x: number, z: number) => number }
 
 /** A world with no roads: flat soil everywhere. */
-export const FLAT_SURFACE: Surface = { heightAt: () => 0 }
+export const FLAT_SURFACE: Surface = { heightAt: () => 0, wetAt: () => 0 }
 
 /**
  * Works out the surface from the roads alone, the same way `Roads` and `Kerbs`
  * lay them out: road, then kerb, pavement and edging going outwards from its
  * edge. Only the nearest road counts, so where two meet, the junction is open
  * road, as the kerbs leave it. It uses the road grid, so a question looks at a
- * few dozen pieces of road rather than all 9,000.
+ * few dozen pieces of road rather than all 9,000. On the road, speed breakers
+ * raise it and potholes lower it.
  */
-export function createSurface(roads: LineFeature[]): Surface {
+export function createSurface(roads: LineFeature[], features: RoadFeatures): Surface {
   const index: RoadIndex = indexRoadPieces(toRoadPieces(roads))
   return {
+    wetAt: features.wetAt,
     heightAt(x, z) {
       const out = nearestRoadEdge(index, x, z, PAVEMENT_WIDTH + 0.1)
-      if (out <= 0) return ROAD_HEIGHT
+      if (out <= 0) return ROAD_HEIGHT + features.heightAt(x, z)
       if (out < KERB.width) return KERB.height
       if (out < PAVEMENT_WIDTH - EDGING.width) return PAVEMENT_HEIGHT
       if (out < PAVEMENT_WIDTH) return EDGING.height

@@ -15,6 +15,7 @@ export const WORLD_PARTS = {
   restrictedWall: 'The military wall',
   sites: 'Building sites',
   markings: 'Road markings',
+  roadFeatures: 'Speed breakers and potholes',
   buildings: 'Buildings',
   houses: 'Balconies and gates',
   stilts: 'Stilt parking',

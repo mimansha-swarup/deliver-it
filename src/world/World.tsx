@@ -18,6 +18,8 @@ import { addDarkStorePosts, findDarkStore } from './darkStore'
 import { GrassField } from './GrassField'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
+import { placeRoadFeatures } from './roadFeatures'
+import { RoadDetails } from './RoadDetails'
 import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
@@ -88,12 +90,13 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
   const physics = createCrashPhysics(rapier, collisions)
-  const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics)
+  const features = placeRoadFeatures(graph)
+  const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink)
   // After the lanes, as a pole by the kerb would otherwise close the pavement path beside it.
   for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
-  const surface = createSurface(data.roads)
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface }
+  const surface = createSurface(data.roads, features)
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface, features }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -116,7 +119,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface } = getWorld(data, rapier)
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface, features } = getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
   // Each part has its own Suspense boundary, the player and traffic included.
@@ -136,6 +139,7 @@ export function World() {
       <Part name="restrictedWall"><RestrictedWall zones={data.restricted} /></Part>
       <Part name="sites"><ConstructionSites sites={sites} /></Part>
       <Part name="markings"><RoadMarkings roads={data.roads} /></Part>
+      <Part name="roadFeatures"><RoadDetails features={features} /></Part>
       <Part name="buildings"><Buildings buildings={data.buildings} /></Part>
       <Part name="houses"><HouseKitMesh kit={houses} /></Part>
       <Part name="stilts"><StiltParking vehicles={houses.stiltParking} /></Part>

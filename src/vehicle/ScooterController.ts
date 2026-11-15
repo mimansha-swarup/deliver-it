@@ -54,10 +54,21 @@ export type ScooterState = {
   /** Where each tyre meets the ground. See `followGround`. */
   frontWheel: WheelContact
   rearWheel: WheelContact
+  /** Hard landings so far, and how hard the last was, from 0 to 1. `PlayerSounds` thuds for each. */
+  bumpCount: number
+  bump: number
+  /** How much water the tyres are in, eased so the grip comes back over a moment. */
+  puddle: number
+  /** Splashes so far, and how fast the scooter was going through the last, in m/s. `Splashes` throws water for each. */
+  splashCount: number
+  splashSpeed: number
 }
 
-/** A tyre on the ground: how high the ground under it is, as the tyre rides it, in metres, and how fast it's dropping, in m/s. */
-export type WheelContact = { height: number; fall: number }
+/**
+ * A tyre and the ground: how high the tyre's contact point is, in metres, how
+ * fast it's dropping, in m/s (negative is rising), and how wet the ground under it is.
+ */
+export type WheelContact = { height: number; fall: number; wet: number }
 
 /** What the rider is doing after coming off: in the air or sliding, lying still, getting up, walking back, getting on. */
 export type RiderPhase = 'on' | 'thrown' | 'lying' | 'rising' | 'walking' | 'mounting'
@@ -139,8 +150,13 @@ export function createScooterState(): ScooterState {
       ground: ROAD_HEIGHT,
     },
     // It starts on a road.
-    frontWheel: { height: ROAD_HEIGHT, fall: 0 },
-    rearWheel: { height: ROAD_HEIGHT, fall: 0 },
+    frontWheel: { height: ROAD_HEIGHT, fall: 0, wet: 0 },
+    rearWheel: { height: ROAD_HEIGHT, fall: 0, wet: 0 },
+    bumpCount: 0,
+    bump: 0,
+    puddle: 0,
+    splashCount: 0,
+    splashSpeed: 0,
   }
 }
 
@@ -438,7 +454,8 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
     state.driftTime = 0
   }
 
-  const targetGrip = input.handbrake ? SCOOTER.driftGrip : currentGrip()
+  // A tyre in a puddle grips less, for a moment.
+  const targetGrip = (input.handbrake ? SCOOTER.driftGrip : currentGrip()) * (1 - SCOOTER.puddleGripLoss * state.puddle)
   state.grip = moveToward(state.grip, targetGrip, SCOOTER.gripChangeRate * dt)
   state.boostLeft = Math.max(0, state.boostLeft - dt)
 }
@@ -607,32 +624,65 @@ function updatePosition(state: ScooterState, collisions: CollisionWorld, dt: num
 }
 
 /**
- * Moves one tyre's height towards the ground under it. Going up a step, it
- * rolls up over a little forward travel, as a round wheel meets an edge. Going
- * down, it drops under gravity, so riding off a kerb is a small fall and a
- * landing rather than a snap.
+ * Moves one tyre's height towards the ground under it, and returns how fast it
+ * landed, in m/s, if it came down this step (0 otherwise). Going up a step or a
+ * hump, it rolls up over a little forward travel, as a round wheel meets an
+ * edge, and keeps some of that upward speed: off the top of a breaker taken
+ * fast, it leaves the ground for a moment. Going down, it falls under gravity,
+ * so riding off a kerb is a little drop and a landing rather than a snap.
  */
-function followGround(wheel: WheelContact, ground: number, travelled: number, dt: number) {
-  if (ground >= wheel.height) {
-    const climb = Math.max(travelled * SCOOTER.climbPerMetre, SCOOTER.climbAtCrawl * dt)
-    wheel.height = Math.min(ground, wheel.height + climb)
-    wheel.fall = 0
-    return
+function followGround(wheel: WheelContact, ground: number, travelled: number, dt: number): number {
+  if (ground > wheel.height) {
+    const climb = Math.min(ground - wheel.height, Math.max(travelled * SCOOTER.climbPerMetre, SCOOTER.climbAtCrawl * dt))
+    wheel.height += climb
+    // The suspension soaks up most of the push; the rest carries the wheel on upwards.
+    wheel.fall = Math.min(wheel.fall, -Math.min(SCOOTER.maxLaunch, (climb / dt) * SCOOTER.launchShare))
+    return 0
   }
   wheel.fall += 9.81 * dt
-  wheel.height = Math.max(ground, wheel.height - wheel.fall * dt)
-  if (wheel.height === ground) wheel.fall = 0
+  wheel.height -= wheel.fall * dt
+  if (wheel.height > ground) return 0
+  const landing = Math.max(0, wheel.fall)
+  wheel.height = ground
+  wheel.fall = 0
+  return landing
 }
 
-/** Finds the ground under each tyre: road, kerb, pavement or soil. */
-function updateWheelContacts(state: ScooterState, surface: Surface, dt: number) {
+/** Finds the ground under each tyre: road, breaker, pothole, kerb, pavement or soil. Lands hard, and splashes. */
+function updateWheelContacts(state: ScooterState, surface: Surface, wetness: number, dt: number) {
   const forwardX = Math.sin(state.heading)
   const forwardZ = Math.cos(state.heading)
-  const travelled = getTravelSpeed(state) * dt
-  const front = surface.heightAt(state.x + forwardX * SCOOTER.frontAxle, state.z + forwardZ * SCOOTER.frontAxle)
-  const rear = surface.heightAt(state.x + forwardX * SCOOTER.rearAxle, state.z + forwardZ * SCOOTER.rearAxle)
-  followGround(state.frontWheel, front, travelled, dt)
-  followGround(state.rearWheel, rear, travelled, dt)
+  const speed = getTravelSpeed(state)
+  const travelled = speed * dt
+  let landing = 0
+  for (const [wheel, axle] of [[state.frontWheel, SCOOTER.frontAxle], [state.rearWheel, SCOOTER.rearAxle]] as const) {
+    const x = state.x + forwardX * axle
+    const z = state.z + forwardZ * axle
+    landing = Math.max(landing, followGround(wheel, surface.heightAt(x, z), travelled, dt))
+
+    // Into a puddle fast throws up water. It needs rain to have filled it.
+    const wet = surface.wetAt(x, z) * wetness
+    if (wet > SCOOTER.splashWetness && wheel.wet <= SCOOTER.splashWetness && speed > SCOOTER.splashSpeed) {
+      state.splashCount++
+      state.splashSpeed = speed
+    }
+    wheel.wet = wet
+  }
+
+  // A hard landing jolts the camera, thuds, and costs a little speed.
+  if (landing > SCOOTER.joltSpeed && state.crashLeft === 0) {
+    const strength = Math.min(1, (landing - SCOOTER.joltSpeed) / 2)
+    state.bump = strength
+    state.bumpCount++
+    state.impact = Math.max(state.impact, 0.15 + strength * 0.35)
+    const keep = 1 - SCOOTER.landingSpeedLoss * strength
+    state.velocityX *= keep
+    state.velocityZ *= keep
+  }
+
+  // Water under the tyres takes away grip, and it comes back over a moment once they're through.
+  const water = Math.max(state.frontWheel.wet, state.rearWheel.wet)
+  state.puddle = Math.max(water, state.puddle * Math.exp(-SCOOTER.puddleGripReturn * dt))
 }
 
 /** Tilts the body. This changes how it looks, not where it goes. */
@@ -666,6 +716,8 @@ export function stepScooter(
   collisions: CollisionWorld,
   surface: Surface,
   dt: number,
+  /** How full the puddles are, from 0 to 1. See `water` in roadFeatures.ts. */
+  wetness = 0,
 ) {
   const crashed = state.crashLeft > 0
   const controls = crashed ? NO_INPUT : input
@@ -694,6 +746,6 @@ export function stepScooter(
   state.impact *= Math.exp(-5 * dt)
 
   updatePosition(state, collisions, dt)
-  updateWheelContacts(state, surface, dt)
+  updateWheelContacts(state, surface, wetness, dt)
   updateBodyMotion(state, controls, dt)
 }

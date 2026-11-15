@@ -18,6 +18,7 @@ import { PlayerSounds } from '../audio/PlayerSounds'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
+import { Splashes } from './Splashes'
 import { createScooterState } from './ScooterController'
 
 type PlayerProps = {
@@ -43,6 +44,7 @@ export function Player({ store, collisions, graph, traffic, surface }: PlayerPro
       <Headlight scooter={scooterState} />
       <PlayerSounds scooter={scooterState} />
       <SkidMarks scooter={scooterState} />
+      <Splashes scooter={scooterState} />
       {started ? (
         <FollowCamera scooter={scooterState} collisions={collisions} />
       ) : (

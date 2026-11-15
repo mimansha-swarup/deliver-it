@@ -5,7 +5,7 @@ import { liveSky } from '../game/livePlayer'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { tuning } from '../vehicle/tuning'
 import { useDriveInput } from '../vehicle/useDriveInput'
-import { createAmbience, playThud } from './ambience'
+import { createAmbience, playSplash, playThud } from './ambience'
 import { getAudio } from './audioEngine'
 import { createEngineVoice, type EngineVoice } from './engines'
 
@@ -26,6 +26,8 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
   const revs = useRef(0)
   const crashes = useRef(0)
+  const bumps = useRef(0)
+  const splashes = useRef(0)
 
   useEffect(
     () => () => {
@@ -63,6 +65,15 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     if (state.crashCount !== crashes.current) {
       crashes.current = state.crashCount
       playThud(audio.context, audio.sfx, Math.max(0.5, state.impact))
+    }
+    // Landing off a breaker or a kerb: a softer thud than a crash.
+    if (state.bumpCount !== bumps.current) {
+      bumps.current = state.bumpCount
+      playThud(audio.context, audio.sfx, 0.08 + state.bump * 0.3)
+    }
+    if (state.splashCount !== splashes.current) {
+      splashes.current = state.splashCount
+      playSplash(audio.context, audio.sfx, Math.min(1, state.splashSpeed / tuning.maxSpeed))
     }
   })
 

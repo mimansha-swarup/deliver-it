@@ -21,6 +21,7 @@ import {
   TRAFFIC_MODELS_URL,
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
+import { water } from '../world/roadFeatures'
 import type { Surface } from '../world/surface'
 import { Rider, STEERING_Z } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
@@ -323,7 +324,7 @@ export function Scooter({
     if (started) {
       const handingOver = phase === 'collecting' || phase === 'handingOver'
       const controls = handingOver ? HOLD_INPUT : input.current
-      stepScooter(state, controls, collisions, surface, Math.min(delta, MAX_FRAME_TIME))
+      stepScooter(state, controls, collisions, surface, Math.min(delta, MAX_FRAME_TIME), water.level)
     }
 
     if (!ref.current || !terrain.current || !lean.current || !body.current || !riderRoot.current) return

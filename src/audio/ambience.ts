@@ -466,3 +466,21 @@ export function playThud(context: AudioContext, output: AudioNode, strength: num
   crunch.start(time, Math.random() * 0.5)
   crunch.stop(time + 0.5)
 }
+
+/** Water thrown up by a tyre going through a puddle: a hiss of noise, louder the faster it was going. */
+export function playSplash(context: AudioContext, output: AudioNode, strength: number) {
+  const time = context.currentTime + 0.01
+  const spray = context.createBufferSource()
+  spray.buffer = getNoise(context)
+  const filter = context.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.value = 1800 + strength * 1400
+  filter.Q.value = 0.7
+  const level = context.createGain()
+  level.gain.setValueAtTime(0.0001, time)
+  level.gain.exponentialRampToValueAtTime(0.12 + strength * 0.35, time + 0.02)
+  level.gain.exponentialRampToValueAtTime(0.0001, time + 0.35 + strength * 0.25)
+  spray.connect(filter).connect(level).connect(output)
+  spray.start(time, Math.random() * 0.5)
+  spray.stop(time + 0.7)
+}
