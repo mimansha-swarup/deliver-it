@@ -484,10 +484,10 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
     state.steer * turnRate * driftBoost * driftLimit * steeringFade * Math.sign(state.speed) * dt
 }
 
+/** The engine's pull at this speed: strongest from a standstill, falling off evenly towards top speed. */
 function engineForce(speed: number, boosting: boolean): number {
   const ratio = clamp(speed / tuning.maxSpeed, 0, 1)
-  const engine =
-    tuning.acceleration + (tuning.topEndAcceleration - tuning.acceleration) * ratio * ratio
+  const engine = tuning.acceleration + (tuning.topEndAcceleration - tuning.acceleration) * ratio
   return boosting ? engine + SCOOTER.boostAcceleration : engine
 }
 

@@ -27,8 +27,12 @@ export const MISSION_RULES = {
   secondDropMax: 500,
   /** Extra credits for a delivery with no crashes. Crashing never costs anything else. */
   cleanRideCredits: 10,
-  /** The route speed the on-time limit is based on, in metres per second. */
-  onTimeRouteSpeed: 6.7,
+  /**
+   * The route speed the on-time limit is based on, in metres per second. It was
+   * 6.7 until the scooter's pick-up was made gentler and speed breakers arrived,
+   * which both make each stretch between turns a little slower.
+   */
+  onTimeRouteSpeed: 6.3,
   minOnTimeSeconds: 30,
 
   /** A new customer is at least this far from the last one, in metres. */

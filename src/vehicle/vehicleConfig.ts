@@ -4,9 +4,14 @@ import { PLAY_AREA } from '../world/worldUtils'
 export const SCOOTER = {
   maxSpeed: 15.56, // 56 km/h. It was 14, about 50 km/h.
   maxReverseSpeed: 3,
-  /** Engine pull from a standstill, and what's left of it near top speed. */
-  acceleration: 6.5,
-  topEndAcceleration: 1.8,
+  /**
+   * Engine pull from a standstill, and what's left of it near top speed, in m/s².
+   * It tapers evenly in between (see `engineForce`): 40 km/h in about 3 s and
+   * 54 km/h in about 5 s. It was 6.5 and 1.8, tapering late, which reached top
+   * speed in 3.2 s (too quick), then 4 and 1, which took 6.7 s (too slow).
+   */
+  acceleration: 5.25,
+  topEndAcceleration: 1.4,
   reverseAcceleration: 3,
   braking: 11,
   coasting: 1.6,
