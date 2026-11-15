@@ -1,3 +1,5 @@
+import type { OrderStory } from '../missions/orderStory'
+
 /** Each stage of a delivery, in order. */
 export type MissionPhase =
   | 'toPickup'
@@ -50,8 +52,8 @@ export type WaitingCustomer = {
  */
 export type OrderKind = 'standard' | 'rush' | 'double'
 
-/** A customer to deliver to, and the person waiting there. */
-export type Drop = { customer: MissionStop; waiting: WaitingCustomer }
+/** A customer to deliver to, the person waiting there, and what they ordered. */
+export type Drop = { customer: MissionStop; waiting: WaitingCustomer; story: OrderStory }
 
 export type Mission = {
   kind: OrderKind
@@ -60,6 +62,8 @@ export type Mission = {
   /** The customer being delivered to now. */
   customer: MissionStop
   waiting: WaitingCustomer
+  /** Who the order is for and what's in it. */
+  story: OrderStory
   /** Customers still to come after this one, on a double drop. */
   nextDrops: Drop[]
   /** How many customers the order has in all. Each pays the base reward. */
@@ -80,4 +84,11 @@ export type Reward = {
   xp: number
   seconds: number
   onTime: boolean
+  /** The last customer's rating, from 1 to 5, and their tip, which is always extra. */
+  stars: number
+  tipCredits: number
+  /** Why stars were lost, and what the customer said. */
+  starsLost: string[]
+  reaction: string
+  customer: string
 }

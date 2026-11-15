@@ -12,6 +12,7 @@ import {
 } from './garage'
 import { persist } from 'zustand/middleware'
 import { calculateReward } from '../missions/missionLogic'
+import { RATINGS_KEPT } from '../missions/orderStory'
 import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
 import type { WeatherName } from '../sky/skyLogic'
@@ -40,6 +41,9 @@ type Telemetry = {
   inZone: boolean
   drifting: boolean
   boosting: boolean
+  /** The nitro tank, from 0 to 1, and whether it's burning. */
+  nitro: number
+  nitroOn: boolean
   crashed: boolean
   /** Stopped by the dark store, where the Garage opens. */
   atStore: boolean
@@ -65,6 +69,11 @@ type GameState = Telemetry & {
   pendingReward: Reward | null
   /** Crashes on the current delivery. */
   crashes: number
+  /** Hard landings with the current customer's order on board. Fragile items mind them. */
+  knocks: number
+  /** The rider's recent star ratings, newest last, and how many 5-star deliveries in a row. */
+  ratings: number[]
+  fiveStarStreak: number
   /** The time of day in the game, as shown on the phone. */
   skyTime: string
   weather: WeatherName
@@ -99,6 +108,8 @@ type GameState = Telemetry & {
   setTelemetry: (telemetry: Telemetry) => void
   setSky: (skyTime: string, weather: WeatherName, night: boolean) => void
   recordCrash: () => void
+  /** Counts a hard landing while an order is on board. */
+  recordKnock: () => void
   /** Moves the radio one station along, forwards (1) or back (-1). */
   changeStation: (direction: 1 | -1) => void
   setMusicOn: (on: boolean) => void
@@ -202,8 +213,13 @@ export const useGameStore = create<GameState>()(
       inZone: false,
       drifting: false,
       boosting: false,
+      nitro: 0,
+      nitroOn: false,
       crashed: false,
       crashes: 0,
+      knocks: 0,
+      ratings: [],
+      fiveStarStreak: 0,
 
       started: false,
       loading: { loadedKb: 0, totalKb: TOTAL_KB, stage: 'downloading', mapReady: false },
@@ -265,7 +281,12 @@ export const useGameStore = create<GameState>()(
           const nightPay = state.night && levelFromXp(state.xp) >= UNLOCK_LEVELS.nightPay
           return {
             phase: 'handingOver',
-            pendingReward: calculateReward(seconds, state.mission, state.crashes, nightPay),
+            pendingReward: calculateReward(seconds, state.mission, {
+              crashes: state.crashes,
+              knocks: state.knocks,
+              streak: state.fiveStarStreak,
+              nightPay,
+            }),
           }
         }),
 
@@ -278,7 +299,9 @@ export const useGameStore = create<GameState>()(
           if (state.phase === 'handingOver' && state.mission && next) {
             return {
               phase: 'toCustomer',
-              mission: { ...state.mission, customer: next.customer, waiting: next.waiting, nextDrops: rest },
+              mission: { ...state.mission, customer: next.customer, waiting: next.waiting, story: next.story, nextDrops: rest },
+              // Each customer's order is its own: bumps with the first don't count against the next.
+              knocks: 0,
             }
           }
 
@@ -293,7 +316,8 @@ export const useGameStore = create<GameState>()(
               reward.distanceCredits +
               reward.onTimeCredits +
               reward.cleanRideCredits +
-              reward.nightCredits,
+              reward.nightCredits +
+              reward.tipCredits,
             xp: state.xp + reward.xp,
           }
           // The delivery also counts towards the career and today's shift, which may pay more.
@@ -317,6 +341,8 @@ export const useGameStore = create<GameState>()(
                 ? { level: levelAfter, unlocks: unlocksBetween(levelBefore, levelAfter) }
                 : null,
             pendingReward: null,
+            ratings: [...state.ratings, reward.stars].slice(-RATINGS_KEPT),
+            fiveStarStreak: reward.stars === 5 ? state.fiveStarStreak + 1 : 0,
             credits: after.credits,
             xp: after.xp,
           }
@@ -330,6 +356,7 @@ export const useGameStore = create<GameState>()(
       lastLevelUp: null,
       seconds: 0,
       crashes: 0,
+      knocks: 0,
       // The next delivery starts wherever the rider is.
       mission: state.planner?.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp)) ?? state.mission,
     })),
@@ -337,6 +364,7 @@ export const useGameStore = create<GameState>()(
   setTelemetry: (telemetry) => set(telemetry),
   setSky: (skyTime, weather, night) => set({ skyTime, weather, night }),
   recordCrash: () => set((state) => ({ crashes: state.crashes + 1 })),
+  recordKnock: () => set((state) => ({ knocks: state.knocks + 1 })),
   changeStation: (direction) =>
     set((state) => {
       const index = STATIONS.findIndex(({ id }) => id === state.stationId)
@@ -389,6 +417,8 @@ export const useGameStore = create<GameState>()(
         daily: state.daily,
         streak: state.streak,
         messages: state.messages,
+        ratings: state.ratings,
+        fiveStarStreak: state.fiveStarStreak,
       }),
     },
   ),

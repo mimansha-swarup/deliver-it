@@ -16,9 +16,9 @@ const KEYBOARD_CONTROLS = [
 
 /** Screenshots from the game itself, shown one after another behind the title. */
 const SCREENSHOTS = [
-  { src: '/title/night-rain.jpg', caption: 'After dark, in the rain' },
-  { src: '/title/jacaranda-street.jpg', caption: 'Jacaranda season' },
-  { src: '/title/riding-out.jpg', caption: 'Out on a delivery' },
+  { src: '/title/shop-street-morning.jpg', caption: 'Morning on 27th Main Road' },
+  { src: '/title/nitro-night-rain.jpg', caption: 'Nitro through the rain, after dark' },
+  { src: '/title/midday-handover.jpg', caption: 'A happy customer' },
 ]
 /** How long each screenshot stays, in milliseconds. */
 const SCREENSHOT_TIME = 7000

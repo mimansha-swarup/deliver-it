@@ -28,6 +28,7 @@ import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
 import { HOLD_INPUT, stepScooter, type ScooterState } from './ScooterController'
 import { useDriveInput } from './useDriveInput'
+import { NitroFlame } from './NitroFlame'
 
 /** Longest a single frame may count for, so a paused tab can't cause a huge jump. */
 const MAX_FRAME_TIME = 0.05
@@ -392,6 +393,7 @@ export function Scooter({
               <mesh position={[0, 0.72, -0.9]} material={materials.tail}>
                 <boxGeometry args={[0.16, 0.05, 0.03]} />
               </mesh>
+              <NitroFlame scooter={scooterState} />
               <group ref={steering} position={[0, 0, STEERING_Z]}>
                 <group position={[0, 0, -STEERING_Z]}>
                   <mesh geometry={parts.front} material={materials.bike} />

@@ -10,6 +10,8 @@ export type DriveInput = {
   left: boolean
   right: boolean
   handbrake: boolean
+  /** Shift: burn nitro while the throttle is held. */
+  nitro: boolean
 }
 
 export type ScooterState = {
@@ -33,6 +35,9 @@ export type ScooterState = {
   driftTime: number
   /** Seconds of boost remaining. */
   boostLeft: number
+  /** How full the nitro tank is, from 0 to 1, and whether it's burning. */
+  nitro: number
+  nitroOn: boolean
   /** Tilt in radians. Positive leans left. */
   lean: number
   /** Nose movement in radians. Positive dips the nose. */
@@ -119,6 +124,8 @@ export function createScooterState(): ScooterState {
     drifting: false,
     driftTime: 0,
     boostLeft: 0,
+    nitro: SCOOTER.nitroStart,
+    nitroOn: false,
     lean: 0,
     pitch: 0,
     wheelSpin: 0,
@@ -167,6 +174,7 @@ export const HOLD_INPUT: DriveInput = {
   left: false,
   right: false,
   handbrake: true,
+  nitro: false,
 }
 
 const NO_INPUT: DriveInput = {
@@ -175,6 +183,7 @@ const NO_INPUT: DriveInput = {
   left: false,
   right: false,
   handbrake: false,
+  nitro: false,
 }
 
 /** The rider's hips, sitting or standing, and lying flat on the ground, in metres up. */
@@ -365,6 +374,7 @@ function startCrash(state: ScooterState, side: number, strength: number, travelX
   state.spin = state.crashSide * Math.min(strength * 0.5, 5)
   state.drifting = false
   state.boostLeft = 0
+  state.nitroOn = false
   if (Math.hypot(travelX, travelZ) > SCOOTER.throwOffSpeed) throwRiderOff(state, travelX, travelZ)
 }
 
@@ -449,6 +459,7 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
     // A boost is earned by letting go. Scrubbing off all your speed earns nothing.
     if (!input.handbrake && state.driftTime >= SCOOTER.boostChargeTime) {
       state.boostLeft = SCOOTER.boostTime
+      state.nitro = Math.min(1, state.nitro + SCOOTER.nitroFromBoost)
     }
     state.drifting = false
     state.driftTime = 0
@@ -484,11 +495,35 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
     state.steer * turnRate * driftBoost * driftLimit * steeringFade * Math.sign(state.speed) * dt
 }
 
-/** The engine's pull at this speed: strongest from a standstill, falling off evenly towards top speed. */
-function engineForce(speed: number, boosting: boolean): number {
+/**
+ * Burns nitro while Shift and the throttle are held, and fills the tank while
+ * riding: faster the nearer top speed. Starting needs a little in the tank, so
+ * a nearly empty one doesn't flicker on and off.
+ */
+function updateNitro(state: ScooterState, input: DriveInput, dt: number) {
+  const wanted = input.nitro && input.forward && !input.handbrake && state.speed > 0
+  if (!wanted) state.nitroOn = false
+  else if (!state.nitroOn && state.nitro >= SCOOTER.nitroMinToStart) state.nitroOn = true
+
+  if (state.nitroOn) {
+    state.nitro = Math.max(0, state.nitro - dt / SCOOTER.nitroBurnTime)
+    if (state.nitro === 0) state.nitroOn = false
+  } else if (state.speed > 0) {
+    const ratio = clamp(state.speed / tuning.maxSpeed, 0, 1)
+    state.nitro = Math.min(1, state.nitro + (ratio * ratio * dt) / SCOOTER.nitroFillTime)
+  }
+}
+
+/** How far a drift boost and nitro lift the speed limit, together. */
+function speedLimit(state: ScooterState): number {
+  return tuning.maxSpeed + (state.boostLeft > 0 ? SCOOTER.boostSpeed : 0) + (state.nitroOn ? SCOOTER.nitroSpeed : 0)
+}
+
+/** The engine's pull at this speed: strongest from a standstill, falling off evenly towards top speed. Boosts add to it. */
+function engineForce(speed: number, state: ScooterState): number {
   const ratio = clamp(speed / tuning.maxSpeed, 0, 1)
   const engine = tuning.acceleration + (tuning.topEndAcceleration - tuning.acceleration) * ratio
-  return boosting ? engine + SCOOTER.boostAcceleration : engine
+  return engine + (state.boostLeft > 0 ? SCOOTER.boostAcceleration : 0) + (state.nitroOn ? SCOOTER.nitroAcceleration : 0)
 }
 
 /**
@@ -501,8 +536,7 @@ const STOPPED_SPEED = 0.05
 
 /** Returns the new speed along the scooter's direction. */
 function applyControls(speed: number, state: ScooterState, input: DriveInput, dt: number): number {
-  const boosting = state.boostLeft > 0
-  const limit = tuning.maxSpeed + (boosting ? SCOOTER.boostSpeed : 0)
+  const limit = speedLimit(state)
 
   if (input.handbrake) {
     const drag = input.forward ? SCOOTER.powerSlideDrag : SCOOTER.handbrake
@@ -511,13 +545,14 @@ function applyControls(speed: number, state: ScooterState, input: DriveInput, dt
   if (input.forward) {
     if (speed < -STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
     if (speed > limit) return moveToward(speed, limit, SCOOTER.overspeedDrag * dt)
-    return moveToward(speed, limit, engineForce(speed, boosting) * dt)
+    return moveToward(speed, limit, engineForce(speed, state) * dt)
   }
   if (input.backward) {
     if (speed > STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
     return moveToward(speed, -SCOOTER.maxReverseSpeed, SCOOTER.reverseAcceleration * dt)
   }
-  return moveToward(speed, 0, (speed > limit ? SCOOTER.overspeedDrag : SCOOTER.coasting) * dt)
+  // Off the throttle, it coasts down as usual, whatever the speed.
+  return moveToward(speed, 0, SCOOTER.coasting * dt)
 }
 
 /**
@@ -546,7 +581,7 @@ function updateVelocity(state: ScooterState, input: DriveInput, dt: number) {
       ? SCOOTER.powerSlideRecovery
       : 0
     : SCOOTER.slideRecovery
-  const limit = tuning.maxSpeed + (state.boostLeft > 0 ? SCOOTER.boostSpeed : 0)
+  const limit = speedLimit(state)
   if (nextSpeed > 0 && nextSpeed < limit) {
     const recovered = nextSpeed + (Math.abs(slip) - Math.abs(nextSlip)) * recovery
     nextSpeed = Math.min(recovered, limit)
@@ -723,6 +758,7 @@ export function stepScooter(
   const controls = crashed ? NO_INPUT : input
 
   updateDrift(state, controls, dt)
+  updateNitro(state, controls, dt)
   updateSteering(state, controls, dt)
   updateVelocity(state, controls, dt)
 

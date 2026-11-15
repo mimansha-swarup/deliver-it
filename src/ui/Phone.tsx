@@ -1,9 +1,10 @@
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
 import { levelFromXp, levelProgress, UNLOCK_LEVELS } from '../game/progression'
 import { MISSION_RULES } from '../game/missionConfig'
 import { getCurrentStop } from '../missions/missionLogic'
+import { averageRating, CARE_HINTS, TOP_TIP, type Care } from '../missions/orderStory'
 import { WEATHERS, type WeatherName } from '../sky/skyLogic'
 import { CareerSheet, TodaySheet } from './CareerSheets'
 import { Garage } from './Garage'
@@ -130,6 +131,36 @@ function Route({ mission, phase }: { mission: Mission; phase: MissionPhase }) {
   )
 }
 
+const CARE_LABELS: Record<Care, string> = { none: '', fragile: 'Fragile', event: 'Event' }
+
+/** What's in the order and who it's for. Raised, it adds the customer's note and how to carry it. */
+function OrderItem({ mission, raised }: { mission: Mission; raised: boolean }) {
+  const knocks = useGameStore((state) => state.knocks)
+  const phase = useGameStore((state) => state.phase)
+  const { item, customer, care, note } = mission.story
+  const onBoard = phase === 'toCustomer'
+
+  return (
+    <>
+      <p className="phone-item">
+        {item} for {customer}
+        {care !== 'none' && <span className={`phone-care phone-care-${care}`}>{CARE_LABELS[care]}</span>}
+        {care === 'fragile' && onBoard && knocks > 0 && (
+          <span className="phone-knocks">
+            {knocks} bump{knocks > 1 ? 's' : ''}
+          </span>
+        )}
+      </p>
+      {raised && (
+        <>
+          <p className="phone-note">“{note}”</p>
+          {care !== 'none' && <p className="phone-care-hint">{CARE_HINTS[care]}</p>}
+        </>
+      )}
+    </>
+  )
+}
+
 const KIND_LABELS: Record<OrderKind, string> = { standard: '', rush: 'Rush', double: 'Double drop' }
 
 /** Your level, and how far through it you are. */
@@ -158,6 +189,8 @@ function Earnings({ mission }: { mission: Mission }) {
   const guaranteed = rules.baseCredits * mission.dropCount + mission.tier.extraCredits
   const onTimeBonus = rules.onTimeCredits + (mission.kind === 'rush' ? rules.rushExtraCredits : 0)
   const nightUnlocked = levelFromXp(xp) >= UNLOCK_LEVELS.nightPay
+  const ratings = useGameStore((state) => state.ratings)
+  const rating = averageRating(ratings)
 
   return (
     <>
@@ -168,6 +201,8 @@ function Earnings({ mission }: { mission: Mission }) {
         <dd>+{onTimeBonus}</dd>
         <dt>Clean ride bonus</dt>
         <dd>{crashes === 0 ? `+${rules.cleanRideCredits}` : 'Missed'}</dd>
+        <dt>Customer's tip</dt>
+        <dd>Up to +{TOP_TIP} for 5★</dd>
         {nightUnlocked && (
           <>
             <dt>Night shift</dt>
@@ -177,6 +212,7 @@ function Earnings({ mission }: { mission: Mission }) {
       </dl>
       <p className="phone-wallet">
         <span>{credits} credits</span>
+        {rating !== null && <span className="phone-rating">★ {rating.toFixed(1)}</span>}
       </p>
       <LevelBar />
     </>
@@ -240,7 +276,9 @@ function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: (
   const distance = useGameStore((state) => state.distance)
   const inZone = useGameStore((state) => state.inZone)
 
-  const stop = getCurrentStop(mission, phase)
+  // While a parcel changes hands, the sheet shows the order and the customer it's going to.
+  const handingOff = phase === 'collecting' || phase === 'handingOver'
+  const stop = getCurrentStop(mission, phase) ?? (handingOff && mission ? mission.customer : null)
 
   if (!mission || !stop) {
     return (
@@ -255,7 +293,7 @@ function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: (
     <section className="phone-sheet">
       <p className="phone-sheet-top">
         <span className="phone-objective" style={{ color: stop.color }}>
-          {phase === 'toPickup' ? 'Pick up' : 'Drop off'}
+          {handingOff ? SHEET_MESSAGES[phase] : phase === 'toPickup' ? 'Pick up' : 'Drop off'}
           {phase !== 'toPickup' &&
             mission.dropCount > 1 &&
             ` ${mission.dropCount - mission.nextDrops.length}/${mission.dropCount}`}
@@ -264,7 +302,8 @@ function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: (
         <Timer />
       </p>
       <p className="phone-stop">{stop.name}</p>
-      <p className="phone-distance">{inZone ? stop.arrivalHint : `${distance} m by road`}</p>
+      <OrderItem mission={mission} raised={raised} />
+      {!handingOff && <p className="phone-distance">{inZone ? stop.arrivalHint : `${distance} m by road`}</p>}
 
       {raised && (
         <>
@@ -292,10 +331,34 @@ export function Phone() {
   const atStore = useGameStore((state) => state.atStore)
   // The Garage shows only on the raised phone at the dark store, so riding off or putting the phone away closes it.
   const garageOpen = garageWanted && raised && atStore
+  /** Whether the phone is up because a handover raised it, rather than the rider. */
+  const autoRaised = useRef(false)
+
+  // The phone comes up by itself while a parcel changes hands (the handover animation),
+  // showing the order, and goes down as soon as it's done. Raising or lowering it by hand
+  // leaves it to the rider.
+  useEffect(
+    () =>
+      useGameStore.subscribe((state, previous) => {
+        if (state.phase === previous.phase) return
+        const handingOff = (phase: MissionPhase) => phase === 'collecting' || phase === 'handingOver'
+        if (handingOff(state.phase)) {
+          autoRaised.current = true
+          setRaised(true)
+          setTab('order')
+          setGarageWanted(false)
+        } else if (handingOff(previous.phase) && autoRaised.current) {
+          autoRaised.current = false
+          setRaised(false)
+        }
+      }),
+    [],
+  )
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.code !== PHONE_KEY || event.repeat) return
+      autoRaised.current = false
       setRaised((value) => !value)
       setGarageWanted(false)
     }
@@ -335,6 +398,7 @@ export function Phone() {
             className="phone-toggle"
             aria-expanded={raised}
             onClick={(event) => {
+              autoRaised.current = false
               setRaised((value) => !value)
               setGarageWanted(false)
               // Gives the keyboard back to the game, so Space doesn't press this button.

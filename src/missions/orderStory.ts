@@ -1,0 +1,156 @@
+/**
+ * Who an order is for, what's in it, and how they feel when it arrives. The
+ * dark store is a fashion one: clothes, shoes and accessories, delivered fast.
+ * The base reward never depends on any of this: the rating only decides the
+ * tip, which is always extra. Every name here is made up, and so is every item:
+ * no real brand appears.
+ */
+
+/**
+ * How an item wants to be carried. A fragile one minds bumps (speed breakers
+ * and potholes taken fast). One for an event (a wedding, an interview, a
+ * party) minds the clock.
+ */
+export type Care = 'none' | 'fragile' | 'event'
+
+export type OrderStory = {
+  customer: string
+  item: string
+  care: Care
+  /** What the customer wrote when they ordered. */
+  note: string
+}
+
+type Item = { item: string; care: Care; note: string }
+
+const ITEMS: Item[] = [
+  { item: 'A bottle of perfume', care: 'fragile', note: "It's a gift, and it's glass! Gently over the humps please." },
+  { item: 'Glass bangles', care: 'fragile', note: 'Two dozen glass bangles for the function. Handle with care, maga.' },
+  { item: 'A pair of sunglasses', care: 'fragile', note: 'New sunglasses. Please no jumping over the breakers!' },
+  { item: 'A gift-wrapped watch', care: 'fragile', note: "It's for my husband's birthday. Don't shake it too much!" },
+  { item: 'A silk saree', care: 'event', note: "My cousin's wedding starts at 7. I need it before that!" },
+  { item: 'A formal blazer', care: 'event', note: 'Interview in an hour and my blazer has a stain. Please hurry!' },
+  { item: 'A party dress', care: 'event', note: "Office party tonight and I've nothing to wear. Bega banni!" },
+  { item: 'A sherwani', care: 'event', note: "Sangeet is tonight. I'm the groom's brother, I can't be late!" },
+  { item: 'White sneakers', care: 'none', note: "Size 9. I'll try them on at the gate, wait two minutes na." },
+  { item: 'An oversized tee', care: 'none', note: 'Black, size L. Thank you!' },
+  { item: 'A cotton kurta', care: 'none', note: "For the pooja tomorrow. Ring twice, the bell's a bit weak." },
+  { item: 'Jeans to try on', care: 'none', note: 'Try and buy. If they fit, I keep both pairs!' },
+  { item: 'Silver jhumkas', care: 'none', note: 'To match my new saree. Thank you!' },
+  { item: 'A hoodie', care: 'none', note: 'It got cold all of a sudden. Grey one please.' },
+  { item: 'Running shoes', care: 'none', note: 'Starting my 5K training tomorrow morning!' },
+  { item: 'A leather handbag', care: 'none', note: "Bruno will bark at the gate. He's friendly!" },
+]
+
+const CUSTOMERS = [
+  'Priya',
+  'Arjun',
+  'Lakshmi aunty',
+  'Rahul',
+  'Divya',
+  'Manju',
+  'Suresh uncle',
+  'Ayesha',
+  'Karthik',
+  'Nandini',
+  'Farhan',
+  'Meera',
+  'Vikram',
+  'Shwetha',
+  'Joseph',
+  'Ananya',
+]
+
+const pick = <T>(items: T[], random: () => number): T => items[Math.floor(random() * items.length)]
+
+export function createOrderStory(random: () => number): OrderStory {
+  const { item, care, note } = pick(ITEMS, random)
+  return { customer: pick(CUSTOMERS, random), item, care, note }
+}
+
+/** What carrying an item needs, said on the phone while it's on board. */
+export const CARE_HINTS: Record<Care, string> = {
+  none: '',
+  fragile: 'Fragile: take breakers and potholes slowly',
+  event: 'For an event: arrive on time',
+}
+
+/** Tips by star rating, from 0 to 5 stars. */
+const TIPS = [0, 0, 0, 5, 15, 30]
+/** A 5-star tip, before any streak. */
+export const TOP_TIP = TIPS[5]
+/** Each 5-star delivery in a row after the first adds this to the tip, up to `STREAK_TIP_MAX`. */
+const STREAK_TIP = 5
+const STREAK_TIP_MAX = 25
+
+/** Over this share of the time limit counts as very late. */
+const VERY_LATE = 1.5
+
+export type Rating = {
+  stars: number
+  tip: number
+  /** Why stars were lost, in a few words each, so the rider learns what customers like. */
+  lost: string[]
+  /** What the customer says. */
+  reaction: string
+}
+
+type RatingInput = {
+  story: OrderStory
+  seconds: number
+  onTimeSeconds: number
+  crashes: number
+  /** Hard landings while the order was on board. */
+  knocks: number
+  /** 5-star deliveries in a row before this one. */
+  streak: number
+}
+
+/**
+ * Starts at 5 stars and takes off for lateness, crashes, and the item's own
+ * needs. Never below 1. The tip follows the stars.
+ */
+export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak }: RatingInput): Rating {
+  let stars = 5
+  const lost: string[] = []
+  const take = (count: number, reason: string) => {
+    if (count <= 0) return
+    stars -= count
+    lost.push(`${reason} −${count}★`)
+  }
+
+  const late = seconds > onTimeSeconds
+  take(seconds > onTimeSeconds * VERY_LATE ? 2 : late ? 1 : 0, 'Late')
+  take(Math.min(2, crashes), crashes === 1 ? '1 crash' : `${crashes} crashes`)
+  // One bump is forgiven: HSR has a lot of breakers.
+  if (story.care === 'fragile') take(knocks >= 4 ? 2 : knocks >= 2 ? 1 : 0, `${knocks} bumps`)
+  if (story.care === 'event') take(late ? 1 : 0, 'Nearly missed the event')
+  stars = Math.max(1, stars)
+
+  const streakTip = stars === 5 ? Math.min(STREAK_TIP_MAX, streak * STREAK_TIP) : 0
+  return { stars, tip: TIPS[stars] + streakTip, lost, reaction: reactionFor(story, stars, late, knocks, crashes) }
+}
+
+function reactionFor(story: OrderStory, stars: number, late: boolean, knocks: number, crashes: number): string {
+  if (stars === 5) {
+    if (story.care === 'fragile') return 'Perfect, not a scratch on it. Thank you so much!'
+    if (story.care === 'event') return 'Just in time! I look sakkath, thank you!'
+    return 'Super fast! Sakkath, thank you!'
+  }
+  if (stars === 1) return 'Finally! I was waiting so long.'
+  // The customer talks about whatever they noticed most.
+  if (story.care === 'event' && late) return stars === 4 ? 'I had to rush to get ready, but okay. Thanks!' : 'I nearly missed it! Next time faster, okay?'
+  if (story.care === 'fragile' && knocks >= 2) return stars === 4 ? 'Bit bumpy, but it looks fine. Thanks!' : 'Quite a bumpy ride, no? But okay, thanks.'
+  if (crashes > 0) return 'I heard you had a fall! Are you okay? Thanks for still coming.'
+  if (late) return stars === 4 ? 'Bit late, but no problem. Thanks!' : 'Took quite long, no? Okay, thanks.'
+  return 'Thank you! All good.'
+}
+
+/** The last ratings kept for the rider's average, like a delivery app's. */
+export const RATINGS_KEPT = 20
+
+/** The rider's rating: the average of their recent deliveries, or null before the first. */
+export function averageRating(ratings: number[]): number | null {
+  if (ratings.length === 0) return null
+  return ratings.reduce((sum, stars) => sum + stars, 0) / ratings.length
+}

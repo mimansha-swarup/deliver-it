@@ -10,6 +10,7 @@ import {
   type RouteField,
 } from '../world/roadGraph'
 import { isInsideBounds } from '../world/worldUtils'
+import { createOrderStory, type OrderStory } from './orderStory'
 
 export type MissionPlanner = {
   collisions: CollisionWorld
@@ -112,11 +113,11 @@ export function createMissionPlanner(
     return { x: graph.xs[node], z: graph.zs[node], rotation: 0, look: random(), tint: random() }
   }
 
-  const customerStop = (node: number) => {
+  const customerStop = (node: number, story: OrderStory) => {
     const road = graph.roadNames[node]
     return createStop(
       node,
-      road ? `Customer on ${road}` : 'The customer',
+      road ? `${story.customer} on ${road}` : story.customer,
       'Deliver the order',
       'Slow down to deliver',
       MISSION_RULES.customerColor,
@@ -160,8 +161,13 @@ export function createMissionPlanner(
     let kind = rollKind(level, random)
     const second = kind === 'double' ? findSecondDrop(customer) : null
     if (kind === 'double' && second === null) kind = 'standard'
+    const story = createOrderStory(random)
+    let secondStory = createOrderStory(random)
+    if (secondStory.customer === story.customer) secondStory = createOrderStory(random)
     const nextDrops: Drop[] =
-      second === null ? [] : [{ customer: customerStop(second), waiting: findWaitingSpot(second) }]
+      second === null
+        ? []
+        : [{ customer: customerStop(second, secondStory), waiting: findWaitingSpot(second), story: secondStory }]
     lastCustomer = second ?? customer
 
     let routeLength = fromStore.distance[start] + fromStore.distance[customer]
@@ -183,8 +189,9 @@ export function createMissionPlanner(
         'Slow down to collect',
         MISSION_RULES.pickupColor,
       ),
-      customer: customerStop(customer),
+      customer: customerStop(customer, story),
       waiting: findWaitingSpot(customer),
+      story,
       onTimeSeconds: kind === 'rush' ? Math.ceil(normalTime * MISSION_RULES.rushTimeShare) : normalTime,
     }
   }

@@ -332,7 +332,7 @@ export function Rider({
     const state = scooter.current
     const speed = getTravelSpeed(state)
     const steer = state.steer * steerAngle
-    const crouch = Math.min(speed / tuning.maxSpeed, 1) * (state.boostLeft > 0 ? 1 : 0.45)
+    const crouch = Math.min(speed / tuning.maxSpeed, 1) * (state.boostLeft > 0 || state.nitroOn ? 1 : 0.45)
 
     const wantsFoot = speed < FOOT_DOWN_SPEED && state.crashLeft === 0 ? 1 : 0
     footDown.current += (wantsFoot - footDown.current) * (1 - Math.exp(-FOOT_RESPONSE * delta))

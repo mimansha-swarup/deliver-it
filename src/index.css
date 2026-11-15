@@ -128,6 +128,92 @@ body,
   font-weight: 500;
 }
 
+/* A bump with a fragile order on board: amber, as nothing is broken, only noticed. */
+.hud-knock {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 16px;
+  border-radius: 8px;
+  color: #2a1a00;
+  background: rgb(255 176 46 / 92%);
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.hud-knock span {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* The customer's stars and words on the delivery results. */
+.stars {
+  color: #ffc53d;
+  letter-spacing: 2px;
+}
+
+.stars-empty {
+  color: rgb(255 255 255 / 22%);
+}
+
+.hud-rating {
+  margin: 12px 0 14px;
+}
+
+.hud-rating .stars {
+  font-size: 26px;
+}
+
+.hud-rating blockquote {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.hud-rating cite {
+  display: block;
+  margin-top: 2px;
+  opacity: 0.7;
+  font-size: 13px;
+  font-style: normal;
+}
+
+.hud-rating cite::before {
+  content: '— ';
+}
+
+.hud-stars-lost {
+  margin: 6px 0 0;
+  color: #ffb02e;
+  font-size: 13px;
+}
+
+.hud-streak {
+  margin: 6px 0 0;
+  color: #3ddc97;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hud-rider-rating {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.hud-rider-rating strong {
+  color: #ffc53d;
+}
+
+.hud-rider-rating span {
+  opacity: 0.6;
+}
+
 .hud-handoff {
   position: fixed;
   top: 116px;
@@ -157,6 +243,58 @@ body,
 
 .hud-boost {
   color: #3ddc97;
+}
+
+/* Nitro: a label while it burns, and the tank under the speed. */
+.hud-nitro {
+  color: #4aa8ff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.hud-nitro-gauge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  opacity: 0.5;
+}
+
+.hud-nitro-gauge[data-ready='true'] {
+  opacity: 1;
+}
+
+.hud-nitro-key {
+  padding: 0 4px;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.hud-nitro-bar {
+  flex: 1;
+  min-width: 70px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 15%);
+}
+
+.hud-nitro-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #2f7dff, #63d4ff);
+}
+
+.hud-nitro-gauge[data-burning='true'] .hud-nitro-bar span {
+  background: linear-gradient(90deg, #63d4ff, #ffffff);
+  box-shadow: 0 0 8px #63d4ff;
 }
 
 .direction-arrow {
@@ -348,6 +486,58 @@ body,
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* What's in the order, who it's for, and how to carry it. */
+.phone .phone-item {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-care,
+.phone-knocks {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.phone-care-fragile,
+.phone-knocks {
+  color: #2a1a00;
+  background: #ffb02e;
+}
+
+.phone-knocks {
+  background: #ff8a5e;
+}
+
+.phone-care-event {
+  color: #3a0a26;
+  background: #ff9bd2;
+}
+
+.phone .phone-note {
+  margin-top: 6px;
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.phone .phone-care-hint {
+  margin-top: 4px;
+  color: #ffb02e;
+  font-size: 12px;
+}
+
+.phone-rating {
+  color: #ffc53d;
+  font-weight: 700;
 }
 
 .phone-distance,
@@ -994,19 +1184,20 @@ body,
 }
 
 /*
- * The title screen. Screenshots from the game sit behind, darkened from the
- * left and bottom where the words are. The colours come from the game's own
- * world: the maroon-black of the Kills poster, Diwali marigold for the one
- * button that matters, chalk for text, and jacaranda for the Kannada name.
+ * The title screen. Bright screenshots from the game sit behind, shaded only
+ * at the left and bottom where the words are, in a neutral dark that adds no
+ * tint. Diwali marigold for the one button that matters and the Kannada name,
+ * chilli red under the wordmark, and chalk for text.
  */
 .title-screen {
-  --title-ink: #170910;
+  --title-ink: #0e1116;
+  --title-chilli: #e8462a;
   --title-marigold: #f6b32b;
   --title-marigold-edge: #b8740a;
   --title-on-marigold: #2a1300;
   --title-chalk: #fff6e6;
   --title-muted: rgb(255 246 230 / 72%);
-  --title-jacaranda: #c3adf5;
+  --title-kannada: #ffd36b;
   --title-left: clamp(20px, 6vw, 96px);
   --title-bottom: clamp(28px, 9vh, 96px);
 
@@ -1028,6 +1219,8 @@ body,
 
 .title-backdrop img {
   object-fit: cover;
+  /* A little richer than the raw screenshot, for a bright, punchy title. */
+  filter: saturate(1.25) contrast(1.06) brightness(1.04);
   opacity: 0;
   transition: opacity 1.6s ease;
 }
@@ -1037,13 +1230,16 @@ body,
   animation: title-drift 14s ease-out both;
 }
 
-/* Darkened where the words sit: from the left, and up from the bottom. */
+/*
+ * Shaded only where the words sit, in a neutral dark with no colour of its own,
+ * so the screenshots keep their own bright colours everywhere else.
+ */
 .title-backdrop::after {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgb(23 9 16 / 92%) 0%, rgb(23 9 16 / 62%) 40%, rgb(23 9 16 / 8%) 78%),
-    linear-gradient(0deg, rgb(23 9 16 / 80%) 0%, rgb(23 9 16 / 0%) 46%);
+    linear-gradient(90deg, rgb(8 10 14 / 72%) 0%, rgb(8 10 14 / 38%) 32%, rgb(8 10 14 / 0%) 55%),
+    linear-gradient(0deg, rgb(8 10 14 / 55%) 0%, rgb(8 10 14 / 0%) 35%);
   content: '';
 }
 
@@ -1072,7 +1268,9 @@ body,
   font-weight: 800;
   line-height: 0.95;
   letter-spacing: -0.02em;
-  text-shadow: 0 0.05em 0 #6e1430;
+  text-shadow:
+    0 0.05em 0 var(--title-chilli),
+    0 0.12em 0.25em rgb(0 0 0 / 35%);
   transform: rotate(-3deg);
   transform-origin: left bottom;
 }
@@ -1104,7 +1302,7 @@ body,
 
 .title-kannada {
   margin: 10px 0 0;
-  color: var(--title-jacaranda);
+  color: var(--title-kannada);
   font-size: clamp(18px, 2vw, 26px);
   font-weight: 600;
 }
@@ -1185,7 +1383,7 @@ body,
   padding: 0 22px;
   border: 2px solid rgb(255 246 230 / 35%);
   color: var(--title-chalk);
-  background: rgb(23 9 16 / 40%);
+  background: rgb(8 10 14 / 40%);
   font-size: 18px;
   font-weight: 600;
   backdrop-filter: blur(6px);
@@ -1247,7 +1445,7 @@ body,
 .title-quality {
   margin: 0;
   border-radius: 999px;
-  background: rgb(23 9 16 / 62%);
+  background: rgb(8 10 14 / 62%);
   backdrop-filter: blur(6px);
 }
 
@@ -1305,7 +1503,7 @@ body,
   box-sizing: border-box;
   padding: 18px 20px;
   border-radius: 18px;
-  background: rgb(23 9 16 / 90%);
+  background: rgb(8 10 14 / 90%);
   backdrop-filter: blur(8px);
 }
 

@@ -32,6 +32,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const sinceTelemetry = useRef(0)
   const currentMission = useRef(1)
   const countedCrashes = useRef(0)
+  const countedKnocks = useRef(0)
   const ridden = useRef(0)
   const sinceRideReport = useRef(0)
   const wasBoosting = useRef(false)
@@ -48,6 +49,12 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     if (state.crashCount !== countedCrashes.current) {
       countedCrashes.current = state.crashCount
       game.recordCrash()
+    }
+
+    // Hard landings count only with an order on board.
+    if (state.bumpCount !== countedKnocks.current) {
+      countedKnocks.current = state.bumpCount
+      if (game.phase === 'toCustomer') game.recordKnock()
     }
 
     livePlayer.x = state.x
@@ -100,6 +107,9 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         inZone: stop !== null && distance <= MISSION_RULES.zoneRadius,
         drifting: state.drifting,
         boosting: state.boostLeft > 0,
+        // Steps of 2%, so the gauge doesn't re-render the HUD for every tiny change.
+        nitro: Math.round(state.nitro * 50) / 50,
+        nitroOn: state.nitroOn,
         crashed: state.crashLeft > 0,
         atStore: isAtStore(game.planner, state.x, state.z, travelSpeed),
       })

@@ -11,22 +11,22 @@ const SCENES = [
   {
     layout: 'feature',
     panels: [
-      { src: '/title/jacaranda-street.jpg', x: 50, y: 60, pan: 'left' },
-      { src: '/title/riding-out.jpg', x: 72, y: 20, pan: 'up' },
-      { src: '/title/night-rain.jpg', x: 72, y: 55, pan: 'right' },
+      { src: '/title/shop-street-morning.jpg', x: 55, y: 55, pan: 'left' },
+      { src: '/title/midday-handover.jpg', x: 75, y: 50, pan: 'up' },
+      { src: '/title/nitro-night-rain.jpg', x: 70, y: 55, pan: 'right' },
     ],
   },
   {
     layout: 'banner',
     panels: [
-      { src: '/title/riding-out.jpg', x: 50, y: 55, pan: 'in' },
-      { src: '/title/night-rain.jpg', x: 45, y: 50, pan: 'right' },
-      { src: '/title/jacaranda-street.jpg', x: 95, y: 15, pan: 'left' },
+      { src: '/title/midday-handover.jpg', x: 72, y: 55, pan: 'in' },
+      { src: '/title/nitro-night-rain.jpg', x: 70, y: 50, pan: 'right' },
+      { src: '/title/shop-street-morning.jpg', x: 88, y: 40, pan: 'left' },
     ],
   },
   {
     layout: 'full',
-    panels: [{ src: '/title/night-rain.jpg', x: 55, y: 50, pan: 'in' }],
+    panels: [{ src: '/title/nitro-night-rain.jpg', x: 65, y: 55, pan: 'in' }],
   },
 ] as const
 

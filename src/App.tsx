@@ -46,7 +46,7 @@ function RidingUi() {
       <DirectionArrow />
       <Phone />
 
-      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · H honk · R radio · P phone · N skips time · M changes weather</p>
+      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · Shift nitro · H honk · R radio · P phone · N skips time · M changes weather</p>
     </>
   )
 }

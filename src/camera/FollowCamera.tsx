@@ -22,6 +22,7 @@ const BASE_FOV = 60
 /** Extra field of view at top speed, which makes speed feel faster. */
 const SPEED_FOV = 12
 const FOV_RESPONSE = 4
+const NITRO_FOV = 6
 
 /** How far the camera swings toward the direction of travel in a slide, from 0 to 1. */
 const SLIDE_FOLLOW = 0.65
@@ -153,7 +154,9 @@ export function FollowCamera({
     camera.lookAt(lookX, lookY, lookZ)
 
     if (camera instanceof PerspectiveCamera) {
-      const targetFov = BASE_FOV + SPEED_FOV * Math.min(travelSpeed / tuning.maxSpeed, 1.2)
+      // Nitro widens the view a little more, for the rush.
+      const targetFov =
+        BASE_FOV + SPEED_FOV * Math.min(travelSpeed / tuning.maxSpeed, 1.4) + (state.nitroOn ? NITRO_FOV : 0)
       camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-FOV_RESPONSE * delta))
       camera.updateProjectionMatrix()
     }

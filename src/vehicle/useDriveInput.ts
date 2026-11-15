@@ -11,10 +11,12 @@ const KEY_BINDINGS: Record<string, keyof DriveInput> = {
   KeyD: 'right',
   ArrowRight: 'right',
   Space: 'handbrake',
+  ShiftLeft: 'nitro',
+  ShiftRight: 'nitro',
 }
 
 function noKeysPressed(): DriveInput {
-  return { forward: false, backward: false, left: false, right: false, handbrake: false }
+  return { forward: false, backward: false, left: false, right: false, handbrake: false, nitro: false }
 }
 
 /**

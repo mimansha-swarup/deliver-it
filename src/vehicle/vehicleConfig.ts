@@ -52,8 +52,26 @@ export const SCOOTER = {
   boostTime: 0.8,
   boostSpeed: 3,
   boostAcceleration: 9,
-  /** Slowing back down after going over the speed limit. */
-  overspeedDrag: 3,
+  /**
+   * Nitro: hold Shift with the throttle for a burst of speed, on top of top speed
+   * (5 m/s is 18 km/h more, about 74 km/h). A full tank lasts `nitroBurnTime`. It
+   * fills while riding, fastest near top speed (empty to full in `nitroFillTime`),
+   * and each drift boost adds `nitroFromBoost`. It needs a little in the tank to start.
+   */
+  nitroSpeed: 5,
+  nitroAcceleration: 7,
+  nitroBurnTime: 3.5,
+  nitroFillTime: 40,
+  nitroFromBoost: 0.2,
+  nitroMinToStart: 0.15,
+  /** A new game starts with this much, so it can be tried straight away. */
+  nitroStart: 0.6,
+  /**
+   * Slowing back down to top speed after a nitro burst or a drift boost, with the
+   * throttle held, in m/s². Gentle, so the speed carries on for a few seconds:
+   * from full nitro speed (74 km/h) back to 56 km/h takes about 4 s. It was 3, which took 1.7 s.
+   */
+  overspeedDrag: 1.2,
 
   /** How far the scooter tilts in corners, in radians. */
   maxLean: 0.38,
