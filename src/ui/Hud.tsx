@@ -113,9 +113,15 @@ function Speedometer() {
   const boosting = useGameStore((state) => state.boosting)
   const nitro = useGameStore((state) => state.nitro)
   const nitroOn = useGameStore((state) => state.nitroOn)
+  const atBunk = useGameStore((state) => state.atBunk)
 
   return (
     <section className="hud-card hud-speed">
+      {atBunk && (
+        <p className="hud-refill" role="status">
+          {nitro >= 1 ? 'Nitro full' : `Filling nitro · ${atBunk}`}
+        </p>
+      )}
       {nitroOn && <p className="hud-nitro">Nitro</p>}
       {boosting && !nitroOn && <p className="hud-boost">Boost</p>}
       {drifting && !boosting && !nitroOn && <p className="hud-drift">Drift</p>}

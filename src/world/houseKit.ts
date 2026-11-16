@@ -321,7 +321,7 @@ export type HouseKit = {
 
 export type StiltVehicle = { x: number; z: number; rotation: number; variation: number; car: boolean }
 
-/** The dark store's front, whose building is left as it is. */
+/** A dark store's front, whose building is left as it is. */
 type Skip = { x: number; z: number; rotation: number }
 
 /**
@@ -338,14 +338,14 @@ export function planHouseKit(
   buildings: BuildingFeature[],
   roads: LineFeature[],
   collisions: CollisionWorld,
-  skip?: Skip,
+  skips: Skip[] = [],
 ): HouseKit {
   const roadIndex = indexRoadPieces(toRoadPieces(roads))
   // A square built later must come out exactly as planned now, so it looks at the world as it
   // is now, before compound walls, trees and lamps are added.
   const lookup = copyCollisionWorld(collisions)
   const idle = new Builder(false)
-  const plan = dressBuildings(buildings, roadIndex, lookup, skip, () => [idle, idle])
+  const plan = dressBuildings(buildings, roadIndex, lookup, skips, () => [idle, idle])
 
   for (const [start, end] of plan.compoundWalls) addWall(collisions, start, end, COMPOUND.thickness + 0.1)
 
@@ -354,7 +354,7 @@ export function planHouseKit(
     buildSquare: (key) => {
       const kit = new Builder()
       const shades = new Builder()
-      dressBuildings(plan.byChunk.get(key) ?? [], roadIndex, lookup, skip, () => [kit, shades])
+      dressBuildings(plan.byChunk.get(key) ?? [], roadIndex, lookup, skips, () => [kit, shades])
       return { main: kit.toGeometry(), chajjas: shades.toGeometry() }
     },
     tanks: plan.tanks,
@@ -374,7 +374,7 @@ function dressBuildings(
   buildings: BuildingFeature[],
   roadIndex: RoadIndex,
   lookup: CollisionWorld,
-  skip: Skip | undefined,
+  skips: Skip[],
   buildersFor: (key: number) => [kit: Builder, shades: Builder],
 ) {
   const byChunk = new Map<number, BuildingFeature[]>()
@@ -399,8 +399,9 @@ function dressBuildings(
     })
     if (
       isShop &&
-      skip &&
-      isInsideOutline(outline, skip.x - Math.sin(skip.rotation) * 0.5, skip.z - Math.cos(skip.rotation) * 0.5)
+      skips.some((skip) =>
+        isInsideOutline(outline, skip.x - Math.sin(skip.rotation) * 0.5, skip.z - Math.cos(skip.rotation) * 0.5),
+      )
     ) {
       continue
     }

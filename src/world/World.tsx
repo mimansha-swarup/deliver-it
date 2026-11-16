@@ -13,8 +13,8 @@ import { Cables } from './Cables'
 import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
 import { addPost, createCollisionWorld } from './collision'
-import { DarkStoreBuilding } from './DarkStoreBuilding'
-import { addDarkStorePosts, findDarkStore } from './darkStore'
+import { DarkStores } from './DarkStoreBuilding'
+import { addDarkStorePosts, findDarkStores } from './darkStore'
 import { GrassField } from './GrassField'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
@@ -38,6 +38,10 @@ import { createRoadGraph } from './roadGraph'
 import { Roads } from './Roads'
 import { RoadsideProps } from './RoadsideProps'
 import { ShopFronts } from './ShopFronts'
+import { LandmarkSigns } from './LandmarkSigns'
+import { placeLandmarkSigns } from './landmarks'
+import { FuelStations } from './FuelStations'
+import { isOnForecourt, placeFuelStations } from './fuelStationData'
 import { StiltParking } from './StiltParking'
 import { StreetLife } from './StreetLife'
 import { placeStreetLife } from './streetPlacement'
@@ -76,16 +80,18 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const graph = createRoadGraph(data.roads)
   const signalNodes = createTrafficSignals(graph).junctions.map(({ node }) => node)
   const start: [number, number] = [SCOOTER_SPAWN.x, SCOOTER_SPAWN.z]
-  const store = findDarkStore(data.buildings, graph, collisions, mappedShops, start, signalNodes)
-  addDarkStorePosts(collisions, store)
+  const stores = findDarkStores(data.buildings, graph, collisions, mappedShops, start, signalNodes)
+  for (const store of stores) addDarkStorePosts(collisions, store)
   // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
-  const houses = planHouseKit(data.buildings, data.roads, collisions, store)
+  const houses = planHouseKit(data.buildings, data.roads, collisions, stores)
   // Building sites take open plots before trees and lamps do, and are solid to them.
   const sites = findConstructionSites(data, collisions)
+  // Petrol bunks take their forecourts before trees and lamps do, and their pillars and pumps are solid.
+  const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions)
   const shopFronts = fillShopUnits(houses.shopUnits, mappedShops)
   // Menu boards on the pavement are solid too.
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
-  const props = generateRoadsideProps(data.roads, collisions, shopFronts)
+  const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
   const benches = plantParks(data, collisions, props)
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
@@ -96,7 +102,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   const surface = createSurface(data.roads, features)
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface, features }
+  // Signs go on walls only, so they can be placed at any point once the buildings are in.
+  const landmarks = placeLandmarkSigns(data.roads, collisions)
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -119,7 +127,8 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, store, houses, life, sites, surface, features } = getWorld(data, rapier)
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel } =
+    getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
   // Each part has its own Suspense boundary, the player and traffic included.
@@ -144,13 +153,15 @@ export function World() {
       <Part name="houses"><HouseKitMesh kit={houses} /></Part>
       <Part name="stilts"><StiltParking vehicles={houses.stiltParking} /></Part>
       <Part name="cityKit"><CityKit placements={kit} /></Part>
-      <Part name="darkStore"><DarkStoreBuilding store={store} /></Part>
+      <Part name="darkStore"><DarkStores stores={stores} /></Part>
       <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} /></Part>
       <Part name="streetLife"><StreetLife life={life} kolams={houses.kolams} /></Part>
       <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
       <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
+      <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
+      <Part name="fuel"><FuelStations stations={fuel} /></Part>
       <Part name="boundary"><Boundary /></Part>
-      <Part name="player"><Player store={store} collisions={collisions} graph={graph} traffic={traffic} surface={surface} /></Part>
+      <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} /></Part>
     </>
   )
 }

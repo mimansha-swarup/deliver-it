@@ -15,7 +15,8 @@ import { createOrderStory, type OrderStory } from './orderStory'
 export type MissionPlanner = {
   collisions: CollisionWorld
   graph: RoadGraph
-  store: DarkStore
+  /** The home store first, then the rest across the map. */
+  stores: DarkStore[]
   /** Finds the route to a road point, remembering each one so it's only worked out once. */
   getRouteField: (node: number) => RouteField
   /** Plans an order from wherever the rider is. Their `level` decides what kinds of order can come up. */
@@ -51,12 +52,12 @@ function rollKind(level: number, random: () => number): OrderKind {
 }
 
 /**
- * Every order starts at the dark store. This finds each road point a customer
+ * Every order starts at the dark store nearest the rider. This finds each road point a customer
  * could use, then builds random missions from them. `random` can be swapped
  * out, so tests can repeat the same sequence.
  */
 export function createMissionPlanner(
-  store: DarkStore,
+  stores: DarkStore[],
   collisions: CollisionWorld,
   graph: RoadGraph,
   random: () => number = Math.random,
@@ -79,7 +80,6 @@ export function createMissionPlanner(
         !isNearBuilding(collisions, graph.xs[node], graph.zs[node], MISSION_RULES.stopClearance),
     )
 
-  const fromStore = getRouteField(store.node)
   let lastCustomer = -1
 
   const createStop = (
@@ -138,6 +138,8 @@ export function createMissionPlanner(
 
   const planMission = (fromX: number, fromZ: number, level: number): Mission => {
     const start = findNearestNode(graph, fromX, fromZ)
+    const store = nearestStore(stores, fromX, fromZ)
+    const fromStore = getRouteField(store.node)
 
     const isFarFromLast = (node: number) =>
       lastCustomer === -1 ||
@@ -184,7 +186,7 @@ export function createMissionPlanner(
       tier,
       pickup: createStop(
         store.node,
-        DARK_STORE_NAME,
+        storeName(store, stores),
         'Collect the order',
         'Slow down to collect',
         MISSION_RULES.pickupColor,
@@ -196,5 +198,25 @@ export function createMissionPlanner(
     }
   }
 
-  return { collisions, graph, store, getRouteField, planMission }
+  return { collisions, graph, stores, getRouteField, planMission }
+}
+
+/** The store nearest a spot, as the crow flies. */
+export function nearestStore(stores: DarkStore[], x: number, z: number): DarkStore {
+  let nearest = stores[0]
+  let nearestDistance = Infinity
+  for (const store of stores) {
+    const distance = Math.hypot(store.x - x, store.z - z)
+    if (distance < nearestDistance) {
+      nearest = store
+      nearestDistance = distance
+    }
+  }
+  return nearest
+}
+
+/** The home store goes by its plain name. The others add their road, so the phone can tell them apart. */
+function storeName(store: DarkStore, stores: DarkStore[]): string {
+  if (store === stores[0] || !store.road) return DARK_STORE_NAME
+  return `${DARK_STORE_NAME}, ${store.road}`
 }

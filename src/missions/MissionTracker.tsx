@@ -18,12 +18,11 @@ const RIDE_REPORT_INTERVAL = 2
 /** Longest a single frame may count for, so a hidden tab doesn't run the clock. */
 const MAX_FRAME_TIME = 0.1
 
-/** Whether the rider has stopped by the dark store, where the Garage opens. */
+/** Whether the rider has stopped by any dark store, where the Garage opens. */
 function isAtStore(planner: MissionPlanner | null, x: number, z: number, speed: number): boolean {
-  if (!planner) return false
-  const { graph, store } = planner
-  const kerb = Math.hypot(graph.xs[store.node] - x, graph.zs[store.node] - z)
-  return kerb <= GARAGE_RANGE && speed <= GARAGE_MAX_SPEED
+  if (!planner || speed > GARAGE_MAX_SPEED) return false
+  const { graph, stores } = planner
+  return stores.some(({ node }) => Math.hypot(graph.xs[node] - x, graph.zs[node] - z) <= GARAGE_RANGE)
 }
 
 /** Watches the scooter every frame and moves the mission on. Draws nothing. */

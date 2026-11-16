@@ -52,6 +52,8 @@ type Telemetry = {
 type GameState = Telemetry & {
   /** False while the title screen is showing. */
   started: boolean
+  /** The petrol bunk the rider has stopped at, which fills the nitro, by name. */
+  atBunk: string | null
   /** How the download before the title screen's Start button is going. */
   loading: LoadProgress
   phase: MissionPhase
@@ -106,6 +108,7 @@ type GameState = Telemetry & {
   finishHandoff: () => void
   nextMission: () => void
   setTelemetry: (telemetry: Telemetry) => void
+  setAtBunk: (atBunk: string | null) => void
   setSky: (skyTime: string, weather: WeatherName, night: boolean) => void
   recordCrash: () => void
   /** Counts a hard landing while an order is on board. */
@@ -207,6 +210,7 @@ function chooseColour<T>(
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
+      atBunk: null,
       speedKmh: 0,
       distance: 0,
       seconds: 0,
@@ -362,6 +366,7 @@ export const useGameStore = create<GameState>()(
     })),
 
   setTelemetry: (telemetry) => set(telemetry),
+  setAtBunk: (atBunk) => set({ atBunk }),
   setSky: (skyTime, weather, night) => set({ skyTime, weather, night }),
   recordCrash: () => set((state) => ({ crashes: state.crashes + 1 })),
   recordKnock: () => set((state) => ({ knocks: state.knocks + 1 })),

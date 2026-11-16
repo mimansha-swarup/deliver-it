@@ -128,6 +128,15 @@ function walkTo(person: Pedestrian, x: number, z: number, speed: number, dt: num
 }
 
 /** Puts a new customer on their spot. */
+/** Whoever of these people is nearest a spot. */
+function nearestTo(people: Pedestrian[], x: number, z: number): Pedestrian {
+  let nearest = people[0]
+  for (const person of people) {
+    if (Math.hypot(person.x - x, person.z - z) < Math.hypot(nearest.x - x, nearest.z - z)) nearest = person
+  }
+  return nearest
+}
+
 function placeCustomer(person: Pedestrian, { x, z, rotation, tint }: WaitingCustomer) {
   person.x = x
   person.z = z
@@ -251,11 +260,12 @@ function getStandingSpot(state: ScooterState, person: Pedestrian): [number, numb
  */
 export function Handoff({
   scooter,
-  store,
+  stores,
   collisions,
 }: {
   scooter: RefObject<ScooterState>
-  store: DarkStore
+  /** One staff member waits at each. */
+  stores: DarkStore[]
   collisions: CollisionWorld
 }) {
   const mission = useGameStore((state) => state.mission)
@@ -279,8 +289,8 @@ export function Handoff({
 
   const customers = useMemo(() => [createPerson(0, 0, 0, 0.5, 1)], [])
   const staff = useMemo(
-    () => [createPerson(store.staffX, store.staffZ, store.rotation, 0, STAFF_SKIN)],
-    [store],
+    () => stores.map((store) => createPerson(store.staffX, store.staffZ, store.rotation, 0, STAFF_SKIN)),
+    [stores],
   )
   const confetti = useMemo(
     () =>
@@ -317,7 +327,11 @@ export function Handoff({
     const dt = Math.min(delta, 0.05)
     const game = useGameStore.getState()
     const state = scooter.current
-    const staffMember = staff[0]
+    // The order's own store hands it over. The print goes on whichever staff member is nearest the camera.
+    const pickupNode = game.mission?.pickup.node
+    const active = Math.max(0, stores.findIndex(({ node }) => node === pickupNode))
+    const staffMember = staff[active]
+    const shownStaff = nearestTo(staff, camera.position.x, camera.position.z)
     const customer = customers[0]
     const parcelMesh = parcel.current
 
@@ -376,14 +390,17 @@ export function Handoff({
       } else {
         game.finishHandoff()
       }
-    } else {
-      const home = walkTo(staffMember, store.staffX, store.staffZ, STROLL_SPEED, dt)
-      if (home) {
-        const riderHeading = Math.atan2(state.x - staffMember.x, state.z - staffMember.z)
-        const nearby = Math.hypot(state.x - staffMember.x, state.z - staffMember.z) < WATCH_RANGE
-        turnTowards(staffMember, nearby ? riderHeading : store.rotation, dt)
-      }
     }
+    staff.forEach((member, index) => {
+      if (index === active && game.phase === 'collecting') return
+      const store = stores[index]
+      const home = walkTo(member, store.staffX, store.staffZ, STROLL_SPEED, dt)
+      if (home) {
+        const riderHeading = Math.atan2(state.x - member.x, state.z - member.z)
+        const nearby = Math.hypot(state.x - member.x, state.z - member.z) < WATCH_RANGE
+        turnTowards(member, nearby ? riderHeading : store.rotation, dt)
+      }
+    })
 
     // --- At the customer's ---
     const waitingForRider = game.phase === 'toCustomer'
@@ -455,13 +472,13 @@ export function Handoff({
     // Staff are drawn by the crowd shader, so their print follows them by hand. It's drawn
     // over the shirt, so it only shows when their back is towards the camera and they're close.
     if (staffPrint.current) {
-      staffPrint.current.position.set(staffMember.x, PRINT_Y + staffMember.lift, staffMember.z)
-      staffPrint.current.rotation.y = staffMember.heading
+      staffPrint.current.position.set(shownStaff.x, PRINT_Y + shownStaff.lift, shownStaff.z)
+      staffPrint.current.rotation.y = shownStaff.heading
 
-      const toCameraX = camera.position.x - staffMember.x
-      const toCameraZ = camera.position.z - staffMember.z
+      const toCameraX = camera.position.x - shownStaff.x
+      const toCameraZ = camera.position.z - shownStaff.z
       const distance = Math.hypot(toCameraX, toCameraZ)
-      const backHeading = staffMember.heading + PRINT_TURN + Math.PI
+      const backHeading = shownStaff.heading + PRINT_TURN + Math.PI
       const facing =
         (Math.sin(backHeading) * toCameraX + Math.cos(backHeading) * toCameraZ) / distance
       staffPrint.current.visible = distance < PRINT_RANGE && facing > PRINT_MIN_FACING

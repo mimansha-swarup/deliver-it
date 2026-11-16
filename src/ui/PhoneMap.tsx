@@ -1,5 +1,6 @@
 import { use, useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
+import { MISSION_RULES } from '../game/missionConfig'
 import { livePlayer, liveRoute } from '../game/livePlayer'
 import { getCurrentStop } from '../missions/missionLogic'
 import { loadMapData, type MapData } from '../world/mapData'
@@ -318,7 +319,15 @@ export function PhoneMap({ raised }: { raised: boolean }) {
   const raisedAmount = useRef(raised ? 1 : 0)
   const target = useRef(raised ? 1 : 0)
   const mapImage = useMemo(() => createMapImage(data), [data])
-  const labels = useMemo(() => createMapLabels(data), [data])
+  const stores = useGameStore((state) => state.planner?.stores)
+  const labels = useMemo(() => {
+    const mapLabels = createMapLabels(data)
+    // Every dark store, in the pickup colour, so a rider far from home can find the nearest.
+    for (const store of stores ?? []) {
+      mapLabels.shops.unshift({ x: store.x, z: store.z, text: 'Dark store', color: MISSION_RULES.pickupColor })
+    }
+    return mapLabels
+  }, [data, stores])
 
   useEffect(() => {
     target.current = raised ? 1 : 0

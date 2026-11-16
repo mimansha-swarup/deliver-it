@@ -11,10 +11,12 @@ import type { CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
 import type { RoadGraph } from '../world/roadGraph'
 import type { Surface } from '../world/surface'
+import type { FuelStation } from '../world/fuelStationData'
 import { Traffic } from '../traffic/Traffic'
 import { TrafficLights } from '../traffic/TrafficLights'
 import type { TrafficWorld } from '../traffic/trafficLogic'
 import { PlayerSounds } from '../audio/PlayerSounds'
+import { BunkRefill } from './BunkRefill'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
@@ -22,21 +24,24 @@ import { Splashes } from './Splashes'
 import { createScooterState } from './ScooterController'
 
 type PlayerProps = {
-  store: DarkStore
+  /** The home store first, then the rest across the map. */
+  stores: DarkStore[]
   collisions: CollisionWorld
   graph: RoadGraph
   traffic: TrafficWorld
   surface: Surface
+  /** Petrol bunks, where the nitro fills. */
+  bunks: FuelStation[]
 }
 
-export function Player({ store, collisions, graph, traffic, surface }: PlayerProps) {
+export function Player({ stores, collisions, graph, traffic, surface, bunks }: PlayerProps) {
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
   useEffect(() => {
     const { x, z } = scooterState.current
-    useGameStore.getState().startMissions(createMissionPlanner(store, collisions, graph), x, z)
-  }, [store, collisions, graph])
+    useGameStore.getState().startMissions(createMissionPlanner(stores, collisions, graph), x, z)
+  }, [stores, collisions, graph])
 
   return (
     <>
@@ -51,8 +56,9 @@ export function Player({ store, collisions, graph, traffic, surface }: PlayerPro
         <TitleCamera />
       )}
       <MissionTracker scooter={scooterState} />
+      <BunkRefill scooter={scooterState} stations={bunks} />
       <MissionMarker />
-      <Handoff scooter={scooterState} store={store} collisions={collisions} />
+      <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
       <Traffic scooter={scooterState} world={traffic} />
       <TrafficLights world={traffic} />
     </>

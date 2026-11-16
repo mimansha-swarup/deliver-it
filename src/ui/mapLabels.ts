@@ -1,3 +1,5 @@
+import { FUEL_BRANDS, FUEL_STATIONS } from '../world/fuelStationData'
+import { CHAINS, LANDMARKS } from '../world/landmarks'
 import type { MapData, PolygonFeature } from '../world/mapData'
 import { isInsideBounds, lonLatToWorld, type GroundPoint, type LonLat } from '../world/worldUtils'
 
@@ -23,10 +25,13 @@ type StreetChain = {
 
 type AreaKind = 'place' | 'park' | 'campus'
 type AreaLabel = { x: number; z: number; text: string; kind: AreaKind }
+/** A well-known shop or food place, shown with a dot in its sign's colour. */
+type ShopLabel = { x: number; z: number; text: string; color: string }
 
 export type MapLabels = {
   streets: StreetChain[]
   areas: AreaLabel[]
+  shops: ShopLabel[]
   /** Every road piece, named or not, for finding the road the rider is on. */
   pieces: { ax: number; az: number; bx: number; bz: number; name: string | null }[]
 }
@@ -45,6 +50,7 @@ const FONTS = {
   place: '700 10px system-ui, sans-serif',
   park: 'italic 600 9.5px system-ui, sans-serif',
   campus: '500 9px system-ui, sans-serif',
+  shop: '600 9px system-ui, sans-serif',
   current: '600 11px system-ui, sans-serif',
 }
 const COLORS = {
@@ -53,7 +59,10 @@ const COLORS = {
   place: '#8f96a1',
   park: '#7cc68b',
   campus: '#9fb1c7',
+  shop: '#f1d9a6',
 }
+/** The radius of a shop's dot on the map, in pixels. */
+const SHOP_DOT = 3
 const HALO = 'rgb(20 22 26 / 88%)'
 const LABEL_HEIGHT = 12
 
@@ -176,7 +185,18 @@ export function createMapLabels(data: MapData): MapLabels {
     else if (NAMED_LANDUSE.has(landuse ?? '') || NAMED_AMENITY.has(amenity ?? '')) add(...centreOf(area), name, 'campus')
   }
 
-  return { streets, areas, pieces }
+  const shops: ShopLabel[] = LANDMARKS.map(({ chain, lat, lng }) => {
+    const [x, z] = toGround([lng, lat])
+    const { name, background, lettering } = CHAINS[chain]
+    // A white sign's dot would vanish, so it takes the lettering colour instead.
+    const light = background.toLowerCase() >= '#e0'
+    return { x, z, text: name, color: light ? lettering : background }
+  })
+  for (const { brand, lat, lng } of FUEL_STATIONS) {
+    const [x, z] = toGround([lng, lat])
+    shops.push({ x, z, text: FUEL_BRANDS[brand].name, color: FUEL_BRANDS[brand].primary })
+  }
+  return { streets, areas, shops, pieces }
 }
 
 // ---------------------------------------------------------------- Drawing
@@ -311,6 +331,26 @@ export function drawMapLabels(context: CanvasRenderingContext2D, labels: MapLabe
       placedStreets.push({ name: street.name, x, y })
       write(context, street.name, x, y, angle, font, street.major ? COLORS.major : COLORS.minor)
     }
+  }
+
+  // Shops after streets, so a street's name always wins the space. Each has a dot, with its name beside it.
+  for (const { x, z, text, color } of labels.shops) {
+    const [screenX, screenY] = view.project(x, z)
+    const width = measure(context, FONTS.shop, text)
+    const labelX = screenX + SHOP_DOT * 2 + width / 2
+    if (!fits(labelX, screenY, width + SHOP_DOT * 4)) continue
+    const circles = footprint(labelX - SHOP_DOT * 2, screenY, 0, width + SHOP_DOT * 4)
+    if (overlaps(circles, taken)) continue
+    taken.push(...circles)
+    context.beginPath()
+    context.arc(screenX, screenY, SHOP_DOT + 1.5, 0, Math.PI * 2)
+    context.fillStyle = '#ffffff'
+    context.fill()
+    context.beginPath()
+    context.arc(screenX, screenY, SHOP_DOT, 0, Math.PI * 2)
+    context.fillStyle = color
+    context.fill()
+    write(context, text, labelX, screenY, 0, FONTS.shop, COLORS.shop)
   }
 
   for (const area of labels.areas) if (area.kind === 'park') drawArea(area)

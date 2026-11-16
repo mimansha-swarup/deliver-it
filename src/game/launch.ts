@@ -25,6 +25,8 @@ export const WORLD_PARTS = {
   streetLife: 'Street life',
   cables: 'Cables',
   shops: 'Shops',
+  landmarks: 'Shop signs',
+  fuel: 'Petrol bunks',
   boundary: 'The edge of the map',
   player: 'Your scooter and the traffic',
 } as const

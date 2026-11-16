@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import {
   DELIVERY_BIKE_COLOR,
@@ -7,6 +8,7 @@ import {
   paintModel,
   TRAFFIC_MODELS_URL,
 } from '../traffic/modelFiles'
+import { livePlayer } from '../game/livePlayer'
 import type { DarkStore } from './darkStore'
 
 const FRONT_HEIGHT = 3.4
@@ -165,8 +167,18 @@ function ParkedBike({
   )
 }
 
-/** The front of the dark store, added to a real building on the map. */
-export function DarkStoreBuilding({ store }: { store: DarkStore }) {
+type StoreTextures = { sign: THREE.CanvasTexture; shelves: THREE.CanvasTexture; yard: THREE.CanvasTexture }
+
+/** The light over the riders' bay, from the store's front wall, in metres: up and out. */
+const LIGHT_UP = 2.6
+const LIGHT_OUT = WALL_GAP + FRONT_DEPTH + 1.2
+
+/**
+ * Every dark store's front. Their pictures are shared. Only one light is used,
+ * moved to whichever store is nearest the rider: each light in a scene adds
+ * work to every lit surface, and only the nearest store's is close enough to see.
+ */
+export function DarkStores({ stores }: { stores: DarkStore[] }) {
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const textures = useMemo(
     () => ({
@@ -176,12 +188,42 @@ export function DarkStoreBuilding({ store }: { store: DarkStore }) {
     }),
     [],
   )
-
   useEffect(
     () => () => Object.values(textures).forEach((texture) => texture.dispose()),
     [textures],
   )
 
+  const light = useRef<THREE.PointLight>(null)
+  useFrame(() => {
+    if (!light.current) return
+    let nearest = stores[0]
+    let nearestDistance = Infinity
+    for (const store of stores) {
+      const distance = Math.hypot(store.x - livePlayer.x, store.z - livePlayer.z)
+      if (distance < nearestDistance) {
+        nearest = store
+        nearestDistance = distance
+      }
+    }
+    light.current.position.set(
+      nearest.x + Math.sin(nearest.rotation) * LIGHT_OUT,
+      LIGHT_UP,
+      nearest.z + Math.cos(nearest.rotation) * LIGHT_OUT,
+    )
+  })
+
+  return (
+    <>
+      {stores.map((store) => (
+        <DarkStoreBuilding key={store.node} store={store} textures={textures} scene={scene} />
+      ))}
+      <pointLight ref={light} color={NIGHT_LIGHT} intensity={8} distance={9} />
+    </>
+  )
+}
+
+/** The front of a dark store, added to a real building on the map. */
+function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textures: StoreTextures; scene: THREE.Group }) {
   const { width } = store
   const openingWidth = width - 1.2
   const frontZ = WALL_GAP + FRONT_DEPTH / 2
@@ -229,7 +271,6 @@ export function DarkStoreBuilding({ store }: { store: DarkStore }) {
           />
         </mesh>
 
-        <pointLight position={[0, 2.6, faceZ + 1.2]} color={NIGHT_LIGHT} intensity={8} distance={9} />
       </group>
 
       {store.bikes.map(({ x, z, rotation }) => (

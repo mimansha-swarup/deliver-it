@@ -1,5 +1,6 @@
 import { waitForPreloadedMap } from '../game/preload'
 import { classifyBuildings, type BuildingKind } from './buildingKinds'
+import { FUEL_STATIONS } from './fuelStationData'
 import { cutOutRestricted, isRestricted } from './restricted'
 import type { LonLat } from './worldUtils'
 
@@ -34,6 +35,29 @@ export type MapData = {
   areas: PolygonFeature[]
   /** Military land: walled off, with no roads or paths inside. */
   restricted: PolygonFeature[]
+  /**
+   * Petrol bunk canopies. The map has them as buildings tagged `roof`, which
+   * would be drawn as solid blocks, so they're taken out of `buildings` and
+   * `FuelStations` puts an open canopy on pillars in their place.
+   */
+  fuelRoofs: PolygonFeature[]
+}
+
+/** A roof this close to a petrol bunk's mapped spot is its canopy, in metres. */
+const FUEL_ROOF_REACH = 35
+
+/** True for a `roof` building near one of the petrol bunks. */
+function isFuelRoof({ properties, geometry }: PolygonFeature): boolean {
+  if (properties.building !== 'roof') return false
+  const ring = geometry.coordinates[0]
+  const lon = ring.reduce((sum, [x]) => sum + x, 0) / ring.length
+  const lat = ring.reduce((sum, [, y]) => sum + y, 0) / ring.length
+  const metresPerDegree = 111_320
+  return FUEL_STATIONS.some(
+    (station) =>
+      Math.hypot((station.lng - lon) * metresPerDegree * Math.cos((lat * Math.PI) / 180), (station.lat - lat) * metresPerDegree) <
+      FUEL_ROOF_REACH,
+  )
 }
 
 const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
@@ -43,7 +67,7 @@ const GREEN_SPACES = new Set(['park', 'garden', 'playground', 'pitch'])
 const NOT_DRIVABLE = new Set(['footway', 'path'])
 
 function sortFeatures(features: Feature[]): MapData {
-  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [], areas: [], restricted: [] }
+  const data: MapData = { buildings: [], roads: [], footways: [], parks: [], places: [], areas: [], restricted: [], fuelRoofs: [] }
   const buildings: PolygonFeature[] = []
   const areas = data.areas
 
@@ -51,7 +75,9 @@ function sortFeatures(features: Feature[]): MapData {
     const { geometry, properties } = feature
 
     if (geometry.type === 'Polygon' && properties.building) {
-      buildings.push({ ...feature, geometry })
+      const building = { ...feature, geometry }
+      if (isFuelRoof(building)) data.fuelRoofs.push(building)
+      else buildings.push(building)
     } else if (geometry.type === 'Polygon' && GREEN_SPACES.has(properties.leisure ?? '')) {
       data.parks.push({ ...feature, geometry })
     } else if (geometry.type === 'LineString' && properties.highway) {

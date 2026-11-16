@@ -282,6 +282,8 @@ export function generateRoadsideProps(
   roads: LineFeature[],
   collisions: CollisionWorld,
   shopFronts: ShopFront[] = [],
+  /** Ground kept clear of trees, lamps and parked scooters, such as a petrol bunk's forecourt. */
+  keepClear: (x: number, z: number) => boolean = () => false,
 ): RoadsideProps {
   const random = createRandom(20261106)
   const pieces = toRoadPieces(roads)
@@ -293,6 +295,7 @@ export function generateRoadsideProps(
 
   const canPlace = (x: number, z: number, buildingGap: number) =>
     !isNearBuilding(collisions, x, z, buildingGap) &&
+    !keepClear(x, z) &&
     isClearOfRoads(roadIndex, x, z, ROAD_CLEARANCE) &&
     !placed.hasWithin(x, z, MIN_PROP_SPACING)
 
@@ -346,6 +349,7 @@ export function generateRoadsideProps(
   // Scooters left outside shops, kept off the road.
   const isParkingSpot = (x: number, z: number) =>
     !isNearBuilding(collisions, x, z, PARKED_SCOOTER_RADIUS + 0.1) &&
+    !keepClear(x, z) &&
     isClearOfRoads(roadIndex, x, z, PARKED_SCOOTER_RADIUS)
 
   for (const front of shopFronts) {
