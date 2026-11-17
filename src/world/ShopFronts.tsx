@@ -1,8 +1,8 @@
-import { use, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { use, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
-import { ChunkedMesh } from './ChunkedMesh'
+import { StreamedChunks } from './StreamedChunks'
 import { chunkKey } from './chunks'
 import type { ShopFront } from './shopFrontPlacement'
 import { BACK_WALL_TILE } from './productCards'
@@ -575,12 +575,12 @@ function createRoomMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial 
  * per map square for each atlas. "Right" is the viewer's right when facing the
  * wall, so that words read forwards.
  */
-function createStorefrontGeometries(shopFronts: ShopFront[]) {
+/** The rooms, boards and light spill of some shops, `boardSlots` holding each one's board, in the same order. */
+function createStorefrontGeometries(shopFronts: ShopFront[], boardSlots: BoardChoice[]) {
   const boards: Chunks = new Map()
   const rooms: RoomChunks = new Map()
   const spills: Chunks = new Map()
 
-  const boardSlots = assignBoards(shopFronts)
   shopFronts.forEach(({ x, z, rotation, width, type, variation, menuBoard }, shopIndex) => {
     const key = chunkKey(x, z)
     const out = new THREE.Vector3(Math.sin(rotation), 0, Math.cos(rotation))
@@ -787,10 +787,33 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
   const awningMaterial = useMemo(() => createAwningMaterial(), [])
   const mesh = useRef<THREE.InstancedMesh>(null)
   use(boardFontsReady())
-  const geometries = useMemo(() => {
+  // Every shop's board is chosen across the whole map, so no name repeats nearby; the shapes are
+  // then built a map square at a time, near the rider first (StreamedChunks.tsx).
+  const choices = useMemo(() => {
     prepareBoardAtlas()
-    return createStorefrontGeometries(shopFronts)
+    return assignBoards(shopFronts)
   }, [shopFronts])
+  const squares = useMemo(() => {
+    const byKey = new Map<number, number[]>()
+    shopFronts.forEach(({ x, z }, index) => {
+      const key = chunkKey(x, z)
+      const list = byKey.get(key)
+      if (list) list.push(index)
+      else byKey.set(key, [index])
+    })
+    return byKey
+  }, [shopFronts])
+  const keys = useMemo(() => [...squares.keys()], [squares])
+  const build = useCallback(
+    (key: number): (THREE.BufferGeometry | null)[] => {
+      const indices = squares.get(key) ?? []
+      const shops = indices.map((index) => shopFronts[index])
+      const { rooms, boards, spills } = createStorefrontGeometries(shops, indices.map((index) => choices[index]))
+      const [kit] = createShopFrontKit(shops, indices)
+      return [rooms[0] ?? null, kit ?? null, boards[0] ?? null, spills[0] ?? null]
+    },
+    [squares, shopFronts, choices],
+  )
 
   const { boardMaterial, boardCanvas, photos } = useMemo(() => {
     const canvas = document.createElement('canvas')
@@ -823,7 +846,6 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
   }, [])
 
   const roomMaterial = useMemo(() => createRoomMaterial(toTexture(createInteriorAtlas())), [])
-  const kitGeometries = useMemo(() => createShopFrontKit(shopFronts), [shopFronts])
   const kitMaterial = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 }), [])
   const { propDistance, kitDetail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   // On Low, the counters and goods out front only near the rider.
@@ -871,6 +893,22 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
     [],
   )
   useFrame(() => updateGlow(boardMaterial, roomMaterial, spillMaterial))
+  const layers = useMemo(
+    () => [
+      { material: roomMaterial },
+      { material: kitMaterial, castShadow: true, maxDistance: kitDistance },
+      { material: boardMaterial },
+      { material: spillMaterial, maxDistance: kitDistance },
+    ],
+    [roomMaterial, kitMaterial, boardMaterial, spillMaterial, kitDistance],
+  )
+  // The materials were freed by ChunkedMesh; streamed squares leave that to their owner.
+  useEffect(
+    () => () => {
+      for (const material of [roomMaterial, kitMaterial, boardMaterial, spillMaterial]) material.dispose()
+    },
+    [roomMaterial, kitMaterial, boardMaterial, spillMaterial],
+  )
 
   useLayoutEffect(() => {
     const instances = mesh.current
@@ -899,10 +937,7 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
         args={[awningGeometry, awningMaterial, shopFronts.length]}
         receiveShadow
       />
-      <ChunkedMesh geometries={geometries.rooms} material={roomMaterial} />
-      <ChunkedMesh geometries={kitGeometries} material={kitMaterial} castShadow maxDistance={kitDistance} />
-      <ChunkedMesh geometries={geometries.boards} material={boardMaterial} />
-      <ChunkedMesh geometries={geometries.spills} material={spillMaterial} maxDistance={kitDistance} />
+      <StreamedChunks keys={keys} build={build} layers={layers} />
     </>
   )
 }

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { useTexture } from '@react-three/drei'
+import { useCompressedTextures } from './ktx2'
+import { PARK_PHOTO, PAVEMENT_TEXTURES } from './assetUrls'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
@@ -25,7 +26,6 @@ const PLAIN_PARK_COLOR = '#6f8f4f'
 const PATH_TINT = '#d6d0c6'
 const PLAIN_PATH_COLOR = '#9c9384'
 /** Shared with the pavements in Roads.tsx, so both come from one download and one GPU copy. */
-const PAVEMENT_TEXTURES = ['/textures/pavement-color.jpg', '/textures/pavement-normal.jpg']
 const PAVEMENT_TILE = 1.8
 /**
  * OSM maps some pavements and zebra crossings as footpaths of their own. The
@@ -87,15 +87,19 @@ function createPathGeometries(paths: LineFeature[]): THREE.BufferGeometry[] {
   return createFlatGeometries(chunks)
 }
 
-function prepareParkTexture(texture: THREE.Texture) {
+function prepareParkTextures([texture]: THREE.Texture[]) {
   prepareSurfaceTextures([texture, texture], PARK_TILE)
+}
+
+function preparePavers(maps: THREE.Texture[]) {
+  prepareSurfaceTextures(maps, PAVEMENT_TILE)
 }
 
 /** The city's real parks and footpaths, from the map. */
 export function Parks({ data }: { data: MapData }) {
   const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const grass = useTexture('/textures/park-color.jpg', prepareParkTexture)
-  const pavers = useTexture(PAVEMENT_TEXTURES, (maps) => prepareSurfaceTextures(maps, PAVEMENT_TILE))
+  const [grass] = useCompressedTextures([PARK_PHOTO], prepareParkTextures)
+  const pavers = useCompressedTextures(PAVEMENT_TEXTURES, preparePavers)
 
   const parks = useMemo(() => createParkGeometries(data.parks), [data])
   const paths = useMemo(() => createPathGeometries(data.footways), [data])

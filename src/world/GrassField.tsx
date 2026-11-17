@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
-import { useTexture } from '@react-three/drei'
+import { useCompressedTextures } from './ktx2'
+import { GRASS_TEXTURES } from './assetUrls'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
@@ -234,7 +235,6 @@ function addGrassMovement(shader: THREE.WebGLProgramParametersWithUniforms) {
   )
 }
 
-const GRASS_TEXTURES = ['/textures/grass-color.jpg', '/textures/grass-alpha.jpg']
 const GRASS_CUTOFF = 0.4
 
 function prepareGrassTextures([color]: THREE.Texture[]) {
@@ -246,7 +246,7 @@ export function GrassField({ data, paved = [] }: { data: MapData; paved?: Ground
   const { grassTufts } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const mask = useMemo(() => createGrassMask(data, paved), [data, paved])
   const geometry = useMemo(() => createTuftGeometry(grassTufts), [grassTufts])
-  const [color, alpha] = useTexture(GRASS_TEXTURES, prepareGrassTextures)
+  const [color, alpha] = useCompressedTextures(GRASS_TEXTURES, prepareGrassTextures)
 
   useEffect(() => {
     uniforms.uMask.value = mask

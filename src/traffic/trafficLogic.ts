@@ -975,6 +975,54 @@ function findGapAhead(
   return { gap, blockedBy }
 }
 
+/** Two footprints closer than this, in metres, count as touching: a sliver for the shapes' rounding. */
+const TOUCH_SLACK = 0.05
+
+/**
+ * How deep a vehicle is into the others on the road, in metres, summed: each footprint is a
+ * capsule along its heading (its length, rounded at the ends by its half width).
+ */
+function overlapWithTraffic(vehicle: Vehicle, others: Vehicle[]): number {
+  let depth = 0
+  const reach = vehicle.halfLength + 6
+  for (const other of others) {
+    if (other === vehicle || other.lane === -1 || other.body) continue
+    if (Math.abs(other.x - vehicle.x) > reach + other.halfLength || Math.abs(other.z - vehicle.z) > reach + other.halfLength) continue
+    const gap = capsuleDistance(vehicle, other) - vehicle.radius - other.radius + TOUCH_SLACK
+    if (gap < 0) depth -= gap
+  }
+  return depth
+}
+
+/** The distance between two vehicles' middle lines, each running along its heading for its length less its rounded ends. */
+function capsuleDistance(a: Vehicle, b: Vehicle): number {
+  const ends = (v: Vehicle): [number, number, number, number] => {
+    const half = Math.max(0, v.halfLength - v.radius)
+    const fx = Math.sin(v.heading) * half
+    const fz = Math.cos(v.heading) * half
+    return [v.x - fx, v.z - fz, v.x + fx, v.z + fz]
+  }
+  return segmentDistance(...ends(a), ...ends(b))
+}
+
+function segmentDistance(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): number {
+  const toSegment = (px: number, pz: number, x0: number, z0: number, x1: number, z1: number) => {
+    const ex = x1 - x0
+    const ez = z1 - z0
+    const lengthSquared = ex * ex + ez * ez
+    const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((px - x0) * ex + (pz - z0) * ez) / lengthSquared))
+    return Math.hypot(px - (x0 + ex * t), pz - (z0 + ez * t))
+  }
+  // Crossing segments touch; otherwise the nearest pair of points has an end of one segment in it.
+  const cross = (x0: number, z0: number, x1: number, z1: number, x2: number, z2: number) => (x1 - x0) * (z2 - z0) - (z1 - z0) * (x2 - x0)
+  const d1 = cross(ax, az, bx, bz, cx, cz)
+  const d2 = cross(ax, az, bx, bz, dx, dz)
+  const d3 = cross(cx, cz, dx, dz, ax, az)
+  const d4 = cross(cx, cz, dx, dz, bx, bz)
+  if (d1 * d2 < 0 && d3 * d4 < 0) return 0
+  return Math.min(toSegment(ax, az, cx, cz, dx, dz), toSegment(bx, bz, cx, cz, dx, dz), toSegment(cx, cz, ax, az, bx, bz), toSegment(dx, dz, ax, az, bx, bz))
+}
+
 /** A vehicle in the air or on its side, until it's ready to rejoin traffic. */
 function stepCrashedVehicle(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt: number) {
   const rules = TRAFFIC_RULES
@@ -1799,7 +1847,8 @@ export function stepTraffic(
         random() * MAX_LANE_WEIGHT < (lane.weight ?? 1) &&
         activeVehicles.every(
           (other) =>
-            other.lane === -1 || Math.hypot(other.x - lane.startX, other.z - lane.startZ) >= rules.spawnGap,
+            other.lane === -1 ||
+            Math.hypot(other.x - lane.startX, other.z - lane.startZ) >= Math.max(rules.spawnGap, other.halfLength + vehicle.halfLength + 2),
         )
       const lane = findLaneInRing(
         roadLanes,
@@ -1838,8 +1887,18 @@ export function stepTraffic(
       maybeHonk(world, vehicle, rider, false, dt)
       continue
     }
+    // Never into another vehicle: a step that would push this one further into another's
+    // footprint is taken back, and it waits (see `overlapWithTraffic`).
+    const before = overlapWithTraffic(vehicle, activeVehicles)
+    const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, shift: vehicle.shift }
     stepVehicle(world, vehicle, activeVehicles, rider, dt)
     if (vehicle.lane === -1) continue
+    if (!vehicle.body && overlapWithTraffic(vehicle, activeVehicles) > before + 0.001) {
+      Object.assign(vehicle, kept)
+      vehicle.speed = 0
+      // A two-wheeler squeezing sideways into something beside it gives up that gap.
+      vehicle.shiftTarget = vehicle.shift
+    }
     hitRider(world, vehicle, rider, dt)
     for (const person of world.pedestrians.slice(0, pedestrianCount)) {
       if (person.lane === -1 || person.body || person.fallen) continue

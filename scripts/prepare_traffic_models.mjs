@@ -24,6 +24,11 @@ const GLASS = [0.018, 0.028, 0.036]
 /** Paint is stored white, so each vehicle's own colour comes through exactly. */
 const WHITE = [1, 1, 1]
 const BOX_WHITE = [0.82, 0.82, 0.8]
+/** A corner flips to paint (or away from it) when at least this share of its neighbours are, this many times over. */
+const PAINT_MAJORITY = 0.6
+const PAINT_PASSES = 3
+/** How strongly the simplifier keeps the line between paint and trim, against colour (0.4) and shape. */
+const PAINT_EDGE_WEIGHT = 2
 /** How far the simplified shape may drift, as a share of the model's size. */
 const MAX_SHAPE_ERROR = 0.02
 /** Faces meeting at more than this angle, in radians, keep a crisp edge between them. See `smoothNormals`. */
@@ -653,6 +658,42 @@ function shrinkWrap(soup, cell) {
   return skin
 }
 
+/**
+ * Cleans up the paint after shrink-wrapping. Each corner of the skin takes its colour from the
+ * nearest part of the original, and near a panel gap that's often the dark seal underneath, so
+ * painted bodies came out speckled with dark corners. Here a corner mostly surrounded by paint
+ * becomes paint, and a stray painted corner among trim becomes trim, taking its neighbours'
+ * colour, a few times over.
+ */
+function settlePaint(soup) {
+  const neighbours = Array.from({ length: soup.count }, () => new Set())
+  for (let at = 0; at < soup.indices.length; at += 3) {
+    for (let k = 0; k < 3; k++) {
+      const a = soup.indices[at + k]
+      const b = soup.indices[at + ((k + 1) % 3)]
+      neighbours[a].add(b)
+      neighbours[b].add(a)
+    }
+  }
+  for (let pass = 0; pass < PAINT_PASSES; pass++) {
+    const paints = soup.paints.slice()
+    const colors = soup.colors.slice()
+    for (let corner = 0; corner < soup.count; corner++) {
+      const around = [...neighbours[corner]]
+      if (around.length === 0) continue
+      const painted = around.filter((other) => paints[other] === 1)
+      const share = painted.length / around.length
+      const flip = paints[corner] === 0 ? share >= PAINT_MAJORITY : share <= 1 - PAINT_MAJORITY
+      if (!flip) continue
+      const from = paints[corner] === 0 ? painted : around.filter((other) => paints[other] === 0)
+      soup.paints[corner] = paints[corner] === 0 ? 1 : 0
+      for (let axis = 0; axis < 3; axis++) {
+        soup.colors[corner * 3 + axis] = from.reduce((sum, other) => sum + colors[other * 3 + axis], 0) / from.length
+      }
+    }
+  }
+}
+
 /** Removes triangles until it reaches the target, keeping colours and shape where it can. */
 /**
  * Works out each corner's normal again from the finished surface: the average
@@ -689,10 +730,13 @@ function smoothNormals(soup, crease) {
 function simplify(soup, triangles) {
   const count = soup.count
   const positions = new Float32Array(soup.positions)
-  const attributes = new Float32Array(count * 6)
+  // Whether a corner is paint counts most: merged across a paint edge, a triangle is half body
+  // colour and half trim, and window frames, arches and grilles came out ragged and speckled.
+  const attributes = new Float32Array(count * 7)
   for (let corner = 0; corner < count; corner++) {
-    attributes.set(soup.colors.slice(corner * 3, corner * 3 + 3), corner * 6)
-    attributes.set(soup.normals.slice(corner * 3, corner * 3 + 3), corner * 6 + 3)
+    attributes.set(soup.colors.slice(corner * 3, corner * 3 + 3), corner * 7)
+    attributes.set(soup.normals.slice(corner * 3, corner * 3 + 3), corner * 7 + 3)
+    attributes[corner * 7 + 6] = soup.paints[corner]
   }
 
   const [indices, error] = MeshoptSimplifier.simplifyWithAttributes(
@@ -700,8 +744,8 @@ function simplify(soup, triangles) {
     positions,
     3,
     attributes,
-    6,
-    [0.4, 0.4, 0.4, 0.08, 0.08, 0.08],
+    7,
+    [0.4, 0.4, 0.4, 0.08, 0.08, 0.08, PAINT_EDGE_WEIGHT],
     null,
     triangles * 3,
     MAX_SHAPE_ERROR,
@@ -1261,6 +1305,7 @@ async function main() {
       )
       if (broken.length) console.log(spec.name, 'has bad numbers in', broken)
       const welded = weld(spec.wrapCell ? shrinkWrap(baked, spec.wrapCell) : baked)
+      if (spec.wrapCell) settlePaint(welded)
       const { result, error } = simplify(welded, spec.triangles)
       if (spec.wrapCell) smoothNormals(result, CREASE)
       const size = getBounds(result).getSize(new THREE.Vector3())

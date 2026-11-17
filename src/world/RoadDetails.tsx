@@ -1,10 +1,11 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import { getStreetReflection } from '../traffic/carModel'
 import { pushSmoothTriangle, squareFor, toBlockGeometries, type Square } from './blocks'
-import { ChunkedMesh } from './ChunkedMesh'
+import { StreamedChunks } from './StreamedChunks'
+import { chunkKey } from './chunks'
 import { QuadBuilder } from './quads'
 import { BREAKER, breakerHeight, water, type RoadFeatures, type RoadPatch, type SpeedBreaker } from './roadFeatures'
 import { ROAD_HEIGHT } from './surface'
@@ -157,10 +158,33 @@ export function RoadDetails({ features }: { features: RoadFeatures }) {
   const gl = useThree((state) => state.gl)
   const reflection = getStreetReflection(gl)
 
-  const breakers = useMemo(() => createBreakerGeometries(features.breakers), [features])
-  // A pothole's picture is a little bigger than its hollow, for the broken edge round it.
-  const potholes = useMemo(() => createPatchGeometries(features.potholes, 1.25, ROAD_HEIGHT + LIFT), [features])
-  const puddles = useMemo(() => createPatchGeometries(features.puddles, 1.1, ROAD_HEIGHT + LIFT * 2), [features])
+  // Built a map square at a time, near the rider first (StreamedChunks.tsx).
+  const squares = useMemo(() => {
+    const byKey = new Map<number, { breakers: SpeedBreaker[]; potholes: RoadPatch[]; puddles: RoadPatch[] }>()
+    const square = (x: number, z: number) => {
+      const key = chunkKey(x, z)
+      let found = byKey.get(key)
+      if (!found) byKey.set(key, (found = { breakers: [], potholes: [], puddles: [] }))
+      return found
+    }
+    for (const breaker of features.breakers) square(breaker.x, breaker.z).breakers.push(breaker)
+    for (const pothole of features.potholes) square(pothole.x, pothole.z).potholes.push(pothole)
+    for (const puddle of features.puddles) square(puddle.x, puddle.z).puddles.push(puddle)
+    return byKey
+  }, [features])
+  const keys = useMemo(() => [...squares.keys()], [squares])
+  const build = useCallback(
+    (key: number) => {
+      const { breakers = [], potholes = [], puddles = [] } = squares.get(key) ?? {}
+      return [
+        createBreakerGeometries(breakers)[0] ?? null,
+        // A pothole's picture is a little bigger than its hollow, for the broken edge round it.
+        createPatchGeometries(potholes, 1.25, ROAD_HEIGHT + LIFT)[0] ?? null,
+        createPatchGeometries(puddles, 1.1, ROAD_HEIGHT + LIFT * 2)[0] ?? null,
+      ]
+    },
+    [squares],
+  )
 
   const materials = useMemo(
     () => ({
@@ -202,15 +226,17 @@ export function RoadDetails({ features }: { features: RoadFeatures }) {
     },
     [materials],
   )
-  useEffect(() => () => [...breakers, ...potholes, ...puddles].forEach((geometry) => geometry.dispose()), [breakers, potholes, puddles])
 
   useFrame((_, delta) => updateWater(materials.puddle, Math.min(delta, 0.1)))
 
-  return (
-    <>
-      <ChunkedMesh geometries={breakers} material={materials.breaker} maxDistance={BREAKER_DISTANCE} />
-      <ChunkedMesh geometries={potholes} material={materials.pothole} maxDistance={PATCH_DISTANCE} />
-      <ChunkedMesh geometries={puddles} material={materials.puddle} maxDistance={PATCH_DISTANCE} />
-    </>
+  const layers = useMemo(
+    () => [
+      { material: materials.breaker, maxDistance: BREAKER_DISTANCE },
+      { material: materials.pothole, maxDistance: PATCH_DISTANCE },
+      { material: materials.puddle, maxDistance: PATCH_DISTANCE },
+    ],
+    [materials],
   )
+  // Nothing here is drawn past the breakers' distance, so further squares needn't be built.
+  return <StreamedChunks keys={keys} build={build} layers={layers} reach={Math.max(BREAKER_DISTANCE, PATCH_DISTANCE)} />
 }

@@ -1,4 +1,5 @@
 Textures from Poly Haven (https://polyhaven.com), licensed CC0 1.0. Resized for this project.
+Most are served as .ktx2, made from the .jpg originals in art/textures by scripts/compress_textures.mjs.
 
 road-color.jpg, road-normal.jpg         Asphalt 04         https://polyhaven.com/a/asphalt_04
 pavement-color.jpg, pavement-normal.jpg Patterned Concrete Pavers https://polyhaven.com/a/patterned_concrete_pavers

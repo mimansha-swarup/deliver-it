@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { useTexture } from '@react-three/drei'
+import { useCompressedTextures } from './ktx2'
+import { PAVEMENT_TEXTURES, ROAD_TEXTURES } from './assetUrls'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
@@ -24,8 +25,6 @@ const PAVEMENT_COLOR = '#c8c8c6'
 const ROAD_TILE = 8
 const PAVEMENT_TILE = 1.8
 
-const ROAD_TEXTURES = ['/textures/road-color.jpg', '/textures/road-normal.jpg']
-const PAVEMENT_TEXTURES = ['/textures/pavement-color.jpg', '/textures/pavement-normal.jpg']
 /** Wet tarmac looks darker. A full downpour takes this share off. */
 const WET_DARKENING = 0.35
 
@@ -88,6 +87,9 @@ function updateWetness(material: THREE.MeshStandardMaterial, dryColor: THREE.Col
   material.color.copy(dryColor).multiplyScalar(1 - liveSky.rain * WET_DARKENING)
 }
 
+const prepareRoad = (maps: THREE.Texture[]) => prepareSurfaceTextures(maps, ROAD_TILE)
+const preparePavement = (maps: THREE.Texture[]) => prepareSurfaceTextures(maps, PAVEMENT_TILE)
+
 export function Roads({ roads }: { roads: LineFeature[] }) {
   const road = useMemo(() => createRoadGeometry(roads, ROAD_HEIGHT, 0), [roads])
   const pavement = useMemo(
@@ -96,10 +98,8 @@ export function Roads({ roads }: { roads: LineFeature[] }) {
   )
 
   const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const roadMaps = useTexture(ROAD_TEXTURES, (maps) => prepareSurfaceTextures(maps, ROAD_TILE))
-  const pavementMaps = useTexture(PAVEMENT_TEXTURES, (maps) =>
-    prepareSurfaceTextures(maps, PAVEMENT_TILE),
-  )
+  const roadMaps = useCompressedTextures(ROAD_TEXTURES, prepareRoad)
+  const pavementMaps = useCompressedTextures(PAVEMENT_TEXTURES, preparePavement)
   const dryRoadColor = surfaces === 'plain' ? PLAIN_ROAD_COLOR : TEXTURED_ROAD_COLOR
 
   const roadMaterial = useMemo(

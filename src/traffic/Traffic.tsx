@@ -16,6 +16,8 @@ import { PAVEMENT_HEIGHT, ROAD_HEIGHT } from '../world/surface'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { STEERING_Z } from '../vehicle/Rider'
+import { isDebug } from '../dev/spawn'
+import { createRiderModel, createSeatedRiderGeometry, type RiderLook, type Seat } from '../vehicle/riderModel'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
@@ -33,7 +35,6 @@ import {
   type VehicleKind,
 } from './trafficLogic'
 import {
-  createBikeRiderGeometry,
   createParkedScooterGeometry,
   createVehicleGlowGeometry,
 } from './vehicleShapes'
@@ -45,6 +46,23 @@ import { createPlateAtlas, createPlateGeometry, plateCell, showPlateCell, type P
 
 
 /** An auto's colours come from its model, so its tint changes nothing. */
+
+/**
+ * People riding bikes in traffic: a jacket in the colour each rider is given (only the jacket
+ * takes it, see vehiclePaint.ts), bare hands, dark trousers and shoes, and a dark helmet. They
+ * sit where the old figure of shapes sat on the bikes: hips on the seat leaning forward, hands
+ * on the bars and feet on the pegs, in the bike's own space.
+ */
+const COMMUTER_LOOK: RiderLook = { jacket: '#ffffff', glove: '#8d5a3b', trousers: '#2b2f3a', shoe: '#1c1c1f' }
+const COMMUTER_SEAT: Seat = {
+  hip: new THREE.Vector3(0, 0.9, -0.3),
+  lean: 0.38,
+  hands: new THREE.Vector3(0.3, 0.98, 0.33),
+  feet: new THREE.Vector3(0.18, 0.42, -0.12),
+}
+const COMMUTER_HELMET = '#26282c'
+/** Jackets and shirts on bikes: everyday colours, a few bright. */
+const JACKET_COLORS = ['#3b4a6b', '#6b6f75', '#2a2c30', '#8a3b34', '#c9c3b4', '#3f6a55', '#b8862f', '#e0dcd2']
 const AUTO_COLORS = ['#ffffff']
 /** A far-away auto: the green body and yellow canopy. */
 const AUTO_PROXY_COLORS = { body: '#3f7d5a', cabin: '#d8c46c' }
@@ -191,6 +209,7 @@ function MovingInstances({
   seatedRider = false,
   nearestOnly = false,
   from = 0,
+  cloth = false,
 }: {
   items: Moving[]
   geometry: THREE.BufferGeometry
@@ -207,6 +226,8 @@ function MovingInstances({
   nearestOnly?: boolean
   /** Copies nearer than this aren't drawn: the far-away stand-ins start here. */
   from?: number
+  /** Cloth, not paint: matte, with only the parts marked `_paint` (a jacket) taking the copy's colour. */
+  cloth?: boolean
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
@@ -234,9 +255,11 @@ function MovingInstances({
         ref={material}
         vertexColors
         envMap={reflection}
-        roughness={baked ? 0.32 : 0.45}
-        metalness={baked ? 0.35 : 0.1}
-        onBeforeCompile={baked ? tintPaintOnly : undefined}
+        // Satin rather than mirror: the re-wrapped panels aren't perfectly smooth, and glossier paint
+        // caught a different bit of sky in every dent, which read as speckled paint.
+        roughness={cloth ? 0.85 : baked ? 0.5 : 0.45}
+        metalness={cloth ? 0 : baked ? 0.15 : 0.1}
+        onBeforeCompile={baked || cloth ? tintPaintOnly : undefined}
       />
     </instancedMesh>
   )
@@ -830,7 +853,11 @@ export function Traffic({
   )
   // These two are still built in code, so they need freeing. Loaded models don't.
   const drawn = useMemo(
-    () => ({ rider: createBikeRiderGeometry(), parked: createParkedScooterGeometry(scene, STEERING_Z) }),
+    () => ({
+      // The same man as the walkers and the player's rider, seated on the bike in one pose.
+      rider: createSeatedRiderGeometry(createRiderModel(getModel(scene, 'man'), COMMUTER_LOOK), COMMUTER_LOOK, COMMUTER_SEAT, COMMUTER_HELMET),
+      parked: createParkedScooterGeometry(scene, STEERING_Z),
+    }),
     [scene],
   )
   const lights = useMemo(
@@ -898,6 +925,8 @@ export function Traffic({
   useFrame((_, delta) => {
     const rider = scooter.current
     stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP))
+    // Debug: the traffic, for checking from the console that no two vehicles overlap.
+    if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: world.vehicles.slice(0, vehicles) }
     takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))
     takeImpacts(world, ({ x, z, strength }) => playImpact(x, z, strength, rider))
     updateTrafficSounds(inPlay, rider, Math.min(delta, MAX_STEP))
@@ -917,7 +946,7 @@ export function Traffic({
                   <NumberPlates items={byShape[shape]} geometry={bikePlates[shape]} commercial={false} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
                 </group>
               ))}
-              <MovingInstances items={items} geometry={drawn.rider} palette={palette} castShadow={shadowSize > 0} reflection={reflection} seatedRider reach={detail} />
+              <MovingInstances items={items} geometry={drawn.rider} palette={JACKET_COLORS} castShadow={shadowSize > 0} reflection={reflection} seatedRider cloth reach={detail} />
               <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked reflection={reflection} from={detail} />
               {/* Only the model has separate wheels to spin. The built shapes carry theirs. */}
               <VehicleWheels items={byShape[0]} wheels={wheels.bike} reach={detail} />

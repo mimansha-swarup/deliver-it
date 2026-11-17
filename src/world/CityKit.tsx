@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react'
+import { KIT_URL } from './assetUrls'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -7,7 +8,6 @@ import { livePlayer, liveSky, liveView } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { KitPlacement } from './cityKitPlacement'
 
-const KIT_URL = '/models/city-kit.glb'
 
 /** The map is cut into squares this wide, and each piece gets one instanced mesh per square. */
 const REGION_SIZE = 320

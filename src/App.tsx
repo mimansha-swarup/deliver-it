@@ -1,5 +1,6 @@
 // First, so these change three's shader code before any material is built: the golden haze,
 // and a cap on brightness that stops black frames (see brightnessCap.ts).
+import { markLoad } from './dev/loadTimeline'
 import './world/haze'
 import './world/brightnessCap'
 import { Suspense, useEffect, useState } from 'react'
@@ -37,7 +38,7 @@ function GameUi() {
     <>
       {!requested && <TitleScreen />}
       {started && <RidingUi />}
-      {requested && !curtainGone && <LoadingScreen onGone={() => setCurtainGone(true)} />}
+      {requested && !curtainGone && <LoadingScreen onGone={() => { markLoad('loading screen gone'); setCurtainGone(true) }} />}
     </>
   )
 }

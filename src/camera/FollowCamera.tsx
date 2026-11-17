@@ -1,3 +1,4 @@
+import { isDebug } from '../dev/spawn'
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { PerspectiveCamera, Vector3 } from 'three'
@@ -69,6 +70,10 @@ function findClearDistance(
  * Keeps the camera behind the target, lagging slightly through turns, and moves
  * it closer when a building would otherwise block the view.
  */
+/** A camera held still at a spot, looking at a point, while `active`: for taking the title pictures. */
+const photo = { active: false, position: [0, 0, 0] as [number, number, number], target: [0, 0, 0] as [number, number, number] }
+if (isDebug()) (window as unknown as { __deliverItPhoto?: typeof photo }).__deliverItPhoto = photo
+
 export function FollowCamera({
   scooter,
   collisions,
@@ -152,6 +157,11 @@ export function FollowCamera({
     }
 
     camera.lookAt(lookX, lookY, lookZ)
+    // Debug: a camera held still, for taking pictures (`__deliverItPhoto` with ?debug).
+    if (photo.active) {
+      camera.position.set(...photo.position)
+      camera.lookAt(...photo.target)
+    }
 
     if (camera instanceof PerspectiveCamera) {
       // Nitro widens the view a little more, for the rush.

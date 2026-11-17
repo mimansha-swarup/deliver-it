@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { useTexture } from '@react-three/drei'
+import { useCompressedTextures } from './ktx2'
+import { GROUND_PHOTO } from './assetUrls'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
@@ -21,7 +22,7 @@ const SOIL_TINT = '#a07a63'
 /** How wide one repeat of the texture is, in metres. */
 const GROUND_TILE = 16
 
-function prepareGroundTexture(texture: THREE.Texture) {
+function prepareGroundTextures([texture]: THREE.Texture[]) {
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
   texture.repeat.set(GROUND_WIDTH / GROUND_TILE, GROUND_DEPTH / GROUND_TILE)
@@ -36,7 +37,7 @@ function prepareGroundTexture(texture: THREE.Texture) {
  */
 export function Ground({ newSoilArea }: { newSoilArea: [number, number, number, number] }) {
   const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const texture = useTexture('/textures/ground-color.jpg', prepareGroundTexture)
+  const [texture] = useCompressedTextures([GROUND_PHOTO], prepareGroundTextures)
 
   const material = useMemo(() => {
     const soil = new THREE.MeshStandardMaterial({

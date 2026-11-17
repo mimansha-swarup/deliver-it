@@ -91,14 +91,14 @@ function toOutline(feature: PolygonFeature): GroundPoint[] {
 
 /** Outlines sorted into squares by their boxes, for asking quickly whether a point is inside one. */
 class OutlineGrid {
-  private readonly cells = new Map<string, GroundPoint[][]>()
+  private readonly cells = new Map<number, GroundPoint[][]>()
   private static readonly CELL = 64
   add(outline: GroundPoint[]) {
     const xs = outline.map((p) => p[0])
     const zs = outline.map((p) => p[1])
     for (let cx = Math.floor(Math.min(...xs) / OutlineGrid.CELL); cx <= Math.floor(Math.max(...xs) / OutlineGrid.CELL); cx++) {
       for (let cz = Math.floor(Math.min(...zs) / OutlineGrid.CELL); cz <= Math.floor(Math.max(...zs) / OutlineGrid.CELL); cz++) {
-        const key = `${cx},${cz}`
+        const key = (cx + 1000) * 2000 + (cz + 1000)
         const list = this.cells.get(key)
         if (list) list.push(outline)
         else this.cells.set(key, [outline])
@@ -106,7 +106,7 @@ class OutlineGrid {
     }
   }
   contains(x: number, z: number): boolean {
-    return (this.cells.get(`${Math.floor(x / OutlineGrid.CELL)},${Math.floor(z / OutlineGrid.CELL)}`) ?? []).some((outline) => isInsideOutline(outline, x, z))
+    return (this.cells.get((Math.floor(x / OutlineGrid.CELL) + 1000) * 2000 + (Math.floor(z / OutlineGrid.CELL) + 1000)) ?? []).some((outline) => isInsideOutline(outline, x, z))
   }
 }
 
@@ -145,12 +145,27 @@ export function fillEmptyPlots(
   const lastPump: GroundPoint[] = []
   const lastShrine: GroundPoint[] = [...worshipSpots]
 
-  const isFree = (x: number, z: number) =>
+  const testGround = (x: number, z: number) =>
     isInsideBounds(x, z, 4) &&
     !isNearBuilding(collisions, x, z, 0.6) &&
     isClearOfRoads(index, x, z, 1.2) &&
     !out.contains(x, z) &&
     fuelSpots.every(([fx, , fz]) => Math.hypot(fx - x, fz - z) > 45)
+  // The plot sizes tried at one spot share most of their test points, so each point's answer is
+  // kept, on a 25 cm grid, until something is built (which can change it).
+  let known = new Map<number, boolean>()
+  const isFree = (x: number, z: number) => {
+    const key = (Math.round(x * 4) + 40000) * 80000 + (Math.round(z * 4) + 40000)
+    let free = known.get(key)
+    if (free === undefined) {
+      free = testGround(x, z)
+      known.set(key, free)
+    }
+    return free
+  }
+  const forget = () => {
+    known = new Map()
+  }
 
   if (import.meta.env.DEV) {
     // Debug: why a spot is or isn't built on.
@@ -243,6 +258,7 @@ export function fillEmptyPlots(
             const [x, z] = at(s + width / 2, front + 1)
             infill.hoardings.push({ x, z, rotation, width: Math.min(width - 1, 7), poster: Math.floor(random() * 8) })
             addPost(collisions, x, z, 0.4)
+            forget()
             s += width + 1
             continue
           }
@@ -252,6 +268,7 @@ export function fillEmptyPlots(
           infill.sites.push({ x: middle[0], z: middle[1], rotation, width, depth, floors: 2 + Math.floor(random() * 2), seed: Math.floor(random() * 1e6) })
           const corners = [at(s, front), at(s + width, front), at(s + width, front + depth), at(s, front + depth)]
           addFootprint(collisions, corners)
+          forget()
           s += width + rule.gap[1]
           continue
         }
@@ -270,12 +287,14 @@ export function fillEmptyPlots(
         buildings.push(building)
         infill.buildings.push(building)
         addFootprint(collisions, corners)
+        forget()
 
         // A car in the yard, beside the gate, parallel to the wall.
         if (kind === 'house' && fit.setback >= 2.5 && random() < CAR_SHARE) {
           const [x, z] = at(s + width * 0.72, front - fit.setback / 2)
           infill.parkedCars.push({ x, z, rotation: Math.atan2(along[0], along[1]) + (random() < 0.5 ? 0 : Math.PI), variation: random(), car: true })
           addPost(collisions, x, z, 1.1)
+          forget()
         }
         s += width + rule.gap[0] + random() * (rule.gap[1] - rule.gap[0])
       }

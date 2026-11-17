@@ -1,10 +1,10 @@
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { chunkKey } from './chunks'
 import { groundLift } from './groundLift'
 import { createRandom } from './props'
 import type { ShopFront } from './shopFrontPlacement'
 import { colored } from './simpleShapes'
+import { BOX, colorOf, CYLINDER, PLANE, ShapeWriter, type Placement } from './shapeWriter'
 import type { ShopType } from './signboards'
 
 /*
@@ -42,29 +42,46 @@ type Frame = {
 }
 
 /** A box in the shop's own frame: `across` to the right of the middle, `out` from the wall, from `bottom` up. */
-function box(frame: Frame, across: number, out: number, bottom: number, width: number, height: number, depth: number, color: string): THREE.BufferGeometry {
-  const geometry = new THREE.BoxGeometry(width, height, depth).toNonIndexed()
-  geometry.translate(across, frame.lift + bottom + height / 2, out)
-  geometry.rotateY(frame.rotation)
-  geometry.translate(frame.x, 0, frame.z)
-  return colored(geometry, color)
+/** One part: a template shape, where it goes, and its colour (see shapeWriter.ts). */
+type Shape = { template: ReturnType<typeof BOX>; placement: Placement; color: string }
+
+/**
+ * Where a shop's parts are written: `push` takes parts made by `box`, `cylinder` and `panel`, or
+ * now and then a finished geometry, and writes them straight into the shop's map square.
+ */
+type Parts = { push: (...shapes: (Shape | THREE.BufferGeometry)[]) => void }
+
+function writerParts(writer: ShapeWriter): Parts {
+  return {
+    push: (...shapes) => {
+      for (const shape of shapes) {
+        if (shape instanceof THREE.BufferGeometry) {
+          const color = shape.getAttribute('color')
+          writer.addGeometry(shape, color ? new THREE.Color(color.getX(0), color.getY(0), color.getZ(0)) : colorOf('#ffffff'))
+        } else {
+          writer.add(shape.template, shape.placement, colorOf(shape.color))
+        }
+      }
+    },
+  }
 }
 
-function cylinder(frame: Frame, across: number, out: number, bottom: number, radius: number, height: number, color: string, top = radius): THREE.BufferGeometry {
-  const geometry = new THREE.CylinderGeometry(top, radius, height, 10).toNonIndexed()
-  geometry.translate(across, frame.lift + bottom + height / 2, out)
-  geometry.rotateY(frame.rotation)
-  geometry.translate(frame.x, 0, frame.z)
-  return colored(geometry, color)
+/** Where a part of `size` goes in the shop's frame, its bottom `bottom` up. */
+function place(frame: Frame, across: number, out: number, bottom: number, size: [number, number, number]): Placement {
+  return { scale: size, offset: [across, frame.lift + bottom + size[1] / 2, out], rotation: frame.rotation, x: frame.x, z: frame.z }
+}
+
+function box(frame: Frame, across: number, out: number, bottom: number, width: number, height: number, depth: number, color: string): Shape {
+  return { template: BOX(), placement: place(frame, across, out, bottom, [width, height, depth]), color }
+}
+
+function cylinder(frame: Frame, across: number, out: number, bottom: number, radius: number, height: number, color: string, top = radius): Shape {
+  return { template: CYLINDER(top / radius), placement: place(frame, across, out, bottom, [radius, height, radius]), color }
 }
 
 /** A flat panel facing out of the shop, `out` from the wall: two triangles, for small things seen from the front. */
-function panel(frame: Frame, across: number, out: number, bottom: number, width: number, height: number, color: string): THREE.BufferGeometry {
-  const geometry = new THREE.PlaneGeometry(width, height).toNonIndexed()
-  geometry.translate(across, frame.lift + bottom + height / 2, out)
-  geometry.rotateY(frame.rotation)
-  geometry.translate(frame.x, 0, frame.z)
-  return colored(geometry, color)
+function panel(frame: Frame, across: number, out: number, bottom: number, width: number, height: number, color: string): Shape {
+  return { template: PLANE(), placement: place(frame, across, out, bottom, [width, height, 1]), color }
 }
 
 /** What a glass counter shows through its front: a backing, and rows of small things at their real size. */
@@ -84,7 +101,7 @@ const COUNTER_GOODS: Partial<Record<ShopType, CounterGoods>> = {
  * and a glass top. The goods are flat panels, two triangles each, as they're
  * only ever seen from the street.
  */
-function glassCounter(parts: THREE.BufferGeometry[], frame: Frame, type: ShopType, across: number, width: number, height: number, body: string, random: () => number) {
+function glassCounter(parts: Parts, frame: Frame, type: ShopType, across: number, width: number, height: number, body: string, random: () => number) {
   const goods = COUNTER_GOODS[type]
   counter(parts, frame, across, width, height, body, '#d8e8ec')
   if (!goods) return
@@ -108,12 +125,12 @@ function glassCounter(parts: THREE.BufferGeometry[], frame: Frame, type: ShopTyp
 }
 
 /** A counter at the front, to one side of the doorway: a body and a lighter top. */
-function counter(parts: THREE.BufferGeometry[], frame: Frame, across: number, width: number, height: number, body: string, top: string) {
+function counter(parts: Parts, frame: Frame, across: number, width: number, height: number, body: string, top: string) {
   parts.push(box(frame, across, 0.3, 0, width, height - 0.04, 0.5, body))
   parts.push(box(frame, across, 0.3, height - 0.04, width + 0.04, 0.04, 0.54, top))
 }
 
-function fridge(parts: THREE.BufferGeometry[], frame: Frame, across: number, color: string) {
+function fridge(parts: Parts, frame: Frame, across: number, color: string) {
   parts.push(box(frame, across, 0.36, 0, 0.62, 1.75, 0.6, color))
   // The glass door, a paler panel on the front, with rows of bottles behind it.
   parts.push(box(frame, across, 0.67, 0.25, 0.5, 1.2, 0.02, '#d9eef2'))
@@ -121,7 +138,7 @@ function fridge(parts: THREE.BufferGeometry[], frame: Frame, across: number, col
 }
 
 /** Strips of snack packets hanging from the shutter box, across the doorway. */
-function snackStrips(parts: THREE.BufferGeometry[], frame: Frame, width: number, random: () => number, share = 1) {
+function snackStrips(parts: Parts, frame: Frame, width: number, random: () => number, share = 1) {
   const count = Math.max(2, Math.floor((width * share) / 0.32))
   for (let strip = 0; strip < count; strip++) {
     if (random() < 0.2) continue
@@ -135,7 +152,7 @@ function snackStrips(parts: THREE.BufferGeometry[], frame: Frame, width: number,
 }
 
 /** What each kind of shop puts at its front. `width` is the doorway; `side` picks which side the counter goes. */
-const FRONTS: Record<ShopType, (parts: THREE.BufferGeometry[], frame: Frame, width: number, side: number, random: () => number) => void> = {
+const FRONTS: Record<ShopType, (parts: Parts, frame: Frame, width: number, side: number, random: () => number) => void> = {
   kirana: (parts, frame, width, side, random) => {
     snackStrips(parts, frame, width, random)
     counter(parts, frame, side * width * 0.25, width * 0.4, 0.95, '#7a5a3a', '#cdb48c')
@@ -236,15 +253,22 @@ const FRIDGE_SHOPS = new Set<ShopType>(['general', 'bakery', 'chats', 'supermark
 const FRIDGE_SHARE = 0.55
 
 /** The 3D fronts of every shop, one geometry per map square. */
-export function createShopFrontKit(shopFronts: ShopFront[]): THREE.BufferGeometry[] {
-  const chunks = new Map<number, THREE.BufferGeometry[]>()
+/** `indices` gives each shop's number in the whole list, which seeds its details, so a shop looks the same however it's built. */
+export function createShopFrontKit(shopFronts: ShopFront[], indices?: number[]): THREE.BufferGeometry[] {
+  const chunks = new Map<number, ShapeWriter>()
   shopFronts.forEach((shop, index) => {
     const { x, z, rotation, width, type, variation } = shop
     const out: [number, number] = [Math.sin(rotation), Math.cos(rotation)]
     const frame: Frame = { x, z, rotation, lift: groundLift.at(x + out[0] * 0.6, z + out[1] * 0.6) }
-    const random = createRandom(index * 7919 + 13)
+    const random = createRandom((indices?.[index] ?? index) * 7919 + 13)
     const side = variation < 0.5 ? 1 : -1
-    const parts: THREE.BufferGeometry[] = []
+    const key = chunkKey(x, z)
+    let writer = chunks.get(key)
+    if (!writer) {
+      writer = new ShapeWriter()
+      chunks.set(key, writer)
+    }
+    const parts = writerParts(writer)
 
     // The rolled-up shutter in its box, its guide rails, and the step.
     parts.push(box(frame, 0, 0.14, SHUTTER_BOTTOM, width, SHUTTER_TOP - SHUTTER_BOTTOM, 0.28, '#7d8186'))
@@ -254,18 +278,7 @@ export function createShopFrontKit(shopFronts: ShopFront[]): THREE.BufferGeometr
 
     FRONTS[type](parts, frame, width - 0.2, side, random)
     if (FRIDGE_SHOPS.has(type) && random() < FRIDGE_SHARE && width > 3) fridge(parts, frame, -side * (width / 2 - 0.45), FRIDGES[Math.floor(random() * FRIDGES.length)])
-
-    const key = chunkKey(x, z)
-    const list = chunks.get(key) ?? []
-    chunks.set(key, list)
-    list.push(...parts)
   })
 
-  return [...chunks.values()].map((parts) => {
-    const merged = mergeGeometries(parts)
-    parts.forEach((part) => part.dispose())
-    if (!merged) throw new Error('Could not merge shop fronts')
-    merged.computeBoundingSphere()
-    return merged
-  })
+  return [...chunks.values()].filter((writer) => !writer.isEmpty).map((writer) => writer.toGeometry())
 }

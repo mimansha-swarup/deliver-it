@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useTexture } from '@react-three/drei'
+import { useCompressedTextures } from './ktx2'
+import { FOLIAGE_TEXTURES } from './assetUrls'
+import { createPosterTexture, POSTER_COLUMNS, POSTER_CORNER_UV } from './lampPosters'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
@@ -114,7 +116,6 @@ function createLampGeometry(): THREE.BufferGeometry {
 }
 
 /** The marketing poster on every lamp post, in metres. */
-const POSTER_URL = '/textures/poster-kills.jpg'
 const POSTER_WIDTH = 0.6
 const POSTER_HEIGHT = 0.9
 /** How high its bottom edge is, out of reach of passers-by. */
@@ -123,8 +124,6 @@ const POSTER_BOTTOM = 2.2
 const POSTER_OUT = 0.38
 const BOARD_THICKNESS = 0.024
 const BOARD_EDGE = 0.025
-/** A spot in the poster's plain maroon corner, used to colour the board's edges. */
-const BOARD_UV = 0.03
 
 /**
  * A poster board strapped to a lamp post. It faces along the road, both ways,
@@ -139,7 +138,7 @@ const BOARD_UV = 0.03
  * behind too. The board between them takes one colour from the image, so the
  * whole poster is one shape with one texture, in one draw call.
  */
-function createPosterGeometry(): THREE.BufferGeometry {
+function createPosterGeometry(column: number): THREE.BufferGeometry {
   const middle = POSTER_BOTTOM + POSTER_HEIGHT / 2
   const gap = BOARD_THICKNESS / 2 + 0.002
 
@@ -151,6 +150,11 @@ function createPosterGeometry(): THREE.BufferGeometry {
   const back = new THREE.PlaneGeometry(POSTER_WIDTH, POSTER_HEIGHT)
   back.rotateY(-Math.PI / 2)
   back.translate(-gap, middle, POSTER_OUT)
+  // Its own poster, out of the picture of both (lampPosters.ts).
+  for (const face of [front, back]) {
+    const faceUv = face.getAttribute('uv')
+    for (let index = 0; index < faceUv.count; index++) faceUv.setX(index, (column + faceUv.getX(index)) / POSTER_COLUMNS)
+  }
 
   const board = new THREE.BoxGeometry(
     BOARD_THICKNESS,
@@ -159,7 +163,8 @@ function createPosterGeometry(): THREE.BufferGeometry {
   )
   board.translate(0, middle, POSTER_OUT)
   const uv = board.getAttribute('uv')
-  for (let index = 0; index < uv.count; index++) uv.setXY(index, BOARD_UV, BOARD_UV)
+  // The board's edges take the poster's own background colour, from its plain lower corner.
+  for (let index = 0; index < uv.count; index++) uv.setXY(index, (column + POSTER_CORNER_UV) / POSTER_COLUMNS, POSTER_CORNER_UV)
 
   const poster = mergeGeometries([front, back, board])
   if (!poster) throw new Error('Could not merge poster geometry')
@@ -169,11 +174,6 @@ function createPosterGeometry(): THREE.BufferGeometry {
   return poster
 }
 
-function preparePosterTexture(texture: THREE.Texture) {
-  texture.colorSpace = THREE.SRGBColorSpace
-  // Keeps the writing sharp when the poster is seen at an angle.
-  texture.anisotropy = 8
-}
 
 /**
  * Sway, plus two changes for leaf cards. The photo's green is reduced to light
@@ -484,11 +484,6 @@ export function PropInstances({
   )
 }
 
-const FOLIAGE_TEXTURES = [
-  '/textures/leaf-color.jpg',
-  '/textures/leaf-alpha.jpg',
-  '/textures/bark-color.jpg',
-]
 
 function prepareFoliageTextures([color, alpha, bark]: THREE.Texture[]) {
   color.colorSpace = THREE.SRGBColorSpace
@@ -517,11 +512,13 @@ export function RoadsideProps({
     () => (leafyTrees ? createLeafyCanopyGeometries() : createCanopyGeometries()),
     [leafyTrees],
   )
-  const [leafColor, leafAlpha, bark] = useTexture(FOLIAGE_TEXTURES, prepareFoliageTextures)
+  const [leafColor, leafAlpha, bark] = useCompressedTextures(FOLIAGE_TEXTURES, prepareFoliageTextures)
   const leaves = useMemo(() => ({ color: leafColor, alpha: leafAlpha }), [leafColor, leafAlpha])
   const lamp = useMemo(() => createLampGeometry(), [])
-  const poster = useMemo(() => createPosterGeometry(), [])
-  const posterImage = useTexture(POSTER_URL, preparePosterTexture)
+  // Half the lamp posts carry one ad and half the other (lampPosters.ts).
+  const posters = useMemo(() => Array.from({ length: POSTER_COLUMNS }, (_, column) => createPosterGeometry(column)), [])
+  const posterImage = useMemo(() => createPosterTexture(), [])
+  const postersByLamp = useMemo(() => Array.from({ length: POSTER_COLUMNS }, (_, column) => props.lamps.filter((_lamp, index) => index % POSTER_COLUMNS === column)), [props.lamps])
   const tank = useMemo(() => createTankGeometry(), [])
   const bench = useMemo(() => createBenchGeometry(), [])
   const lampGlow = useMemo(() => createLampGlowGeometry(), [])
@@ -561,7 +558,8 @@ export function RoadsideProps({
       trunk.dispose()
       canopies.forEach((canopy) => canopy.dispose())
       lamp.dispose()
-      poster.dispose()
+      posters.forEach((geometry) => geometry.dispose())
+      posterImage.dispose()
       lampGlow.dispose()
       lightCone.dispose()
       lightConeMaterial.dispose()
@@ -573,7 +571,7 @@ export function RoadsideProps({
       creeper.leaves.dispose()
       creeper.flowers.dispose()
     },
-    [trunk, canopies, lamp, poster, lampGlow, lightCone, lightConeMaterial, halo, haloMaterial, tank, bench, petals, creeper],
+    [trunk, canopies, lamp, posters, posterImage, lampGlow, lightCone, lightConeMaterial, halo, haloMaterial, tank, bench, petals, creeper],
   )
 
   return (
@@ -618,7 +616,9 @@ export function RoadsideProps({
         leaves={leafyTrees ? leaves : undefined}
       />
       <PropInstances props={props.lamps} geometry={lamp} color={LAMP_COLOR} sizeRange={0} />
-      <PropInstances props={props.lamps} geometry={poster} color="#ffffff" sizeRange={0} surface={posterImage} />
+      {posters.map((geometry, column) => (
+        <PropInstances key={column} props={postersByLamp[column]} geometry={geometry} color="#ffffff" sizeRange={0} surface={posterImage} />
+      ))}
       <PropInstances props={props.lamps} geometry={lampGlow} sizeRange={0} glow />
       <PropInstances props={props.lamps} geometry={lightCone} sizeRange={0} material={lightConeMaterial} />
       <PropInstances props={props.lamps} geometry={halo} sizeRange={0} material={haloMaterial} />

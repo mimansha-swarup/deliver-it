@@ -50,20 +50,29 @@ class Layer {
   private readonly names: string[]
   private readonly sizes: number[]
 
-  constructor(attributes: Record<string, number>) {
+  /** With `oneSquare`, everything goes in one shape, whatever square it's in: a streamed square's own. */
+  private readonly oneSquare: boolean
+
+  constructor(attributes: Record<string, number>, oneSquare = false) {
+    this.oneSquare = oneSquare
     this.names = Object.keys(attributes)
     this.sizes = Object.values(attributes)
   }
 
   /** The arrays, one per attribute, for the map square a point is in. */
   at([x, z]: Vec): number[][] {
-    const key = chunkKey(x, z)
+    const key = this.oneSquare ? 0 : chunkKey(x, z)
     let arrays = this.squares.get(key)
     if (!arrays) {
       arrays = this.names.map(() => [])
       this.squares.set(key, arrays)
     }
     return arrays
+  }
+
+  /** The one shape of a one-square layer, or null if nothing was written. */
+  toGeometry(): THREE.BufferGeometry | null {
+    return this.squares.size === 0 ? null : this.toGeometries()[0]
   }
 
   toGeometries(): THREE.BufferGeometry[] {
@@ -371,14 +380,13 @@ const LEAF_COLORS = ['#8a5a2a', '#b07a32', '#c99a3a', '#6f6a2a', '#9a4a22', '#7a
 // ---------------------------------------------------------------------------
 // The builder
 
+/** One map square's shapes, one per material, or null where it has none. */
+export type EdgeShapes = Record<'asphalt' | 'footpaths' | 'kerbs' | 'edgeStones' | 'dust' | 'pits' | 'decals', THREE.BufferGeometry | null>
+
 export type StreetEdges = {
-  kerbs: THREE.BufferGeometry[]
-  footpaths: THREE.BufferGeometry[]
-  edgeStones: THREE.BufferGeometry[]
-  asphalt: THREE.BufferGeometry[]
-  dust: THREE.BufferGeometry[]
-  pits: THREE.BufferGeometry[]
-  decals: THREE.BufferGeometry[]
+  /** The squares with anything in them, and their shapes, built when asked for (StreamedChunks.tsx). */
+  squareKeys: number[]
+  buildSquare: (key: number) => EdgeShapes
   corners: Corner[]
   /** Whether a point is in a rounded junction corner, where the old kerbs must stop too. */
   isInCorner: (x: number, z: number) => boolean
@@ -436,13 +444,6 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
   const cornerIndex = new CornerIndex(corners)
   const gateIndex = new GateIndex(gates)
 
-  const kerbs = new Layer({ position: 3, normal: 3, color: 3, aStripe: 1 })
-  const footpaths = new Layer({ position: 3, normal: 3, uv: 2, aEdge: 1 })
-  const edgeStones = new Layer({ position: 3, normal: 3, color: 3 })
-  const asphalt = new Layer({ position: 3, normal: 3, uv: 2, aAcross: 1, aHalf: 1, aKerb: 2 })
-  const dust = new Layer({ position: 3, normal: 3, color: 4 })
-  const pits = new Layer({ position: 3, normal: 3, color: 3 })
-  const decals = new Layer({ position: 3, normal: 3, uv: 2 })
 
   const newPieces = pieces.filter((piece) => usesNewGround(roads[piece.road]) && length(sub(piece.end, piece.start)) > 0.3)
 
@@ -466,200 +467,15 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
       } else joints.set(key, { at, dir, half, junction: false })
     }
   }
-  // A disc at each joint fills the gaps at bends. Its "across" follows the road, so the
-  // edge shading runs on smoothly. At a junction it has no edges to shade.
-  for (const { at, dir, half, junction } of joints.values()) {
-    const arrays = asphalt.at(at)
-    const side = left(dir)
-    const sides = 16
-    for (let i = 0; i < sides; i++) {
-      const p = (k: number): Vec => {
-        const angle = (k / sides) * Math.PI * 2
-        return [at[0] + Math.cos(angle) * half, at[1] + Math.sin(angle) * half]
-      }
-      const across = (point: Vec) => (junction ? 0 : (point[0] - at[0]) * side[0] + (point[1] - at[1]) * side[1])
-      const halfFor = junction ? 99 : half
-      pushFlatTriangle(arrays, at, p(i), p(i + 1), (point, isFirst) => ({ across: isFirst ? 0 : across(point), half: halfFor, kerb: [1, 1] }))
-    }
-  }
-  for (const c of corners) {
-    const arrays = asphalt.at(c.point)
-    // The web's edge is the kerb; its far corner is mid-road.
-    const toEdge = length(sub(c.point, arcPoint(c, 0.5)))
-    for (let i = 1; i < c.web.length - 1; i++) {
-      pushFlatTriangle(arrays, c.web[0], c.web[i], c.web[i + 1], (_point, isPoint) => ({ across: isPoint ? 0 : toEdge, half: toEdge, kerb: [1, 1] }))
-    }
-  }
-
   function pushFlatTriangle(arrays: number[][], p0: Vec, p1: Vec, p2: Vec, extra: (point: Vec, isFirst: boolean) => AsphaltCorner) {
     const facesUp = (p1[1] - p0[1]) * (p2[0] - p0[0]) - (p1[0] - p0[0]) * (p2[1] - p0[1]) > 0
     const order: [Vec, boolean][] = facesUp ? [[p0, true], [p1, false], [p2, false]] : [[p0, true], [p2, false], [p1, false]]
     for (const [point, first] of order) asphaltVertex(arrays, point, extra(point, first))
   }
 
-  // ---- Kerbs, footpaths, edge stones and dust along each side of each piece ----
-  for (const piece of newPieces) {
-    const along = sub(piece.end, piece.start)
-    const pieceLength = length(along)
-    const dir: Vec = [along[0] / pieceLength, along[1] / pieceLength]
-    const half = piece.width / 2
-    const kerbRuns = new Map<number, [number, number][]>()
-    const preset = presetFor(roads[piece.road])
-    const foot = preset.footpath
-    const kerbWidth = preset.kerb.width
-
-    for (const sideSign of [1, -1]) {
-      const out: Vec = sideSign > 0 ? left(dir) : right(dir)
-      const at = (s: number, outward: number): Vec => add(add(piece.start, dir, s), out, half + outward)
-      // How far the footpath can run out here before it meets another road, or the forecourt of a bunk.
-      const footpathReach = (s: number): number => {
-        const edge = at(s, 0)
-        let reach = foot
-        const near = nearestOtherRoad(index, edge, piece, foot + 1)
-        if (near !== null) reach = Math.min(reach, near - kerbWidth)
-        if (keepLow(...at(s, foot / 2))) reach = 0
-        return reach
-      }
-      const kerbAt = (s: number) => {
-        const middle = at(s, kerbWidth / 2)
-        const near = nearestOtherRoad(index, at(s, 0), piece, 1)
-        // A kerb needs room behind it: a sliver between two carriageways is just road.
-        // A main road's kerb also stands in a narrow gap to the next carriageway: the two kerbs, each
-        // fitted to half the gap, meet as a painted median.
-        const roomy = near === null || near > kerbWidth + KERB_ROOM || (preset.median !== null && near > MEDIAN_KERB_GAP)
-        return roomy && !cornerIndex.zoneAt(middle) && !keepLow(...at(s, foot / 2))
-      }
-
-      // Kerb runs, then blocks along them, painted alternately, lowered in front of gates.
-      const sideRuns = findRuns(kerbAt, pieceLength).filter(([from, to]) => to - from >= MIN_KERB_RUN)
-      kerbRuns.set(sideSign, sideRuns)
-      // Each run is drawn as a few long kerbs, broken only where it drops in front of a gate. The
-      // black and yellow blocks of a painted kerb are painted on by its shader, from how far along it is.
-      const stripeStart = stripeOrigin(piece.start)
-      const dropped = gateIndex.droppedSpans(at(0, 0), dir, out, pieceLength)
-      const isDropped = (s: number) => dropped.some(([from, to]) => s >= from && s <= to)
-      for (const [from, to] of sideRuns) {
-        // Cut the run where a lowered stretch starts or ends.
-        const cuts = [from, ...dropped.flatMap((span) => span).filter((s) => s > from + 0.05 && s < to - 0.05), to]
-        for (let i = 0; i < cuts.length - 1; i++) {
-          const [s0, s1] = [cuts[i], cuts[i + 1]]
-          const middle = add(piece.start, dir, (s0 + s1) / 2)
-          const low = isDropped((s0 + s1) / 2)
-          const color = preset.kerb.painted ? PAINTED_BASE : plainKerb(middle)
-          const stripe: [number, number] = preset.kerb.painted ? [stripeStart + s0, stripeStart + s1] : [-1, -1]
-          // Narrower where another carriageway is close behind it: half the gap, so the two meet.
-          const gaps = [s0, (s0 + s1) / 2, s1].map((s) => nearestOtherRoad(index, at(s, 0), piece, kerbWidth * 2 + KERB_ROOM))
-          const room = Math.min(...gaps.map((gap) => (gap === null ? Infinity : gap / 2 - 0.01)))
-          const width = Math.max(0.1, Math.min(kerbWidth, room))
-          pushKerbBlock(kerbs.at(middle), at(s0, 0), at(s1, 0), out, low ? STREET.droppedRise : STREET.kerbRise, width, color, [true, true], stripe)
-        }
-        // Dry leaves blown into the gutter along the kerb, in drifts.
-        const leafRandom = createRandom(Math.abs(Math.round(piece.start[0] * 37 + piece.start[1] * 53 + sideSign * 11)))
-        for (let s = from + 0.5; s < to - 0.5; s += LEAF_SPACING) {
-          if (leafRandom() > preset.leaves) continue
-          const centre = at(s + leafRandom(), -0.12 - leafRandom() * 0.22)
-          pushLeaves(dust.at(centre), centre, leafRandom, ROAD_HEIGHT + 0.006, 2 + Math.floor(leafRandom() * 4))
-        }
-      }
-
-      // The footpath: a band from the kerb's back, out as far as it can reach, level with the kerb top.
-      const inCornerAt = (s: number) => cornerIndex.zoneAt(at(s, foot / 2)) !== null
-      const footpathOn = (s: number) => !inCornerAt(s) && footpathReach(s) > 0.3
-      for (const [from, to] of findRuns(footpathOn, pieceLength)) {
-        const count = Math.max(1, Math.ceil((to - from) / STEP))
-        const all = Array.from({ length: count + 1 }, (_, i) => from + ((to - from) * i) / count).map((s) => ({ s, reach: footpathReach(s) }))
-        // Along a straight stretch of full width, one long piece will do: keep only the
-        // samples where the width changes, and the ends.
-        const samples = all.filter(
-          (sample, i) =>
-            i === 0 ||
-            i === all.length - 1 ||
-            Math.abs(sample.reach - all[i - 1].reach) > 0.01 ||
-            Math.abs(sample.reach - all[i + 1].reach) > 0.01,
-        )
-        for (let i = 1; i < samples.length; i++) {
-          const a = samples[i - 1]
-          const b = samples[i]
-          pushFootpathQuad(footpaths.at(at(b.s, 0)), at(a.s, kerbWidth), at(b.s, kerbWidth), at(b.s, b.reach), at(a.s, a.reach), a.reach, b.reach, foot)
-          // Beside the soil, an edge stone and a strip of dust.
-          if (a.reach >= foot - 0.01 && b.reach >= foot - 0.01) {
-            pushEdgeStone(edgeStones.at(at(b.s, 0)), at(a.s, foot - STREET.edgeStone), at(b.s, foot - STREET.edgeStone), out)
-            pushDustStrip(dust.at(at(b.s, 0)), at(a.s, foot), at(b.s, foot), out)
-          }
-        }
-        // An end that meets a rounded corner carries on into it. Any other end gets a face down to the ground.
-        for (const end of [samples[0], samples[samples.length - 1]]) {
-          const beyond = end === samples[0] ? end.s - 0.2 : end.s + 0.2
-          if (beyond > 0 && beyond < pieceLength && inCornerAt(beyond)) continue
-          pushSkirt(edgeStones.at(at(end.s, 0)), at(end.s, kerbWidth), at(end.s, end.reach))
-        }
-      }
-    }
-
-    pushUnderlay(footpaths.at(piece.start), piece.start, piece.end, half, foot)
-
-    // The asphalt, in lengths of about 2 m, each knowing where a kerb runs beside it.
-    const hasKerb = (sideSign: number, s: number) => ((kerbRuns.get(sideSign) ?? []).some(([from, to]) => s >= from - 0.3 && s <= to + 0.3) ? 1 : 0)
-    const lengths = Math.max(1, Math.ceil(pieceLength / 2))
-    const side = left(dir)
-    for (let i = 0; i < lengths; i++) {
-      const s0 = (i / lengths) * pieceLength
-      const s1 = ((i + 1) / lengths) * pieceLength
-      const a = add(add(piece.start, dir, s0), side, half)
-      const b = add(add(piece.start, dir, s0), side, -half)
-      const c = add(add(piece.start, dir, s1), side, -half)
-      const d = add(add(piece.start, dir, s1), side, half)
-      const sOf = (point: Vec) => (point === a || point === b ? s0 : s1)
-      const extra = (point: Vec): AsphaltCorner => ({
-        across: point === a || point === d ? half : -half,
-        half,
-        kerb: [hasKerb(1, sOf(point)), hasKerb(-1, sOf(point))],
-      })
-      const arrays = asphalt.at(a)
-      pushFlatTriangle(arrays, a, b, c, extra)
-      pushFlatTriangle(arrays, a, c, d, extra)
-    }
-  }
-
-  // ---- The rounded corners: kerb along the arc, footpath filling the corner ----
-  for (const c of corners) {
-    const steps = arcSteps(c)
-    const towardCentre = (point: Vec): Vec => {
-      const v = sub(c.centre, point)
-      const l = length(v)
-      return [v[0] / l, v[1] / l]
-    }
-    // The kerb along the arc, in thin slices, painted like the straight ones.
-    const arcLength = Math.abs(c.sweep) * c.radius
-    const color = c.painted ? PAINTED_BASE : plainKerb(c.centre)
-    for (let k = 0; k < steps; k++) {
-      const p0 = arcPoint(c, k / steps)
-      const p1 = arcPoint(c, (k + 1) / steps)
-      const stripe: [number, number] = c.painted ? [(arcLength * k) / steps, (arcLength * (k + 1)) / steps] : [-1, -1]
-      pushKerbSlice(kerbs.at(p0), p0, p1, towardCentre(p0), towardCentre(p1), STREET.kerbRise, c.kerbWidth, color, stripe)
-    }
-    // The footpath in the corner: from the kerb's back along the arc, out to the far corner.
-    const arrays = footpaths.at(c.centre)
-    const kerbBack = (part: number): Vec => {
-      const p = arcPoint(c, part)
-      return add(p, towardCentre(p), c.kerbWidth)
-    }
-    const ring: Vec[] = [c.outerA, ...Array.from({ length: steps + 1 }, (_, i) => kerbBack(i / steps)), c.outerB]
-    // Fanned from the far corner, which can see the whole of it.
-    const fanCentre = c.outer
-    // No drifted dust in a corner: it meets the soil only at its far point, and dust
-    // shaded from there spreads across the whole corner as orange wedges.
-    const edgeFor = () => 0
-    for (let i = 0; i < ring.length - 1; i++) {
-      pushFootpathTriangle(arrays, fanCentre, ring[i], ring[i + 1], edgeFor)
-    }
-    // Where an old road's lower footpath meets the corner, a face down to it.
-    if (!c.newA) pushSkirt(edgeStones.at(c.tangentA), kerbBack(0), c.outerA)
-    if (!c.newB) pushSkirt(edgeStones.at(c.tangentB), kerbBack(1), c.outerB)
-  }
-
   // ---- Medians: a raised, painted strip down the middle of a wide two-way main road, broken at junctions ----
   const medians: { start: GroundPoint; end: GroundPoint; width: number }[] = []
+  const medianStrips = new Map<RoadPiece, { a: Vec; b: Vec; side: Vec; half: number; rise: number; stripe: [number, number] }>()
   /** How far short of a junction a median stops, so traffic can turn across. */
   const MEDIAN_GAP = 9
   for (const piece of newPieces) {
@@ -678,10 +494,8 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
     const a = add(piece.start, dir, from)
     const b = add(piece.start, dir, to)
     const stripe: [number, number] = [stripeOrigin(piece.start) + from, stripeOrigin(piece.start) + to]
-    // Two halves, each a kerb facing its own side of the road, meeting along the middle.
-    pushKerbBlock(kerbs.at(a), add(a, side, half), add(b, side, half), [-side[0], -side[1]], median.rise, half, PAINTED_BASE, [true, true], stripe)
-    pushKerbBlock(kerbs.at(a), add(a, side, -half), add(b, side, -half), side, median.rise, half, PAINTED_BASE, [true, true], stripe)
     medians.push({ start: a, end: b, width: median.width })
+    medianStrips.set(piece, { a, b, side, half, rise: median.rise, stripe })
   }
   // ---- Forecourts: paving from the footpath to the shops, where they stand back from it ----
   // Shops are grouped by the road piece and side they face, and neighbours along it join up.
@@ -733,30 +547,6 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
     close()
   }
   const forecourtPoint = (f: Forecourt, s: number, outward: number): Vec => add(add(f.start, f.dir, s), f.out, outward)
-  for (const f of forecourts) {
-    const arrays = footpaths.at(forecourtPoint(f, (f.from + f.to) / 2, f.near))
-    // Three strips along the street: dusty at each end, clean in the middle.
-    const cuts = [f.from, f.from + FORECOURT_DUSTY_END, f.to - FORECOURT_DUSTY_END, f.to]
-    if (cuts[1] >= cuts[2]) cuts.splice(1, 2, (f.from + f.to) / 2)
-    const dustAt = (s: number) => (s <= f.from + 0.01 || s >= f.to - 0.01 ? 1 : 0)
-    for (let i = 0; i < cuts.length - 1; i++) {
-      const a = forecourtPoint(f, cuts[i], f.near)
-      const b = forecourtPoint(f, cuts[i + 1], f.near)
-      const c = forecourtPoint(f, cuts[i + 1], f.far)
-      const d = forecourtPoint(f, cuts[i], f.far)
-      const edge = new Map<Vec, number>([[a, dustAt(cuts[i])], [b, dustAt(cuts[i + 1])], [c, Math.max(0.6, dustAt(cuts[i + 1]))], [d, Math.max(0.6, dustAt(cuts[i]))]])
-      pushFootpathTriangle(arrays, a, b, c, (p) => edge.get(p) ?? 0)
-      pushFootpathTriangle(arrays, a, c, d, (p) => edge.get(p) ?? 0)
-    }
-    // Each end: a face down to the soil, and dust blown out onto it.
-    for (const [s, away] of [[f.from, -1], [f.to, 1]] as const) {
-      const inner = forecourtPoint(f, s, f.near)
-      const outer = forecourtPoint(f, s, f.far)
-      pushSkirt(edgeStones.at(inner), inner, outer)
-      const awayDir: Vec = [f.dir[0] * away, f.dir[1] * away]
-      pushDustStrip(dust.at(inner), inner, outer, awayDir)
-    }
-  }
   // Forecourts sorted into squares by their corners' box, as heights are asked for every frame.
   const FORECOURT_CELL = 16
   const forecourtCells = new Map<string, Forecourt[]>()
@@ -781,48 +571,307 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
       return s >= f.from && s <= f.to && o >= f.near && o <= f.far
     })
 
-  // ---- Trees: a pit with a frame and damp soil on the footpath, or damp soil round them on the verge ----
-  for (const tree of trees) {
-    const near = nearestRoadPiece(index, tree.x, tree.z, WIDEST_FOOTPATH + 6)
-    if (!near || !usesNewGround(roads[near.piece.road])) continue
-    const { footpath: foot, kerb } = presetFor(roads[near.piece.road])
-    const along = sub(near.piece.end, near.piece.start)
-    const dir: Vec = [along[0] / length(along), along[1] / length(along)]
-    if (near.edge > kerb.width + 0.3 && near.edge < foot - 0.3) {
-      pushTreePit(pits.at([tree.x, tree.z]), [tree.x, tree.z], dir)
-    } else if (near.edge >= foot) {
-      pushDampPatch(dust.at([tree.x, tree.z]), [tree.x, tree.z], tree.variation)
-    }
+  // ---- The shapes, one map square at a time ----
+  // Everything above is the plan, which the rest of the world asks about (heights, corners,
+  // medians, paving). The shapes are built only when a square is wanted (StreamedChunks.tsx),
+  // from the joints, pieces, corners, forecourts and trees whose first point is in it.
+  type Square = { joints: { at: Vec; dir: Vec; half: number; junction: boolean }[]; pieces: RoadPiece[]; corners: Corner[]; forecourts: Forecourt[]; trees: Prop[] }
+  const squares = new Map<number, Square>()
+  const squareAt = ([x, z]: Vec) => {
+    const key = chunkKey(x, z)
+    let found = squares.get(key)
+    if (!found) squares.set(key, (found = { joints: [], pieces: [], corners: [], forecourts: [], trees: [] }))
+    return found
   }
+  for (const joint of joints.values()) squareAt(joint.at).joints.push(joint)
+  for (const piece of newPieces) squareAt(piece.start).pieces.push(piece)
+  for (const c of corners) squareAt(c.point).corners.push(c)
+  for (const f of forecourts) squareAt(forecourtPoint(f, (f.from + f.to) / 2, f.near)).forecourts.push(f)
+  for (const tree of trees) squareAt([tree.x, tree.z]).trees.push(tree)
 
-  // ---- Marks on the asphalt: tar patches, cracks, manholes and newer patches, every few metres ----
-  for (const piece of newPieces) {
-    const along = sub(piece.end, piece.start)
-    const pieceLength = length(along)
-    const dir: Vec = [along[0] / pieceLength, along[1] / pieceLength]
-    const side = left(dir)
-    // Seeded by the street and the spot, so a street's marks are the same on every visit.
-    const random = streetRandom(roads[piece.road], Math.abs(Math.round(piece.start[0] * 131 + piece.start[1] * 71)))
-    const half = piece.width / 2
-    const { every, share } = presetFor(roads[piece.road]).marks
-    for (let s = 3; s < pieceLength - 3; s += every) {
-      // The share of tries that get a mark, split between the kinds as on 27th Main.
-      const roll = random() / share
-      const small = [DECAL.drop, DECAL.spot, DECAL.drips]
-      const kind =
-        roll < 0.16 ? DECAL.tar
-        : roll < 0.4 ? small[Math.floor(random() * small.length)]
-        : roll < 0.8 ? DECAL.crack
-        : roll < 0.87 && half > 3 ? DECAL.manhole
-        : roll < 1 ? DECAL.patch
-        : null
-      if (!kind) continue
-      const size = kind.size[0] + random() * (kind.size[1] - kind.size[0])
-      const room = Math.max(0, half - size / 2 - 0.4)
-      const across = (random() * 2 - 1) * room
-      const centre = add(add(piece.start, dir, s + random() * 3), side, across)
-      const turn = kind.turns ? random() * Math.PI * 2 : random() < 0.5 ? 0 : Math.PI
-      pushDecal(decals.at(centre), centre, dir, turn, kind, size)
+  const buildSquare = (key: number): EdgeShapes => {
+    const square = squares.get(key) ?? { joints: [], pieces: [], corners: [], forecourts: [], trees: [] }
+    const kerbs = new Layer({ position: 3, normal: 3, color: 3, aStripe: 1 }, true)
+    const footpaths = new Layer({ position: 3, normal: 3, uv: 2, aEdge: 1 }, true)
+    const edgeStones = new Layer({ position: 3, normal: 3, color: 3 }, true)
+    const asphalt = new Layer({ position: 3, normal: 3, uv: 2, aAcross: 1, aHalf: 1, aKerb: 2 }, true)
+    const dust = new Layer({ position: 3, normal: 3, color: 4 }, true)
+    const pits = new Layer({ position: 3, normal: 3, color: 3 }, true)
+    const decals = new Layer({ position: 3, normal: 3, uv: 2 }, true)
+
+    // A disc at each joint fills the gaps at bends. Its "across" follows the road, so the
+    // edge shading runs on smoothly. At a junction it has no edges to shade.
+    for (const { at, dir, half, junction } of square.joints) {
+      const arrays = asphalt.at(at)
+      const side = left(dir)
+      const sides = 16
+      for (let i = 0; i < sides; i++) {
+        const p = (k: number): Vec => {
+          const angle = (k / sides) * Math.PI * 2
+          return [at[0] + Math.cos(angle) * half, at[1] + Math.sin(angle) * half]
+        }
+        const across = (point: Vec) => (junction ? 0 : (point[0] - at[0]) * side[0] + (point[1] - at[1]) * side[1])
+        const halfFor = junction ? 99 : half
+        pushFlatTriangle(arrays, at, p(i), p(i + 1), (point, isFirst) => ({ across: isFirst ? 0 : across(point), half: halfFor, kerb: [1, 1] }))
+      }
+    }
+    for (const c of square.corners) {
+      const arrays = asphalt.at(c.point)
+      // The web's edge is the kerb; its far corner is mid-road.
+      const toEdge = length(sub(c.point, arcPoint(c, 0.5)))
+      for (let i = 1; i < c.web.length - 1; i++) {
+        pushFlatTriangle(arrays, c.web[0], c.web[i], c.web[i + 1], (_point, isPoint) => ({ across: isPoint ? 0 : toEdge, half: toEdge, kerb: [1, 1] }))
+      }
+    }
+
+    // ---- Kerbs, footpaths, edge stones and dust along each side of each piece ----
+    for (const piece of square.pieces) {
+      const along = sub(piece.end, piece.start)
+      const pieceLength = length(along)
+      const dir: Vec = [along[0] / pieceLength, along[1] / pieceLength]
+      const half = piece.width / 2
+      const kerbRuns = new Map<number, [number, number][]>()
+      const preset = presetFor(roads[piece.road])
+      const foot = preset.footpath
+      const kerbWidth = preset.kerb.width
+
+      for (const sideSign of [1, -1]) {
+        const out: Vec = sideSign > 0 ? left(dir) : right(dir)
+        const at = (s: number, outward: number): Vec => add(add(piece.start, dir, s), out, half + outward)
+        // How far the footpath can run out here before it meets another road, or the forecourt of a bunk.
+        const footpathReach = (s: number): number => {
+          const edge = at(s, 0)
+          let reach = foot
+          const near = nearestOtherRoad(index, edge, piece, foot + 1)
+          if (near !== null) reach = Math.min(reach, near - kerbWidth)
+          if (keepLow(...at(s, foot / 2))) reach = 0
+          return reach
+        }
+        const kerbAt = (s: number) => {
+          const middle = at(s, kerbWidth / 2)
+          const near = nearestOtherRoad(index, at(s, 0), piece, 1)
+          // A kerb needs room behind it: a sliver between two carriageways is just road.
+          // A main road's kerb also stands in a narrow gap to the next carriageway: the two kerbs, each
+          // fitted to half the gap, meet as a painted median.
+          const roomy = near === null || near > kerbWidth + KERB_ROOM || (preset.median !== null && near > MEDIAN_KERB_GAP)
+          return roomy && !cornerIndex.zoneAt(middle) && !keepLow(...at(s, foot / 2))
+        }
+
+        // Kerb runs, then blocks along them, painted alternately, lowered in front of gates.
+        const sideRuns = findRuns(kerbAt, pieceLength).filter(([from, to]) => to - from >= MIN_KERB_RUN)
+        kerbRuns.set(sideSign, sideRuns)
+        // Each run is drawn as a few long kerbs, broken only where it drops in front of a gate. The
+        // black and yellow blocks of a painted kerb are painted on by its shader, from how far along it is.
+        const stripeStart = stripeOrigin(piece.start)
+        const dropped = gateIndex.droppedSpans(at(0, 0), dir, out, pieceLength)
+        const isDropped = (s: number) => dropped.some(([from, to]) => s >= from && s <= to)
+        for (const [from, to] of sideRuns) {
+          // Cut the run where a lowered stretch starts or ends.
+          const cuts = [from, ...dropped.flatMap((span) => span).filter((s) => s > from + 0.05 && s < to - 0.05), to]
+          for (let i = 0; i < cuts.length - 1; i++) {
+            const [s0, s1] = [cuts[i], cuts[i + 1]]
+            const middle = add(piece.start, dir, (s0 + s1) / 2)
+            const low = isDropped((s0 + s1) / 2)
+            const color = preset.kerb.painted ? PAINTED_BASE : plainKerb(middle)
+            const stripe: [number, number] = preset.kerb.painted ? [stripeStart + s0, stripeStart + s1] : [-1, -1]
+            // Narrower where another carriageway is close behind it: half the gap, so the two meet.
+            const gaps = [s0, (s0 + s1) / 2, s1].map((s) => nearestOtherRoad(index, at(s, 0), piece, kerbWidth * 2 + KERB_ROOM))
+            const room = Math.min(...gaps.map((gap) => (gap === null ? Infinity : gap / 2 - 0.01)))
+            const width = Math.max(0.1, Math.min(kerbWidth, room))
+            pushKerbBlock(kerbs.at(middle), at(s0, 0), at(s1, 0), out, low ? STREET.droppedRise : STREET.kerbRise, width, color, [true, true], stripe)
+          }
+          // Dry leaves blown into the gutter along the kerb, in drifts.
+          const leafRandom = createRandom(Math.abs(Math.round(piece.start[0] * 37 + piece.start[1] * 53 + sideSign * 11)))
+          for (let s = from + 0.5; s < to - 0.5; s += LEAF_SPACING) {
+            if (leafRandom() > preset.leaves) continue
+            const centre = at(s + leafRandom(), -0.12 - leafRandom() * 0.22)
+            pushLeaves(dust.at(centre), centre, leafRandom, ROAD_HEIGHT + 0.006, 2 + Math.floor(leafRandom() * 4))
+          }
+        }
+
+        // The footpath: a band from the kerb's back, out as far as it can reach, level with the kerb top.
+        const inCornerAt = (s: number) => cornerIndex.zoneAt(at(s, foot / 2)) !== null
+        const footpathOn = (s: number) => !inCornerAt(s) && footpathReach(s) > 0.3
+        for (const [from, to] of findRuns(footpathOn, pieceLength)) {
+          const count = Math.max(1, Math.ceil((to - from) / STEP))
+          const all = Array.from({ length: count + 1 }, (_, i) => from + ((to - from) * i) / count).map((s) => ({ s, reach: footpathReach(s) }))
+          // Along a straight stretch of full width, one long piece will do: keep only the
+          // samples where the width changes, and the ends.
+          const samples = all.filter(
+            (sample, i) =>
+              i === 0 ||
+              i === all.length - 1 ||
+              Math.abs(sample.reach - all[i - 1].reach) > 0.01 ||
+              Math.abs(sample.reach - all[i + 1].reach) > 0.01,
+          )
+          for (let i = 1; i < samples.length; i++) {
+            const a = samples[i - 1]
+            const b = samples[i]
+            pushFootpathQuad(footpaths.at(at(b.s, 0)), at(a.s, kerbWidth), at(b.s, kerbWidth), at(b.s, b.reach), at(a.s, a.reach), a.reach, b.reach, foot)
+            // Beside the soil, an edge stone and a strip of dust.
+            if (a.reach >= foot - 0.01 && b.reach >= foot - 0.01) {
+              pushEdgeStone(edgeStones.at(at(b.s, 0)), at(a.s, foot - STREET.edgeStone), at(b.s, foot - STREET.edgeStone), out)
+              pushDustStrip(dust.at(at(b.s, 0)), at(a.s, foot), at(b.s, foot), out)
+            }
+          }
+          // An end that meets a rounded corner carries on into it. Any other end gets a face down to the ground.
+          for (const end of [samples[0], samples[samples.length - 1]]) {
+            const beyond = end === samples[0] ? end.s - 0.2 : end.s + 0.2
+            if (beyond > 0 && beyond < pieceLength && inCornerAt(beyond)) continue
+            pushSkirt(edgeStones.at(at(end.s, 0)), at(end.s, kerbWidth), at(end.s, end.reach))
+          }
+        }
+      }
+
+      pushUnderlay(footpaths.at(piece.start), piece.start, piece.end, half, foot)
+
+      // The asphalt, in lengths of about 2 m, each knowing where a kerb runs beside it.
+      const hasKerb = (sideSign: number, s: number) => ((kerbRuns.get(sideSign) ?? []).some(([from, to]) => s >= from - 0.3 && s <= to + 0.3) ? 1 : 0)
+      const lengths = Math.max(1, Math.ceil(pieceLength / 2))
+      const side = left(dir)
+      for (let i = 0; i < lengths; i++) {
+        const s0 = (i / lengths) * pieceLength
+        const s1 = ((i + 1) / lengths) * pieceLength
+        const a = add(add(piece.start, dir, s0), side, half)
+        const b = add(add(piece.start, dir, s0), side, -half)
+        const c = add(add(piece.start, dir, s1), side, -half)
+        const d = add(add(piece.start, dir, s1), side, half)
+        const sOf = (point: Vec) => (point === a || point === b ? s0 : s1)
+        const extra = (point: Vec): AsphaltCorner => ({
+          across: point === a || point === d ? half : -half,
+          half,
+          kerb: [hasKerb(1, sOf(point)), hasKerb(-1, sOf(point))],
+        })
+        const arrays = asphalt.at(a)
+        pushFlatTriangle(arrays, a, b, c, extra)
+        pushFlatTriangle(arrays, a, c, d, extra)
+      }
+    }
+
+    // ---- The rounded corners: kerb along the arc, footpath filling the corner ----
+    for (const c of square.corners) {
+      const steps = arcSteps(c)
+      const towardCentre = (point: Vec): Vec => {
+        const v = sub(c.centre, point)
+        const l = length(v)
+        return [v[0] / l, v[1] / l]
+      }
+      // The kerb along the arc, in thin slices, painted like the straight ones.
+      const arcLength = Math.abs(c.sweep) * c.radius
+      const color = c.painted ? PAINTED_BASE : plainKerb(c.centre)
+      for (let k = 0; k < steps; k++) {
+        const p0 = arcPoint(c, k / steps)
+        const p1 = arcPoint(c, (k + 1) / steps)
+        const stripe: [number, number] = c.painted ? [(arcLength * k) / steps, (arcLength * (k + 1)) / steps] : [-1, -1]
+        pushKerbSlice(kerbs.at(p0), p0, p1, towardCentre(p0), towardCentre(p1), STREET.kerbRise, c.kerbWidth, color, stripe)
+      }
+      // The footpath in the corner: from the kerb's back along the arc, out to the far corner.
+      const arrays = footpaths.at(c.centre)
+      const kerbBack = (part: number): Vec => {
+        const p = arcPoint(c, part)
+        return add(p, towardCentre(p), c.kerbWidth)
+      }
+      const ring: Vec[] = [c.outerA, ...Array.from({ length: steps + 1 }, (_, i) => kerbBack(i / steps)), c.outerB]
+      // Fanned from the far corner, which can see the whole of it.
+      const fanCentre = c.outer
+      // No drifted dust in a corner: it meets the soil only at its far point, and dust
+      // shaded from there spreads across the whole corner as orange wedges.
+      const edgeFor = () => 0
+      for (let i = 0; i < ring.length - 1; i++) {
+        pushFootpathTriangle(arrays, fanCentre, ring[i], ring[i + 1], edgeFor)
+      }
+      // Where an old road's lower footpath meets the corner, a face down to it.
+      if (!c.newA) pushSkirt(edgeStones.at(c.tangentA), kerbBack(0), c.outerA)
+      if (!c.newB) pushSkirt(edgeStones.at(c.tangentB), kerbBack(1), c.outerB)
+    }
+
+    // ---- Medians: their two painted halves ----
+    for (const piece of square.pieces) {
+      const strip = medianStrips.get(piece)
+      if (!strip) continue
+      const { a, b, side, half, rise, stripe } = strip
+      // Two halves, each a kerb facing its own side of the road, meeting along the middle.
+      pushKerbBlock(kerbs.at(a), add(a, side, half), add(b, side, half), [-side[0], -side[1]], rise, half, PAINTED_BASE, [true, true], stripe)
+      pushKerbBlock(kerbs.at(a), add(a, side, -half), add(b, side, -half), side, rise, half, PAINTED_BASE, [true, true], stripe)
+    }
+    for (const f of square.forecourts) {
+      const arrays = footpaths.at(forecourtPoint(f, (f.from + f.to) / 2, f.near))
+      // Three strips along the street: dusty at each end, clean in the middle.
+      const cuts = [f.from, f.from + FORECOURT_DUSTY_END, f.to - FORECOURT_DUSTY_END, f.to]
+      if (cuts[1] >= cuts[2]) cuts.splice(1, 2, (f.from + f.to) / 2)
+      const dustAt = (s: number) => (s <= f.from + 0.01 || s >= f.to - 0.01 ? 1 : 0)
+      for (let i = 0; i < cuts.length - 1; i++) {
+        const a = forecourtPoint(f, cuts[i], f.near)
+        const b = forecourtPoint(f, cuts[i + 1], f.near)
+        const c = forecourtPoint(f, cuts[i + 1], f.far)
+        const d = forecourtPoint(f, cuts[i], f.far)
+        const edge = new Map<Vec, number>([[a, dustAt(cuts[i])], [b, dustAt(cuts[i + 1])], [c, Math.max(0.6, dustAt(cuts[i + 1]))], [d, Math.max(0.6, dustAt(cuts[i]))]])
+        pushFootpathTriangle(arrays, a, b, c, (p) => edge.get(p) ?? 0)
+        pushFootpathTriangle(arrays, a, c, d, (p) => edge.get(p) ?? 0)
+      }
+      // Each end: a face down to the soil, and dust blown out onto it.
+      for (const [s, away] of [[f.from, -1], [f.to, 1]] as const) {
+        const inner = forecourtPoint(f, s, f.near)
+        const outer = forecourtPoint(f, s, f.far)
+        pushSkirt(edgeStones.at(inner), inner, outer)
+        const awayDir: Vec = [f.dir[0] * away, f.dir[1] * away]
+        pushDustStrip(dust.at(inner), inner, outer, awayDir)
+      }
+    }
+    // ---- Trees: a pit with a frame and damp soil on the footpath, or damp soil round them on the verge ----
+    for (const tree of square.trees) {
+      const near = nearestRoadPiece(index, tree.x, tree.z, WIDEST_FOOTPATH + 6)
+      if (!near || !usesNewGround(roads[near.piece.road])) continue
+      const { footpath: foot, kerb } = presetFor(roads[near.piece.road])
+      const along = sub(near.piece.end, near.piece.start)
+      const dir: Vec = [along[0] / length(along), along[1] / length(along)]
+      if (near.edge > kerb.width + 0.3 && near.edge < foot - 0.3) {
+        pushTreePit(pits.at([tree.x, tree.z]), [tree.x, tree.z], dir)
+      } else if (near.edge >= foot) {
+        pushDampPatch(dust.at([tree.x, tree.z]), [tree.x, tree.z], tree.variation)
+      }
+    }
+
+    // ---- Marks on the asphalt: tar patches, cracks, manholes and newer patches, every few metres ----
+    for (const piece of square.pieces) {
+      const along = sub(piece.end, piece.start)
+      const pieceLength = length(along)
+      const dir: Vec = [along[0] / pieceLength, along[1] / pieceLength]
+      const side = left(dir)
+      // Seeded by the street and the spot, so a street's marks are the same on every visit.
+      const random = streetRandom(roads[piece.road], Math.abs(Math.round(piece.start[0] * 131 + piece.start[1] * 71)))
+      const half = piece.width / 2
+      const { every, share } = presetFor(roads[piece.road]).marks
+      for (let s = 3; s < pieceLength - 3; s += every) {
+        // The share of tries that get a mark, split between the kinds as on 27th Main.
+        const roll = random() / share
+        const small = [DECAL.drop, DECAL.spot, DECAL.drips]
+        const kind =
+          roll < 0.16 ? DECAL.tar
+          : roll < 0.4 ? small[Math.floor(random() * small.length)]
+          : roll < 0.8 ? DECAL.crack
+          : roll < 0.87 && half > 3 ? DECAL.manhole
+          : roll < 1 ? DECAL.patch
+          : null
+        if (!kind) continue
+        const size = kind.size[0] + random() * (kind.size[1] - kind.size[0])
+        const room = Math.max(0, half - size / 2 - 0.4)
+        const across = (random() * 2 - 1) * room
+        const centre = add(add(piece.start, dir, s + random() * 3), side, across)
+        const turn = kind.turns ? random() * Math.PI * 2 : random() < 0.5 ? 0 : Math.PI
+        pushDecal(decals.at(centre), centre, dir, turn, kind, size)
+      }
+    }
+
+
+    return {
+      asphalt: asphalt.toGeometry(),
+      footpaths: footpaths.toGeometry(),
+      kerbs: kerbs.toGeometry(),
+      edgeStones: edgeStones.toGeometry(),
+      dust: dust.toGeometry(),
+      pits: pits.toGeometry(),
+      decals: decals.toGeometry(),
     }
   }
 
@@ -854,13 +903,8 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
   }
 
   return {
-    kerbs: kerbs.toGeometries(),
-    footpaths: footpaths.toGeometries(),
-    edgeStones: edgeStones.toGeometries(),
-    asphalt: asphalt.toGeometries(),
-    dust: dust.toGeometries(),
-    pits: pits.toGeometries(),
-    decals: decals.toGeometries(),
+    squareKeys: [...squares.keys()],
+    buildSquare,
     corners,
     isInCorner,
     heightAt,

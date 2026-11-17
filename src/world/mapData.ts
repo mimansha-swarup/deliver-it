@@ -1,3 +1,4 @@
+import { markLoad } from '../dev/loadTimeline'
 import { waitForPreloadedMap } from '../game/preload'
 import { classifyBuildings, type BuildingKind } from './buildingKinds'
 import { findPlacesOfWorship, type PlaceOfWorship } from './worship'
@@ -145,6 +146,7 @@ async function fetchMapData(): Promise<MapData> {
   const extraWorship = fetchExtra(EXTRA_WORSHIP_URL)
   // The page's loader is usually downloading it already. Otherwise, download it here.
   const preloaded = await waitForPreloadedMap()
+  markLoad('map downloaded')
   let text: string
   if (preloaded) {
     text = new TextDecoder().decode(preloaded)
@@ -159,6 +161,7 @@ async function fetchMapData(): Promise<MapData> {
   const { features } = JSON.parse(text) as { features: Feature[] }
   const data = sortFeatures([...features, ...(await extraBuildings), ...(await extraWorship)])
   data.barriers = cutOutRestricted(await barriers, data.restricted)
+  markLoad('map read')
 
   const buildingKinds: Partial<Record<BuildingKind, number>> = {}
   for (const { kind } of data.buildings) buildingKinds[kind] = (buildingKinds[kind] ?? 0) + 1

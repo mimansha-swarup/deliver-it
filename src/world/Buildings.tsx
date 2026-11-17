@@ -1,4 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import { WALL_BUMP_MAPS, WALL_COLOR_PHOTOS } from './assetUrls'
+import { useCompressedTextures } from './ktx2'
 import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -8,7 +10,7 @@ import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { APARTMENT_COLORS, FLOOR_HEIGHT, getFloors, hashString, hasStilts, HOUSE_COLORS } from './buildingData'
 import type { BuildingKind } from './buildingKinds'
-import { ChunkedMesh } from './ChunkedMesh'
+import { StreamedChunks } from './StreamedChunks'
 import { chunkKey } from './chunks'
 import { createFacadeTextures, FACADE_LOOKS, type FacadeLook } from './facadeTextures'
 import type { BuildingFeature } from './mapData'
@@ -162,49 +164,44 @@ function createBlockGeometry(parts: THREE.BufferGeometry[]): THREE.BufferGeometr
   return block
 }
 
-/** Everything drawn with one look. */
-type CityLayer = { look: FacadeLook; geometries: THREE.BufferGeometry[] }
+/** Every look, in a fixed order: a streamed square makes one shape per look (see StreamedChunks.tsx). */
+const LOOKS = Object.keys(FACADE_LOOKS) as FacadeLook[]
 
-/**
- * One merged geometry per map square and per look, as one draw call can only use
- * one material. With `plain` set there are no textures to tell the looks apart,
- * so everything shares a layer and no extra draw calls are spent.
- */
-function createCityLayers(buildings: BuildingFeature[], plain: boolean): CityLayer[] {
-  const looks = new Map<FacadeLook, Map<number, THREE.BufferGeometry[]>>()
-
+/** The buildings in each map square, by the square their first corner is in. */
+function groupBySquare(buildings: BuildingFeature[]): Map<number, BuildingFeature[]> {
+  const squares = new Map<number, BuildingFeature[]>()
   for (const building of buildings) {
     const ring = building.geometry.coordinates[0]
     if (!isRingInPlayArea(ring) || building.kind === 'temple') continue
-
     const [east, north] = lonLatToLocal(ring[0])
     const key = chunkKey(east, -north)
-
-    for (const part of createBuildingParts(building)) {
-      const look = plain ? 'house' : part.look
-      const squares = looks.get(look) ?? new Map<number, THREE.BufferGeometry[]>()
-      looks.set(look, squares)
-
-      const square = squares.get(key) ?? []
-      squares.set(key, square)
-      square.push(part.geometry)
-    }
+    const list = squares.get(key)
+    if (list) list.push(building)
+    else squares.set(key, [building])
   }
-
-  return [...looks].map(([look, squares]) => ({
-    look,
-    geometries: [...squares.values()].map(createBlockGeometry),
-  }))
+  return squares
 }
 
-const WALL_PHOTOS = [
-  '/textures/wall-color.jpg',
-  '/textures/concrete-color.jpg',
-  '/textures/brick-color.jpg',
-  '/textures/wall-normal.jpg',
-  '/textures/concrete-normal.jpg',
-  '/textures/brick-normal.jpg',
-]
+/**
+ * One square's buildings, as one merged shape per look (null where it has none), as one draw
+ * call can only use one material. With `plain` set there are no textures to tell the looks apart,
+ * so everything goes in the plain house look and no extra draw calls are spent.
+ */
+function buildSquare(buildings: BuildingFeature[], plain: boolean): (THREE.BufferGeometry | null)[] {
+  const byLook = new Map<FacadeLook, THREE.BufferGeometry[]>()
+  for (const building of buildings) {
+    for (const part of createBuildingParts(building)) {
+      const look = plain ? 'house' : part.look
+      const list = byLook.get(look)
+      if (list) list.push(part.geometry)
+      else byLook.set(look, [part.geometry])
+    }
+  }
+  return LOOKS.map((look) => {
+    const parts = byLook.get(look)
+    return parts ? createBlockGeometry(parts) : null
+  })
+}
 
 /** Bumps have to repeat with the wall. The colour photos are only copied onto a canvas. */
 function prepareWallPhotos(textures: THREE.Texture[]) {
@@ -220,12 +217,13 @@ function updateWindowGlow(material: THREE.MeshStandardMaterial) {
 
 export function Buildings({ buildings }: { buildings: BuildingFeature[] }) {
   const { windows, surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const layers = useMemo(() => createCityLayers(buildings, !windows), [buildings, windows])
+  const squares = useMemo(() => groupBySquare(buildings), [buildings])
+  const keys = useMemo(() => [...squares.keys()], [squares])
+  // Built a square at a time, near the rider first (StreamedChunks.tsx).
+  const build = useCallback((key: number) => buildSquare(squares.get(key) ?? [], !windows), [squares, windows])
 
-  const [plaster, concrete, brick, plasterBumps, concreteBumps, brickBumps] = useTexture(
-    WALL_PHOTOS,
-    prepareWallPhotos,
-  )
+  const [plaster, concrete, brick] = useTexture(WALL_COLOR_PHOTOS, prepareWallPhotos)
+  const [plasterBumps, concreteBumps, brickBumps] = useCompressedTextures(WALL_BUMP_MAPS, prepareWallPhotos)
   const textures = useMemo(
     () =>
       createFacadeTextures({
@@ -250,7 +248,7 @@ export function Buildings({ buildings }: { buildings: BuildingFeature[] }) {
   // New materials each time, as a material can't gain or lose a texture freely.
   const materials = useMemo(
     () =>
-      layers.map(({ look }) => {
+      LOOKS.map((look) => {
         const { base, bumpy, roughness } = FACADE_LOOKS[look]
         const { facade, lights } = textures[look]
         const bumps = { plaster: plasterBumps, concrete: concreteBumps, brick: brickBumps }[base]
@@ -269,12 +267,12 @@ export function Buildings({ buildings }: { buildings: BuildingFeature[] }) {
         addWeathering(material, { streaks: windows ? WINDOW_SPANS[look] : null })
         return material
       }),
-    [layers, windows, surfaces, textures, plasterBumps, concreteBumps, brickBumps],
+    [windows, surfaces, textures, plasterBumps, concreteBumps, brickBumps],
   )
 
   useFrame(() => materials.forEach(updateWindowGlow))
 
-  return layers.map(({ look, geometries }, index) => (
-    <ChunkedMesh key={look} geometries={geometries} material={materials[index]} castShadow />
-  ))
+  const layers = useMemo(() => materials.map((material) => ({ material, castShadow: true })), [materials])
+  useEffect(() => () => materials.forEach((material) => material.dispose()), [materials])
+  return <StreamedChunks keys={keys} build={build} layers={layers} />
 }

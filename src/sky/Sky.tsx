@@ -1,3 +1,4 @@
+import { isDebug } from '../dev/spawn'
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -139,6 +140,10 @@ const NIGHT_ICON_LEVEL = 0.5
 export function Sky() {
   const { skyClouds, rainDrops } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const state = useRef(createSkyState())
+  // Debug: the clock and the weather, to set from the console (`__deliverItSky` with ?debug).
+  useEffect(() => {
+    if (isDebug()) (window as unknown as { __deliverItSky?: unknown }).__deliverItSky = state.current
+  }, [])
   const dome = useRef<THREE.Mesh>(null)
   const drift = useRef(0)
 

@@ -6,7 +6,7 @@ import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
 import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { HIP, JOG, type Probe } from './riderShape'
-import { createRiderMaterial, createRiderModel, type RiderModel, type RiderPose } from './riderModel'
+import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { tuning } from './tuning'
 import { BRAND_DYE, BRAND_INK, createJacketPrintTexture } from './brandPrint'
@@ -52,8 +52,6 @@ const ARM_SWING = 0.22
 const toModel = new THREE.Matrix4()
 const lowerToFeet = new THREE.Matrix4()
 const toRider = new THREE.Matrix4()
-const target = new THREE.Vector3()
-const reach = new THREE.Vector3()
 const shoulder = new THREE.Vector3()
 const hand = new THREE.Vector3()
 const foot = new THREE.Vector3()
@@ -62,42 +60,6 @@ const offHand = new THREE.Vector3()
 const limpHand = new THREE.Vector3()
 const offFoot = new THREE.Vector3()
 const limpFoot = new THREE.Vector3()
-
-/**
- * Poses one limb so its end reaches `end` (in the rider's space): turned forward
- * and out at its joint, and bent in the middle, as the shader bends it. The
- * bend comes from how far the end is (law of cosines); the turns then aim the
- * bent limb at it. Angles are set relative to how the limb hangs as modelled.
- * Returns where the middle joint ends up, in the rider's space, for the probes.
- */
-function poseLimb(
-  angles: THREE.Vector3,
-  joint: THREE.Vector3,
-  end: THREE.Vector3,
-  first: number,
-  second: number,
-  rest: { forward: number; out: number },
-  side: number,
-  bendsBack: boolean,
-  middle: THREE.Vector3,
-) {
-  target.copy(end).applyMatrix4(toModel)
-  reach.subVectors(target, joint)
-  const distance = Math.min(Math.max(reach.length(), Math.abs(first - second) + 0.001), first + second - 0.001)
-  reach.setLength(distance)
-  const bend = Math.acos(THREE.MathUtils.clamp((distance * distance - first * first - second * second) / (2 * first * second), -1, 1))
-  // How far forward of the first bone the end lies, once bent.
-  const lead = Math.atan2(second * Math.sin(bend) * (bendsBack ? -1 : 1), first + second * Math.cos(bend))
-  const forward = Math.asin(THREE.MathUtils.clamp(reach.z / distance, -1, 1)) - lead
-  const out = Math.atan2(reach.x * side, -reach.y)
-  angles.set(forward - rest.forward, out - rest.out, bend)
-  // The middle joint, where the first bone ends.
-  middle.set(
-    joint.x + first * Math.cos(forward) * Math.sin(out * side),
-    joint.y - first * Math.cos(forward) * Math.cos(out),
-    joint.z + first * Math.sin(forward),
-  ).applyMatrix4(toRider)
-}
 
 /** Where each foot is in a jog, from `jogFoot`: forward of the hip, height off the ground, and how much weight is on it. */
 type FootStep = { forward: number; lift: number; load: number }
@@ -284,7 +246,7 @@ export function Rider({
     for (const [index, sign] of [[0, 1], [1, -1]] as const) {
       shoulder.copy(joints.shoulders[index]).applyMatrix4(toRider)
       handTarget(sign, steer, off, limp, jog, sign > 0 ? leftStep : rightStep, shoulder, armLength)
-      poseLimb(index === 0 ? pose.leftArm : pose.rightArm, joints.shoulders[index], hand, size.upperArm, size.forearm, size.armRest, sign, false, elbow)
+      poseLimb(index === 0 ? pose.leftArm : pose.rightArm, joints.shoulders[index], hand, size.upperArm, size.forearm, size.armRest, sign, false, elbow, toModel, toRider)
       probes[4 + index].point.copy(elbow)
       probes[6 + index].point.copy(hand)
     }
@@ -292,7 +254,7 @@ export function Rider({
       if (sign > 0) foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
       else foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
       placeOffFoot(foot, sign, off, limp, jog, sign > 0 ? leftStep : rightStep)
-      poseLimb(index === 0 ? pose.leftLeg : pose.rightLeg, joints.hips[index], foot, size.thigh, size.shin, size.legRest, sign, true, elbow)
+      poseLimb(index === 0 ? pose.leftLeg : pose.rightLeg, joints.hips[index], foot, size.thigh, size.shin, size.legRest, sign, true, elbow, toModel, toRider)
       probes[8 + index].point.copy(elbow)
       probes[10 + index].point.copy(foot)
     }

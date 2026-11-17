@@ -36,6 +36,8 @@ const SHOE_TOP = 0.11
  * tear, so the rider wears a smooth jacket of simple shapes over them instead.
  */
 const JACKET = { standOff: 0.014, shoulder: 0.068, elbow: 0.05, cuff: 0.043, rings: 16 }
+/** The trousers' shell: the thigh's radius at the hip and at the knee, in metres. */
+const TROUSERS = { hip: 0.085, knee: 0.062 }
 
 /** Bare skin and hair from this far below the shoulder up is hidden: the neck, head and hair. */
 const HIDE_BELOW_SHOULDER = 0.2
@@ -130,6 +132,11 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
     // Under the jacket's shell (below): the arms above the gloves, and the shirt above the belt.
     if (isArm(i) && y >= shoulderY - HAND_DROP + 0.02) hidden[i] = 1
     if (!isArm(i) && !isLeg(i) && isClothing(i) && y > hipY + 0.04) hidden[i] = 1
+    // Under the trousers' shell: the thighs, and the corners round the hips that half-follow a leg,
+    // which tore when a seated rider's thighs swing forward.
+    if (isLeg(i) && y > kneeY + 0.03) hidden[i] = 1
+    const legShare = Math.abs(limb.getX(i))
+    if (legShare > 0 && legShare < 0.5 && limb.getY(i) <= 1.1) hidden[i] = 1
     if (isArm(i)) color = y < shoulderY - HAND_DROP ? glove : jacket
     else if (isLeg(i)) color = y < SHOE_TOP ? shoe : trousers
     else if (isClothing(i)) color = y > hipY ? jacket : trousers
@@ -180,7 +187,7 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
     return half > 0 ? { half, front, back } : null
   }
   const wrist = elbow.clone().lerp(grip, Math.min(1, (elbowY - (shoulderY - HAND_DROP + 0.02)) / Math.max(0.01, elbowY - grip.y)))
-  const shell = createJacketShell({ shoulderY, hipY, shoulderJoint, elbow, wrist, torsoAt, color: jacket, attributes: geometry })
+  const shell = createJacketShell({ shoulderY, hipY, shoulderJoint, elbow, wrist, hipJoint: new THREE.Vector3(hip.x, hipY, 0), knee, torsoAt, color: jacket, trousers, attributes: geometry })
   const merged = mergeGeometries([geometry, ...shell.parts])
   geometry.dispose()
   shell.parts.forEach((part) => part.dispose())
@@ -222,8 +229,11 @@ function createJacketShell({
   shoulderJoint,
   elbow,
   wrist,
+  hipJoint,
+  knee,
   torsoAt,
   color,
+  trousers,
   attributes,
 }: {
   shoulderY: number
@@ -231,20 +241,23 @@ function createJacketShell({
   shoulderJoint: THREE.Vector3
   elbow: THREE.Vector3
   wrist: THREE.Vector3
+  hipJoint: THREE.Vector3
+  knee: THREE.Vector3
   torsoAt: (y: number) => Band | null
   color: THREE.Color
+  trousers: THREE.Color
   attributes: THREE.BufferGeometry
 }): { parts: THREE.BufferGeometry[]; at: (y: number) => Band | null } {
   const parts: THREE.BufferGeometry[] = []
   /** Gives a shape exactly the model's attributes: colour, limb weights, nothing hidden, the rest zero. */
-  const fit = (shape: THREE.BufferGeometry, limb: [number, number]) => {
+  const fit = (shape: THREE.BufferGeometry, limb: [number, number], shade = color) => {
     const count = shape.getAttribute('position').count
     for (const name of Object.keys(shape.attributes)) if (!attributes.getAttribute(name)) shape.deleteAttribute(name)
     for (const [name, attribute] of Object.entries(attributes.attributes)) {
       if (name === 'position' || name === 'normal') continue
       const values = new Float32Array(count * attribute.itemSize)
       for (let i = 0; i < count; i++) {
-        if (name === 'color') values.set([color.r, color.g, color.b], i * 3)
+        if (name === 'color') values.set([shade.r, shade.g, shade.b], i * 3)
         if (name === '_limb') values.set([limb[0], limb[1], 1], i * 3)
       }
       shape.setAttribute(name, new THREE.BufferAttribute(values, attribute.itemSize))
@@ -308,6 +321,30 @@ function createJacketShell({
     fit(sleeve(shoulder.clone().setY(shoulder.y - 0.025), aboveElbow, JACKET.shoulder * 0.9, JACKET.elbow), [1, shoulderY])
     fit(ball(elbowAt, JACKET.elbow), [1, shoulderY])
     fit(sleeve(belowElbow, cuffAt, JACKET.elbow, JACKET.cuff), [1, shoulderY])
+  }
+
+  // The trousers: the seat, a ball at each hip joint (it turns in place), a thigh to just above
+  // the knee (the shader bends what's below), and a ball at the knee over the model's own shin.
+  const seat = torsoAt(hipJoint.y) ?? { half: hipJoint.x + 0.1, front: 0.1, back: -0.12 }
+  fit(
+    new THREE.SphereGeometry(1, 14, 10)
+      .scale(seat.half + JACKET.standOff, 0.13, (seat.front - seat.back) / 2 + JACKET.standOff)
+      .translate(0, hipJoint.y - 0.04, (seat.front + seat.back) / 2),
+    [0, 0],
+    trousers,
+  )
+  for (const side of [1, -1]) {
+    const hipAt = hipJoint.clone().setX(hipJoint.x * side)
+    const kneeAt = knee.clone().setX(knee.x * side)
+    const aboveKnee = kneeAt.clone().setY(kneeAt.y + 0.002)
+    const ball = (centre: THREE.Vector3, radius: number) => new THREE.SphereGeometry(radius, 12, 8).translate(centre.x, centre.y, centre.z)
+    const thigh = hipAt.distanceTo(aboveKnee)
+    const tube = new THREE.CylinderGeometry(TROUSERS.hip, TROUSERS.knee, thigh, 12, 1, true).translate(0, -thigh / 2, 0)
+    tube.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), aboveKnee.clone().sub(hipAt).normalize()))
+    tube.translate(hipAt.x, hipAt.y, hipAt.z)
+    fit(ball(hipAt, TROUSERS.hip), [1, hipJoint.y], trousers)
+    fit(tube, [1, hipJoint.y], trousers)
+    fit(ball(kneeAt, TROUSERS.knee), [1, hipJoint.y], trousers)
   }
 
   const at = (y: number): Band | null => {
@@ -411,4 +448,180 @@ export function createRiderMaterial(model: RiderModel, pose: RiderPose): THREE.M
   }
   material.customProgramCacheKey = () => 'rider-model'
   return material
+}
+
+const target = new THREE.Vector3()
+const reach = new THREE.Vector3()
+
+/**
+ * Poses one limb so its end reaches `end` (in the rider's space): turned forward
+ * and out at its joint, and bent in the middle, as the shader bends it. The
+ * bend comes from how far the end is (law of cosines); the turns then aim the
+ * bent limb at it. Angles are set relative to how the limb hangs as modelled.
+ * Puts where the middle joint ends up, in the rider's space, for the probes.
+ */
+export function poseLimb(
+  angles: THREE.Vector3,
+  joint: THREE.Vector3,
+  end: THREE.Vector3,
+  first: number,
+  second: number,
+  rest: { forward: number; out: number },
+  side: number,
+  bendsBack: boolean,
+  middle: THREE.Vector3,
+  /** From the rider's space into the model's, and back. */
+  toModel: THREE.Matrix4,
+  toRider: THREE.Matrix4,
+) {
+  target.copy(end).applyMatrix4(toModel)
+  reach.subVectors(target, joint)
+  const distance = Math.min(Math.max(reach.length(), Math.abs(first - second) + 0.001), first + second - 0.001)
+  reach.setLength(distance)
+  const bend = Math.acos(THREE.MathUtils.clamp((distance * distance - first * first - second * second) / (2 * first * second), -1, 1))
+  // How far forward of the first bone the end lies, once bent.
+  const lead = Math.atan2(second * Math.sin(bend) * (bendsBack ? -1 : 1), first + second * Math.cos(bend))
+  const forward = Math.asin(THREE.MathUtils.clamp(reach.z / distance, -1, 1)) - lead
+  const out = Math.atan2(reach.x * side, -reach.y)
+  angles.set(forward - rest.forward, out - rest.out, bend)
+  // The middle joint, where the first bone ends.
+  middle.set(
+    joint.x + first * Math.cos(forward) * Math.sin(out * side),
+    joint.y - first * Math.cos(forward) * Math.cos(out),
+    joint.z + first * Math.sin(forward),
+  ).applyMatrix4(toRider)
+}
+
+/**
+ * Bends the model into a pose on the CPU, exactly as `createRiderMaterial`'s shader does every
+ * frame: for riders who keep one pose, such as the people riding bikes in traffic.
+ */
+function poseOnCpu(model: RiderModel, pose: RiderPose): { positions: Float32Array; normals: Float32Array } {
+  const { geometry, size } = model
+  const position = geometry.getAttribute('position')
+  const normal = geometry.getAttribute('normal')
+  const limb = geometry.getAttribute('_limb')
+  const positions = new Float32Array(position.count * 3)
+  const normals = new Float32Array(position.count * 3)
+  const turn = (z: number, y: number, jointY: number, angle: number): [number, number] => {
+    const down = y - jointY
+    const c = Math.cos(angle)
+    const s = Math.sin(angle)
+    return [z * c - down * s, jointY + z * s + down * c]
+  }
+  const turnDirection = (a: number, b: number, angle: number): [number, number] => {
+    const c = Math.cos(angle)
+    const s = Math.sin(angle)
+    return [a * c - b * s, a * s + b * c]
+  }
+  for (let i = 0; i < position.count; i++) {
+    let x = position.getX(i)
+    let y = position.getY(i)
+    let z = position.getZ(i)
+    let nx = normal.getX(i)
+    let ny = normal.getY(i)
+    let nz = normal.getZ(i)
+    const follow = Math.abs(limb.getX(i))
+    if (follow > 0) {
+      const jointY = limb.getY(i)
+      const isArm = jointY > 1.1
+      const side = x >= 0 ? 1 : -1
+      const angles = (isArm ? (side > 0 ? pose.leftArm : pose.rightArm) : side > 0 ? pose.leftLeg : pose.rightLeg).clone().multiplyScalar(follow)
+      const middleY = isArm ? jointY - ELBOW_DROP : jointY * (KNEE / WALK_HIP)
+      const jointX = side * (isArm ? size.shoulderX : size.hipX)
+      if (position.getY(i) < middleY) {
+        const bend = isArm ? angles.z : -angles.z
+        ;[z, y] = turn(z, y, middleY, bend)
+        ;[nz, ny] = turnDirection(nz, ny, bend)
+      }
+      ;[z, y] = turn(z, y, jointY, angles.x)
+      ;[nz, ny] = turnDirection(nz, ny, angles.x)
+      const outward = angles.y * side
+      const [ax, ay] = turnDirection(x - jointX, y - jointY, outward)
+      x = jointX + ax
+      y = jointY + ay
+      ;[nx, ny] = turnDirection(nx, ny, outward)
+    }
+    positions.set([x, y, z], i * 3)
+    normals.set([nx, ny, nz], i * 3)
+  }
+  return { positions, normals }
+}
+
+/** Where a seated rider's body goes on a bike, in the bike's own space (x right, y up, z forward). */
+export type Seat = { hip: THREE.Vector3; lean: number; hands: THREE.Vector3; feet: THREE.Vector3 }
+
+/**
+ * A rider sitting on a bike in one pose, as one shape in the bike's own space: the dressed model
+ * bent so the hands reach the bars and the feet the pegs (mirrored for the right side), with a
+ * helmet over the head. The jacket is marked `_paint`, so each rider's jacket takes the colour
+ * the instance is given while skin, trousers and shoes keep their own (vehiclePaint.ts).
+ */
+export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, seat: Seat, helmetColor: string): THREE.BufferGeometry {
+  const { size } = model
+  const toRiderSpace = new THREE.Matrix4()
+    .makeRotationX(seat.lean)
+    .setPosition(seat.hip)
+    .multiply(new THREE.Matrix4().makeTranslation(0, -size.hipY, 0))
+  const toModelSpace = toRiderSpace.clone().invert()
+  const pose: RiderPose = { leftArm: new THREE.Vector3(), rightArm: new THREE.Vector3(), leftLeg: new THREE.Vector3(), rightLeg: new THREE.Vector3() }
+  const middle = new THREE.Vector3()
+  for (const [index, side] of [[0, 1], [1, -1]] as const) {
+    const hand = seat.hands.clone().setX(seat.hands.x * side)
+    const foot = seat.feet.clone().setX(seat.feet.x * side)
+    poseLimb(index === 0 ? pose.leftArm : pose.rightArm, new THREE.Vector3(size.shoulderX * side, size.shoulderY, 0), hand, size.upperArm, size.forearm, size.armRest, side, false, middle, toModelSpace, toRiderSpace)
+    poseLimb(index === 0 ? pose.leftLeg : pose.rightLeg, new THREE.Vector3(size.hipX * side, size.hipY, 0), foot, size.thigh, size.shin, size.legRest, side, true, middle, toModelSpace, toRiderSpace)
+  }
+  const { positions, normals } = poseOnCpu(model, pose)
+
+  // Only whole visible triangles: the head and hair under the helmet go.
+  const geometry = model.geometry
+  const hidden = geometry.getAttribute('aHidden')
+  const colors = geometry.getAttribute('color')
+  const index = geometry.index
+  const corners = index ? Array.from(index.array) : Array.from({ length: hidden.count }, (_, i) => i)
+  const jacket = new THREE.Color(look.jacket)
+  const kept: number[] = []
+  for (let t = 0; t < corners.length; t += 3) {
+    const tri = [corners[t], corners[t + 1], corners[t + 2]]
+    if (tri.reduce((sum, corner) => sum + hidden.getX(corner), 0) / 3 > 0.5) continue
+    kept.push(...tri)
+  }
+  const out = {
+    position: new Float32Array(kept.length * 3),
+    normal: new Float32Array(kept.length * 3),
+    color: new Float32Array(kept.length * 3),
+    _paint: new Float32Array(kept.length),
+  }
+  const p = new THREE.Vector3()
+  const n = new THREE.Vector3()
+  const turnNormals = new THREE.Matrix3().getNormalMatrix(toRiderSpace)
+  kept.forEach((corner, k) => {
+    p.fromArray(positions, corner * 3).applyMatrix4(toRiderSpace).toArray(out.position, k * 3)
+    n.fromArray(normals, corner * 3).applyMatrix3(turnNormals).normalize().toArray(out.normal, k * 3)
+    const r = colors.getX(corner)
+    const g = colors.getY(corner)
+    const b = colors.getZ(corner)
+    out.color.set([r, g, b], k * 3)
+    out._paint[k] = Math.abs(r - jacket.r) + Math.abs(g - jacket.g) + Math.abs(b - jacket.b) < 0.01 ? 1 : 0
+  })
+  const body = new THREE.BufferGeometry()
+  for (const [name, values] of Object.entries(out)) body.setAttribute(name, new THREE.BufferAttribute(values, name === '_paint' ? 1 : 3))
+
+  // The helmet, over the head, in its own colour.
+  const helmet = new THREE.SphereGeometry(0.15, 12, 9).toNonIndexed()
+  helmet.scale(0.96, 1, 1.08)
+  helmet.translate(size.head.x, size.head.y, size.head.z)
+  helmet.applyMatrix4(toRiderSpace)
+  helmet.deleteAttribute('uv')
+  const helmetRgb = new THREE.Color(helmetColor)
+  helmet.setAttribute('color', new THREE.BufferAttribute(new Float32Array(helmet.getAttribute('position').count * 3).map((_, i) => [helmetRgb.r, helmetRgb.g, helmetRgb.b][i % 3]), 3))
+  helmet.setAttribute('_paint', new THREE.BufferAttribute(new Float32Array(helmet.getAttribute('position').count), 1))
+
+  const merged = mergeGeometries([body, helmet])
+  body.dispose()
+  helmet.dispose()
+  if (!merged) throw new Error('Could not build the seated rider')
+  merged.computeBoundingSphere()
+  return merged
 }

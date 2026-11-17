@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Group } from 'three'
 import { FollowCamera } from '../camera/FollowCamera'
 import { TitleCamera } from '../camera/TitleCamera'
@@ -66,8 +66,26 @@ export function Player({ stores, collisions, graph, traffic, surface, bunks, spa
       <BunkRefill scooter={scooterState} stations={bunks} />
       <MissionMarker />
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
-      <Traffic scooter={scooterState} world={traffic} />
+      {/* Built once riding has begun, so it doesn't hold up the loading screen. */}
+      <AfterRideStarts>
+        <Traffic scooter={scooterState} world={traffic} />
+      </AfterRideStarts>
       <TrafficLights world={traffic} />
     </>
   )
+}
+
+/** Waits this long after the ride starts, so the loading screen has faded before traffic is built, in milliseconds. */
+const TRAFFIC_DELAY = 600
+
+/** Shows its children only once the ride has started, a moment after. */
+function AfterRideStarts({ children }: { children: ReactNode }) {
+  const started = useGameStore((state) => state.started)
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    if (!started) return
+    const timer = setTimeout(() => setReady(true), TRAFFIC_DELAY)
+    return () => clearTimeout(timer)
+  }, [started])
+  return ready ? children : null
 }

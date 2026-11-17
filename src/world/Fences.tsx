@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
-import { ChunkedMesh } from './ChunkedMesh'
+import { StreamedChunks } from './StreamedChunks'
 import { chunkKey } from './chunks'
 import { PANEL, type FenceKind, type FenceRun } from './fencing'
 import { groundLift } from './groundLift'
@@ -217,14 +217,15 @@ function buildRun(run: FenceRun, built: Built) {
   }
 }
 
-function mergeChunks(map: Map<number, THREE.BufferGeometry[]>): THREE.BufferGeometry[] {
-  return [...map.values()].map((parts) => {
-    const merged = mergeGeometries(parts)
-    parts.forEach((part) => part.dispose())
-    if (!merged) throw new Error('Could not merge fences')
-    merged.computeBoundingSphere()
-    return merged
-  })
+/** Every part, whichever squares they fell in, as one shape, or null if there are none. */
+function mergeAll(map: Map<number, THREE.BufferGeometry[]>): THREE.BufferGeometry | null {
+  const parts = [...map.values()].flat()
+  if (parts.length === 0) return null
+  const merged = mergeGeometries(parts)
+  parts.forEach((part) => part.dispose())
+  if (!merged) throw new Error('Could not merge fences')
+  merged.computeBoundingSphere()
+  return merged
 }
 
 /** A cut-out pattern. An alpha map is read from its green channel, so the pattern goes in RGB. */
@@ -253,11 +254,24 @@ function cutOutMaterial(alphaMap: THREE.Texture): THREE.MeshStandardMaterial {
 
 export function Fences({ runs }: { runs: FenceRun[] }) {
   const { propDistance } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const { solid, bars, mesh } = useMemo(() => {
-    const built: Built = { solid: new Map(), bars: new Map(), mesh: new Map() }
-    for (const run of runs) buildRun(run, built)
-    return { solid: mergeChunks(built.solid), bars: mergeChunks(built.bars), mesh: mergeChunks(built.mesh) }
+  // Built a map square at a time, near the rider first (StreamedChunks.tsx): each run with the
+  // square it starts in, though it may carry on into the next.
+  const squares = useMemo(() => {
+    const byKey = new Map<number, FenceRun[]>()
+    for (const run of runs) {
+      const key = chunkKey(run.from[0], run.from[1])
+      const list = byKey.get(key)
+      if (list) list.push(run)
+      else byKey.set(key, [run])
+    }
+    return byKey
   }, [runs])
+  const keys = useMemo(() => [...squares.keys()], [squares])
+  const build = useCallback((key: number) => {
+    const built: Built = { solid: new Map(), bars: new Map(), mesh: new Map() }
+    for (const run of squares.get(key) ?? []) buildRun(run, built)
+    return [mergeAll(built.solid), mergeAll(built.bars), mergeAll(built.mesh)]
+  }, [squares])
 
   const solidMaterial = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.1 }), [])
   // Vertical bars: solid for the first part of each repeat across, all the way up.
@@ -275,11 +289,23 @@ export function Fences({ runs }: { runs: FenceRun[] }) {
     [],
   )
 
-  return (
-    <>
-      <ChunkedMesh geometries={solid} material={solidMaterial} castShadow maxDistance={propDistance} />
-      <ChunkedMesh geometries={bars} material={barMaterial} castShadow maxDistance={propDistance} />
-      <ChunkedMesh geometries={mesh} material={meshMaterial} maxDistance={propDistance * 0.6} />
-    </>
+  const layers = useMemo(
+    () => [
+      { material: solidMaterial, castShadow: true, maxDistance: propDistance },
+      { material: barMaterial, castShadow: true, maxDistance: propDistance },
+      { material: meshMaterial, maxDistance: propDistance * 0.6 },
+    ],
+    [solidMaterial, barMaterial, meshMaterial, propDistance],
   )
+  useEffect(
+    () => () => {
+      for (const material of [solidMaterial, barMaterial, meshMaterial]) {
+        material.alphaMap?.dispose()
+        material.dispose()
+      }
+    },
+    [solidMaterial, barMaterial, meshMaterial],
+  )
+  // Fences go only as far as the props do, so squares past that needn't be built.
+  return <StreamedChunks keys={keys} build={build} layers={layers} reach={propDistance} />
 }

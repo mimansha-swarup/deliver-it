@@ -1,3 +1,4 @@
+import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch, WORLD_PART_COUNT, WORLD_PARTS } from '../game/launch'
@@ -12,14 +13,14 @@ const SCENES = [
     layout: 'feature',
     panels: [
       { src: '/title/shop-street-morning.jpg', x: 55, y: 55, pan: 'left' },
-      { src: '/title/midday-handover.jpg', x: 75, y: 50, pan: 'up' },
+      { src: '/title/main-road-midday.jpg', x: 75, y: 50, pan: 'up' },
       { src: '/title/nitro-night-rain.jpg', x: 70, y: 55, pan: 'right' },
     ],
   },
   {
     layout: 'banner',
     panels: [
-      { src: '/title/midday-handover.jpg', x: 72, y: 55, pan: 'in' },
+      { src: '/title/main-road-midday.jpg', x: 72, y: 55, pan: 'in' },
       { src: '/title/nitro-night-rain.jpg', x: 70, y: 50, pan: 'right' },
       { src: '/title/shop-street-morning.jpg', x: 88, y: 40, pan: 'left' },
     ],
@@ -107,7 +108,10 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
     let id = requestAnimationFrame(function wait() {
       frames++
       if (frames < 4) id = requestAnimationFrame(wait)
-      else startGame()
+      else {
+        markLoad('ride starts')
+        startGame()
+      }
     })
     return () => cancelAnimationFrame(id)
   }, [allBuilt, started, startGame])

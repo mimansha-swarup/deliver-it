@@ -65,50 +65,6 @@ export function createAutoGeometry(): THREE.BufferGeometry {
   ])
 }
 
-const TROUSERS = '#39404c'
-const GLOVE = '#1f2023'
-
-type Joint = [x: number, y: number, z: number]
-
-/** A round bar from one joint to another, with a ball at the far end so bends look solid. */
-function limb(from: Joint, to: Joint, radius: number, color: string): THREE.BufferGeometry[] {
-  const start = new THREE.Vector3(...from)
-  const end = new THREE.Vector3(...to)
-  const direction = end.clone().sub(start)
-
-  const bar = new THREE.CylinderGeometry(radius, radius, direction.length(), 7)
-  bar.applyQuaternion(
-    new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize()),
-  )
-  bar.translate(...start.clone().add(end).multiplyScalar(0.5).toArray())
-
-  const joint = new THREE.SphereGeometry(radius, 7, 5)
-  joint.translate(...to)
-  return [colored(bar.toNonIndexed(), color), colored(joint.toNonIndexed(), color)]
-}
-
-/**
- * A motorbike rider, who takes their bike's colour. The joints are measured from
- * the Yamaha in `models/yamaha.glb`: crouched forward, with hands on its low bars.
- */
-export function createBikeRiderGeometry(): THREE.BufferGeometry {
-  const body = new THREE.CylinderGeometry(0.15, 0.17, 0.5, 8)
-  body.rotateX(0.62)
-  body.translate(0, 1.07, -0.16)
-
-  const helmet = new THREE.SphereGeometry(0.135, 10, 8)
-  helmet.translate(0, 1.42, 0.1)
-
-  const sides = [-1, 1].flatMap((side) => [
-    ...limb([side * 0.16, 1.27, -0.02], [side * 0.26, 1.09, 0.13], 0.05, BODY),
-    ...limb([side * 0.26, 1.09, 0.13], [side * 0.3, 0.98, 0.33], 0.042, GLOVE),
-    ...limb([side * 0.1, 0.87, -0.32], [side * 0.2, 0.74, 0], 0.075, TROUSERS),
-    ...limb([side * 0.2, 0.74, 0], [side * 0.18, 0.4, -0.2], 0.06, TROUSERS),
-  ])
-
-  return merge([colored(body.toNonIndexed(), BODY), colored(helmet.toNonIndexed(), BODY), ...sides])
-}
-
 /** Where the delivery box sits on the model: behind the seat and above it. */
 const BOX_ZONE = { behind: -0.45, above: 0.82 }
 

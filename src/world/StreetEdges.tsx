@@ -1,4 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import { useCompressedTextures } from './ktx2'
+import { ROAD_TEXTURES } from './assetUrls'
 import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -6,7 +8,7 @@ import { ROAD_HEIGHT } from './surface'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
-import { ChunkedMesh } from './ChunkedMesh'
+import { StreamedChunks } from './StreamedChunks'
 import { patchAsphalt, patchPavers, type AsphaltUniforms } from './groundShaders'
 import { createDecalAtlas, createPaverTextures } from './groundTextures'
 import { DECAL_COLUMNS, DECAL_ROWS, STREET } from './streetEdgeConfig'
@@ -26,7 +28,6 @@ const LOW_DETAIL_DISTANCE = 70
 /** The asphalt photo repeats every this many metres, for its fine grain only. */
 const ASPHALT_TILE = 6
 
-const ROAD_TEXTURES = ['/textures/road-color.jpg', '/textures/road-normal.jpg']
 
 /** Wet asphalt darkens and shines as the rain comes. */
 function updateWetness(uniforms: AsphaltUniforms) {
@@ -132,12 +133,14 @@ function addOilSheen(material: THREE.MeshStandardMaterial): THREE.MeshStandardMa
  * the soil, tree pits and marks on the road. Everything here comes from
  * buildStreetEdges, one geometry per map square per kind.
  */
+const prepareAsphalt = (maps: THREE.Texture[]) => prepareSurfaceTextures(maps, ASPHALT_TILE)
+
 export function StreetEdges({ edges }: { edges: Edges }) {
   const { surfaces, kitDetail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const low = kitDetail === 0
   const kerbDistance = low ? LOW_KERB_DISTANCE : KERB_DISTANCE
   const detailDistance = low ? LOW_DETAIL_DISTANCE : DETAIL_DISTANCE
-  const roadMaps = useTexture(ROAD_TEXTURES, (maps) => prepareSurfaceTextures(maps, ASPHALT_TILE))
+  const roadMaps = useCompressedTextures(ROAD_TEXTURES, prepareAsphalt)
   const concrete = useTexture(CONCRETE_PHOTO, preparePlasterPhoto)
   const pavers = useMemo(() => createPaverTextures(), [])
   const atlas = useMemo(() => createDecalAtlas(), [])
@@ -201,15 +204,25 @@ export function StreetEdges({ edges }: { edges: Edges }) {
 
   useFrame(() => updateWetness(asphaltUniforms))
 
-  return (
-    <>
-      <ChunkedMesh geometries={edges.asphalt} material={asphalt} />
-      <ChunkedMesh geometries={edges.footpaths} material={footpath} />
-      <ChunkedMesh geometries={edges.kerbs} material={kerb} maxDistance={kerbDistance} />
-      <ChunkedMesh geometries={edges.edgeStones} material={stone} maxDistance={kerbDistance} />
-      <ChunkedMesh geometries={edges.dust} material={dust} maxDistance={detailDistance} />
-      <ChunkedMesh geometries={edges.pits} material={pit} maxDistance={detailDistance} />
-      <ChunkedMesh geometries={edges.decals} material={decal} maxDistance={detailDistance} />
-    </>
+  // Built a map square at a time, near the rider first (StreamedChunks.tsx).
+  const build = useCallback((key: number) => {
+    const shapes = edges.buildSquare(key)
+    return [shapes.asphalt, shapes.footpaths, shapes.kerbs, shapes.edgeStones, shapes.dust, shapes.pits, shapes.decals]
+  }, [edges])
+  const layers = useMemo(
+    () => [
+      { material: asphalt },
+      { material: footpath },
+      { material: kerb, maxDistance: kerbDistance },
+      { material: stone, maxDistance: kerbDistance },
+      { material: dust, maxDistance: detailDistance },
+      { material: pit, maxDistance: detailDistance },
+      { material: decal, maxDistance: detailDistance },
+    ],
+    [asphalt, footpath, kerb, stone, dust, pit, decal, kerbDistance, detailDistance],
   )
+  // ChunkedMesh freed the materials; streamed squares leave that to their owner.
+  useEffect(() => () => [asphalt, footpath, kerb, stone, dust, pit, decal].forEach((material) => material.dispose()), [asphalt, footpath, kerb, stone, dust, pit, decal])
+
+  return <StreamedChunks keys={edges.squareKeys} build={build} layers={layers} />
 }

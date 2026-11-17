@@ -1,3 +1,4 @@
+import { markLoad } from '../dev/loadTimeline'
 import { Fragment, useEffect, useState } from 'react'
 import { unlockAudio } from '../audio/audioEngine'
 import { useGameStore } from '../game/gameStore'
@@ -16,9 +17,9 @@ const KEYBOARD_CONTROLS = [
 
 /** Screenshots from the game itself, shown one after another behind the title. */
 const SCREENSHOTS = [
-  { src: '/title/shop-street-morning.jpg', caption: 'Morning on 27th Main Road' },
+  { src: '/title/shop-street-morning.jpg', caption: 'Morning on 24th Main Road' },
   { src: '/title/nitro-night-rain.jpg', caption: 'Nitro through the rain, after dark' },
-  { src: '/title/midday-handover.jpg', caption: 'Pulling up at the chaat centre, midday' },
+  { src: '/title/main-road-midday.jpg', caption: 'Midday on Sarjapur Road' },
 ]
 /** How long each screenshot stays, in milliseconds. */
 const SCREENSHOT_TIME = 7000
@@ -53,6 +54,7 @@ export function TitleScreen() {
   const play = () => {
     // Sound is only allowed after a click or key press, and this is one.
     unlockAudio()
+    markLoad('play pressed')
     useLaunch.setState({ requested: true })
   }
 
