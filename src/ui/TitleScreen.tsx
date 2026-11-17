@@ -18,7 +18,7 @@ const KEYBOARD_CONTROLS = [
 const SCREENSHOTS = [
   { src: '/title/shop-street-morning.jpg', caption: 'Morning on 27th Main Road' },
   { src: '/title/nitro-night-rain.jpg', caption: 'Nitro through the rain, after dark' },
-  { src: '/title/midday-handover.jpg', caption: 'A happy customer' },
+  { src: '/title/midday-handover.jpg', caption: 'Pulling up at the chaat centre, midday' },
 ]
 /** How long each screenshot stays, in milliseconds. */
 const SCREENSHOT_TIME = 7000

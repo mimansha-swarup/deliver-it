@@ -43,7 +43,6 @@ export function Player({ stores, collisions, graph, traffic, surface, bunks, spa
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
-  Object.assign(window, { __scooter: scooterState.current }) // TEMP-DEBUG
   useEffect(() => {
     if (spawn) placeAt(scooterState.current, spawn)
     const { x, z } = scooterState.current

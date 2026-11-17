@@ -72,9 +72,10 @@ const FRAGMENT_SHADER = /* glsl */ `
   void main() {
     vec3 direction = normalize(vDirection);
     float height = max(direction.y, 0.0);
-    vec3 color = mix(uHorizon, uZenith, pow(height, 0.55));
-
     float clearSky = 1.0 - smoothstep(0.35, 0.95, uClouds);
+    // Under a clear sky the blue comes further down, so the sky a rider sees is blue
+    // above a warm haze at the horizon; under cloud it stays pale lower down.
+    vec3 color = mix(uHorizon, uZenith, pow(height, mix(0.55, 0.36, clearSky)));
 
     // A star is a rare grid cell on the dome that passes a random test.
     float star = step(0.9985, hash(floor(direction * 420.0)));
@@ -138,7 +139,6 @@ const NIGHT_ICON_LEVEL = 0.5
 export function Sky() {
   const { skyClouds, rainDrops } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const state = useRef(createSkyState())
-  Object.assign(window, { __sky: state.current }) // TEMP-DEBUG
   const dome = useRef<THREE.Mesh>(null)
   const drift = useRef(0)
 
