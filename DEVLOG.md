@@ -8450,3 +8450,21 @@ smaller download and compiling while downloading, which only a real connection s
 
 Note: three.js's own Basis transcoder also lands in `dist/assets` (its KTX2Loader names it), but
 it's never downloaded: the game points the loader at `public/basis`.
+
+## 2026-11-18: Entry 125, performance step 5: checked, and left as it is
+
+- **AO and bloom at half resolution:** both already were. N8AO runs with `halfRes`, and the
+  bloom effect's resolution scale defaults to 0.5 (with mip-map blur on top).
+- **Cheaper AO on High** ('performance' instead of 'medium'): measured side by side, High was
+  17.0 and 19.1 ms against 17.8 and 17.0 ms before, so no clear saving. Reverted, as it's
+  visibly noisier.
+- **Merging layers that share a material:** after steps 1–3, High's 476 draw calls are mostly one
+  per map square in view per material (street edges 83, buildings 53, house kit 44, shops 41).
+  Merging squares would lose per-square culling; merging the house kit's layers would draw their
+  near-only detail at every distance. The dark store's 18 calls are one building, rarely on screen.
+  None was worth it with the CPU now well inside its budget.
+
+**The machine drifts.** These runs came out 2–3× slower for both builds than an hour earlier
+(High at 4× CPU: 46–55 ms here, 20 ms in step 4's runs). Every comparison in this pass is made
+side by side with the previous commit for this reason. My own browser tab running the game in
+the background also skewed one set of runs; it's closed during benchmarks now.
