@@ -8330,3 +8330,32 @@ GPU timer queries were available but wrong on this Mac: every full-screen pass c
 4 ms, more than the whole frame. `gl.finish()` returned at once. The figures that held were the
 plain ones: hide a part, see what the frame saves, and check the first figure again at the end
 to catch the machine drifting.
+
+## 2026-11-17: Entry 121, performance step 1: lighter cars, and far versions under 1,000 triangles
+
+### What I did
+- **Near cars** are re-baked at about 6,500 triangles (were 24,000–28,000): sedan 6,408, hatchback
+  6,388, SUV 6,494, MPV 6,380. The motorbike is 6,918 and the auto 4,976. Wheels are 300–730.
+  The simplifier had stopped at 11,000–18,000 whatever error it was allowed: the shrink-wrapped
+  surface has tiny seams it wouldn't merge across. meshoptimizer's `Permissive` flag lets it, and
+  then the hatchback reached 6,200 at a smaller shape error than before.
+- **Far versions**, under 1,000 triangles with their wheels (530–610 for each body, 30–60 per wheel),
+  replace the box stand-ins beyond the detail distance, now 16 / 20 / 24 m on Low / Medium / High
+  (was 35 / 50 / 70). They use meshoptimizer's "sloppy" simplifier, which reaches any count.
+  Far bikes add a rider of three simple shapes. The bus is built in code and stays itself out to 80 m.
+- **Parked scooters and parked cars** (along the shops, in yards, under stilts) switch to their far
+  versions beyond 20 m too: they had drawn the full models out to 75–90 m.
+- `scripts/bench.mjs`: Low and High, unthrottled and at 4× CPU (as DevTools throttles), on a
+  production build, in its own Chrome over the DevTools protocol. Run with
+  `node --experimental-websocket scripts/bench.mjs`.
+
+### Frame time (ms of work per frame, 24th Main)
+Measured side by side with the previous commit, as this Mac's speed drifted 2.5× over the day:
+
+| | Low | High | Low, 4× CPU | High, 4× CPU |
+| --- | --- | --- | --- | --- |
+| Before | 12.6 | 13.9 | 15.9 | 21.2 |
+| After | 11.3 | 11.7 | 15.7 | 22.2 |
+
+Triangles are GPU work, which CPU throttling doesn't slow, so the 4× columns barely move. Those
+need the JavaScript work cut (step 3).

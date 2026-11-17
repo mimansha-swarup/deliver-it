@@ -35,15 +35,17 @@ const MAX_SHAPE_ERROR = 0.02
 const CREASE = (50 * Math.PI) / 180
 
 /*
- * Cars are wrapped on a fine grid (about 2 cm) and kept at 24,000 to 28,000 triangles. On a 3.5 cm
- * grid at half that, door lines, lights and the grille smeared away and the panels looked dented.
+ * Cars are wrapped on a fine grid (about 2 cm), then simplified to about 6,500 triangles: dozens are
+ * on screen at once, and at 24,000–28,000 each traffic was over half of every frame's triangles.
+ * Simplifying from the fine wrap, rather than wrapping coarsely, keeps door lines and lights.
+ * Each vehicle also gets a far version, under 1,000 triangles with its wheels, for beyond ~20 m.
  */
 const VEHICLES = [
   {
     name: 'sedan',
     folder: '2022_maruti_suzuki_swift_dzire',
     length: 4.2,
-    triangles: 28000,
+    triangles: 6500,
     wrapCell: 0.021,
     dropMaterial: /seats_|speedometer|sidewall/,
     dropNode: /^(movsteer|seats_|sidewall|dashboard|speedometer)/,
@@ -53,7 +55,7 @@ const VEHICLES = [
     name: 'hatchback',
     folder: '2020_maruti_suzuki_alto_800',
     length: 3.6,
-    triangles: 24000,
+    triangles: 6500,
     wrapCell: 0.018,
     dropMaterial: /seat|^dash|^mate|steering|dore2/,
     dropNode: /^(dash|mate|steering)/,
@@ -63,7 +65,7 @@ const VEHICLES = [
     name: 'suv',
     folder: '2022_mahindra_scorpio-n',
     length: 4.6,
-    triangles: 28000,
+    triangles: 6500,
     wrapCell: 0.021,
     dropMaterial: /_int_|sunroof_m/,
     dropNode: /^movsteer/,
@@ -73,7 +75,7 @@ const VEHICLES = [
     name: 'mpv',
     folder: 'renault_triber',
     length: 4,
-    triangles: 28000,
+    triangles: 6500,
     wrapCell: 0.021,
     dropMaterial: /seat|^dash|^int\.|roof_int|misc|glossy|^mate|^sell/,
     dropNode: /^(int|prtseat|dashmax|roof int|seat\d|mate)\b/,
@@ -727,7 +729,12 @@ function smoothNormals(soup, crease) {
   })
 }
 
-function simplify(soup, triangles) {
+/**
+ * Removes triangles until it reaches the target. `colorWeight` is how much a corner's colour
+ * counts against merging it: less for the vehicles, whose colours are sampled photo noise.
+ * `sloppy` merges nearby corners whatever the surface, which reaches any target: for far versions.
+ */
+function simplify(soup, triangles, { maxError = MAX_SHAPE_ERROR, colorWeight = 0.4, normalWeight = 0.08, sloppy = false, flags = ['Prune'] } = {}) {
   const count = soup.count
   const positions = new Float32Array(soup.positions)
   // Whether a corner is paint counts most: merged across a paint edge, a triangle is half body
@@ -739,18 +746,20 @@ function simplify(soup, triangles) {
     attributes[corner * 7 + 6] = soup.paints[corner]
   }
 
-  const [indices, error] = MeshoptSimplifier.simplifyWithAttributes(
-    new Uint32Array(soup.indices),
-    positions,
-    3,
-    attributes,
-    7,
-    [0.4, 0.4, 0.4, 0.08, 0.08, 0.08, PAINT_EDGE_WEIGHT],
-    null,
-    triangles * 3,
-    MAX_SHAPE_ERROR,
-    ['Prune'],
-  )
+  const [indices, error] = sloppy
+    ? MeshoptSimplifier.simplifySloppy(new Uint32Array(soup.indices), positions, 3, null, triangles * 3, maxError)
+    : MeshoptSimplifier.simplifyWithAttributes(
+        new Uint32Array(soup.indices),
+        positions,
+        3,
+        attributes,
+        7,
+        [colorWeight, colorWeight, colorWeight, normalWeight, normalWeight, normalWeight, PAINT_EDGE_WEIGHT],
+        null,
+        triangles * 3,
+        maxError,
+        flags,
+      )
 
   const final = indices
   const finalError = error
@@ -792,7 +801,21 @@ function getBounds(soup, filter = () => true) {
 }
 
 const DEFAULT_FILE = 'traffic.glb'
-const WHEEL_TRIANGLES = 420
+const WHEEL_TRIANGLES = 300
+/** The far versions: the body, and each of its wheels, in triangles, and how far their shape may drift. */
+const FAR_TRIANGLES = 700
+const FAR_WHEEL_TRIANGLES = 40
+const FAR_FRONT_TRIANGLES = 150
+const FAR_SHAPE_ERROR = 0.12
+/** Traffic's near models: colour counts less, and the shape may drift a little further. */
+/**
+ * Traffic's near models. 'Permissive' lets the simplifier merge across the tiny seams the
+ * shrink-wrap leaves: without it, the hatchback stopped at 18,000 triangles whatever the
+ * error allowed; with it, 6,200 at a smaller error than before.
+ */
+const NEAR_SIMPLIFY = { maxError: 0.03, colorWeight: 0.12, normalWeight: 0.05, flags: ['Prune', 'Permissive'] }
+/** Wheels are small, and an error limit is a share of the shape's own size, so theirs is looser. */
+const FAR_WHEEL_ERROR = 0.3
 const STEERED_TRIANGLES = 2500
 const WHEEL_WRAP_CELL = 0.012
 
@@ -1296,6 +1319,7 @@ async function main() {
   MeshoptSimplifier.useExperimentalFeatures = true
 
   const files = new Map()
+  const farMeshes = []
   for (const [specs, bake] of [[VEHICLES, bakeVehicle], [PEOPLE, bakePerson]]) {
     for (const spec of specs) {
       if (only && only !== spec.name) continue
@@ -1306,7 +1330,7 @@ async function main() {
       if (broken.length) console.log(spec.name, 'has bad numbers in', broken)
       const welded = weld(spec.wrapCell ? shrinkWrap(baked, spec.wrapCell) : baked)
       if (spec.wrapCell) settlePaint(welded)
-      const { result, error } = simplify(welded, spec.triangles)
+      const { result, error } = simplify(welded, spec.triangles, specs === VEHICLES && spec.name !== 'delivery' ? NEAR_SIMPLIFY : {})
       if (spec.wrapCell) smoothNormals(result, CREASE)
       const size = getBounds(result).getSize(new THREE.Vector3())
       console.log(
@@ -1315,6 +1339,14 @@ async function main() {
         `error ${error.toFixed(4)}`,
         `size ${size.toArray().map((value) => value.toFixed(2)).join(' x ')}`,
       )
+
+      // The far version, for beyond ~20 m (people don't get one).
+      if (specs === VEHICLES) {
+        const far = simplify(welded, FAR_TRIANGLES, { maxError: FAR_SHAPE_ERROR, sloppy: true }).result
+        if (spec.wrapCell) smoothNormals(far, CREASE)
+        console.log(`  far: ${far.indices.length / 3} triangles`)
+        farMeshes.push({ name: `${spec.name}-far`, soup: far })
+      }
 
       const wheels = baked.wheels
       const extras = wheels && {
@@ -1331,13 +1363,21 @@ async function main() {
         const front = simplify(weld(shrinkWrap(baked.steered, spec.wrapCell)), STEERED_TRIANGLES).result
         console.log(`  front end: ${front.indices.length / 3} triangles`)
         meshes.push({ name: `${spec.name}-front`, soup: front })
+        // Its far version too, for the scooters parked along the shops.
+        const farFront = simplify(weld(shrinkWrap(baked.steered, spec.wrapCell)), FAR_FRONT_TRIANGLES, { maxError: FAR_SHAPE_ERROR, sloppy: true }).result
+        meshes.push({ name: `${spec.name}-front-far`, soup: farFront })
       }
 
       if (wheels?.soup) {
-        const wheel = simplify(weld(shrinkWrap(wheels.soup, WHEEL_WRAP_CELL)), WHEEL_TRIANGLES).result
-        console.log(`  wheel: ${wheel.indices.length / 3} triangles, radius ${wheels.radius.toFixed(3)}`)
+        const wrapped = weld(shrinkWrap(wheels.soup, WHEEL_WRAP_CELL))
+        // The player's own scooter is seen right up close, so its wheel keeps the careful settings.
+        const wheel = simplify(wrapped, WHEEL_TRIANGLES, spec.name === 'delivery' ? {} : NEAR_SIMPLIFY).result
+        const farWheel = simplify(wrapped, FAR_WHEEL_TRIANGLES, { maxError: FAR_WHEEL_ERROR, sloppy: true }).result
+        console.log(`  wheel: ${wheel.indices.length / 3} triangles, far ${farWheel.indices.length / 3}, radius ${wheels.radius.toFixed(3)}`)
         meshes.push({ name: `${spec.name}-wheel`, soup: wheel, extras: { wheelRadius: wheels.radius } })
+        meshes.push({ name: `${spec.name}-wheel-far`, soup: farWheel, extras: { wheelRadius: wheels.radius } })
       }
+      meshes.push(...farMeshes.splice(0))
     }
   }
 

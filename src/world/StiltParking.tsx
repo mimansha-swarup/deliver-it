@@ -12,6 +12,8 @@ import type { StiltVehicle } from './houseKit'
 
 /** Parked vehicles further than this aren't drawn, in metres. Under a building, they're hard to see from further. */
 const DRAW_DISTANCE = 75
+/** Nearer than this they're the detailed models; further, the far versions of a few hundred triangles. */
+const DETAIL_DISTANCE = 20
 /** They never move, so which ones are near is only worked out every so many frames. */
 const REFRESH_FRAMES = 20
 const CAR_MODEL = 'hatchback'
@@ -30,11 +32,16 @@ function Parked({
   geometry,
   palette,
   reflection,
+  from,
+  to,
 }: {
   items: StiltVehicle[]
   geometry: THREE.BufferGeometry
   palette: string[]
   reflection: THREE.Texture
+  /** Drawn only between these distances from the rider, in metres. */
+  from: number
+  to: number
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const frame = useRef(0)
@@ -44,7 +51,8 @@ function Parked({
     if (!instances || frame.current++ % REFRESH_FRAMES !== 0) return
     let drawn = 0
     for (const item of items) {
-      if (Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) > DRAW_DISTANCE) continue
+      const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
+      if (distance > to || distance < from) continue
       transform.position.set(item.x, FLOOR_TOP, item.z)
       transform.rotation.set(0, item.rotation, 0)
       transform.updateMatrix()
@@ -82,13 +90,14 @@ export function StiltParking({ vehicles }: { vehicles: StiltVehicle[] }) {
     () => ({
       bike: createParkedScooterGeometry(scene, STEERING_Z),
       car: createParkedCarGeometry(scene, CAR_MODEL),
+      bikeFar: createParkedScooterGeometry(scene, STEERING_Z, true),
+      carFar: createParkedCarGeometry(scene, CAR_MODEL, true),
     }),
     [scene],
   )
   useEffect(
     () => () => {
-      shapes.bike.dispose()
-      shapes.car.dispose()
+      for (const shape of Object.values(shapes)) shape.dispose()
     },
     [shapes],
   )
@@ -98,8 +107,10 @@ export function StiltParking({ vehicles }: { vehicles: StiltVehicle[] }) {
 
   return (
     <>
-      <Parked items={bikes} geometry={shapes.bike} palette={PARKED_COLORS} reflection={reflection} />
-      <Parked items={cars} geometry={shapes.car} palette={CAR_COLORS} reflection={reflection} />
+      <Parked items={bikes} geometry={shapes.bike} palette={PARKED_COLORS} reflection={reflection} from={0} to={DETAIL_DISTANCE} />
+      <Parked items={bikes} geometry={shapes.bikeFar} palette={PARKED_COLORS} reflection={reflection} from={DETAIL_DISTANCE} to={DRAW_DISTANCE} />
+      <Parked items={cars} geometry={shapes.car} palette={CAR_COLORS} reflection={reflection} from={0} to={DETAIL_DISTANCE} />
+      <Parked items={cars} geometry={shapes.carFar} palette={CAR_COLORS} reflection={reflection} from={DETAIL_DISTANCE} to={DRAW_DISTANCE} />
     </>
   )
 }

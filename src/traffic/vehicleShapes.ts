@@ -161,18 +161,17 @@ function withoutBox(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
  * stand, as scooters stand outside every shop. Only its paint takes each
  * scooter's colour, so the seat, tyres and trim stay as they are.
  */
-export function createParkedScooterGeometry(scene: THREE.Group, steeringZ: number): THREE.BufferGeometry {
+export function createParkedScooterGeometry(scene: THREE.Group, steeringZ: number, far = false): THREE.BufferGeometry {
   const { wheelPositions } = scene.getObjectByName('delivery')?.userData as WheelData
   const [frontAxle, rearAxle] = [...wheelPositions].sort((a, b) => b[2] - a[2])
+  // The far version is the same parts, each simplified to a few hundred triangles (prepare_traffic_models.mjs).
+  const part = (name: string) => plain(getModel(scene, far ? `${name}-far` : name))
 
-  const body = withoutBox(plain(getModel(scene, 'delivery')))
-  const rearWheel = plain(getModel(scene, 'delivery-wheel')).translate(...rearAxle)
+  const body = withoutBox(part('delivery'))
+  const rearWheel = part('delivery-wheel').translate(...rearAxle)
 
   // The front end, wheel and all, turns about the steering axis.
-  const front = mergeGeometries([
-    plain(getModel(scene, 'delivery-front')),
-    plain(getModel(scene, 'delivery-wheel')).translate(...frontAxle),
-  ])
+  const front = mergeGeometries([part('delivery-front'), part('delivery-wheel').translate(...frontAxle)])
   if (!front) throw new Error('Could not build the scooter front')
   front.translate(0, 0, -steeringZ).rotateY(PARKED_STEER).translate(0, 0, steeringZ)
 
@@ -186,21 +185,54 @@ export function createParkedScooterGeometry(scene: THREE.Group, steeringZ: numbe
  * A parked car: one of the traffic models from `traffic.glb` with its wheels
  * fixed in place, as one shape that can be copied many times.
  */
-export function createParkedCarGeometry(scene: THREE.Group, name: string): THREE.BufferGeometry {
-  const { wheelModel, wheelRadius, wheelPositions } = scene.getObjectByName(name)?.userData as {
-    wheelModel: string
-    wheelRadius: number
-    wheelPositions: [number, number, number][]
+export function createParkedCarGeometry(scene: THREE.Group, name: string, far = false): THREE.BufferGeometry {
+  const suffix = far ? '-far' : ''
+  const { wheelModel, wheelRadius, wheelPositions } = (scene.getObjectByName(name)?.userData ?? {}) as {
+    wheelModel?: string
+    wheelRadius?: number
+    wheelPositions?: [number, number, number][]
   }
+  const body = plain(getModel(scene, `${name}${suffix}`))
+  // An auto's wheels are part of its body.
+  if (!wheelModel || !wheelRadius || !wheelPositions) return body
   const sourceRadius = (scene.getObjectByName(`${wheelModel}-wheel`)?.userData as { wheelRadius: number }).wheelRadius
   const scale = wheelRadius / sourceRadius
   // Wheels on the left are the same wheel turned round, so their hub faces out.
   const wheels = wheelPositions.map((position) => {
-    const wheel = plain(getModel(scene, `${wheelModel}-wheel`)).scale(scale, scale, scale)
+    const wheel = plain(getModel(scene, `${wheelModel}-wheel${suffix}`)).scale(scale, scale, scale)
     if (position[0] < 0) wheel.rotateY(Math.PI)
     return wheel.translate(...position)
   })
-  return merge([plain(getModel(scene, name)), ...wheels])
+  return merge([body, ...wheels])
+}
+
+/**
+ * A two-wheeler with its rider far away: the bike's far version and a rider of a few simple
+ * shapes, a jacket (which takes the copy's colour) and a dark helmet, under 1,000 triangles in all.
+ * Measured to sit where the seated rider sits (Traffic.tsx's COMMUTER_SEAT).
+ */
+export function createFarBikeGeometry(scene: THREE.Group, name: string): THREE.BufferGeometry {
+  const bike = createParkedCarGeometry(scene, name, true)
+  const part = (geometry: THREE.BufferGeometry, color: string, paint: number) => {
+    const shape = colored(geometry.toNonIndexed(), color)
+    shape.setAttribute('_paint', new THREE.BufferAttribute(new Float32Array(shape.getAttribute('position').count).fill(paint), 1))
+    return shape
+  }
+  const torso = new THREE.BoxGeometry(0.38, 0.55, 0.26).rotateX(0.38).translate(0, 1.18, -0.2)
+  const thighs = new THREE.BoxGeometry(0.34, 0.16, 0.42).translate(0, 0.9, 0)
+  const helmet = new THREE.IcosahedronGeometry(0.15, 1).translate(0, 1.55, -0.05)
+  // Plain shapes have no limb weights or the like: match the bike's attributes so they merge.
+  const rider = [part(torso, '#ffffff', 1), part(thighs, '#2b2f3a', 0), part(helmet, '#26282c', 0)]
+  for (const shape of rider) {
+    for (const name of Object.keys(bike.attributes)) {
+      if (!shape.getAttribute(name)) {
+        const size = bike.getAttribute(name).itemSize
+        shape.setAttribute(name, new THREE.BufferAttribute(new Float32Array(shape.getAttribute('position').count * size), size))
+      }
+    }
+    for (const name of Object.keys(shape.attributes)) if (!bike.getAttribute(name)) shape.deleteAttribute(name)
+  }
+  return merge([bike.index ? bike.toNonIndexed() : bike, ...rider])
 }
 
 /** Lights for after dark: bright spots on the vehicle, and a fading pool on the road ahead. */

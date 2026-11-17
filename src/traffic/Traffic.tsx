@@ -35,6 +35,8 @@ import {
   type VehicleKind,
 } from './trafficLogic'
 import {
+  createFarBikeGeometry,
+  createParkedCarGeometry,
   createParkedScooterGeometry,
   createVehicleGlowGeometry,
 } from './vehicleShapes'
@@ -64,13 +66,15 @@ const COMMUTER_HELMET = '#26282c'
 /** Jackets and shirts on bikes: everyday colours, a few bright. */
 const JACKET_COLORS = ['#3b4a6b', '#6b6f75', '#2a2c30', '#8a3b34', '#c9c3b4', '#3f6a55', '#b8862f', '#e0dcd2']
 const AUTO_COLORS = ['#ffffff']
-/** A far-away auto: the green body and yellow canopy. */
-const AUTO_PROXY_COLORS = { body: '#3f7d5a', cabin: '#d8c46c' }
 const BIKE_COLORS = ['#1c3fd1', '#b3201e', '#1a1b1e', '#e8e8e8', '#2e7d4f']
 /** Made-up city bus liveries, a little faded: green, red, blue and ochre. No real operator's colours and name together. */
 const BUS_COLORS = ['#3f7a4a', '#a8352c', '#2f5a8f', '#b98a2c']
 /** Parked scooters are detailed, and smaller than a few pixels past this, in metres. */
 const PARKED_DRAW_DISTANCE = 90
+/** Parked scooters nearer than this get the detailed model; the rest, out to PARKED_DRAW_DISTANCE, the far one. */
+const PARKED_DETAIL_DISTANCE = 20
+/** A bus is big, few, and only a few hundred triangles more than a car: it keeps its shape this far out. */
+const BUS_DETAIL_DISTANCE = 80
 /**
  * Everyday clothes in HSR: shirts and kurtas in white, cream and pale blue,
  * sarees and salwars in saffron, maroon, mustard, peacock blue, bottle green
@@ -155,11 +159,12 @@ function writeTransforms(
  * after another, and draws only that many. A copy shrunk to nothing still costs
  * the GPU all its corners, which for 700 detailed scooters is far too many.
  */
-function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: number, palette: string[]) {
+function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: number, palette: string[], from = 0) {
   const color = new THREE.Color()
   let drawn = 0
   for (const item of items) {
-    if (item.hidden || Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) >= reach) continue
+    const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
+    if (item.hidden || distance >= reach || distance < from) continue
     transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
@@ -235,7 +240,7 @@ function MovingInstances({
 
   useFrame(() => {
     if (!mesh.current) return
-    if (nearestOnly && reach !== undefined) writeNearest(mesh.current, items, reach, palette)
+    if (nearestOnly && reach !== undefined) writeNearest(mesh.current, items, reach, palette, from)
     else writeTransforms(mesh.current, items, reach, seatedRider, ROAD_HEIGHT, from)
     if (material.current) updateReflection(material.current)
   })
@@ -857,6 +862,7 @@ export function Traffic({
       // The same man as the walkers and the player's rider, seated on the bike in one pose.
       rider: createSeatedRiderGeometry(createRiderModel(getModel(scene, 'man'), COMMUTER_LOOK), COMMUTER_LOOK, COMMUTER_SEAT, COMMUTER_HELMET),
       parked: createParkedScooterGeometry(scene, STEERING_Z),
+      parkedFar: createParkedScooterGeometry(scene, STEERING_Z, true),
     }),
     [scene],
   )
@@ -879,13 +885,18 @@ export function Traffic({
     bikeShapes.slice(1).forEach((geometry) => geometry.dispose())
     bikePlates.forEach((geometry) => geometry.dispose())
   }, [bikeShapes, bikePlates])
-  // Far away, every vehicle is a few boxes the size of its model.
+  // Beyond the detail distance, each vehicle's far version: under 1,000 triangles with its wheels
+  // (prepare_traffic_models.mjs), against about 6,500 near. Bikes add a simple rider. The bus is built
+  // in code, not baked, so far away it's still a few boxes, and it keeps its own shape further out.
   const proxies = useMemo(
     () =>
       Object.fromEntries(
-        VEHICLES.map(({ kind }) => [kind, createProxyGeometry(shapes[kind], kind === 'auto' ? AUTO_PROXY_COLORS : undefined)]),
+        VEHICLES.map(({ kind }) => [
+          kind,
+          kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(yamaha, 'bike') : createParkedCarGeometry(scene, kind, true),
+        ]),
       ) as Record<VehicleKind, THREE.BufferGeometry>,
-    [shapes],
+    [shapes, scene, yamaha],
   )
   useEffect(() => () => Object.values(proxies).forEach((geometry) => geometry.dispose()), [proxies])
   const plateAtlas = useMemo(() => createPlateAtlas(), [])
@@ -954,6 +965,7 @@ export function Traffic({
             </group>
           )
         }
+        const near = kind === 'bus' ? Math.max(detail, BUS_DETAIL_DISTANCE) : detail
         return (
           <group key={kind}>
             <MovingInstances
@@ -963,9 +975,9 @@ export function Traffic({
               castShadow={shadowSize > 0}
               baked
               reflection={reflection}
-              reach={detail}
+              reach={near}
             />
-            <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked reflection={reflection} from={detail} />
+            <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked reflection={reflection} from={near} />
             {/* The bus's wheels are part of its shape. */}
             {kind !== 'bus' && <VehicleWheels items={items} wheels={wheels[kind]} reach={detail} />}
             <NumberPlates items={items} geometry={plates[kind]} commercial={PLATES[kind].commercial} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
@@ -980,7 +992,18 @@ export function Traffic({
         castShadow={false}
         baked
         reflection={reflection}
+        reach={Math.min(LOOSE_DRAW_DISTANCE, PARKED_DETAIL_DISTANCE)}
+        nearestOnly
+      />
+      <MovingInstances
+        items={world.loose}
+        geometry={drawn.parkedFar}
+        palette={PARKED_COLORS}
+        castShadow={false}
+        baked
+        reflection={reflection}
         reach={Math.min(LOOSE_DRAW_DISTANCE, PARKED_DRAW_DISTANCE)}
+        from={PARKED_DETAIL_DISTANCE}
         nearestOnly
       />
       {bodies.map((body, group) => (

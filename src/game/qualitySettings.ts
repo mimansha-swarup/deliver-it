@@ -50,7 +50,7 @@ type QualityPreset = {
   /** Tufts of grass around the rider. */
   grassTufts: number
   vehicles: number
-  /** Vehicles further than this are drawn as simple stand-ins (vehicleProxies.ts), in metres. */
+  /** Vehicles further than this are drawn with their far versions, under 1,000 triangles (Traffic.tsx), in metres. */
   vehicleDetailDistance: number
   pedestrians: number
   /** How many of the nearest vehicles get a real headlight at night, which lights what it hits. */
@@ -80,7 +80,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     leafyTrees: false,
     grassTufts: 0,
     vehicles: 16,
-    vehicleDetailDistance: 35,
+    vehicleDetailDistance: 16,
     pedestrians: 10,
     carLights: 0,
   },
@@ -104,7 +104,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     leafyTrees: true,
     grassTufts: 1400,
     vehicles: 28,
-    vehicleDetailDistance: 50,
+    vehicleDetailDistance: 20,
     pedestrians: 22,
     carLights: 2,
   },
@@ -130,7 +130,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     leafyTrees: true,
     grassTufts: 3200,
     vehicles: 40,
-    vehicleDetailDistance: 70,
+    vehicleDetailDistance: 24,
     pedestrians: 36,
     carLights: 4,
   },
