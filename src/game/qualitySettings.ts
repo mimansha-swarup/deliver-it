@@ -60,7 +60,9 @@ type QualityPreset = {
 export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
   low: {
     label: 'Low',
-    pixelRatio: [0.75, 0.75],
+    // Up to 1, so a sharp (Retina) screen isn't drawn at under 40% of its pixels across, and down to
+    // 0.75 where the computer can't keep up: AdaptiveResolution starts at 1 and steps down if needed.
+    pixelRatio: [0.75, 1],
     shadowSize: 1024,
     shadowRange: 50,
     shadowSoftness: 1,

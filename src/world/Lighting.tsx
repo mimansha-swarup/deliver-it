@@ -24,12 +24,26 @@ const sunUp = new THREE.Vector3()
 const focus = new THREE.Vector3()
 
 /**
+ * The sun turns about 0.2° a second (a day lasts half an hour). Turned a little
+ * every frame, the shadow map's pixel grid turns with it, and every shadow edge
+ * crawls and shimmers. So the light keeps one direction until the sun has
+ * moved this far, in radians, then steps. 0.25° moves a 10 m building's shadow
+ * by about 4 cm, too little to see, about once a second.
+ */
+const SUN_STEP = (0.25 * Math.PI) / 180
+const shownDirection = new THREE.Vector3()
+const wantedDirection = new THREE.Vector3()
+
+/**
  * Moves the sun along with the rider. Its shadow map is a grid of pixels, so
  * each step is rounded to a whole pixel. If it slid smoothly, shadow edges
  * would land on different pixels each frame and shimmer.
  */
 function followRider(sun: THREE.DirectionalLight, shadowSize: number, shadowRange: number) {
-  sunForward.set(...liveSky.look.lightDirection).negate()
+  wantedDirection.set(...liveSky.look.lightDirection).negate()
+  // A big jump, such as sunset handing over to the moon, is taken at once.
+  if (shownDirection.lengthSq() === 0 || shownDirection.angleTo(wantedDirection) > SUN_STEP) shownDirection.copy(wantedDirection)
+  sunForward.copy(shownDirection)
   sunRight.crossVectors(sunForward, THREE.Object3D.DEFAULT_UP).normalize()
   sunUp.crossVectors(sunRight, sunForward)
 

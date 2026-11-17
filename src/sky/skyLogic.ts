@@ -21,8 +21,12 @@ export const WEATHERS: Record<WeatherName, Weather> = {
 const WEATHER_NAMES = Object.keys(WEATHERS) as WeatherName[]
 
 export const SKY_RULES = {
-  /** One full day in real seconds. */
-  dayLength: 600,
+  /**
+   * One full day in real seconds: half an hour, so the sun turns about 0.2° a
+   * second and shadows drift rather than visibly sweep. A day of ten minutes
+   * moved every shadow noticeably from one second to the next.
+   */
+  dayLength: 1800,
   /** The clock runs this much faster after dark, so most riding is in daylight. */
   nightClockSpeed: 2,
   startHour: 9,
