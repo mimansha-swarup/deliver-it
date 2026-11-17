@@ -28,8 +28,8 @@ const STREETS = option('streets', 'shop-street,main-road').split(',')
 const PROFILE = args.includes('--profile')
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 const PORT = 9333
-/** Each quality is measured at its top resolution: Low's is 1, High's 1.5 (qualitySettings.ts). */
-const QUALITIES = [['Low', 1], ['High', 1.5]]
+/** Each quality is measured at its top resolution: Low's is 1, High's 1.5 (qualitySettings.ts); Low also at its optional 0.75×. */
+const QUALITIES = [['Low', 1], ['Low', 0.75], ['High', 1.5]]
 const SAMPLE_MS = 6000
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -168,7 +168,7 @@ try {
     const row = { load }
     for (const rate of [1, 4]) {
       await send('Emulation.setCPUThrottlingRate', { rate })
-      for (const [quality, dpr] of QUALITIES) row[`${quality} ${rate}x`] = await evaluate(measure(quality, dpr))
+      for (const [quality, dpr] of QUALITIES) row[`${quality}${dpr === 0.75 ? '@0.75' : ''} ${rate}x`] = await evaluate(measure(quality, dpr))
     }
     await send('Emulation.setCPUThrottlingRate', { rate: 1 })
     if (PROFILE) {

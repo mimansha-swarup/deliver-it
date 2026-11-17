@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
+import { useGameStore } from '../game/gameStore'
 import { useFrame } from '@react-three/fiber'
 import type * as THREE from 'three'
 import { livePlayer, liveView } from '../game/livePlayer'
@@ -33,12 +35,15 @@ export function ChunkedMesh({
     if (!group.current) return
 
     const reach = Math.min(liveView.drawDistance, maxDistance)
+    const shadowRange = QUALITY_PRESETS[useGameStore.getState().quality].shadowRange
     for (const mesh of group.current.children as THREE.Mesh[]) {
       const sphere = mesh.geometry.boundingSphere
       if (!sphere) continue
 
-      const distance = Math.hypot(sphere.center.x - livePlayer.x, sphere.center.z - livePlayer.z)
-      mesh.visible = distance - sphere.radius < reach
+      const distance = Math.hypot(sphere.center.x - livePlayer.x, sphere.center.z - livePlayer.z) - sphere.radius
+      mesh.visible = distance < reach
+      // Only squares within the sun's shadow range cast: the rest fall outside its shadow map.
+      mesh.castShadow = castShadow && distance < shadowRange
     }
   })
 

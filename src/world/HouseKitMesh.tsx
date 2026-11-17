@@ -42,7 +42,7 @@ type BuiltSquare = { main: THREE.Mesh; chajjas: THREE.Mesh; stains: THREE.Mesh; 
  * behind are freed. Colours are stored on the shapes, so one material does every house.
  */
 export function HouseKitMesh({ kit }: { kit: HouseKit }) {
-  const { kitDetail, shadowSize, surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { kitDetail, shadowSize, shadowRange, surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const photo = useTexture(PLASTER_PHOTO, preparePlasterPhoto)
   // Plaster grain on Medium and High. Low keeps flat paint, as its walls have no photo either.
   const material = useMemo(() => {
@@ -136,7 +136,8 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
       const sphere = main.geometry.boundingSphere
       const distance = sphere ? distanceTo(sphere.center.x, sphere.center.z) - sphere.radius : 0
       main.visible = distance < liveView.drawDistance
-      main.castShadow = shadowSize > 0
+      // Only squares within the sun's shadow range cast: the rest fall outside its shadow map.
+      main.castShadow = shadowSize > 0 && distance < shadowRange
       chajjas.visible = kitDetail >= 1 && distance < Math.min(liveView.drawDistance, CHAJJA_DISTANCE)
       // Small details fill in with the quality: none on Low, most on Medium, all on High.
       const detailed = distance < Math.min(liveView.drawDistance, CHAJJA_DISTANCE)

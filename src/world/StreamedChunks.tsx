@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
+import { useGameStore } from '../game/gameStore'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { livePlayer, liveView } from '../game/livePlayer'
@@ -116,16 +118,18 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
       }
     }
 
-    // Show what's in reach, with each layer's current material.
+    // Show what's in reach, with each layer's current material. Only squares within the sun's
+    // shadow range cast shadows: the rest are outside its shadow map, but would still be drawn into it.
+    const shadowRange = QUALITY_PRESETS[useGameStore.getState().quality].shadowRange
     for (const meshes of all.values()) {
       meshes.forEach((mesh, index) => {
         if (!mesh) return
         const layer = layers[index]
         mesh.material = layer.material
-        mesh.castShadow = layer.castShadow ?? false
         const sphere = mesh.geometry.boundingSphere
         const distance = sphere ? distanceTo(sphere.center.x, sphere.center.z) - sphere.radius : 0
         mesh.visible = distance < Math.min(liveView.drawDistance, layer.maxDistance ?? Infinity)
+        mesh.castShadow = (layer.castShadow ?? false) && distance < shadowRange
       })
     }
   })

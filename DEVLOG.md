@@ -8359,3 +8359,29 @@ Measured side by side with the previous commit, as this Mac's speed drifted 2.5�
 
 Triangles are GPU work, which CPU throttling doesn't slow, so the 4× columns barely move. Those
 need the JavaScript work cut (step 3).
+
+## 2026-11-17: Entry 122, performance step 2: shadows near the rider, and a lighter Low
+
+### What I did
+- **Shadows only near the rider.** A map square casts into the sun's shadow map only if its
+  nearest edge is within the shadow range (`StreamedChunks`, `ChunkedMesh`, `HouseKitMesh`, checked
+  every frame). Before, every square touching the shadow box drew all its geometry into it.
+- **Cheaper shadow settings:** High's map 4096 → 2048 and range 140 → 90 m; Medium 90 → 70 m;
+  Low 50 → 35 m (1024 map).
+- **Low preset:** traffic 16 → 10 vehicles, pedestrians 10 → 6, draw distance 280 → 220 m, props
+  140 → 110 m.
+- **Optional 0.75× on Low:** a "0.75×" button beside the quality buttons when Low is picked; it's
+  saved with your settings (`lowScale`) and holds the resolution at 0.75× of the screen.
+
+On High at 24th Main: shadow-map draw calls 133 → 57, shadow triangles 1.15 M → 0.65 M.
+
+### Frame time (ms of work per frame, 24th Main, two pairs side by side with step 1)
+
+| | Low | Low at 0.75× | High | Low, 4× CPU | High, 4× CPU |
+| --- | --- | --- | --- | --- | --- |
+| Step 1 | 10.9–11.1 | 11.0 | 11.6–14.0 | 16.0–16.7 | 22.1–23.1 |
+| Step 2 | 10.1–10.4 | 10.1–10.4 | 12.6 | 15.0–15.3 | 21.7–22.0 |
+
+Low gains about 0.7 ms (1 ms at 4× CPU); High is within its run-to-run noise. Low at 0.75×
+costs the same as at 1×: the frame is limited by CPU work, not pixels, so the next step is the
+JavaScript.

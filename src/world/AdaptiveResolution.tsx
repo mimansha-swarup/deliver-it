@@ -2,8 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { isDebug } from '../dev/spawn'
 import { useGameStore } from '../game/gameStore'
-import { QUALITY_PRESETS } from '../game/qualitySettings'
-import { startingRatio, useResolution } from '../game/resolution'
+import { ratioRange, startingRatio, useResolution } from '../game/resolution'
 
 /** How much the resolution moves in one step, in pixels per screen point. */
 const STEP = 0.25
@@ -44,6 +43,7 @@ const WARM_UP = 3
 export function AdaptiveResolution() {
   const started = useGameStore((state) => state.started)
   const quality = useGameStore((state) => state.quality)
+  const lowScale = useGameStore((state) => state.lowScale)
   const batch = useRef({ time: 0, frames: [] as number[], slow: 0, calm: 0, ceiling: Infinity, ceilingAge: 0, sinceRaise: Infinity, warmUp: WARM_UP, refresh: SLOWEST_REFRESH })
   /** A resolution waiting to be applied at the start of the next frame. See `applyRatio`. */
   const pending = useRef<number | null>(null)
@@ -52,7 +52,7 @@ export function AdaptiveResolution() {
   useEffect(() => {
     pending.current = startingRatio(quality)
     Object.assign(batch.current, { time: 0, frames: [], slow: 0, calm: 0, ceiling: Infinity, sinceRaise: Infinity })
-  }, [quality])
+  }, [quality, lowScale])
 
   useFrame(({ setDpr }, delta) => {
     // Debug: a resolution held still for measuring (`__deliverItLockDpr = 1.5`, with ?debug).
@@ -104,7 +104,7 @@ export function AdaptiveResolution() {
     const best = startingRatio(quality)
     const highest = Math.min(best, state.ceiling - STEP)
     // Never below the quality's own lowest resolution: 1x on High and Medium, 0.75x on Low.
-    const lowest = Math.min(QUALITY_PRESETS[quality].pixelRatio[0], best)
+    const lowest = Math.min(ratioRange(quality)[0], best)
 
     state.slow = lateShare > DROP_SHARE ? state.slow + 1 : 0
     state.calm = lateShare <= CALM_SHARE ? state.calm + 1 : 0

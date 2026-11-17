@@ -5,6 +5,8 @@ import { QUALITY_LEVELS, QUALITY_PRESETS } from '../game/qualitySettings'
 export function QualityPicker({ className }: { className: string }) {
   const quality = useGameStore((state) => state.quality)
   const setQuality = useGameStore((state) => state.setQuality)
+  const lowScale = useGameStore((state) => state.lowScale)
+  const setLowScale = useGameStore((state) => state.setLowScale)
 
   return (
     <div className={`quality-picker ${className}`} role="group" aria-label="Graphics quality">
@@ -23,6 +25,20 @@ export function QualityPicker({ className }: { className: string }) {
           {QUALITY_PRESETS[level].label}
         </button>
       ))}
+      {/* On Low, an even cheaper picture: a fixed 0.75× of the screen's pixels. */}
+      {quality === 'low' && (
+        <button
+          type="button"
+          aria-pressed={lowScale}
+          title="Draw at 0.75× resolution: blurrier, but faster"
+          onClick={(event) => {
+            setLowScale(!lowScale)
+            event.currentTarget.blur()
+          }}
+        >
+          0.75×
+        </button>
+      )}
     </div>
   )
 }

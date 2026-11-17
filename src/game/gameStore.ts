@@ -64,6 +64,8 @@ type GameState = Telemetry & {
   credits: number
   xp: number
   quality: Quality
+  /** On Low, draw at a fixed 0.75× of the screen's pixels: blurrier, but cheaper still. */
+  lowScale: boolean
   lastReward: Reward | null
   /** Set when the last delivery took the rider up a level: the new level and what it unlocked. */
   lastLevelUp: { level: number; unlocks: string[] } | null
@@ -100,6 +102,7 @@ type GameState = Telemetry & {
   startGame: () => void
   setLoading: (loading: LoadProgress) => void
   setQuality: (quality: Quality) => void
+  setLowScale: (lowScale: boolean) => void
   /** Hands over the planner once the map has loaded, and plans the first delivery. */
   startMissions: (planner: MissionPlanner, fromX: number, fromZ: number) => void
   /** Moves the mission on when the scooter reaches the current stop. */
@@ -234,6 +237,7 @@ export const useGameStore = create<GameState>()(
       credits: 0,
       xp: 0,
       quality: 'high',
+      lowScale: false,
       lastReward: null,
       lastLevelUp: null,
       pendingReward: null,
@@ -266,6 +270,7 @@ export const useGameStore = create<GameState>()(
         }),
 
       setQuality: (quality) => set({ quality }),
+      setLowScale: (lowScale) => set({ lowScale }),
       setLoading: (loading) => set({ loading }),
 
       startMissions: (planner, fromX, fromZ) => {
@@ -410,6 +415,7 @@ export const useGameStore = create<GameState>()(
         credits: state.credits,
         xp: state.xp,
         quality: state.quality,
+        lowScale: state.lowScale,
         stationId: state.stationId,
         musicOn: state.musicOn,
         hornsOn: state.hornsOn,
