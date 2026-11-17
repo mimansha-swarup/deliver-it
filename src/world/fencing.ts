@@ -154,8 +154,25 @@ export function planJunctionRailings(
   collisions: CollisionWorld,
   keepClear: (x: number, z: number) => boolean,
 ): FenceRun[] {
-  const isNearGate = (x: number, z: number) =>
-    gates.some((gate) => Math.hypot(gate.x - x, gate.z - z) < gate.width / 2 + GATE_CLEARANCE)
+  // Gates sorted into squares: there are thousands, and every railing panel asks about them.
+  const GATE_CELL = 16
+  const gateCells = new Map<string, Gate[]>()
+  for (const gate of gates) {
+    const key = `${Math.floor(gate.x / GATE_CELL)},${Math.floor(gate.z / GATE_CELL)}`
+    const list = gateCells.get(key)
+    if (list) list.push(gate)
+    else gateCells.set(key, [gate])
+  }
+  const isNearGate = (x: number, z: number) => {
+    const cx = Math.floor(x / GATE_CELL)
+    const cz = Math.floor(z / GATE_CELL)
+    for (let i = cx - 1; i <= cx + 1; i++) {
+      for (let j = cz - 1; j <= cz + 1; j++) {
+        if ((gateCells.get(`${i},${j}`) ?? []).some((gate) => Math.hypot(gate.x - x, gate.z - z) < gate.width / 2 + GATE_CLEARANCE)) return true
+      }
+    }
+    return false
+  }
   const fits = ([x, z]: GroundPoint) => {
     const edge = nearestRoadEdge(roads, x, z, 2)
     return (

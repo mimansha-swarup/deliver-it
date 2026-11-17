@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { startingRatio, useResolution } from '../game/resolution'
 
-/** Never below this many pixels per screen point, however slow the computer. */
-const LOWEST = 0.75
 /** How much the resolution moves in one step, in pixels per screen point. */
 const STEP = 0.25
 /** Frames are judged in batches this long, in seconds. */
@@ -13,10 +12,12 @@ const WINDOW = 1
 const LATE = 1.3
 /**
  * The screen is assumed to refresh at least 60 times a second, and the game
- * doesn't chase more than 120, which would cost sharpness for little gain.
+ * doesn't chase more than 60. Chasing a 120 Hz screen's refresh dropped High
+ * to a quarter of the screen's pixels on a busy street, and a sharp picture at
+ * 60-100 FPS looks far better than a blurred one at 120.
  */
 const SLOWEST_REFRESH = 1 / 60
-const FASTEST_REFRESH = 1 / 120
+const FASTEST_REFRESH = 1 / 60
 /** If this share of a batch's frames are late, two batches running, the resolution drops. */
 const DROP_SHARE = 0.2
 /** If no more than this share are late, five batches running, it tries a step up. */
@@ -92,7 +93,8 @@ export function AdaptiveResolution() {
     const { pixelRatio } = useResolution.getState()
     const best = startingRatio(quality)
     const highest = Math.min(best, state.ceiling - STEP)
-    const lowest = Math.min(LOWEST, best)
+    // Never below the quality's own lowest resolution: 1x on High and Medium, 0.75x on Low.
+    const lowest = Math.min(QUALITY_PRESETS[quality].pixelRatio[0], best)
 
     state.slow = lateShare > DROP_SHARE ? state.slow + 1 : 0
     state.calm = lateShare <= CALM_SHARE ? state.calm + 1 : 0

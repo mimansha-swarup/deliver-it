@@ -1,151 +1,103 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
+import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { HIP, JOG, type Probe } from './riderShape'
+import { createRiderMaterial, createRiderModel, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { tuning } from './tuning'
 import { BRAND_DYE, BRAND_INK, createJacketPrintTexture } from './brandPrint'
 
-const SKIN = '#b98a68'
-const TROUSERS = '#2b3a55'
-const SHOE = '#17171a'
-const GLOVE = '#1c1d20'
+/*
+ * The rider, on the same character base as the people in the street: the man
+ * model, dressed in the Deliver It jacket with gloves, under a full-face helmet,
+ * and bent by a shader as the walkers are (riderModel.ts). Each frame this
+ * works out where the hands and feet must be (on the grips, which swing as the
+ * bars turn; on the footboard, or one down when the scooter stops; hanging,
+ * jogging back or limp after a fall), then the shoulder, elbow, hip and knee
+ * angles that put them there.
+ */
+
+const LOOK = { jacket: BRAND_DYE, glove: '#1c1d20', trousers: '#2b3a55', shoe: '#17171a' }
 const HELMET = '#f4f3ef'
 const VISOR = '#14191e'
 
-/** How far around the back the print wraps, in radians. */
+/** How far around the back the print wraps, in radians, how tall it is, and how far off the jacket it sits. */
 const PRINT_WRAP = 1.9
-const PRINT_HEIGHT = 0.24
-/** How far up the torso the print sits. */
-const PRINT_Y = 0.36
-/** The print sits just off the shirt, so that the two never flicker. */
-const PRINT_LIFT = 0.006
-/** The torso's width where the print's top and bottom edges sit. */
-const PRINT_TOP_RADIUS = 0.195
-const PRINT_BOTTOM_RADIUS = 0.186
+const PRINT_HEIGHT = 0.22
+const PRINT_LIFT = 0.008
 
-const SHOULDER_HEIGHT = 1.39
-const SHOULDER_Z = -0.18
 /** How far the rider's back leans forward when sitting still, in radians. */
 const SIT_LEAN = 0.5
-const SHOULDER_WIDTH = 0.2
 /** Where each hand grips, measured from the steering column. */
 const GRIP = new THREE.Vector3(0.38, 1.05, -0.18)
 export const STEERING_Z = 0.45
 const FOOT_REST = new THREE.Vector3(0.17, 0.42, -0.08)
-/** Where the left foot lands when the scooter stops. */
-const FOOT_DOWN = new THREE.Vector3(0.34, 0.05, -0.1)
+/**
+ * Where the left foot lands when the scooter stops: the ankle, on tiptoe, a
+ * little back from the footboard. A real-sized leg doesn't reach the ground
+ * flat from the seat, so the rider also shifts their hips over to that side.
+ */
+const FOOT_DOWN = new THREE.Vector3(0.3, 0.12, -0.24)
+const FOOT_DOWN_HIP_SHIFT = new THREE.Vector3(0.08, -0.05, 0)
 const FOOT_DOWN_SPEED = 1
 const FOOT_RESPONSE = 9
 
-const UPPER_ARM = 0.36
-const FOREARM = 0.35
-const THIGH = 0.46
-const SHIN = 0.48
+/** Off the scooter: how far a jogging hand swings forward and back, in metres. */
+const ARM_SWING = 0.22
 
-const UP = new THREE.Vector3(0, 1, 0)
-const direction = new THREE.Vector3()
-const middle = new THREE.Vector3()
-const side = new THREE.Vector3()
-
-/** Stretches a one-metre cylinder so that it runs from one point to another. */
-function placeLimb(limb: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3) {
-  direction.subVectors(to, from)
-  const length = direction.length()
-  limb.position.copy(from).addScaledVector(direction, 0.5)
-  limb.quaternion.setFromUnitVectors(UP, direction.divideScalar(length))
-  limb.scale.set(1, length, 1)
-}
+const toModel = new THREE.Matrix4()
+const lowerToFeet = new THREE.Matrix4()
+const toRider = new THREE.Matrix4()
+const target = new THREE.Vector3()
+const reach = new THREE.Vector3()
+const shoulder = new THREE.Vector3()
+const hand = new THREE.Vector3()
+const foot = new THREE.Vector3()
+const elbow = new THREE.Vector3()
+const offHand = new THREE.Vector3()
+const limpHand = new THREE.Vector3()
+const offFoot = new THREE.Vector3()
+const limpFoot = new THREE.Vector3()
 
 /**
- * Inverse kinematics: given a shoulder and a hand, it finds the elbow. Two bones
- * of fixed length can only meet at a point on a circle, and `bend` picks the side
- * of it that a real joint would bend towards.
+ * Poses one limb so its end reaches `end` (in the rider's space): turned forward
+ * and out at its joint, and bent in the middle, as the shader bends it. The
+ * bend comes from how far the end is (law of cosines); the turns then aim the
+ * bent limb at it. Angles are set relative to how the limb hangs as modelled.
+ * Returns where the middle joint ends up, in the rider's space, for the probes.
  */
-function findJoint(
+function poseLimb(
+  angles: THREE.Vector3,
   joint: THREE.Vector3,
-  start: THREE.Vector3,
   end: THREE.Vector3,
   first: number,
   second: number,
-  bend: THREE.Vector3,
+  rest: { forward: number; out: number },
+  side: number,
+  bendsBack: boolean,
+  middle: THREE.Vector3,
 ) {
-  direction.subVectors(end, start)
-  const distance = Math.min(direction.length(), first + second - 0.001)
-  direction.normalize()
-
-  const along = (distance * distance + first * first - second * second) / (2 * distance)
-  const out = Math.sqrt(Math.max(0, first * first - along * along))
-
-  // The part of `bend` that's square to the limb is the way the joint pokes out.
-  middle.copy(bend).addScaledVector(direction, -bend.dot(direction)).normalize()
-  joint.copy(start).addScaledVector(direction, along).addScaledVector(middle, out)
+  target.copy(end).applyMatrix4(toModel)
+  reach.subVectors(target, joint)
+  const distance = Math.min(Math.max(reach.length(), Math.abs(first - second) + 0.001), first + second - 0.001)
+  reach.setLength(distance)
+  const bend = Math.acos(THREE.MathUtils.clamp((distance * distance - first * first - second * second) / (2 * first * second), -1, 1))
+  // How far forward of the first bone the end lies, once bent.
+  const lead = Math.atan2(second * Math.sin(bend) * (bendsBack ? -1 : 1), first + second * Math.cos(bend))
+  const forward = Math.asin(THREE.MathUtils.clamp(reach.z / distance, -1, 1)) - lead
+  const out = Math.atan2(reach.x * side, -reach.y)
+  angles.set(forward - rest.forward, out - rest.out, bend)
+  // The middle joint, where the first bone ends.
+  middle.set(
+    joint.x + first * Math.cos(forward) * Math.sin(out * side),
+    joint.y - first * Math.cos(forward) * Math.cos(out),
+    joint.z + first * Math.sin(forward),
+  ).applyMatrix4(toRider)
 }
-
-const ELBOW_BEND = new THREE.Vector3(0, -1, -0.4)
-const KNEE_BEND = new THREE.Vector3(0, 0.35, 1)
-
-type LimbGroup = RefObject<THREE.Group | null>
-
-/** The four parts of a limb inside its group, in the order they're drawn. */
-function partsOf(limb: LimbGroup) {
-  const [upper, lower, middleJoint, end] = (limb.current?.children ?? []) as THREE.Mesh[]
-  return { upper, lower, middleJoint, end }
-}
-
-/** A tapered limb, with a ball at the joint so that the two parts never show a gap. */
-function Limb({
-  limb,
-  topRadius,
-  bottomRadius,
-  material,
-  lowerMaterial = material,
-  endMaterial,
-  endSize,
-}: {
-  limb: LimbGroup
-  topRadius: number
-  bottomRadius: number
-  material: THREE.Material
-  /** The part below the joint, if it's different, like a bare forearm under a sleeve. */
-  lowerMaterial?: THREE.Material
-  endMaterial: THREE.Material
-  endSize: [number, number, number]
-}) {
-  return (
-    <group ref={limb}>
-      <mesh material={material}>
-        <cylinderGeometry args={[bottomRadius * 1.15, topRadius, 1, 9]} />
-      </mesh>
-      <mesh material={lowerMaterial}>
-        <cylinderGeometry args={[bottomRadius * 0.82, bottomRadius * 1.1, 1, 9]} />
-      </mesh>
-      <mesh material={lowerMaterial}>
-        <sphereGeometry args={[bottomRadius * 1.14, 10, 8]} />
-      </mesh>
-      <mesh material={endMaterial}>
-        <boxGeometry args={endSize} />
-      </mesh>
-    </group>
-  )
-}
-
-const shoulder = new THREE.Vector3()
-const hand = new THREE.Vector3()
-const hip = new THREE.Vector3()
-const foot = new THREE.Vector3()
-const joint = new THREE.Vector3()
-
-/** Off the scooter: how far a jogging hand swings forward and back, in metres. */
-const ARM_SWING = 0.22
-const offHand = new THREE.Vector3()
-const limpHand = new THREE.Vector3()
-
-/** The shoulders, from the hips, as they are sitting on the scooter. */
-const SHOULDER_UP = SHOULDER_HEIGHT - HIP.y
-const SHOULDER_FORWARD = SHOULDER_Z - HIP.z
 
 /** Where each foot is in a jog, from `jogFoot`: forward of the hip, height off the ground, and how much weight is on it. */
 type FootStep = { forward: number; lift: number; load: number }
@@ -175,96 +127,38 @@ function jogFoot(step: FootStep, stride: number, sign: number) {
 }
 
 /**
- * `off` is how far off the scooter the rider is, `limp` how limp, and `jog` how
- * much they're jogging. On the scooter the hands hold the grips. Off it, they
- * hang, pump back and forth against the legs while jogging, or fling out when limp.
- * `torso` is how far the body leans forward, and `bob` how far the hips have
- * sunk, which the shoulders follow.
+ * Where a hand goes. On the scooter it holds its grip, which swings round the
+ * steering column as the bars turn. Off it, the hand hangs, pumps back and
+ * forth against the legs while jogging, or flings out when limp.
  */
-function placeArm(
-  limb: LimbGroup,
-  sign: number,
-  steerAngle: number,
-  crouch: number,
-  off: number,
-  limp: number,
-  jog: number,
-  step: FootStep,
-  torso: number,
-  bob: number,
-) {
-  const { upper, lower, middleJoint, end } = partsOf(limb)
-  if (!end) return
-
-  // Off the scooter, the shoulders turn with the torso about the hips, from where they are when sitting.
-  const turn = (torso - SIT_LEAN) * off
-  shoulder.set(
-    sign * SHOULDER_WIDTH,
-    HIP.y + bob + SHOULDER_UP * Math.cos(turn) - SHOULDER_FORWARD * Math.sin(turn) - crouch * 0.08,
-    HIP.z + SHOULDER_UP * Math.sin(turn) + SHOULDER_FORWARD * Math.cos(turn) + crouch * 0.08,
-  )
-
-  // The grip swings around the steering column as the bars turn.
+function handTarget(sign: number, steerAngle: number, off: number, limp: number, jog: number, step: FootStep, shoulderAt: THREE.Vector3, armLength: number) {
   const x = sign * GRIP.x
   hand.set(
     x * Math.cos(steerAngle) + GRIP.z * Math.sin(steerAngle),
     GRIP.y,
     STEERING_Z - x * Math.sin(steerAngle) + GRIP.z * Math.cos(steerAngle),
   )
-
   if (off > 0) {
-    // Hanging at the side, or, jogging, bent at the elbow and swinging against the leg on the same side.
     const swing = (-step.forward / JOG.reach) * ARM_SWING
-    offHand.set(
-      sign * (0.25 - 0.04 * jog),
-      shoulder.y - 0.62 + 0.24 * jog,
-      shoulder.z + (0.14 + swing) * jog,
-    )
-    limpHand.set(sign * 0.62, shoulder.y + 0.12, shoulder.z + 0.12 * sign)
+    offHand.set(shoulderAt.x + sign * (0.05 - 0.04 * jog), shoulderAt.y - armLength * 0.95 + 0.24 * jog, shoulderAt.z + (0.14 + swing) * jog)
+    limpHand.set(sign * 0.62, shoulderAt.y + 0.12, shoulderAt.z + 0.12 * sign)
     offHand.lerp(limpHand, limp)
     hand.lerp(offHand, off)
   }
-
-  side.set(sign * 0.7, ELBOW_BEND.y, ELBOW_BEND.z)
-  findJoint(joint, shoulder, hand, UPPER_ARM, FOREARM, side)
-  placeLimb(upper, shoulder, joint)
-  placeLimb(lower, joint, hand)
-  middleJoint.position.copy(joint)
-  end.position.copy(hand)
+  return hand
 }
-
-function placeLeg(limb: LimbGroup, sign: number, footPosition: THREE.Vector3, bob: number) {
-  const { upper, lower, middleJoint, end } = partsOf(limb)
-  if (!end) return
-
-  hip.set(sign * 0.1, HIP.y + bob, HIP.z)
-  side.set(sign * 0.25, KNEE_BEND.y, KNEE_BEND.z)
-  findJoint(joint, hip, footPosition, THIGH, SHIN, side)
-  placeLimb(upper, hip, joint)
-  placeLimb(lower, joint, footPosition)
-  middleJoint.position.copy(joint)
-  end.position.set(footPosition.x, footPosition.y - 0.03, footPosition.z + 0.05)
-}
-
-const offFoot = new THREE.Vector3()
-const limpFoot = new THREE.Vector3()
 
 /** Moves a foot from the scooter to where it is off it: under the hip standing, in its stride jogging, or straight out when limp. */
 function placeOffFoot(footPosition: THREE.Vector3, sign: number, off: number, limp: number, jog: number, step: FootStep) {
   if (off === 0) return
-  offFoot.set(sign * 0.12, 0.05 + step.lift * jog, HIP.z + step.forward * jog)
-  limpFoot.set(sign * 0.2, 0.02, HIP.z - 0.05)
+  offFoot.set(sign * 0.12, 0.08 + step.lift * jog, HIP.z + step.forward * jog)
+  limpFoot.set(sign * 0.2, 0.05, HIP.z - 0.05)
   offFoot.lerp(limpFoot, limp)
   footPosition.lerp(offFoot, off)
 }
 
-/** Where the hips, waist, chest and helmet are in the body group. */
-const BODY_PROBE_POINTS = [
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0.25, 0.05),
-  new THREE.Vector3(0, 0.52, 0.05),
-  new THREE.Vector3(0, 0.72, 0.06),
-]
+/** The hips, waist and chest probes, as shares of the way up to the shoulders. The helmet's is the fourth. */
+const BODY_PROBE_SHARES = [0, 0.5, 0.95]
 
 /**
  * The rider. Hands stay on the grips, and a foot comes down when the scooter
@@ -286,20 +180,24 @@ export function Rider({
   const head = useRef<THREE.Group>(null)
   const footDown = useRef(0)
 
-  const leftArm = useRef<THREE.Group>(null)
-  const rightArm = useRef<THREE.Group>(null)
-  const leftLeg = useRef<THREE.Group>(null)
-  const rightLeg = useRef<THREE.Group>(null)
+  const { scene } = useGLTF(TRAFFIC_MODELS_URL)
+  const model: RiderModel = useMemo(() => createRiderModel(getModel(scene, 'man'), LOOK), [scene])
+  const pose: RiderPose = useMemo(
+    () => ({ leftArm: new THREE.Vector3(), rightArm: new THREE.Vector3(), leftLeg: new THREE.Vector3(), rightLeg: new THREE.Vector3() }),
+    [],
+  )
+  const riderMaterial = useMemo(() => createRiderMaterial(model, pose), [model, pose])
+  useEffect(
+    () => () => {
+      model.geometry.dispose()
+      riderMaterial.dispose()
+    },
+    [model, riderMaterial],
+  )
 
   const materials = useMemo(
     () => ({
-      // The Deliver It jacket, in the logo's marigold: a little sheen, as nylon has.
-      shirt: new THREE.MeshStandardMaterial({ color: BRAND_DYE, roughness: 0.68 }),
       trim: new THREE.MeshStandardMaterial({ color: BRAND_INK, roughness: 0.7 }),
-      skin: new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.7 }),
-      trousers: new THREE.MeshStandardMaterial({ color: TROUSERS, roughness: 0.8 }),
-      shoe: new THREE.MeshStandardMaterial({ color: SHOE, roughness: 0.6 }),
-      glove: new THREE.MeshStandardMaterial({ color: GLOVE, roughness: 0.7 }),
       helmet: new THREE.MeshStandardMaterial({
         color: HELMET,
         roughness: 0.2,
@@ -330,8 +228,31 @@ export function Rider({
   }, [materials, helmetId])
   useEffect(() => () => printTexture.dispose(), [printTexture])
 
+  const { size } = model
+  // The body group's origin is the hips; the model stands with its feet at 0.
+  const hipsUp = size.hipY
+  // The print wraps the back of the jacket: a strip of a cylinder as wide as the torso, squashed to its depth.
+  const printRadius = size.printHalfWidth + PRINT_LIFT
+  const printDepth = Math.max(0.3, (-size.printBack + PRINT_LIFT) / printRadius)
+  const joints = useMemo(
+    () => ({
+      shoulders: [new THREE.Vector3(size.shoulderX, size.shoulderY, 0), new THREE.Vector3(-size.shoulderX, size.shoulderY, 0)],
+      hips: [new THREE.Vector3(size.hipX, size.hipY, 0), new THREE.Vector3(-size.hipX, size.hipY, 0)],
+    }),
+    [size],
+  )
+  const bodyProbes = useMemo(
+    () => [
+      ...BODY_PROBE_SHARES.map((share) => new THREE.Vector3(0, (size.shoulderY - hipsUp) * share, 0)),
+      size.head.clone().setY(size.head.y - hipsUp),
+    ],
+    [size, hipsUp],
+  )
+
   useFrame((_, delta) => {
     const state = scooter.current
+    const group = body.current
+    if (!group) return
     const speed = getTravelSpeed(state)
     const steer = state.steer * steerAngle
     const crouch = Math.min(speed / tuning.maxSpeed, 1) * (state.boostLeft > 0 || state.nitroOn ? 1 : 0.45)
@@ -347,31 +268,35 @@ export function Rider({
     const bob = -(JOG.crouch + JOG.sink * Math.max(leftStep.load, rightStep.load)) * jog * off
     // Leans into a bend harder than the scooter. Off it, they stand up straight, or lean into a jog.
     const torso = (SIT_LEAN + crouch * 0.16) * (1 - off) + (0.05 + 0.2 * jog) * off
+    // Stopped, the hips shift over to the side the foot goes down on.
+    const shift = footDown.current * (1 - off)
 
-    placeArm(leftArm, 1, steer, crouch, off, limp, jog, leftStep, torso, bob)
-    probes[4].point.copy(joint)
-    probes[6].point.copy(hand)
-    placeArm(rightArm, -1, steer, crouch, off, limp, jog, rightStep, torso, bob)
-    probes[5].point.copy(joint)
-    probes[7].point.copy(hand)
-    foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
-    placeOffFoot(foot, 1, off, limp, jog, leftStep)
-    placeLeg(leftLeg, 1, foot, bob)
-    probes[8].point.copy(joint)
-    probes[10].point.copy(foot)
-    foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
-    placeOffFoot(foot, -1, off, limp, jog, rightStep)
-    placeLeg(rightLeg, -1, foot, bob)
-    probes[9].point.copy(joint)
-    probes[11].point.copy(foot)
+    // The body first: everything else is worked out in its frame.
+    group.position.set(HIP.x + FOOT_DOWN_HIP_SHIFT.x * shift, HIP.y + bob + FOOT_DOWN_HIP_SHIFT.y * shift, HIP.z)
+    group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off))
+    group.updateMatrix()
+    // The model's own space: the body group's, with the hips raised to where the model has them.
+    toRider.copy(group.matrix).multiply(lowerToFeet.makeTranslation(0, -hipsUp, 0))
+    toModel.copy(toRider).invert()
+    bodyProbes.forEach((point, index) => probes[index].point.copy(point).applyMatrix4(group.matrix))
 
-    if (body.current) {
-      body.current.position.y = HIP.y + bob
-      body.current.rotation.z = -state.lean * 0.35 * (1 - off)
-      body.current.rotation.x = torso
-      body.current.updateMatrix()
-      BODY_PROBE_POINTS.forEach((point, index) => probes[index].point.copy(point).applyMatrix4(body.current!.matrix))
+    const armLength = size.upperArm + size.forearm
+    for (const [index, sign] of [[0, 1], [1, -1]] as const) {
+      shoulder.copy(joints.shoulders[index]).applyMatrix4(toRider)
+      handTarget(sign, steer, off, limp, jog, sign > 0 ? leftStep : rightStep, shoulder, armLength)
+      poseLimb(index === 0 ? pose.leftArm : pose.rightArm, joints.shoulders[index], hand, size.upperArm, size.forearm, size.armRest, sign, false, elbow)
+      probes[4 + index].point.copy(elbow)
+      probes[6 + index].point.copy(hand)
     }
+    for (const [index, sign] of [[0, 1], [1, -1]] as const) {
+      if (sign > 0) foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
+      else foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
+      placeOffFoot(foot, sign, off, limp, jog, sign > 0 ? leftStep : rightStep)
+      poseLimb(index === 0 ? pose.leftLeg : pose.rightLeg, joints.hips[index], foot, size.thigh, size.shin, size.legRest, sign, true, elbow)
+      probes[8 + index].point.copy(elbow)
+      probes[10 + index].point.copy(foot)
+    }
+
     // Looks where it's going: the head turns back against the torso's lean, so the eyes stay level.
     if (head.current) {
       head.current.rotation.y = state.steer * 0.3 * (1 - off)
@@ -381,93 +306,32 @@ export function Rider({
   })
 
   return (
-    <>
-      <group ref={body} position={HIP}>
-        {/* Torso, with shoulders wider than the waist */}
-        <mesh position={[0, 0.27, 0.05]} scale={[1, 1, 0.72]} material={materials.shirt}>
-          <cylinderGeometry args={[0.2, 0.17, 0.54, 12]} />
-        </mesh>
-        <mesh position={[0, 0.54, 0.05]} scale={[1.08, 0.46, 0.74]} material={materials.shirt}>
-          <sphereGeometry args={[0.2, 12, 10]} />
-        </mesh>
-        {/* The jacket's dark collar, so it reads as a jacket, not a T-shirt. */}
-        <mesh position={[0, 0.62, 0.06]} material={materials.trim}>
-          <cylinderGeometry args={[0.075, 0.095, 0.07, 12]} />
-        </mesh>
-        {/* The print: a curved strip of the torso's own shape, wrapped around the back. */}
-        <mesh position={[0, PRINT_Y, 0.05]} scale={[1, 1, 0.72]}>
-          <cylinderGeometry
-            args={[
-              PRINT_TOP_RADIUS + PRINT_LIFT,
-              PRINT_BOTTOM_RADIUS + PRINT_LIFT,
-              PRINT_HEIGHT,
-              16,
-              1,
-              true,
-              Math.PI - PRINT_WRAP / 2,
-              PRINT_WRAP,
-            ]}
-          />
-          <meshStandardMaterial map={printTexture} transparent roughness={0.8} depthWrite={false} />
-        </mesh>
-        <mesh position={[0, 0, 0]} scale={[1, 0.8, 0.85]} material={materials.trousers}>
-          <sphereGeometry args={[0.19, 12, 10]} />
-        </mesh>
+    <group ref={body} position={HIP} matrixAutoUpdate={false}>
+      <mesh geometry={model.geometry} material={riderMaterial} position={[0, -hipsUp, 0]} frustumCulled={false} />
+      {/* The jacket's dark collar, round the neck. */}
+      <mesh position={[0, size.shoulderY - hipsUp + 0.04, size.head.z]} material={materials.trim}>
+        <cylinderGeometry args={[0.07, 0.09, 0.07, 12]} />
+      </mesh>
+      {/* The print: a curved strip of the torso's own shape, wrapped around the back. */}
+      <mesh position={[0, size.printY - hipsUp, 0]} scale={[1, 1, printDepth]}>
+        <cylinderGeometry args={[printRadius, printRadius, PRINT_HEIGHT, 16, 1, true, Math.PI - PRINT_WRAP / 2, PRINT_WRAP]} />
+        <meshStandardMaterial map={printTexture} transparent roughness={0.8} depthWrite={false} />
+      </mesh>
 
-        <group ref={head} position={[0, 0.72, 0.06]}>
-          {/* Helmet */}
-          <mesh scale={[0.96, 1, 1.08]} material={materials.helmet}>
-            <sphereGeometry args={[0.15, 18, 14]} />
-          </mesh>
-          {/* Visor */}
-          <mesh
-            position={[0, -0.01, 0.045]}
-            scale={[0.94, 0.68, 1.08]}
-            material={materials.visor}
-          >
-            <sphereGeometry args={[0.145, 16, 12]} />
-          </mesh>
-          {/* A stripe over the top, so the helmet shows which way it faces */}
-          <mesh position={[0, 0.03, -0.01]} scale={[0.2, 1, 1.1]} material={materials.trim}>
-            <sphereGeometry args={[0.135, 12, 10]} />
-          </mesh>
-        </group>
+      <group ref={head} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
+        {/* Helmet, over the model's head */}
+        <mesh scale={[0.96, 1, 1.08]} material={materials.helmet}>
+          <sphereGeometry args={[0.15, 18, 14]} />
+        </mesh>
+        {/* Visor */}
+        <mesh position={[0, -0.01, 0.045]} scale={[0.94, 0.68, 1.08]} material={materials.visor}>
+          <sphereGeometry args={[0.145, 16, 12]} />
+        </mesh>
+        {/* A stripe over the top, so the helmet shows which way it faces */}
+        <mesh position={[0, 0.03, -0.01]} scale={[0.2, 1, 1.1]} material={materials.trim}>
+          <sphereGeometry args={[0.135, 12, 10]} />
+        </mesh>
       </group>
-
-      <Limb
-        limb={leftArm}
-        topRadius={0.06}
-        bottomRadius={0.046}
-        material={materials.shirt}
-        lowerMaterial={materials.shirt}
-        endMaterial={materials.glove}
-        endSize={[0.08, 0.07, 0.1]}
-      />
-      <Limb
-        limb={rightArm}
-        topRadius={0.06}
-        bottomRadius={0.046}
-        material={materials.shirt}
-        lowerMaterial={materials.shirt}
-        endMaterial={materials.glove}
-        endSize={[0.08, 0.07, 0.1]}
-      />
-      <Limb
-        limb={leftLeg}
-        topRadius={0.092}
-        bottomRadius={0.062}
-        material={materials.trousers}
-        endMaterial={materials.shoe}
-        endSize={[0.1, 0.07, 0.25]}
-      />
-      <Limb
-        limb={rightLeg}
-        topRadius={0.092}
-        bottomRadius={0.062}
-        material={materials.trousers}
-        endMaterial={materials.shoe}
-        endSize={[0.1, 0.07, 0.25]}
-      />
-    </>
+    </group>
   )
 }

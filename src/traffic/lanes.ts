@@ -19,6 +19,10 @@ export type Lane = {
   endNode: number
   /** The light this lane runs up to, if there is one. */
   signal?: { junction: number; group: number; stopBack: number }
+  /** How busy its street is (streetPresets.ts): new traffic is placed in proportion. Unset is 1. */
+  weight?: number
+  /** Whether buses run on its street. */
+  buses?: boolean
 }
 
 type LaneRules = {

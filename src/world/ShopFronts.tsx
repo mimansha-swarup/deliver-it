@@ -21,6 +21,8 @@ import {
   type ShopType,
 } from './signboards'
 import { groundLift } from './groundLift'
+import { createRandom } from './props'
+import { generateShopNames } from './shopNames'
 
 /**
  * Every shop front: an open doorway with the shop inside, a signboard above
@@ -66,17 +68,24 @@ const PAINTED_GLOW = 0.55
 const SPILL = { reach: 3.4, spread: 1.0, lift: 0.012, strength: 0.75, color: '#ffa652' }
 const UP_NORMAL = new THREE.Vector3(0, 1, 0)
 
-// ---- The board atlas: boards in two columns, then a strip of chalk menu boards ----
+// ---- The board atlas: boards in four columns, then a strip of chalk menu boards ----
+// 128 boards at 512 by 112 fit under 4,096 pixels tall, the most many GPUs take:
+// about 130 pixels to a metre of board, sharp at riding distance.
 
-const BOARD_WIDTH = 1024
-const BOARD_HEIGHT = 224
+const BOARD_WIDTH = 512
+const BOARD_HEIGHT = 112
+const BOARD_COLUMNS = 4
 const PHOTO_TYPES = SHOP_TYPES.filter((type) => PHOTO_BOARDS[type])
-const BOARD_SLOTS = SHOP_TYPES.length + PHOTO_TYPES.length + EXTRA_NAMES.length
-const BOARD_ROWS = Math.ceil(BOARD_SLOTS / 2)
+/** Made-up names for each kind of shop, so nearby boards don't repeat (shopNames.ts). */
+const NAMES_PER_TYPE = 6
+const POOL = generateShopNames(SHOP_TYPES, NAMES_PER_TYPE, EXTRA_NAMES.map(({ english }) => english))
+const POOL_NAMES = SHOP_TYPES.flatMap((type) => (POOL.get(type) ?? []).map((name) => ({ type, ...name })))
+const BOARD_SLOTS = SHOP_TYPES.length + PHOTO_TYPES.length + EXTRA_NAMES.length + POOL_NAMES.length
+const BOARD_ROWS = Math.ceil(BOARD_SLOTS / BOARD_COLUMNS)
 const MENU_TOP = BOARD_ROWS * BOARD_HEIGHT
 const MENU_WIDTH = 256
 const MENU_HEIGHT = 352
-const BOARD_ATLAS = { width: BOARD_WIDTH * 2, height: MENU_TOP + MENU_HEIGHT }
+const BOARD_ATLAS = { width: BOARD_WIDTH * BOARD_COLUMNS, height: MENU_TOP + MENU_HEIGHT }
 
 /** What the menu boards say. Shops not listed don't put one out. */
 const MENUS: Partial<Record<ShopType, string[]>> = {
@@ -95,6 +104,7 @@ const DARK_SLOT = 7
 const drawnSlot = (type: ShopType) => SHOP_TYPES.indexOf(type)
 const photoSlot = (type: ShopType) => SHOP_TYPES.length + PHOTO_TYPES.indexOf(type)
 const extraSlot = (index: number) => SHOP_TYPES.length + PHOTO_TYPES.length + index
+const poolSlot = (index: number) => SHOP_TYPES.length + PHOTO_TYPES.length + EXTRA_NAMES.length + index
 
 /** The boards a shop of this type may have: its drawn board, its photo board if any, and any second names. */
 function slotsFor(type: ShopType): number[] {
@@ -103,7 +113,34 @@ function slotsFor(type: ShopType): number[] {
   EXTRA_NAMES.forEach((extra, index) => {
     if (extra.type === type) slots.push(extraSlot(index))
   })
+  POOL_NAMES.forEach((name, index) => {
+    if (name.type === type) slots.push(poolSlot(index))
+  })
   return slots
+}
+
+/** Two shops this close never have the same board, while there's another to give, in metres. */
+const BOARD_SPREAD = 250
+
+/**
+ * Picks every shop's board, so the same name doesn't turn up on the same
+ * street or the next: each shop tries its kind's boards in an order of its own
+ * (from where it stands, so it's the same on every visit), and takes the first
+ * not already up within BOARD_SPREAD. If every one is, it takes the one whose
+ * nearest copy is furthest away.
+ */
+function assignBoards(shopFronts: ShopFront[]): number[] {
+  const placed = new Map<number, [number, number][]>()
+  return shopFronts.map(({ x, z, type }) => {
+    const random = createRandom(Math.abs(Math.round(x * 31 + z * 17)) + 1)
+    const choices = [...slotsFor(type)].sort(() => random() - 0.5)
+    const nearestUse = (slot: number) => Math.min(Infinity, ...(placed.get(slot) ?? []).map(([px, pz]) => Math.hypot(px - x, pz - z)))
+    const slot = choices.find((choice) => nearestUse(choice) > BOARD_SPREAD) ?? choices.reduce((best, choice) => (nearestUse(choice) > nearestUse(best) ? choice : best))
+    const list = placed.get(slot) ?? []
+    placed.set(slot, list)
+    list.push([x, z])
+    return slot
+  })
 }
 
 type Rect = { u0: number; v0: number; u1: number; v1: number }
@@ -118,8 +155,15 @@ function toRect(x: number, y: number, width: number, height: number, atlas: { wi
   }
 }
 
+/** Where a board's slot is in the atlas, in pixels. */
+function slotAt(slot: number): [number, number] {
+  return [(slot % BOARD_COLUMNS) * BOARD_WIDTH, Math.floor(slot / BOARD_COLUMNS) * BOARD_HEIGHT]
+}
+
 function boardRect(slot: number): Rect {
-  return toRect((slot % 2) * BOARD_WIDTH, Math.floor(slot / 2) * BOARD_HEIGHT, BOARD_WIDTH, BOARD_HEIGHT, BOARD_ATLAS)
+  // A pixel in from each side, so mipmaps don't bleed the next board in.
+  const [x, y] = slotAt(slot)
+  return toRect(x + 1, y + 1, BOARD_WIDTH - 2, BOARD_HEIGHT - 2, BOARD_ATLAS)
 }
 
 function menuRect(slot: number): Rect {
@@ -153,21 +197,23 @@ function paintBoards(canvas: HTMLCanvasElement, photos: Map<ShopType, HTMLImageE
   if (!context) return
 
   SHOP_TYPES.forEach((type) => {
-    const slot = drawnSlot(type)
-    drawBoard(context, type, (slot % 2) * BOARD_WIDTH, Math.floor(slot / 2) * BOARD_HEIGHT, BOARD_WIDTH, BOARD_HEIGHT)
+    const [x, y] = slotAt(drawnSlot(type))
+    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT)
   })
   PHOTO_TYPES.forEach((type) => {
-    const slot = photoSlot(type)
-    const x = (slot % 2) * BOARD_WIDTH
-    const y = Math.floor(slot / 2) * BOARD_HEIGHT
+    const [x, y] = slotAt(photoSlot(type))
     const photo = photos.get(type)
     if (photo) context.drawImage(photo, x, y, BOARD_WIDTH, BOARD_HEIGHT)
     else drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT)
   })
 
   EXTRA_NAMES.forEach(({ type, kannada, english }, index) => {
-    const slot = extraSlot(index)
-    drawBoard(context, type, (slot % 2) * BOARD_WIDTH, Math.floor(slot / 2) * BOARD_HEIGHT, BOARD_WIDTH, BOARD_HEIGHT, { kannada, english })
+    const [x, y] = slotAt(extraSlot(index))
+    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT, { kannada, english })
+  })
+  POOL_NAMES.forEach(({ type, kannada, english }, index) => {
+    const [x, y] = slotAt(poolSlot(index))
+    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT, { kannada, english })
   })
 
   MENU_TYPES.forEach((type, slot) => drawMenu(context, MENUS[type] ?? [], slot * MENU_WIDTH, MENU_TOP))
@@ -415,7 +461,8 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
   const rooms: RoomChunks = new Map()
   const spills: Chunks = new Map()
 
-  for (const { x, z, rotation, width, type, variation, menuBoard } of shopFronts) {
+  const boardSlots = assignBoards(shopFronts)
+  shopFronts.forEach(({ x, z, rotation, width, type, variation, menuBoard }, shopIndex) => {
     const key = chunkKey(x, z)
     const out = new THREE.Vector3(Math.sin(rotation), 0, Math.cos(rotation))
     const back = out.clone().negate()
@@ -441,8 +488,7 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
     pushRoom(rooms, key, { x, z, out, rightX, rightZ, width, bottom: lift, top: INTERIOR_TOP + lift, depth, cell: roomCell(type), flip: variation >= 0.5 })
 
     // The board: a photo board on some of the commonest shops, a drawn one on the rest.
-    const choices = slotsFor(type)
-    const slot = choices[Math.floor(variation * choices.length * 0.999)]
+    const slot = boardSlots[shopIndex]
     // A few boards are backlit boxes, bright at night; the rest are painted and lit from the street.
     const backlit = (variation * 13.7) % 1 < BACKLIT_SHARE
     pushQuad(boards, key, out, rectangle(SIGN_DEPTH + WALL_GAP, width / 2, SIGN_BOTTOM, SIGN_TOP, boardRect(slot)), backlit ? BACKLIT_GLOW : PAINTED_GLOW)
@@ -498,7 +544,7 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
       face(out, menuRect(menu))
       face(back, menuRect(menu))
     }
-  }
+  })
 
   return { boards: toGeometries(boards), rooms: toRoomGeometries(rooms), spills: toGeometries(spills) }
 }

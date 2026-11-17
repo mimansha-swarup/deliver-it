@@ -21,6 +21,7 @@ import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanGeometry } from './peopleShapes'
+import { createBusGeometry } from './bus'
 import {
   takeHonks,
   takeImpacts,
@@ -48,6 +49,8 @@ const AUTO_COLORS = ['#ffffff']
 /** A far-away auto: the green body and yellow canopy. */
 const AUTO_PROXY_COLORS = { body: '#3f7d5a', cabin: '#d8c46c' }
 const BIKE_COLORS = ['#1c3fd1', '#b3201e', '#1a1b1e', '#e8e8e8', '#2e7d4f']
+/** Made-up city bus liveries, a little faded: green, red, blue and ochre. No real operator's colours and name together. */
+const BUS_COLORS = ['#3f7a4a', '#a8352c', '#2f5a8f', '#b98a2c']
 /** Parked scooters are detailed, and smaller than a few pixels past this, in metres. */
 const PARKED_DRAW_DISTANCE = 90
 /**
@@ -736,6 +739,7 @@ const VEHICLES: { kind: VehicleKind; palette: string[] }[] = [
   { kind: 'mpv', palette: CAR_COLORS },
   { kind: 'auto', palette: AUTO_COLORS },
   { kind: 'bike', palette: BIKE_COLORS },
+  { kind: 'bus', palette: BUS_COLORS },
 ]
 
 /** Number plates are small, so past this they aren't drawn, in metres. */
@@ -749,6 +753,7 @@ const PLATES: Record<VehicleKind, PlateFit & { commercial: boolean }> = {
   mpv: { width: 0.5, height: 0.12, at: 0.48, front: true, back: true, commercial: false },
   auto: { width: 0.32, height: 0.11, at: 0.42, front: true, back: true, commercial: true },
   bike: { width: 0.2, height: 0.12, at: 0.68, front: false, back: true, commercial: false },
+  bus: { width: 0.52, height: 0.13, at: 0.5, front: true, back: true, commercial: true },
 }
 
 /** Which of the three two-wheeler shapes a bike is: the model, a scooter or a motorcycle. Fixed for each bike. */
@@ -791,6 +796,9 @@ export function Traffic({
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
 
+  // The bus is built in code (bus.ts), so it needs freeing.
+  const busShape = useMemo(() => createBusGeometry(), [])
+  useEffect(() => () => busShape.dispose(), [busShape])
   const shapes = useMemo(
     () => ({
       sedan: getModel(scene, 'sedan'),
@@ -799,8 +807,9 @@ export function Traffic({
       mpv: getModel(scene, 'mpv'),
       auto: getModel(scene, 'auto'),
       bike: getModel(yamaha, 'bike'),
+      bus: busShape,
     }),
-    [scene, yamaha],
+    [scene, yamaha, busShape],
   )
   const wheels = useMemo(
     () => ({
@@ -832,6 +841,7 @@ export function Traffic({
       mpv: createVehicleGlowGeometry(2, -2, 0.58, 0.8),
       auto: createVehicleGlowGeometry(1.3, -1.3, 0, 0.72),
       bike: createVehicleGlowGeometry(0.66, -0.9, 0, 0.9),
+      bus: createVehicleGlowGeometry(5.6, -5.6, 0.85, 0.82),
     }),
     [],
   )
@@ -927,7 +937,8 @@ export function Traffic({
               reach={detail}
             />
             <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked reflection={reflection} from={detail} />
-            <VehicleWheels items={items} wheels={wheels[kind]} reach={detail} />
+            {/* The bus's wheels are part of its shape. */}
+            {kind !== 'bus' && <VehicleWheels items={items} wheels={wheels[kind]} reach={detail} />}
             <NumberPlates items={items} geometry={plates[kind]} commercial={PLATES[kind].commercial} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
             <VehicleLights items={items} geometry={lights[kind]} />
           </group>

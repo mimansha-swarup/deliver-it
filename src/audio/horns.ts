@@ -34,6 +34,8 @@ const HORNS: Record<HornVoice, Horn> = {
   sedan: CAR,
   hatchback: { ...CAR, tones: [415, 523] },
   suv: { ...CAR, tones: [330, 415], brightness: 1500 },
+  // A deep air horn.
+  bus: { ...CAR, tones: [220, 277, 330], brightness: 1100 },
   mpv: { ...CAR, tones: [392, 494] },
   auto: {
     tones: [640, 720],

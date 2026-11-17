@@ -536,8 +536,8 @@ export function typeByChance(roll: number): ShopType {
 
 /**
  * Second names for the commonest kinds of shop, so a street's kiranas aren't all
- * one shop. Made up, in the usual local style, like the rest. Only 11, as the
- * board picture can't grow past 4,096 pixels tall, the most many GPUs take.
+ * one shop. Made up, in the usual local style, like the rest. Many more are
+ * made up from parts in shopNames.ts.
  */
 export const EXTRA_NAMES: { type: ShopType; kannada: string; english: string }[] = [
   { type: 'kirana', kannada: 'ಶ್ರೀ ಲಕ್ಷ್ಮಿ ಸ್ಟೋರ್ಸ್', english: 'Sri Lakshmi Stores' },

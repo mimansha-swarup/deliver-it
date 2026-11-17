@@ -19,6 +19,8 @@ const ENGINE_FOR: Record<VehicleKind, EngineKind> = {
   mpv: 'car',
   auto: 'auto',
   bike: 'bike',
+  // Low and slow, like the biggest of the engines here.
+  bus: 'suv',
 }
 
 /** Where a sound is, for the ears: how loud for its distance, and how far left or right. */

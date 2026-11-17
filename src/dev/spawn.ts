@@ -29,11 +29,23 @@ export function slugOf(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
+/**
+ * Review streets, one for each street preset (streetPresets.ts):
+ * `?spawn=shop-street`, `?spawn=residential-street` and `?spawn=main-road`.
+ * 27th Main Road, the reference shop street, is `?spawn=27th-main` as before.
+ */
+export const REVIEW_STREETS: Record<string, string> = {
+  'shop-street': '24th-main-road',
+  'residential-street': '13th-cross-road',
+  'main-road': 'sarjapur-road',
+}
+
 /** The street asked for in the address, or null. */
 export function requestedSpawn(): string | null {
   if (!isDebug() || typeof location === 'undefined') return null
   const slug = new URLSearchParams(location.search).get('spawn')
-  return slug ? slugOf(slug) : null
+  if (!slug) return null
+  return REVIEW_STREETS[slugOf(slug)] ?? slugOf(slug)
 }
 
 /** Where to start on the street `slug`, or null if no road matches. */
@@ -82,4 +94,14 @@ export function placeAt(scooter: { x: number; z: number; heading: number; speed:
   scooter.speed = 0
   scooter.velocityX = 0
   scooter.velocityZ = 0
+}
+
+/**
+ * Debug: `?streets=reference` dresses only 27th Main Road, the reference
+ * street, and leaves the rest of the map on the plain ground, as it was before
+ * the street presets were rolled out. For comparing what the rollout costs.
+ */
+export function referenceStreetsOnly(): string[] | undefined {
+  if (!isDebug() || typeof location === 'undefined') return undefined
+  return new URLSearchParams(location.search).get('streets') === 'reference' ? ['27th Main Road'] : undefined
 }

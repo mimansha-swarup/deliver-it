@@ -169,7 +169,7 @@ type Mover = {
   tint: number
 }
 
-export type VehicleKind = 'sedan' | 'hatchback' | 'suv' | 'mpv' | 'auto' | 'bike'
+export type VehicleKind = 'sedan' | 'hatchback' | 'suv' | 'mpv' | 'auto' | 'bike' | 'bus'
 
 /** The mix of traffic, repeated: Bengaluru has a lot of two-wheelers. */
 const VEHICLE_MIX: VehicleKind[] = [
@@ -185,6 +185,8 @@ const VEHICLE_MIX: VehicleKind[] = [
   'mpv',
   'bike',
   'hatchback',
+  // Buses only take lanes on main roads (`Lane.buses`), so on other streets this one waits.
+  'bus',
 ]
 
 /**
@@ -214,6 +216,8 @@ const PERSON_THROW: ThrowStyle = { lift: 0.1, maxLift: 1.4, roll: 0.5, pitch: 0.
 const TWO_WHEELER_THROW: ThrowStyle = { lift: 0.04, maxLift: 0.7, roll: 0.7, pitch: 0.04, maxTip: 3.5, yaw: 0.12 }
 const AUTO_THROW: ThrowStyle = { lift: 0.03, maxLift: 0.5, roll: 0.35, pitch: 0.05, maxTip: 2.5, yaw: 0.08 }
 const CAR_THROW: ThrowStyle = { lift: 0.02, maxLift: 0.3, roll: 0.06, pitch: 0.02, maxTip: 0.8, yaw: 0.06 }
+/** A bus hardly moves for anything a scooter can do to it. */
+const BUS_THROW: ThrowStyle = { lift: 0, maxLift: 0.05, roll: 0.01, pitch: 0.005, maxTip: 0.15, yaw: 0.01 }
 
 /** How things slide once they're down. A body drags to a stop, a bike on its side skids further. */
 const BODY_SURFACE: CrashSurface = { friction: 0.75, bounce: 0, slideDamping: 0.2, spinDamping: 3 }
@@ -228,6 +232,7 @@ export const THROW_STYLES: Record<VehicleKind, ThrowStyle> = {
   mpv: CAR_THROW,
   auto: AUTO_THROW,
   bike: TWO_WHEELER_THROW,
+  bus: BUS_THROW,
 }
 
 /**
@@ -274,6 +279,13 @@ const VEHICLE_SHAPES: Record<
     halfLength: 0.95,
     radius: 0.4,
     crash: { halfSize: [0.22, 0.67, 0.9], centre: 0.67, mass: 200, surface: TWO_WHEELER_SURFACE },
+  },
+  // A city bus, 11 m long and 2.5 m wide (see createBusGeometry in vehicleShapes.ts).
+  bus: {
+    speed: 7,
+    halfLength: 5.6,
+    radius: 1.3,
+    crash: { halfSize: [1.25, 1.5, 5.5], centre: 1.5, mass: 11000, surface: CAR_SURFACE },
   },
 }
 
@@ -457,6 +469,9 @@ function findLaneInRing(
   return -1
 }
 
+/** The busiest street's traffic weight: a lane is picked in proportion to its own weight against this. */
+const MAX_LANE_WEIGHT = 3
+
 /** Lanes are sorted by where they start into squares this wide, in metres. */
 const LANE_CELL = 60
 const laneCellKey = (cellX: number, cellZ: number) => (cellX + 5000) * 10000 + (cellZ + 5000)
@@ -510,12 +525,19 @@ export function createTrafficWorld(
   physics: CrashPhysics,
   breakersOnLink: (from: number, to: number) => number[] = () => [],
   random: () => number = Math.random,
+  /** The kind of street at a point: how busy it is, and whether buses run there. */
+  streetAt: (x: number, z: number) => { traffic: number; buses: boolean } | null = () => null,
 ): TrafficWorld {
   const roadLanes = createLanes(graph, collisions, {
     minRoadWidth: 5,
     sideOffset: () => 1.4,
     clearance: 1.1,
   })
+  for (const lane of roadLanes) {
+    const street = streetAt((lane.startX + lane.endX) / 2, (lane.startZ + lane.endZ) / 2)
+    lane.weight = street?.traffic ?? 1
+    lane.buses = street?.buses ?? false
+  }
   const signals = createTrafficSignals(graph)
   for (const lane of roadLanes) {
     const signal = signals.byNode.get(lane.endNode)
@@ -1767,10 +1789,13 @@ export function stepTraffic(
         if (vehicle.thrownRider.body) world.physics.removeBody(vehicle.thrownRider)
         mountRider(vehicle, vehicle.thrownRider)
       }
-      const isFree = ({ startX, startZ }: Lane) =>
+      // Busier streets take more of the traffic (streetPresets.ts), and buses keep to the main roads.
+      const isFree = (lane: Lane) =>
+        (vehicle.kind !== 'bus' || lane.buses === true) &&
+        random() * MAX_LANE_WEIGHT < (lane.weight ?? 1) &&
         activeVehicles.every(
           (other) =>
-            other.lane === -1 || Math.hypot(other.x - startX, other.z - startZ) >= rules.spawnGap,
+            other.lane === -1 || Math.hypot(other.x - lane.startX, other.z - lane.startZ) >= rules.spawnGap,
         )
       const lane = findLaneInRing(
         roadLanes,

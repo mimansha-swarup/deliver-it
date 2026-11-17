@@ -1,16 +1,15 @@
 import type { LineFeature } from './mapData'
 import { ROAD_HEIGHT } from './surface'
+import { streetPresetOf } from './streetPresets'
 
 /**
  * Roads drawn with the new ground (ART_DIRECTION.md): raised kerbs with
  * rounded corners, footpaths level with the kerb top, pavers, dust and decals.
- * Being tried on one road first. To roll it out everywhere, make
- * `usesNewGround` return true.
+ * Every road with a street preset has it (streetPresets.ts); service roads and
+ * tracks keep the plain ground.
  */
-export const NEW_GROUND_ROADS = new Set(['27th Main Road'])
-
 export function usesNewGround(road: LineFeature): boolean {
-  return NEW_GROUND_ROADS.has(road.properties.name ?? '')
+  return streetPresetOf(road) !== null
 }
 
 /** Sizes and heights, in metres. Heights are above the soil (y = 0); the road is at ROAD_HEIGHT. */

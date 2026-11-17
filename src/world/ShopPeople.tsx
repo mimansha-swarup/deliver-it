@@ -17,10 +17,9 @@ import type { ShopLife, ShopPerson, ShopWalker } from './shopPeoplePlacement'
  * pacing the footpath. All are drawn by the same shader as traffic's walkers
  * (`People` in Traffic.tsx), with the same two models, the man and the teen.
  *
- * Only on the streets with the new ground for now (27th Main), so there are a
- * few dozen, not thousands: each is redrawn every frame. Even so, a person
- * model is thousands of triangles, so only those near the rider are drawn: the
- * list is picked again whenever the rider has moved `REFRESH` metres.
+ * There are thousands across the map, so only those near the rider are drawn,
+ * and only the walkers among them move: a person model is thousands of
+ * triangles. The list is picked again whenever the rider has moved `REFRESH` metres.
  */
 
 /** People are drawn this near the rider, in metres; on Low, nearer, and with half the walkers. */
@@ -117,20 +116,22 @@ export function ShopPeople({ people }: { people: ShopLife }) {
   const walkers = useMemo(() => people.walkers.map(startWalking), [people])
   const seen = useRef<Seen>({ x: Infinity, z: Infinity, reach: 0 })
   const [near, setNear] = useState<{ body: number; drawn: Pedestrian }[]>([])
+  /** The walkers near the rider: only they are moved. Far away, nobody sees where they are. */
+  const moving = useRef<Walking[]>([])
 
   useFrame((_, delta) => {
     const step = Math.min(delta, 0.1)
-    const shown = low ? walkers.slice(0, Math.ceil(walkers.length / 2)) : walkers
-    for (const walker of shown) stepWalker(walker, step)
+    for (const walker of moving.current) stepWalker(walker, step)
     if (!hasMoved(seen.current, reach)) return
     seen.current = { x: livePlayer.x, z: livePlayer.z, reach }
     const isNear = (x: number, z: number, extra = 0) => Math.hypot(x - livePlayer.x, z - livePlayer.z) < reach + extra
+    // On Low, every other walker stays home.
+    const shown = low ? walkers.filter((_walker, i) => i % 2 === 0) : walkers
+    // A walker may be anywhere on their stretch by the next pick, so they count from its middle.
+    moving.current = shown.filter(({ plan, length }) => isNear((plan.from[0] + plan.to[0]) / 2, (plan.from[1] + plan.to[1]) / 2, length / 2))
     setNear([
       ...standing.filter(({ person }) => isNear(person.x, person.z)).map(({ person, drawn }) => ({ body: person.body, drawn })),
-      // A walker may be anywhere on their stretch by the next pick, so they count from its middle.
-      ...shown
-        .filter(({ plan, length }) => isNear((plan.from[0] + plan.to[0]) / 2, (plan.from[1] + plan.to[1]) / 2, length / 2))
-        .map(({ plan, person }) => ({ body: plan.body, drawn: person })),
+      ...moving.current.map(({ plan, person }) => ({ body: plan.body, drawn: person })),
     ])
   })
   const groups = useMemo(() => bodies.map((_, body) => near.filter((item) => item.body === body).map((item) => item.drawn)), [near, bodies])

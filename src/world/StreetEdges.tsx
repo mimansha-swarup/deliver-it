@@ -9,7 +9,7 @@ import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { ChunkedMesh } from './ChunkedMesh'
 import { patchAsphalt, patchPavers, type AsphaltUniforms } from './groundShaders'
 import { createDecalAtlas, createPaverTextures } from './groundTextures'
-import { DECAL_COLUMNS, DECAL_ROWS } from './streetEdgeConfig'
+import { DECAL_COLUMNS, DECAL_ROWS, STREET } from './streetEdgeConfig'
 import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
 import type { StreetEdges as Edges } from './streetEdgeGeometry'
 import { prepareSurfaceTextures } from './surfaceMaterial'
@@ -17,6 +17,12 @@ import { prepareSurfaceTextures } from './surfaceMaterial'
 /** Small things are only drawn this close, in metres. */
 const KERB_DISTANCE = 260
 const DETAIL_DISTANCE = 160
+/**
+ * On Low, nearer: with the new ground on every street, each map square has
+ * seven layers where the old ground had two, so the small ones are cut short.
+ */
+const LOW_KERB_DISTANCE = 140
+const LOW_DETAIL_DISTANCE = 70
 /** The asphalt photo repeats every this many metres, for its fine grain only. */
 const ASPHALT_TILE = 6
 
@@ -37,10 +43,18 @@ function addKerbWear(material: THREE.MeshStandardMaterial): THREE.MeshStandardMa
   const previous = material.onBeforeCompile
   material.onBeforeCompile = (shader, renderer) => {
     previous.call(material, shader, renderer)
+    shader.vertexShader = shader.vertexShader.replace(
+      'void main() {',
+      `attribute float aStripe;
+      varying float vStripe;
+      void main() {
+        vStripe = aStripe;`,
+    )
     shader.fragmentShader = shader.fragmentShader
       .replace(
         'void main() {',
-        `float kerbHash(vec2 p) {
+        `varying float vStripe;
+        float kerbHash(vec2 p) {
           p = fract(p * vec2(234.34, 435.345));
           p += dot(p, p + 34.23);
           return fract(p.x * p.y);
@@ -58,6 +72,14 @@ function addKerbWear(material: THREE.MeshStandardMaterial): THREE.MeshStandardMa
         `#include <emissivemap_fragment>
         {
           vec3 at = vPlasterPosition;
+          // A painted kerb: blocks of black and yellow, each worn its own amount, with a dark joint between.
+          if (vStripe >= 0.0) {
+            float block = floor(vStripe / ${STREET.kerbBlock.toFixed(2)});
+            vec3 paint = mod(block, 2.0) < 0.5 ? vec3(${KERB_BLACK}) : vec3(${KERB_YELLOW});
+            paint *= 0.8 + 0.2 * kerbHash(vec2(block, 7.0));
+            float joint = 1.0 - smoothstep(0.0, 0.015, min(fract(vStripe / ${STREET.kerbBlock.toFixed(2)}), 1.0 - fract(vStripe / ${STREET.kerbBlock.toFixed(2)})) * ${STREET.kerbBlock.toFixed(2)});
+            diffuseColor.rgb *= paint * (1.0 - joint * 0.45);
+          }
           float chips = kerbNoise(at.xz * 5.0 + at.y * 9.0) * 0.65 + kerbNoise(at.xz * 17.0 + at.y * 23.0) * 0.35;
           float scuffed = vPlasterNormal.y > 0.5 ? 1.0 : 0.65;
           float worn = smoothstep(0.5, 0.72, chips) * scuffed;
@@ -70,6 +92,11 @@ function addKerbWear(material: THREE.MeshStandardMaterial): THREE.MeshStandardMa
   material.customProgramCacheKey = () => 'plaster-kerb-wear'
   return material
 }
+
+/** The kerb paint, in linear colour for the shader: black, and the yellow of 27th Main's kerbs. */
+const linear = (hex: string) => new THREE.Color(hex).toArray().map((value) => value.toFixed(4)).join(', ')
+const KERB_BLACK = linear('#1f2023')
+const KERB_YELLOW = linear('#e3b021')
 
 /** How much of a worn patch's paint is gone, at most. */
 const KERB_WEAR = 0.7
@@ -106,7 +133,10 @@ function addOilSheen(material: THREE.MeshStandardMaterial): THREE.MeshStandardMa
  * buildStreetEdges, one geometry per map square per kind.
  */
 export function StreetEdges({ edges }: { edges: Edges }) {
-  const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { surfaces, kitDetail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const low = kitDetail === 0
+  const kerbDistance = low ? LOW_KERB_DISTANCE : KERB_DISTANCE
+  const detailDistance = low ? LOW_DETAIL_DISTANCE : DETAIL_DISTANCE
   const roadMaps = useTexture(ROAD_TEXTURES, (maps) => prepareSurfaceTextures(maps, ASPHALT_TILE))
   const concrete = useTexture(CONCRETE_PHOTO, preparePlasterPhoto)
   const pavers = useMemo(() => createPaverTextures(), [])
@@ -175,11 +205,11 @@ export function StreetEdges({ edges }: { edges: Edges }) {
     <>
       <ChunkedMesh geometries={edges.asphalt} material={asphalt} />
       <ChunkedMesh geometries={edges.footpaths} material={footpath} />
-      <ChunkedMesh geometries={edges.kerbs} material={kerb} maxDistance={KERB_DISTANCE} />
-      <ChunkedMesh geometries={edges.edgeStones} material={stone} maxDistance={KERB_DISTANCE} />
-      <ChunkedMesh geometries={edges.dust} material={dust} maxDistance={DETAIL_DISTANCE} />
-      <ChunkedMesh geometries={edges.pits} material={pit} maxDistance={DETAIL_DISTANCE} />
-      <ChunkedMesh geometries={edges.decals} material={decal} maxDistance={DETAIL_DISTANCE} />
+      <ChunkedMesh geometries={edges.kerbs} material={kerb} maxDistance={kerbDistance} />
+      <ChunkedMesh geometries={edges.edgeStones} material={stone} maxDistance={kerbDistance} />
+      <ChunkedMesh geometries={edges.dust} material={dust} maxDistance={detailDistance} />
+      <ChunkedMesh geometries={edges.pits} material={pit} maxDistance={detailDistance} />
+      <ChunkedMesh geometries={edges.decals} material={decal} maxDistance={detailDistance} />
     </>
   )
 }

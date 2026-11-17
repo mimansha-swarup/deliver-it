@@ -1,3 +1,4 @@
+import { streetPresetOf } from './streetPresets'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { LineFeature } from './mapData'
 import { getRoadWidth } from './roadData'
@@ -382,7 +383,10 @@ export function generateRoadsideProps(
   for (const front of shopFronts) {
     const outX = Math.sin(front.rotation)
     const outZ = Math.cos(front.rotation)
-    const parked = Math.floor(random() * (MAX_PARKED_PER_SHOP + 1))
+    // How many the street has room and custom for (streetPresets.ts): more on a shop street.
+    const near = nearestRoadPiece(roadIndex, front.x, front.z, 14)
+    const most = (near && streetPresetOf(roads[near.piece.road])?.parkedPerShop) ?? MAX_PARKED_PER_SHOP
+    const parked = Math.floor(random() * (most + 1))
 
     for (let index = 0; index < parked; index++) {
       const across = (index - (parked - 1) / 2) * PARKED_SCOOTER_GAP

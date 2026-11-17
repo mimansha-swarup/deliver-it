@@ -5,7 +5,8 @@ import { addWall, copyCollisionWorld, isNearBuilding, type CollisionWorld } from
 import { chunkCentre, chunkKey } from './chunks'
 import { FACADE_LOOKS } from './facadeTextures'
 import type { BuildingFeature, LineFeature } from './mapData'
-import { indexRoadPieces, isClearOfRoads, nearestRoadEdge, toRoadPieces, type Prop, type RoadIndex } from './props'
+import { indexRoadPieces, isClearOfRoads, nearestRoadEdge, nearestRoadPiece, toRoadPieces, type Prop, type RoadIndex } from './props'
+import { streetPresetOf } from './streetPresets'
 import { KERB } from './surface'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
@@ -77,6 +78,8 @@ const POT_COLOR = new THREE.Color('#a4552f')
 const CORE_DOOR_COLOR = new THREE.Color('#6b6e72')
 
 const COMPOUND = { height: 1.4, thickness: 0.15, gate: 3.0, pillar: 0.38, pillarHeight: 1.7, pavement: 1.6 }
+/** A plot's side walls run this far past the back of its house, in metres. */
+const PLOT_WALL_BEYOND = 1.5
 /** Too little room between house and pavement for a compound wall, and the most it ever stands out. */
 /** Bougainvillea needs this much wall, in metres, and grows on this share of houses, in percent. */
 const CREEPER = { minWall: 3.2, chance: 34 }
@@ -485,7 +488,7 @@ export function planHouseKit(
   const idle = new Builder(false)
   const idleStains = new StainBuilder(false)
   const idlePosters = new PosterBuilder(false)
-  const plan = dressBuildings(buildings, roadIndex, lookup, skips, () => [idle, idle, idleStains, idlePosters, idle])
+  const plan = dressBuildings(buildings, roads, roadIndex, lookup, skips, () => [idle, idle, idleStains, idlePosters, idle])
 
   for (const [start, end] of plan.compoundWalls) addWall(collisions, start, end, COMPOUND.thickness + 0.1)
 
@@ -497,7 +500,7 @@ export function planHouseKit(
       const stains = new StainBuilder()
       const posters = new PosterBuilder()
       const fine = new Builder()
-      dressBuildings(plan.byChunk.get(key) ?? [], roadIndex, lookup, skips, () => [kit, shades, stains, posters, fine])
+      dressBuildings(plan.byChunk.get(key) ?? [], roads, roadIndex, lookup, skips, () => [kit, shades, stains, posters, fine])
       return { main: kit.toGeometry(), chajjas: shades.toGeometry(), stains: stains.toGeometry(), posters: posters.toGeometry(), fine: fine.toGeometry() }
     },
     tanks: plan.tanks,
@@ -516,6 +519,7 @@ export function planHouseKit(
  */
 function dressBuildings(
   buildings: BuildingFeature[],
+  roads: LineFeature[],
   roadIndex: RoadIndex,
   lookup: CollisionWorld,
   skips: Skip[],
@@ -579,6 +583,9 @@ function dressBuildings(
       }
     }
     front ??= walls.reduce((longest, wall) => (wall.length > longest.length ? wall : longest))
+    // How the street it faces dresses its houses (streetPresets.ts): more washing and creepers on a quiet residential street.
+    const facing = nearestRoadPiece(roadIndex, front.start[0] + front.alongX * front.length / 2 + front.outX, front.start[1] + front.alongZ * front.length / 2 + front.outZ, ROAD_SEARCH)
+    const streetLook = (facing && streetPresetOf(roads[facing.piece.road])?.houses) ?? { washing: WASHING_CHANCE, creeper: CREEPER.chance }
 
     // ---- The front: door, balconies ----
     const frontWindows = windowCentres(front)
@@ -632,7 +639,7 @@ function dressBuildings(
     }
 
     if (isApartment) {
-      buildApartment(kit, shades, stains, { walls, front, floors, paint, shade, hash, outline, stilts: hasStilts(building), stiltParking })
+      buildApartment(kit, shades, stains, { walls, front, floors, paint, shade, hash, outline, stilts: hasStilts(building), stiltParking, washing: streetLook.washing })
     }
 
     if (hasBalconies && !isApartment) {
@@ -650,7 +657,7 @@ function dressBuildings(
         box(kit, front, span, [BALCONY.depth - 0.12, BALCONY.depth + 0.02], [railTop, railTop + 0.05], RAIL_COLOR)
 
         // Washing hung over the rail on some balconies: two to four pieces in bright colours.
-        if ((hash >>> (floor * 3)) % 100 < WASHING_CHANCE) {
+        if ((hash >>> (floor * 3)) % 100 < streetLook.washing) {
           const pieces = 2 + ((hash >>> (floor + 9)) % 3)
           for (let piece = 0; piece < pieces; piece++) {
             const along = balconyFrom + 0.3 + ((piece + 0.5) / pieces) * (balconyTo - balconyFrom - 0.6)
@@ -833,6 +840,20 @@ function dressBuildings(
       compoundWalls.push([at(wallStart, 0), at(wallStart, yard)])
       compoundWalls.push([at(wallEnd, 0), at(wallEnd, yard)])
 
+      // The plot's side walls carry on back past the house, so the passage beside it is closed
+      // and the bike can't ride round into the plot behind. Only where the line is clear of the
+      // house itself, any other building and any road, so a corner plot keeps its open side.
+      const behind = Math.min(...outline.map(([x, z]) => (x - front.start[0]) * front.outX + (z - front.start[1]) * front.outZ)) - PLOT_WALL_BEYOND
+      for (const end of [wallStart, wallEnd - COMPOUND.thickness]) {
+        const middle = end + COMPOUND.thickness / 2
+        const steps = Math.max(2, Math.ceil(-behind / 0.75))
+        const samples = Array.from({ length: steps + 1 }, (_, i) => at(middle, (behind * i) / steps))
+        const clear = samples.every(([x, z]) => !isInsideOutline(outline, x, z) && !isNearBuilding(lookup, x, z, 0.1) && isClearOfRoads(roadIndex, x, z, 0.8))
+        if (!clear) continue
+        box(kit, front, [end, end + COMPOUND.thickness], [behind, 0], [0, COMPOUND.height], wallColour, true)
+        compoundWalls.push([at(middle, 0), at(middle, behind)])
+      }
+
       // Bougainvillea over the longer stretch of wall, on about one house in three.
       const rotation = Math.atan2(front.outX, front.outZ)
       const stretches: [number, number][] = [
@@ -840,7 +861,7 @@ function dressBuildings(
         [gateTo + COMPOUND.pillar, wallEnd],
       ]
       const [from, to] = stretches[0][1] - stretches[0][0] > stretches[1][1] - stretches[1][0] ? stretches[0] : stretches[1]
-      if (to - from >= CREEPER.minWall && (hash >>> 9) % 100 < CREEPER.chance) {
+      if (to - from >= CREEPER.minWall && (hash >>> 9) % 100 < streetLook.creeper) {
         const [x, z] = at((from + to) / 2, middleOut)
         creepers.push({ x, y: COMPOUND.height - 0.05, z, rotation, variation: ((hash >>> 3) % 1000) / 1000 })
       }
@@ -885,6 +906,8 @@ type ApartmentParts = {
   outline: GroundPoint[]
   stilts: boolean
   stiltParking: StiltVehicle[]
+  /** How often washing hangs over the balconies, in percent, from the street's preset. */
+  washing: number
 }
 
 /**
@@ -918,7 +941,7 @@ function buildApartment(kit: Builder, shades: Builder, stains: StainBuilder, par
         const at = from + 0.35 + (roll % 4) * 0.5
         box(kit, front, [at, at + 0.3], [depth - 0.4, depth - 0.12], [railTop, railTop + 0.22], POT_COLOR, true)
         box(kit, front, [at - 0.05, at + 0.35], [depth - 0.45, depth - 0.07], [railTop + 0.22, railTop + 0.5], PLANT_COLOR, true)
-      } else if (roll > 100 - WASHING_CHANCE) {
+      } else if (roll > 100 - parts.washing) {
         const colour = WASHING_COLORS[roll % WASHING_COLORS.length]
         box(kit, front, [along - 0.3, along + 0.3], [depth + 0.02, depth + 0.04], [railTop - 0.7, railTop + 0.02], colour, true)
       }

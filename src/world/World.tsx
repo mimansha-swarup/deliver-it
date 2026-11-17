@@ -12,7 +12,7 @@ import { Buildings } from './Buildings'
 import { Cables } from './Cables'
 import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
-import { addPost, createCollisionWorld, isNearBuilding } from './collision'
+import { addPost, addWall, createCollisionWorld, isNearBuilding } from './collision'
 import { DarkStores } from './DarkStoreBuilding'
 import { addDarkStorePosts, findDarkStores } from './darkStore'
 import { GrassField } from './GrassField'
@@ -24,12 +24,12 @@ import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
-import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, toRoadPieces } from './props'
+import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadPiece, toRoadPieces } from './props'
 import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWalls } from './fencing'
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
 import { teleportSpots } from '../dev/teleportSpots'
-import { findSpawn, requestedSpawn } from '../dev/spawn'
+import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev/spawn'
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
@@ -38,6 +38,7 @@ import { buildStreetEdges } from './streetEdgeGeometry'
 import { StreetEdges } from './StreetEdges'
 import { groundLift, settleParkedScooters } from './groundLift'
 import { usesNewGround } from './streetEdgeConfig'
+import { assignStreetPresets, listStreets, streetPresetOf } from './streetPresets'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { HouseKitMesh } from './HouseKitMesh'
@@ -85,6 +86,12 @@ function getWorld(data: MapData, rapier: RapierModule) {
  * while the collision world holds nothing but buildings.
  */
 function buildWorld(data: MapData, rapier: RapierModule) {
+  // Each road's kind of street, from its OSM class and the shops along it. Everything below dresses roads by it.
+  const presetSummary = assignStreetPresets(data.roads, data.buildings, data.places, referenceStreetsOnly())
+  if (isDebug()) (window as unknown as { __deliverItStreets?: () => unknown }).__deliverItStreets = () => listStreets(data.roads)
+  // Debug: whether a point is inside something solid, for checking walls from the console.
+  if (isDebug()) (window as unknown as { __deliverItSolidAt?: (x: number, z: number, radius: number) => boolean }).__deliverItSolidAt = (x, z, radius) => isNearBuilding(collisions, x, z, radius)
+  if (import.meta.env.DEV) console.info('[streets]', JSON.stringify(presetSummary, (_key, value) => (typeof value === 'number' ? Math.round(value * 10) / 10 : value)))
   const collisions = createCollisionWorld(data.buildings)
   // Military land is walled off first, so nothing is placed through its wall.
   addRestrictedWalls(collisions, data.restricted)
@@ -145,22 +152,30 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   )
   const physics = createCrashPhysics(rapier, collisions)
   const features = placeRoadFeatures(graph)
-  const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink)
+  // Main roads are busier and have buses; quiet streets have less (streetPresets.ts).
+  const streetAt = (x: number, z: number) => {
+    const near = nearestRoadPiece(roadIndex, x, z, 4)
+    return near ? streetPresetOf(data.roads[near.piece.road]) : null
+  }
+  const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt)
   // After the lanes, as a pole by the kerb would otherwise close the pavement path beside it.
   for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
+  // Medians too: a lane runs close beside each, and would otherwise count as blocked.
+  for (const { start, end, width } of edges.medians) addWall(collisions, start, end, width)
   // Railings on the way into the junctions, after the lanes for the same reason.
   const railings = planJunctionRailings(traffic.signals.posts, roadIndex, houses.gates, collisions, (x, z) => isOnForecourt(fuel, x, z))
   const fences = [...templeWalls, ...mappedBarriers, ...parkFences, ...railings]
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   const surface = createSurface(data.roads, features, edges.heightAt)
   const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
-  // Shopkeepers and customers at the shops on the new-ground streets.
+  // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
   // Debug: ?spawn=<street> starts the rider on that street (dev server, or with ?debug).
   const spawnSlug = requestedSpawn()
   const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
+
   return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople }
 }
 
