@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { KNEE, HIP as WALK_HIP } from '../traffic/gait'
 
 /*
@@ -28,6 +29,14 @@ const GRIP_ABOVE_FINGERTIPS = 0.07
 const ANKLE = 0.08
 /** Leg corners below this are the shoe. */
 const SHOE_TOP = 0.11
+/**
+ * The jacket's own shell, in metres: how far it stands off the body, and the sleeves' radius at
+ * the shoulder, the elbow and the cuff. The model's shirt and sleeves are ragged round the
+ * shoulder (their edges are meant to sit under skin), and bent far enough to reach the bars they
+ * tear, so the rider wears a smooth jacket of simple shapes over them instead.
+ */
+const JACKET = { standOff: 0.014, shoulder: 0.068, elbow: 0.05, cuff: 0.043, rings: 16 }
+
 /** Bare skin and hair from this far below the shoulder up is hidden: the neck, head and hair. */
 const HIDE_BELOW_SHOULDER = 0.2
 
@@ -118,6 +127,9 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
   for (let i = 0; i < position.count; i++) {
     const y = position.getY(i)
     let color: THREE.Color | null = null
+    // Under the jacket's shell (below): the arms above the gloves, and the shirt above the belt.
+    if (isArm(i) && y >= shoulderY - HAND_DROP + 0.02) hidden[i] = 1
+    if (!isArm(i) && !isLeg(i) && isClothing(i) && y > hipY + 0.04) hidden[i] = 1
     if (isArm(i)) color = y < shoulderY - HAND_DROP ? glove : jacket
     else if (isLeg(i)) color = y < SHOE_TOP ? shoe : trousers
     else if (isClothing(i)) color = y > hipY ? jacket : trousers
@@ -153,8 +165,29 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
   }
   const head = average(geometry, (i) => !isArm(i) && !isLeg(i) && position.getY(i) > shoulderY + 0.14)
 
+  // ---- The jacket's shell ----
+  /** The torso's extent in a band round height y: half its width, and its front and back. */
+  const torsoAt = (y: number) => {
+    let half = 0
+    let front = -Infinity
+    let back = Infinity
+    for (let i = 0; i < position.count; i++) {
+      if (isArm(i) || isLeg(i) || !near(y, 0.03)(i)) continue
+      half = Math.max(half, Math.abs(position.getX(i)))
+      front = Math.max(front, position.getZ(i))
+      back = Math.min(back, position.getZ(i))
+    }
+    return half > 0 ? { half, front, back } : null
+  }
+  const wrist = elbow.clone().lerp(grip, Math.min(1, (elbowY - (shoulderY - HAND_DROP + 0.02)) / Math.max(0.01, elbowY - grip.y)))
+  const shell = createJacketShell({ shoulderY, hipY, shoulderJoint, elbow, wrist, torsoAt, color: jacket, attributes: geometry })
+  const merged = mergeGeometries([geometry, ...shell.parts])
+  geometry.dispose()
+  shell.parts.forEach((part) => part.dispose())
+  if (!merged) throw new Error('The rider\'s jacket could not be merged with the model')
+
   return {
-    geometry,
+    geometry: merged,
     size: {
       shoulderY,
       shoulderX: shoulder.x,
@@ -167,11 +200,128 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
       armRest: restAngles(shoulderJoint, elbow),
       legRest: restAngles(hipJoint, knee),
       head,
-      printHalfWidth,
-      printBack,
+      // The print wraps the jacket's shell, not the shirt under it.
+      printHalfWidth: shell.at(printY)?.half ?? printHalfWidth,
+      printBack: shell.at(printY)?.back ?? printBack,
       printY,
     },
   }
+}
+
+type Band = { half: number; front: number; back: number }
+
+/**
+ * The jacket's shell, in the model's space, as shapes with the model's attributes so they merge
+ * with it and are posed by the same shader: a torso of rings fitted to the body, a ball at each
+ * shoulder (centred on the joint, so it turns in place), a sleeve to the elbow, a ball at the
+ * elbow, and a sleeve to the cuff. Sleeve corners follow the arm fully, so nothing tears.
+ */
+function createJacketShell({
+  shoulderY,
+  hipY,
+  shoulderJoint,
+  elbow,
+  wrist,
+  torsoAt,
+  color,
+  attributes,
+}: {
+  shoulderY: number
+  hipY: number
+  shoulderJoint: THREE.Vector3
+  elbow: THREE.Vector3
+  wrist: THREE.Vector3
+  torsoAt: (y: number) => Band | null
+  color: THREE.Color
+  attributes: THREE.BufferGeometry
+}): { parts: THREE.BufferGeometry[]; at: (y: number) => Band | null } {
+  const parts: THREE.BufferGeometry[] = []
+  /** Gives a shape exactly the model's attributes: colour, limb weights, nothing hidden, the rest zero. */
+  const fit = (shape: THREE.BufferGeometry, limb: [number, number]) => {
+    const count = shape.getAttribute('position').count
+    for (const name of Object.keys(shape.attributes)) if (!attributes.getAttribute(name)) shape.deleteAttribute(name)
+    for (const [name, attribute] of Object.entries(attributes.attributes)) {
+      if (name === 'position' || name === 'normal') continue
+      const values = new Float32Array(count * attribute.itemSize)
+      for (let i = 0; i < count; i++) {
+        if (name === 'color') values.set([color.r, color.g, color.b], i * 3)
+        if (name === '_limb') values.set([limb[0], limb[1], 1], i * 3)
+      }
+      shape.setAttribute(name, new THREE.BufferAttribute(values, attribute.itemSize))
+    }
+    if (!shape.index) throw new Error('jacket shapes must be indexed')
+    parts.push(shape)
+  }
+
+  // The torso: rings from the belt to the shoulders, each fitted to the body there, then
+  // drawn in to the neck, where the collar sits.
+  const bands: { y: number; band: Band }[] = []
+  const steps = 7
+  const top = shoulderY - 0.05
+  let last: Band | null = null
+  for (let k = 0; k <= steps; k++) {
+    const y = hipY + 0.02 + ((top - hipY - 0.02) * k) / steps
+    const found: Band | null = torsoAt(y) ?? last
+    if (!found) continue
+    last = found
+    bands.push({ y, band: { half: found.half + JACKET.standOff, front: found.front + JACKET.standOff, back: found.back - JACKET.standOff } })
+  }
+  if (bands.length >= 2) {
+    const upper = bands[bands.length - 1].band
+    bands.push({ y: shoulderY, band: { half: upper.half * 0.82, front: upper.front * 0.85, back: upper.back * 0.85 } })
+    bands.push({ y: shoulderY + 0.035, band: { half: 0.085, front: upper.front * 0.5, back: upper.back * 0.6 } })
+    const torso = new THREE.CylinderGeometry(1, 1, 1, JACKET.rings, bands.length - 1, false)
+    const position = torso.getAttribute('position')
+    for (let i = 0; i < position.count; i++) {
+      // The cylinder's rings run from its top (y 0.5) down: ring r is band (count - 1 - r).
+      const ring = Math.round((0.5 - position.getY(i)) * (bands.length - 1))
+      const { y, band } = bands[bands.length - 1 - ring]
+      const x = position.getX(i)
+      const z = position.getZ(i)
+      const middle = (band.front + band.back) / 2
+      const depth = (band.front - band.back) / 2
+      position.setXYZ(i, x * band.half, y, middle + z * depth)
+    }
+    torso.computeVertexNormals()
+    fit(torso, [0, 0])
+  }
+
+  // The arms, each side: left as measured, right mirrored.
+  for (const side of [1, -1]) {
+    const mirror = (point: THREE.Vector3) => new THREE.Vector3(point.x * side, point.y, point.z)
+    const shoulder = mirror(shoulderJoint)
+    const elbowAt = mirror(elbow)
+    const cuffAt = mirror(wrist)
+    const ball = (centre: THREE.Vector3, radius: number) => new THREE.SphereGeometry(radius, 12, 8).translate(centre.x, centre.y, centre.z)
+    const sleeve = (from: THREE.Vector3, to: THREE.Vector3, r0: number, r1: number) => {
+      const length = from.distanceTo(to)
+      const tube = new THREE.CylinderGeometry(r0, r1, length, 12, 1, true)
+      tube.translate(0, -length / 2, 0)
+      tube.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), to.clone().sub(from).normalize()))
+      return tube.translate(from.x, from.y, from.z)
+    }
+    // The shoulder ball is centred on the joint, a little in, so it turns in place and rounds the yoke.
+    fit(ball(shoulder.clone().setY(shoulder.y - 0.025), JACKET.shoulder), [1, shoulderY])
+    // The sleeve stops just above the elbow (the shader bends what's below it) and the forearm's just below.
+    const aboveElbow = elbowAt.clone().setY(elbowAt.y + 0.002)
+    const belowElbow = elbowAt.clone().setY(elbowAt.y - 0.002)
+    fit(sleeve(shoulder.clone().setY(shoulder.y - 0.025), aboveElbow, JACKET.shoulder * 0.9, JACKET.elbow), [1, shoulderY])
+    fit(ball(elbowAt, JACKET.elbow), [1, shoulderY])
+    fit(sleeve(belowElbow, cuffAt, JACKET.elbow, JACKET.cuff), [1, shoulderY])
+  }
+
+  const at = (y: number): Band | null => {
+    for (let k = 0; k < bands.length - 1; k++) {
+      if (y >= bands[k].y && y <= bands[k + 1].y) {
+        const t = (y - bands[k].y) / (bands[k + 1].y - bands[k].y)
+        const a = bands[k].band
+        const b = bands[k + 1].band
+        return { half: a.half + (b.half - a.half) * t, front: a.front + (b.front - a.front) * t, back: a.back + (b.back - a.back) * t }
+      }
+    }
+    return null
+  }
+  return { parts, at }
 }
 
 /** Each limb's pose, set every frame by Rider.tsx. */
@@ -229,10 +379,9 @@ export function createRiderMaterial(model: RiderModel, pose: RiderPose): THREE.M
           bool isArm = _limb.y > 1.1;
           float side = position.x >= 0.0 ? 1.0 : -1.0;
           vec3 angles = isArm ? (side > 0.0 ? uArmL : uArmR) : (side > 0.0 ? uLegL : uLegR);
-          // A walk swings an arm a little, and cloth that half-follows it looks right. Reaching for the
-          // bars raises it most of the way to level, which would stretch that cloth into spikes: here
-          // the shoulder's cloth either goes with the arm or stays with the body, over a narrow band.
-          angles *= isArm ? smoothstep(0.3, 0.6, follow) : follow;
+          // Round the shoulder the weights fade smoothly with position (createRiderModel), so a
+          // share of the turn spreads the cloth evenly instead of tearing it.
+          angles *= follow;
           float jointY = _limb.y;
           float middleY = isArm ? jointY - ${glsl(ELBOW_DROP)} : jointY * ${glsl(KNEE / WALK_HIP)};
           float jointX = side * (isArm ? ${glsl(size.shoulderX)} : ${glsl(size.hipX)});

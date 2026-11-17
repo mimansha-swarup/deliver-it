@@ -124,12 +124,19 @@ function roofPoints(roof: PolygonFeature): GroundPoint[] {
  * sliding along the road if a building is in the way. Its pillars, pump islands
  * and sign pole are made solid.
  */
-export function placeFuelStations(roads: LineFeature[], roofs: PolygonFeature[], collisions: CollisionWorld): FuelStation[] {
+export function placeFuelStations(
+  roads: LineFeature[],
+  roofs: PolygonFeature[],
+  collisions: CollisionWorld,
+  /** More bunks, at spots the infill found on long gaps beside main roads (infillPlots.ts). */
+  extra: { lat: number; lng: number }[] = [],
+): FuelStation[] {
   const pieces = toRoadPieces(roads)
   const stations: FuelStation[] = []
   const roofCorners = roofs.map(roofPoints)
 
-  for (const { brand, lat, lng } of FUEL_STATIONS) {
+  const spots = [...FUEL_STATIONS, ...extra.map((spot, i) => ({ ...spot, brand: FUEL_BRAND_IDS[i % FUEL_BRAND_IDS.length] }))]
+  for (const { brand, lat, lng } of spots) {
     const [x, , z] = lonLatToWorld([lng, lat])
     if (!isInsideBounds(x, z, 20)) continue
 

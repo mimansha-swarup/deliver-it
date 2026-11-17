@@ -8,6 +8,7 @@ import { createTrafficSignals } from '../traffic/trafficSignals'
 import { SCOOTER_SPAWN } from '../vehicle/vehicleConfig'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
+import { Skyline } from './Skyline'
 import { Buildings } from './Buildings'
 import { Cables } from './Cables'
 import { CityKit } from './CityKit'
@@ -38,7 +39,7 @@ import { buildStreetEdges } from './streetEdgeGeometry'
 import { StreetEdges } from './StreetEdges'
 import { groundLift, settleParkedScooters } from './groundLift'
 import { usesNewGround } from './streetEdgeConfig'
-import { assignStreetPresets, listStreets, streetPresetOf } from './streetPresets'
+import { addGroundFloorShops, assignStreetPresets, listStreets, streetPresetOf } from './streetPresets'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { HouseKitMesh } from './HouseKitMesh'
@@ -55,11 +56,14 @@ import { ShopFronts } from './ShopFronts'
 import { LandmarkSigns } from './LandmarkSigns'
 import { placeLandmarkSigns } from './landmarks'
 import { FuelStations } from './FuelStations'
-import { isOnForecourt, placeFuelStations } from './fuelStationData'
+import { FUEL_STATIONS, isOnForecourt, placeFuelStations } from './fuelStationData'
+import { fillEmptyPlots } from './infillPlots'
+import { Hoardings } from './Hoardings'
 import { StiltParking } from './StiltParking'
 import { StreetLife } from './StreetLife'
 import { placeStreetLife } from './streetPlacement'
 import { fillShopUnits, generateShopFronts } from './shopFrontPlacement'
+import { typeByChance, typeByChanceOnMainRoad } from './signboards'
 
 const SIGNAL_POLE_RADIUS = 0.1
 const MENU_BOARD_RADIUS = 0.35
@@ -92,9 +96,23 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Debug: whether a point is inside something solid, for checking walls from the console.
   if (isDebug()) (window as unknown as { __deliverItSolidAt?: (x: number, z: number, radius: number) => boolean }).__deliverItSolidAt = (x, z, radius) => isNearBuilding(collisions, x, z, radius)
   if (import.meta.env.DEV) console.info('[streets]', JSON.stringify(presetSummary, (_key, value) => (typeof value === 'number' ? Math.round(value * 10) / 10 : value)))
+  const roadPieces = toRoadPieces(data.roads)
+  const roadIndex = indexRoadPieces(roadPieces)
+  // Shops on the ground floor of nearly every building along shop streets and main roads, as on 27th Main.
+  const groundFloorShops = addGroundFloorShops(data.buildings, data.roads, roadIndex)
+  if (import.meta.env.DEV) console.info('[streets] ground-floor shops added:', groundFloorShops)
   const collisions = createCollisionWorld(data.buildings)
   // Military land is walled off first, so nothing is placed through its wall.
   addRestrictedWalls(collisions, data.restricted)
+  // Empty plots beside the streets are built on, before anything else looks at the buildings.
+  const infill = fillEmptyPlots(data.buildings, data.roads, roadPieces, roadIndex, collisions, {
+    parks: data.parks,
+    areas: data.areas,
+    fuel: FUEL_STATIONS,
+    worship: data.worship,
+  })
+  for (const shrine of infill.shrines) if (!data.worship.includes(shrine)) data.worship.push(shrine)
+  if (import.meta.env.DEV) console.info('[streets] infill:', JSON.stringify({ buildings: infill.buildings.length, sites: infill.sites.length, cars: infill.parkedCars.length, hoardings: infill.hoardings.length, pumps: infill.pumps.length, shrines: infill.shrines.length }))
   const mappedShops = generateShopFronts(data.places, collisions)
   const kit = placeCityKit(data.buildings, data.roads, collisions, mappedShops)
   const graph = createRoadGraph(data.roads)
@@ -105,11 +123,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
   const houses = planHouseKit(data.buildings, data.roads, collisions, stores)
   // Building sites take open plots before trees and lamps do, and are solid to them.
-  const sites = findConstructionSites(data, collisions)
+  const sites = [...findConstructionSites(data, collisions), ...infill.sites]
   // Petrol bunks take their forecourts before trees and lamps do, and their pillars and pumps are solid.
-  const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions)
-  const roadPieces = toRoadPieces(data.roads)
-  const roadIndex = indexRoadPieces(roadPieces)
+  const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions, infill.pumps)
   // The riders' bay at each dark store: on its footpath, short of the kerb.
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
@@ -126,7 +142,11 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // those mapped in OSM first, where nothing is built yet, then round the parks.
   const mappedBarriers = planMappedBarriers(data.barriers, roadIndex, collisions)
   const parkFences = planParkFences(data, roadIndex, collisions)
-  const shopFronts = fillShopUnits(houses.shopUnits, mappedShops)
+  // Main roads get more showrooms; other streets the everyday mix.
+  const shopFronts = fillShopUnits(houses.shopUnits, mappedShops, (roll, x, z) => {
+    const near = nearestRoadPiece(roadIndex, x, z, 20)
+    return near && streetPresetOf(data.roads[near.piece.road])?.name === 'main' ? typeByChanceOnMainRoad(roll) : typeByChance(roll)
+  })
   // Menu boards on the pavement are solid too.
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
   const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
@@ -176,7 +196,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -199,7 +219,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
@@ -224,7 +244,8 @@ export function World() {
       <Part name="roadFeatures"><RoadDetails features={features} /></Part>
       <Part name="buildings"><Buildings buildings={data.buildings} /></Part>
       <Part name="houses"><HouseKitMesh kit={houses} /></Part>
-      <Part name="stilts"><StiltParking vehicles={houses.stiltParking} /></Part>
+      <Part name="stilts"><StiltParking vehicles={[...houses.stiltParking, ...infill.parkedCars]} /></Part>
+      <Part name="hoardings"><Hoardings hoardings={infill.hoardings} /></Part>
       <Part name="cityKit"><CityKit placements={kit} /></Part>
       <Part name="darkStore"><DarkStores stores={stores} /></Part>
       <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} /></Part>
@@ -236,7 +257,7 @@ export function World() {
       <Part name="fuel"><FuelStations stations={fuel} /></Part>
       <Part name="temples"><Temples sites={worship} /></Part>
       <Part name="fences"><Fences runs={fences} /></Part>
-      <Part name="boundary"><Boundary /></Part>
+      <Part name="boundary"><Boundary /><Skyline /></Part>
       <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} /></Part>
     </>
   )

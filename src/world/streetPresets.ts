@@ -1,6 +1,6 @@
 import { hashString } from './buildingData'
 import type { BuildingFeature, LineFeature, PointFeature } from './mapData'
-import { createRandom } from './props'
+import { createRandom, nearestRoadPiece, type RoadIndex } from './props'
 import { isInsideBounds, lonLatToWorld, type GroundPoint } from './worldUtils'
 
 /*
@@ -74,7 +74,7 @@ export const STREET_PRESETS: Record<StreetPresetName, StreetPreset> = {
     people: { keeper: 0.5, customers: 1, pair: 0.16, walker: 0.35 },
     parkedPerShop: 4,
     houses: { washing: 30, creeper: 20 },
-    traffic: 1.5,
+    traffic: 2,
     buses: false,
   },
   residential: {
@@ -103,7 +103,7 @@ export const STREET_PRESETS: Record<StreetPresetName, StreetPreset> = {
     people: { keeper: 0.4, customers: 0.7, pair: 0.1, walker: 0.25 },
     parkedPerShop: 3,
     houses: { washing: 20, creeper: 15 },
-    traffic: 3,
+    traffic: 10,
     buses: true,
   },
 }
@@ -231,7 +231,8 @@ export function assignStreetPresets(
   /** Debug: only these named streets get a preset, the rest the plain ground, as before the rollout. */
   only?: string[],
 ): StreetPresetSummary {
-  const shops = [...buildings.filter((building) => building.kind === 'shop').map(centreOf), ...places.filter(isShopPlace).map((place) => {
+  // Only the map's own shops count: not ground floors this file turned into shops on an earlier build.
+  const shops = [...buildings.filter((building) => building.kind === 'shop' && !turnedIntoShops.has(building) && !building.id.startsWith('infill/')).map(centreOf), ...places.filter(isShopPlace).map((place) => {
     const [x, , z] = lonLatToWorld(place.geometry.coordinates)
     return [x, z] as GroundPoint
   })]
@@ -311,4 +312,43 @@ export function listStreets(roads: LineFeature[], count = 12): Record<StreetPres
   }
   const top = (map: Map<string, number>) => [...map].sort((a, b) => b[1] - a[1]).slice(0, count).map(([name, length]) => `${name}: ${Math.round(length)} m`)
   return { shop: top(lengths.shop), residential: top(lengths.residential), main: top(lengths.main) }
+}
+
+/** Buildings turned into shops here, which mustn't count as the map's own shops if the world is built again. */
+const turnedIntoShops = new WeakSet<BuildingFeature>()
+
+/** Share of the houses and flats fronting each kind of street that have shops on their ground floor. */
+const GROUND_FLOOR_SHOPS: Partial<Record<StreetPresetName, number>> = { shop: 0.9, main: 0.8 }
+/** A building fronts a street if its nearest corner is within this of the road's edge, in metres. */
+const FRONTAGE_REACH = 9
+
+/**
+ * Puts shops on the ground floor of the houses and flats along shop streets
+ * and main roads, as on 27th Main, where nearly every building has them. OSM
+ * marks only some buildings as shops, which left most of a street like 24th
+ * Main with plain house fronts. Each building's choice comes from a hash of its
+ * id, so it never changes. Turns `kind` to 'shop' in place, so everything after
+ * (the house kit, shop fronts, signs and shop people) treats it as one.
+ * Returns how many were turned.
+ */
+export function addGroundFloorShops(buildings: BuildingFeature[], roads: LineFeature[], index: RoadIndex): number {
+  let turned = 0
+  for (const building of buildings) {
+    if (building.kind !== 'house' && building.kind !== 'apartment') continue
+    const ring = building.geometry.coordinates[0]
+    let nearest: { edge: number; road: number } | null = null
+    for (const position of ring) {
+      const [x, , z] = lonLatToWorld(position)
+      const near = nearestRoadPiece(index, x, z, FRONTAGE_REACH)
+      if (near && (!nearest || near.edge < nearest.edge)) nearest = { edge: near.edge, road: near.piece.road }
+    }
+    if (!nearest) continue
+    const preset = streetPresetOf(roads[nearest.road])
+    const share = preset ? GROUND_FLOOR_SHOPS[preset.name] : undefined
+    if (share === undefined || (hashString(`${building.id}:shop`) % 1000) / 1000 >= share) continue
+    building.kind = 'shop'
+    turnedIntoShops.add(building)
+    turned++
+  }
+  return turned
 }

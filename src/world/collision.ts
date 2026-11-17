@@ -24,7 +24,7 @@ function cellKey(cellX: number, cellZ: number): number {
   return (cellX + 5000) * 10000 + (cellZ + 5000)
 }
 
-function addFootprint(world: CollisionWorld, footprint: Footprint) {
+export function addFootprint(world: CollisionWorld, footprint: Footprint) {
   const xs = footprint.map(([x]) => x)
   const zs = footprint.map(([, z]) => z)
   const firstX = toCell(Math.min(...xs) - MAX_CHECK_RADIUS)

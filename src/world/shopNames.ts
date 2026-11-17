@@ -1,10 +1,10 @@
-import { createRandom } from './props'
 import type { ShopType } from './signboards'
 
 /*
- * A pool of made-up shop names, in Kannada and English, so the boards along a
- * street, and on the streets nearby, don't repeat (see `assignBoards` in
- * ShopFronts.tsx). Each name is one of the everyday words HSR's shops are named
+ * The parts of made-up shop names, in Kannada and English. A board shows one
+ * first word and one of its kind's words, laid on a blank board for the kind
+ * (ShopFronts.tsx), so there are dozens of names for each kind of shop and the
+ * same one is never up twice within a few hundred metres. Each name is one of the everyday words HSR's shops are named
  * after (a god, a goddess, a river, a hill, a blessing, or just "New" or
  * "Royal") with the usual words for its kind of shop. No real shop or brand is
  * meant: names this common belong to no one.
@@ -13,10 +13,10 @@ import type { ShopType } from './signboards'
  * are. Worth a check by someone who reads Kannada before showing the game widely.
  */
 
-type Name = { kannada: string; english: string }
+export type Name = { kannada: string; english: string }
 
 /** The first part of a name. */
-const PREFIXES: Name[] = [
+export const PREFIXES: Name[] = [
   { english: 'Sri Lakshmi', kannada: 'ಶ್ರೀ ಲಕ್ಷ್ಮಿ' },
   { english: 'Sri Sai', kannada: 'ಶ್ರೀ ಸಾಯಿ' },
   { english: 'New', kannada: 'ನ್ಯೂ' },
@@ -48,7 +48,7 @@ const PREFIXES: Name[] = [
 ]
 
 /** The words for each kind of shop that go after the first part. */
-const TYPE_WORDS: Record<ShopType, Name[]> = {
+export const TYPE_WORDS: Record<ShopType, Name[]> = {
   kirana: [
     { english: 'Provision Stores', kannada: 'ಪ್ರಾವಿಷನ್ ಸ್ಟೋರ್ಸ್' },
     { english: 'Stores', kannada: 'ಸ್ಟೋರ್ಸ್' },
@@ -131,28 +131,4 @@ const TYPE_WORDS: Record<ShopType, Name[]> = {
     { english: 'General Store', kannada: 'ಜನರಲ್ ಸ್ಟೋರ್' },
     { english: 'Departmental Store', kannada: 'ಡಿಪಾರ್ಟ್‌ಮೆಂಟಲ್ ಸ್ಟೋರ್' },
   ],
-}
-
-/**
- * `perType` names for each kind of shop, the same on every run: each a prefix
- * and one of the kind's words, no two alike, and none the same as `taken`.
- */
-export function generateShopNames(types: ShopType[], perType: number, taken: string[] = []): Map<ShopType, Name[]> {
-  const used = new Set(taken)
-  const pool = new Map<ShopType, Name[]>()
-  types.forEach((type, typeIndex) => {
-    const random = createRandom(7301 + typeIndex * 104729)
-    const names: Name[] = []
-    const words = TYPE_WORDS[type]
-    for (let attempt = 0; names.length < perType && attempt < 200; attempt++) {
-      const prefix = PREFIXES[Math.floor(random() * PREFIXES.length)]
-      const word = words[Math.floor(random() * words.length)]
-      const name = { english: `${prefix.english} ${word.english}`, kannada: `${prefix.kannada} ${word.kannada}` }
-      if (used.has(name.english)) continue
-      used.add(name.english)
-      names.push(name)
-    }
-    pool.set(type, names)
-  })
-  return pool
 }

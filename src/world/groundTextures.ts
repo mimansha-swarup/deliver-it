@@ -256,17 +256,22 @@ function drawCrack(context: CanvasRenderingContext2D, random: () => number) {
       y += Math.sin(angle) * 14
       if (x < 8 || y < 8 || x > CELL - 8 || y > CELL - 8) break
       context.lineTo(x, y)
-      if (random() < 0.12 && width > 1.5) branch(x, y, angle + (random() < 0.5 ? 0.9 : -0.9), width * 0.6, Math.floor(steps / 2))
+      if (random() < 0.12 && width > 0.9) branch(x, y, angle + (random() < 0.5 ? 0.9 : -0.9), width * 0.6, Math.floor(steps / 2))
     }
-    context.lineWidth = width * 3
-    context.strokeStyle = 'rgba(25,25,28,0.25)'
+    // A crack is a hairline, a little darker than the asphalt, in a soft dark seam where grit has settled:
+    // read from the road, not drawn on it.
+    context.lineWidth = width * 2.2
+    context.strokeStyle = 'rgba(30,30,34,0.12)'
     context.stroke()
     context.lineWidth = width
-    context.strokeStyle = 'rgba(10,10,12,0.9)'
+    context.strokeStyle = 'rgba(28,28,32,0.45)'
     context.stroke()
   }
-  branch(CELL * 0.1, CELL * 0.5, 0, 4, 32)
-  branch(CELL * 0.5, CELL * 0.5, -1.4, 3, 12)
+  // Soft edges: drawn slightly blurred, so the line fades into the road instead of stopping hard.
+  context.filter = 'blur(0.8px)'
+  branch(CELL * 0.1, CELL * 0.5, 0, 1.6, 32)
+  branch(CELL * 0.5, CELL * 0.5, -1.4, 1.2, 12)
+  context.filter = 'none'
   context.restore()
 }
 

@@ -11,7 +11,7 @@ import { createLanes, type Lane } from './lanes'
 import { createTrafficSignals, findStopAhead, type TrafficSignals } from './trafficSignals'
 
 export const TRAFFIC_RULES = {
-  maxVehicles: 34,
+  maxVehicles: 40,
   maxPedestrians: 36,
 
   /**
@@ -176,17 +176,21 @@ const VEHICLE_MIX: VehicleKind[] = [
   'sedan',
   'bike',
   'auto',
-  'hatchback',
   'bike',
+  // Buses only take lanes on main roads (`Lane.buses`), so elsewhere these wait. One is in the first
+  // twelve, as Low has only twelve vehicles.
+  'bus',
+  'hatchback',
   'bike',
   'suv',
-  'bike',
   'auto',
+  'bike',
   'mpv',
   'bike',
-  'hatchback',
-  // Buses only take lanes on main roads (`Lane.buses`), so on other streets this one waits.
   'bus',
+  'auto',
+  'bike',
+  'hatchback',
 ]
 
 /**
@@ -470,7 +474,7 @@ function findLaneInRing(
 }
 
 /** The busiest street's traffic weight: a lane is picked in proportion to its own weight against this. */
-const MAX_LANE_WEIGHT = 3
+const MAX_LANE_WEIGHT = 10
 
 /** Lanes are sorted by where they start into squares this wide, in metres. */
 const LANE_CELL = 60

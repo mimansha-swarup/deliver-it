@@ -77,7 +77,12 @@ export function generateShopFronts(places: PointFeature[], collisions: Collision
  * that place, which then isn't drawn again on its own; the rest get a kind of
  * shop by chance, in the mix an HSR street has.
  */
-export function fillShopUnits(units: ShopUnit[], mapped: ShopFront[]): ShopFront[] {
+export function fillShopUnits(
+  units: ShopUnit[],
+  mapped: ShopFront[],
+  /** Picks the kind of a shop with no mapped place, from a 0 to 1 roll and where it stands. */
+  typeFor: (roll: number, x: number, z: number) => ShopType = (roll) => typeByChance(roll),
+): ShopFront[] {
   const absorbed = new Set<ShopFront>()
   const filled = units.map(({ x, z, rotation, width, seed, menuBoard }): ShopFront => {
     const place = mapped.find(
@@ -93,7 +98,7 @@ export function fillShopUnits(units: ShopUnit[], mapped: ShopFront[]): ShopFront
       z,
       rotation,
       width,
-      type: place?.type ?? typeByChance(((seed >>> 10) % 1000) / 1000),
+      type: place?.type ?? typeFor(((seed >>> 10) % 1000) / 1000, x, z),
       variation,
       menuBoard,
     }

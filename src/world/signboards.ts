@@ -411,7 +411,7 @@ const BOARDS: Record<ShopType, Board> = {
 }
 
 /** The font for both lines. Baloo Tamma 2 covers English and Kannada; the rest are fallbacks. */
-const BOARD_FONT = "'Baloo Tamma 2', 'Kannada Sangam MN', 'Noto Sans Kannada', 'Tunga', sans-serif"
+export const BOARD_FONT = "'Baloo Tamma 2', 'Kannada Sangam MN', 'Noto Sans Kannada', 'Tunga', sans-serif"
 /** Kannada letters, for checking the font is ready before drawing. */
 export const KANNADA_SAMPLE = 'ಕನ್ನಡ'
 export const BOARD_FONT_CHECK = `700 64px 'Baloo Tamma 2'`
@@ -421,6 +421,14 @@ export const BOARD_FONT_CHECK = `700 64px 'Baloo Tamma 2'`
  * the icon on the left, the name in Kannada over the name in English, and a band
  * along the bottom listing what's sold.
  */
+/** A kind of shop's lettering colour, for names laid over its blank board. */
+export function letteringOf(type: ShopType): string {
+  return BOARDS[type].colors[1]
+}
+
+/** Where a board's name goes, as shares of its height: the Kannada line's middle and size, then the English. */
+export const NAME_LINES = { kannada: { middle: 0.24, size: 0.3, weight: 700 }, english: { middle: 0.55, size: 0.25, weight: 800 } }
+
 export function drawBoard(
   context: CanvasRenderingContext2D,
   type: ShopType,
@@ -428,10 +436,10 @@ export function drawBoard(
   y: number,
   width: number,
   height: number,
-  name: { kannada: string; english: string } = BOARDS[type],
+  /** The name to paint on it, its own by default, or null for a blank board that names are laid over. */
+  name: { kannada: string; english: string } | null = BOARDS[type],
 ) {
   const { colors, icon, items } = BOARDS[type]
-  const { kannada, english } = name
   const [background, lettering, band] = colors
 
   context.save()
@@ -466,10 +474,12 @@ export function drawBoard(
   context.fillStyle = lettering
   context.textAlign = 'center'
   context.textBaseline = 'middle'
-  context.font = `700 ${Math.round(height * 0.3)}px ${BOARD_FONT}`
-  context.fillText(kannada, centre, y + height * 0.24, textWidth)
-  context.font = `800 ${Math.round(height * 0.25)}px ${BOARD_FONT}`
-  context.fillText(english, centre, y + height * 0.55, textWidth)
+  if (name) {
+    context.font = `700 ${Math.round(height * 0.3)}px ${BOARD_FONT}`
+    context.fillText(name.kannada, centre, y + height * 0.24, textWidth)
+    context.font = `800 ${Math.round(height * 0.25)}px ${BOARD_FONT}`
+    context.fillText(name.english, centre, y + height * 0.55, textWidth)
+  }
 
   context.fillStyle = background === band ? lettering : '#ffffff'
   context.font = `600 ${Math.round(height * 0.14)}px ${BOARD_FONT}`
@@ -506,7 +516,7 @@ export function typeForPlace({ shop, amenity, cuisine }: { shop?: string; amenit
  * A shop in a row with no mapped place gets a type by chance, weighted the way
  * an HSR street is: lots of kiranas, darshinis and medicals, fewer of the rest.
  */
-const STREET_MIX: [ShopType, number][] = [
+export const STREET_MIX: [ShopType, number][] = [
   ['kirana', 18],
   ['darshini', 12],
   ['pharmacy', 10],
@@ -524,6 +534,37 @@ const STREET_MIX: [ShopType, number][] = [
   ['jewellery', 2],
 ]
 const STREET_TOTAL = STREET_MIX.reduce((sum, [, weight]) => sum + weight, 0)
+
+/**
+ * On a main road the frontage is bigger and brighter: showrooms for phones,
+ * electronics and clothes, jewellers and supermarkets, with fewer kiranas.
+ */
+const MAIN_ROAD_MIX: [ShopType, number][] = [
+  ['electronics', 12],
+  ['mobiles', 12],
+  ['clothing', 12],
+  ['jewellery', 8],
+  ['supermarket', 8],
+  ['bakery', 8],
+  ['pharmacy', 8],
+  ['darshini', 8],
+  ['hardware', 6],
+  ['kirana', 6],
+  ['chai', 5],
+  ['salon', 4],
+  ['coffee', 3],
+]
+const MAIN_ROAD_TOTAL = MAIN_ROAD_MIX.reduce((sum, [, weight]) => sum + weight, 0)
+
+/** A shop on a main road with no mapped place gets a type by chance, from the main road's mix. */
+export function typeByChanceOnMainRoad(roll: number): ShopType {
+  let left = roll * MAIN_ROAD_TOTAL
+  for (const [type, weight] of MAIN_ROAD_MIX) {
+    left -= weight
+    if (left < 0) return type
+  }
+  return 'electronics'
+}
 
 export function typeByChance(roll: number): ShopType {
   let left = roll * STREET_TOTAL

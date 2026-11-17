@@ -2,11 +2,12 @@ import * as THREE from 'three'
 
 /**
  * How much haze builds up across the view before its far edge, from 0 to 1.
- * At 0.3, something halfway to the draw distance is about 15% haze.
+ * At 0.42, something halfway to the draw distance is about 21% haze: thick
+ * enough that the skyline past the map's edge (Skyline.tsx) reads as far-off city.
  */
-export const HAZE_STRENGTH = 0.3
+export const HAZE_STRENGTH = 0.42
 /** Where the far edge starts closing in, as a share of the way from the haze's start to the draw distance. */
-export const HAZE_WALL = 0.6
+export const HAZE_WALL = 0.5
 
 /**
  * Replaces three's fog with a golden haze. Three's own fog goes evenly from

@@ -20,6 +20,7 @@ export const WORLD_PARTS = {
   buildings: 'Buildings',
   houses: 'Balconies and gates',
   stilts: 'Stilt parking',
+  hoardings: 'Hoardings',
   cityKit: 'Street details',
   darkStore: 'The dark store',
   props: 'Trees and lamps',

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { use, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
@@ -13,16 +13,19 @@ import { QUALITY_PRESETS } from '../game/qualitySettings'
 import {
   awningColor,
   BOARD_FONT_CHECK,
+  BOARD_FONT,
   drawBoard,
-  EXTRA_NAMES,
   KANNADA_SAMPLE,
+  letteringOf,
+  NAME_LINES,
   PHOTO_BOARDS,
   SHOP_TYPES,
   type ShopType,
 } from './signboards'
 import { groundLift } from './groundLift'
 import { createRandom } from './props'
-import { generateShopNames } from './shopNames'
+import { isDebug } from '../dev/spawn'
+import { PREFIXES, TYPE_WORDS, type Name } from './shopNames'
 
 /**
  * Every shop front: an open doorway with the shop inside, a signboard above
@@ -68,24 +71,107 @@ const PAINTED_GLOW = 0.55
 const SPILL = { reach: 3.4, spread: 1.0, lift: 0.012, strength: 0.75, color: '#ffa652' }
 const UP_NORMAL = new THREE.Vector3(0, 1, 0)
 
-// ---- The board atlas: boards in four columns, then a strip of chalk menu boards ----
-// 128 boards at 512 by 112 fit under 4,096 pixels tall, the most many GPUs take:
-// about 130 pixels to a metre of board, sharp at riding distance.
+// ---- The board atlas: blank boards in four columns, then single words, then a strip of chalk menu boards ----
+// A board is its kind's blank board with a name laid over it: one first word and
+// one of the kind's words (shopNames.ts), in Kannada above English. So the atlas
+// holds words, not whole boards, and there are dozens of names for each kind of
+// shop. It must stay under 4,096 pixels tall, the most many GPUs take.
 
-const BOARD_WIDTH = 512
-const BOARD_HEIGHT = 112
+const BOARD_WIDTH = 1024
+const BOARD_HEIGHT = 192
 const BOARD_COLUMNS = 4
 const PHOTO_TYPES = SHOP_TYPES.filter((type) => PHOTO_BOARDS[type])
-/** Made-up names for each kind of shop, so nearby boards don't repeat (shopNames.ts). */
-const NAMES_PER_TYPE = 6
-const POOL = generateShopNames(SHOP_TYPES, NAMES_PER_TYPE, EXTRA_NAMES.map(({ english }) => english))
-const POOL_NAMES = SHOP_TYPES.flatMap((type) => (POOL.get(type) ?? []).map((name) => ({ type, ...name })))
-const BOARD_SLOTS = SHOP_TYPES.length + PHOTO_TYPES.length + EXTRA_NAMES.length + POOL_NAMES.length
+const BOARD_SLOTS = SHOP_TYPES.length + PHOTO_TYPES.length
 const BOARD_ROWS = Math.ceil(BOARD_SLOTS / BOARD_COLUMNS)
-const MENU_TOP = BOARD_ROWS * BOARD_HEIGHT
+const WORDS_TOP = BOARD_ROWS * BOARD_HEIGHT
+
+/** One word's picture in the atlas: where it is, in pixels, and how wide its letters are. */
+type WordCell = { x: number; y: number; width: number; height: number }
+type WordKey = `${'kannada' | 'english'}:${string}`
+
+/** Every word a name can use, in each language: the first words and every kind's words. */
+const WORDS: { key: WordKey; text: string; line: 'kannada' | 'english' }[] = (() => {
+  const seen = new Set<string>()
+  const words: { key: WordKey; text: string; line: 'kannada' | 'english' }[] = []
+  const add = (name: Name) => {
+    for (const line of ['kannada', 'english'] as const) {
+      const key: WordKey = `${line}:${name[line]}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      words.push({ key, text: name[line], line })
+    }
+  }
+  PREFIXES.forEach(add)
+  SHOP_TYPES.forEach((type) => TYPE_WORDS[type].forEach(add))
+  return words
+})()
+
+const wordFont = (line: 'kannada' | 'english') => `${NAME_LINES[line].weight} ${Math.round(BOARD_HEIGHT * NAME_LINES[line].size)}px ${BOARD_FONT}`
+/** A word's picture is this much taller than its letters, for Kannada's marks above and below the line. */
+const WORD_CELL_HEIGHT = { kannada: Math.round(BOARD_HEIGHT * NAME_LINES.kannada.size * 1.45), english: Math.round(BOARD_HEIGHT * NAME_LINES.english.size * 1.35) }
+const WORD_PAD = 8
+
+/**
+ * Packs the words into rows below the boards, measuring each in the board font.
+ * Measured once, after the font has loaded, as the boards' shapes are built
+ * from these widths.
+ */
+let wordCells: Map<WordKey, WordCell> | null = null
+let wordsBottom = WORDS_TOP
+function layOutWords(): Map<WordKey, WordCell> {
+  if (wordCells) return wordCells
+  const context = document.createElement('canvas').getContext('2d')
+  const cells = new Map<WordKey, WordCell>()
+  let x = 0
+  let y = WORDS_TOP
+  let rowHeight = 0
+  for (const word of WORDS) {
+    if (context) context.font = wordFont(word.line)
+    const textWidth = Math.ceil(context?.measureText(word.text).width ?? word.text.length * 30)
+    const width = textWidth + WORD_PAD * 2
+    const height = WORD_CELL_HEIGHT[word.line]
+    if (x + width > BOARD_WIDTH * BOARD_COLUMNS) {
+      x = 0
+      y += rowHeight
+      rowHeight = 0
+    }
+    cells.set(word.key, { x, y, width, height })
+    x += width
+    rowHeight = Math.max(rowHeight, height)
+  }
+  wordsBottom = y + rowHeight
+  wordCells = cells
+  return cells
+}
+
+/** The menu boards' strip, below the words. */
 const MENU_WIDTH = 256
 const MENU_HEIGHT = 352
-const BOARD_ATLAS = { width: BOARD_WIDTH * BOARD_COLUMNS, height: MENU_TOP + MENU_HEIGHT }
+function boardAtlasSize() {
+  layOutWords()
+  return { width: BOARD_WIDTH * BOARD_COLUMNS, height: wordsBottom + MENU_HEIGHT }
+}
+let BOARD_ATLAS = { width: BOARD_WIDTH * BOARD_COLUMNS, height: 4096 }
+let MENU_TOP = 0
+
+/** Sizes the atlas to what the words need. Call once the board font has loaded. */
+function prepareBoardAtlas() {
+  BOARD_ATLAS = boardAtlasSize()
+  MENU_TOP = wordsBottom
+}
+
+/**
+ * The board font, loaded before the words are measured: the boards' shapes are
+ * built from their widths. Gives up after a few seconds and uses whatever font there is.
+ */
+let fontsReady: Promise<void> | null = null
+function boardFontsReady(): Promise<void> {
+  fontsReady ??= Promise.race([
+    Promise.all(['700', '800'].map((weight) => document.fonts?.load(`${weight} 64px 'Baloo Tamma 2'`, `${KANNADA_SAMPLE}Ag`))).then(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+  ]).catch(() => undefined)
+  return fontsReady
+}
 
 /** What the menu boards say. Shops not listed don't put one out. */
 const MENUS: Partial<Record<ShopType, string[]>> = {
@@ -103,44 +189,61 @@ const DARK_SLOT = 7
 
 const drawnSlot = (type: ShopType) => SHOP_TYPES.indexOf(type)
 const photoSlot = (type: ShopType) => SHOP_TYPES.length + PHOTO_TYPES.indexOf(type)
-const extraSlot = (index: number) => SHOP_TYPES.length + PHOTO_TYPES.length + index
-const poolSlot = (index: number) => SHOP_TYPES.length + PHOTO_TYPES.length + EXTRA_NAMES.length + index
 
-/** The boards a shop of this type may have: its drawn board, its photo board if any, and any second names. */
-function slotsFor(type: ShopType): number[] {
-  const slots = [drawnSlot(type)]
-  if (PHOTO_BOARDS[type]) slots.push(photoSlot(type))
-  EXTRA_NAMES.forEach((extra, index) => {
-    if (extra.type === type) slots.push(extraSlot(index))
-  })
-  POOL_NAMES.forEach((name, index) => {
-    if (name.type === type) slots.push(poolSlot(index))
-  })
-  return slots
-}
+/** A shop's board: its kind's blank board with a name of first word and kind's word, or a photo board, whose name is its own. */
+type BoardChoice = { slot: number; name: { prefix: Name; word: Name } | null; key: string }
 
-/** Two shops this close never have the same board, while there's another to give, in metres. */
-const BOARD_SPREAD = 250
+/** Two shops this close never show the same name, while there's another to give, in metres. */
+const BOARD_SPREAD = 300
+/** Now and then a shop of a kind with a photo board has it, where its name isn't already up nearby. */
+const PHOTO_SHARE = 0.12
 
 /**
- * Picks every shop's board, so the same name doesn't turn up on the same
- * street or the next: each shop tries its kind's boards in an order of its own
- * (from where it stands, so it's the same on every visit), and takes the first
- * not already up within BOARD_SPREAD. If every one is, it takes the one whose
- * nearest copy is furthest away.
+ * Picks every shop's board and name, so the same name doesn't turn up within
+ * BOARD_SPREAD: each shop tries its kind's names in an order of its own (from
+ * where it stands, so it's the same on every visit), and takes the first not
+ * already up nearby. If every one is, it takes the one whose nearest copy is
+ * furthest away. Names are kept in a grid, so a check looks only at shops nearby.
  */
-function assignBoards(shopFronts: ShopFront[]): number[] {
-  const placed = new Map<number, [number, number][]>()
-  return shopFronts.map(({ x, z, type }) => {
+function assignBoards(shopFronts: ShopFront[]): BoardChoice[] {
+  const CELL = BOARD_SPREAD
+  const used = new Map<string, Map<string, [number, number][]>>()
+  const nearestUse = (key: string, x: number, z: number) => {
+    let nearest = Infinity
+    const cx = Math.floor(x / CELL)
+    const cz = Math.floor(z / CELL)
+    for (let i = cx - 1; i <= cx + 1; i++) {
+      for (let j = cz - 1; j <= cz + 1; j++) {
+        for (const [px, pz] of used.get(`${i},${j}`)?.get(key) ?? []) nearest = Math.min(nearest, Math.hypot(px - x, pz - z))
+      }
+    }
+    return nearest
+  }
+  let repeats = 0
+  const choices = shopFronts.map(({ x, z, type }) => {
     const random = createRandom(Math.abs(Math.round(x * 31 + z * 17)) + 1)
-    const choices = [...slotsFor(type)].sort(() => random() - 0.5)
-    const nearestUse = (slot: number) => Math.min(Infinity, ...(placed.get(slot) ?? []).map(([px, pz]) => Math.hypot(px - x, pz - z)))
-    const slot = choices.find((choice) => nearestUse(choice) > BOARD_SPREAD) ?? choices.reduce((best, choice) => (nearestUse(choice) > nearestUse(best) ? choice : best))
-    const list = placed.get(slot) ?? []
-    placed.set(slot, list)
+    const options: BoardChoice[] = []
+    const words = TYPE_WORDS[type]
+    for (const prefix of PREFIXES) for (const word of words) options.push({ slot: drawnSlot(type), name: { prefix, word }, key: `${prefix.english}|${word.english}` })
+    // Shuffled in the shop's own order.
+    for (let i = options.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1))
+      ;[options[i], options[j]] = [options[j], options[i]]
+    }
+    if (PHOTO_BOARDS[type] && random() < PHOTO_SHARE) options.unshift({ slot: photoSlot(type), name: null, key: `photo|${type}` })
+    const choice = options.find((option) => nearestUse(option.key, x, z) > BOARD_SPREAD) ?? options.reduce((best, option) => (nearestUse(option.key, x, z) > nearestUse(best.key, x, z) ? option : best))
+    if (nearestUse(choice.key, x, z) <= BOARD_SPREAD) repeats++
+    const cellKey = `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`
+    const cell = used.get(cellKey) ?? new Map<string, [number, number][]>()
+    used.set(cellKey, cell)
+    const list = cell.get(choice.key) ?? []
+    cell.set(choice.key, list)
     list.push([x, z])
-    return slot
+    return choice
   })
+  // Debug: how many shops had to share a name with one within BOARD_SPREAD, as every name of their kind was taken.
+  if (isDebug()) (window as unknown as { __deliverItBoards?: unknown }).__deliverItBoards = { shops: shopFronts.length, repeats, atlas: BOARD_ATLAS }
+  return choices
 }
 
 type Rect = { u0: number; v0: number; u1: number; v1: number }
@@ -164,6 +267,13 @@ function boardRect(slot: number): Rect {
   // A pixel in from each side, so mipmaps don't bleed the next board in.
   const [x, y] = slotAt(slot)
   return toRect(x + 1, y + 1, BOARD_WIDTH - 2, BOARD_HEIGHT - 2, BOARD_ATLAS)
+}
+
+/** A word's picture in the atlas, as texture coordinates, with its size in pixels. */
+function wordRect(key: WordKey): { rect: Rect; width: number; height: number } | null {
+  const cell = layOutWords().get(key)
+  if (!cell) return null
+  return { rect: toRect(cell.x, cell.y, cell.width, cell.height, BOARD_ATLAS), width: cell.width, height: cell.height }
 }
 
 function menuRect(slot: number): Rect {
@@ -198,7 +308,7 @@ function paintBoards(canvas: HTMLCanvasElement, photos: Map<ShopType, HTMLImageE
 
   SHOP_TYPES.forEach((type) => {
     const [x, y] = slotAt(drawnSlot(type))
-    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT)
+    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT, null)
   })
   PHOTO_TYPES.forEach((type) => {
     const [x, y] = slotAt(photoSlot(type))
@@ -207,14 +317,18 @@ function paintBoards(canvas: HTMLCanvasElement, photos: Map<ShopType, HTMLImageE
     else drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT)
   })
 
-  EXTRA_NAMES.forEach(({ type, kannada, english }, index) => {
-    const [x, y] = slotAt(extraSlot(index))
-    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT, { kannada, english })
-  })
-  POOL_NAMES.forEach(({ type, kannada, english }, index) => {
-    const [x, y] = slotAt(poolSlot(index))
-    drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT, { kannada, english })
-  })
+  // The words, in white, to be tinted with each kind's lettering colour where they're laid on a board.
+  const cells = layOutWords()
+  context.clearRect(0, WORDS_TOP, canvas.width, wordsBottom - WORDS_TOP)
+  context.fillStyle = '#ffffff'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (const word of WORDS) {
+    const cell = cells.get(word.key)
+    if (!cell) continue
+    context.font = wordFont(word.line)
+    context.fillText(word.text, cell.x + cell.width / 2, cell.y + cell.height / 2)
+  }
 
   MENU_TYPES.forEach((type, slot) => drawMenu(context, MENUS[type] ?? [], slot * MENU_WIDTH, MENU_TOP))
   context.fillStyle = '#2a2b2e'
@@ -259,14 +373,17 @@ function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 // ---- Geometry ----
 
 type Corner = { x: number; y: number; z: number; u: number; v: number }
-type QuadChunk = { positions: number[]; uvs: number[]; normals: number[]; glows: number[] }
+type QuadChunk = { positions: number[]; uvs: number[]; normals: number[]; glows: number[]; colors: number[] }
 type Chunks = Map<number, QuadChunk>
 
 /** `glow` scales how brightly the quad lights up at night: backlit boards more, the rest less. */
-function pushQuad(chunks: Chunks, key: number, normal: THREE.Vector3, corners: Corner[], glow = 1) {
+const WHITE = new THREE.Color('#ffffff')
+
+/** `color` tints it: white for pictures, a kind's lettering colour for the words of a name. */
+function pushQuad(chunks: Chunks, key: number, normal: THREE.Vector3, corners: Corner[], glow = 1, color = WHITE) {
   let chunk = chunks.get(key)
   if (!chunk) {
-    chunk = { positions: [], uvs: [], normals: [], glows: [] }
+    chunk = { positions: [], uvs: [], normals: [], glows: [], colors: [] }
     chunks.set(key, chunk)
   }
   const [a, b, c, d] = corners
@@ -275,16 +392,18 @@ function pushQuad(chunks: Chunks, key: number, normal: THREE.Vector3, corners: C
     chunk.uvs.push(u, v)
     chunk.normals.push(normal.x, normal.y, normal.z)
     chunk.glows.push(glow)
+    chunk.colors.push(color.r, color.g, color.b)
   }
 }
 
 function toGeometries(chunks: Chunks): THREE.BufferGeometry[] {
-  return [...chunks.values()].map(({ positions, uvs, normals, glows }) => {
+  return [...chunks.values()].map(({ positions, uvs, normals, glows, colors }) => {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
     geometry.setAttribute('aGlow', new THREE.Float32BufferAttribute(glows, 1))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
     geometry.computeBoundingSphere()
     return geometry
   })
@@ -488,10 +607,45 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
     pushRoom(rooms, key, { x, z, out, rightX, rightZ, width, bottom: lift, top: INTERIOR_TOP + lift, depth, cell: roomCell(type), flip: variation >= 0.5 })
 
     // The board: a photo board on some of the commonest shops, a drawn one on the rest.
-    const slot = boardSlots[shopIndex]
+    const { slot, name } = boardSlots[shopIndex]
     // A few boards are backlit boxes, bright at night; the rest are painted and lit from the street.
     const backlit = (variation * 13.7) % 1 < BACKLIT_SHARE
-    pushQuad(boards, key, out, rectangle(SIGN_DEPTH + WALL_GAP, width / 2, SIGN_BOTTOM, SIGN_TOP, boardRect(slot)), backlit ? BACKLIT_GLOW : PAINTED_GLOW)
+    const glow = backlit ? BACKLIT_GLOW : PAINTED_GLOW
+    pushQuad(boards, key, out, rectangle(SIGN_DEPTH + WALL_GAP, width / 2, SIGN_BOTTOM, SIGN_TOP, boardRect(slot)), glow)
+    // The name, laid over the blank board word by word, at the letters' own shape rather than
+    // stretched with the board, and squeezed only if a line is too long for it.
+    if (name) {
+      const metresPerPixel = (SIGN_TOP - SIGN_BOTTOM) / BOARD_HEIGHT
+      // The name sits between the board's icon and its right edge, as drawBoard lays it out.
+      const across = width / BOARD_WIDTH
+      const textLeft = -width / 2 + BOARD_HEIGHT * 0.8 * across
+      const textRight = width / 2 - BOARD_HEIGHT * 0.12 * across
+      const lettering = new THREE.Color(letteringOf(type))
+      const face = SIGN_DEPTH + WALL_GAP + 0.004
+      for (const line of ['kannada', 'english'] as const) {
+        const cells = [`${line}:${name.prefix[line]}`, `${line}:${name.word[line]}`].map((wordKey) => wordRect(wordKey as WordKey))
+        if (cells.some((cell) => !cell)) continue
+        const widths = cells.map((cell) => cell!.width * metresPerPixel)
+        const total = widths[0] + widths[1]
+        const squeeze = Math.min(1, (textRight - textLeft) / total)
+        const middleY = SIGN_TOP - NAME_LINES[line].middle * (SIGN_TOP - SIGN_BOTTOM)
+        let along = (textLeft + textRight) / 2 - (total * squeeze) / 2
+        cells.forEach((cell, i) => {
+          const halfHeight = (cell!.height * metresPerPixel) / 2
+          const w = widths[i] * squeeze
+          const at = (offset: number, y: number, u: number, v: number): Corner => ({
+            x: x + out.x * face + rightX * offset,
+            y,
+            z: z + out.z * face + rightZ * offset,
+            u,
+            v,
+          })
+          const r = cell!.rect
+          pushQuad(boards, key, out, [at(along, middleY - halfHeight, r.u0, r.v0), at(along + w, middleY - halfHeight, r.u1, r.v0), at(along + w, middleY + halfHeight, r.u1, r.v1), at(along, middleY + halfHeight, r.u0, r.v1)], glow, lettering)
+          along += w
+        })
+      }
+    }
     // On a low roof the board stands clear, so its back needs drawing too.
     const dark = menuRect(DARK_SLOT)
     pushQuad(boards, key, back, rectangle(WALL_GAP, -width / 2, SIGN_BOTTOM, SIGN_TOP, dark), 0)
@@ -632,7 +786,11 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
   const awningGeometry = useMemo(() => createAwningGeometry(), [])
   const awningMaterial = useMemo(() => createAwningMaterial(), [])
   const mesh = useRef<THREE.InstancedMesh>(null)
-  const geometries = useMemo(() => createStorefrontGeometries(shopFronts), [shopFronts])
+  use(boardFontsReady())
+  const geometries = useMemo(() => {
+    prepareBoardAtlas()
+    return createStorefrontGeometries(shopFronts)
+  }, [shopFronts])
 
   const { boardMaterial, boardCanvas, photos } = useMemo(() => {
     const canvas = document.createElement('canvas')
@@ -649,13 +807,16 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
       roughness: 0.7,
       // The menu boards and the board ends are seen from both sides.
       side: THREE.DoubleSide,
+      // Names' words are white letters on clear ground, tinted with each kind's lettering colour.
+      vertexColors: true,
+      transparent: true,
     })
     // Each board's own glow at night (aGlow): backlit boxes bright, painted boards dim.
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace('void main() {', 'attribute float aGlow;\nvarying float vGlow;\nvoid main() {\n vGlow = aGlow;')
       shader.fragmentShader = shader.fragmentShader
         .replace('void main() {', 'varying float vGlow;\nvoid main() {')
-        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vGlow;')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vGlow * vColor.rgb;')
     }
     material.customProgramCacheKey = () => 'shop-boards'
     return { boardMaterial: material, boardCanvas: canvas, photos: photoMap }
