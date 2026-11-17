@@ -37,23 +37,39 @@ import {
   createVehicleGlowGeometry,
 } from './vehicleShapes'
 import { CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
+import { groundLift } from '../world/groundLift'
+import { createMotorcycleGeometry, createScooterGeometry } from './twoWheelers'
+import { createProxyGeometry } from './vehicleProxies'
+import { createPlateAtlas, createPlateGeometry, plateCell, showPlateCell, type PlateFit } from './numberPlates'
 
 
 /** An auto's colours come from its model, so its tint changes nothing. */
 const AUTO_COLORS = ['#ffffff']
+/** A far-away auto: the green body and yellow canopy. */
+const AUTO_PROXY_COLORS = { body: '#3f7d5a', cabin: '#d8c46c' }
 const BIKE_COLORS = ['#1c3fd1', '#b3201e', '#1a1b1e', '#e8e8e8', '#2e7d4f']
 /** Parked scooters are detailed, and smaller than a few pixels past this, in metres. */
 const PARKED_DRAW_DISTANCE = 90
+/**
+ * Everyday clothes in HSR: shirts and kurtas in white, cream and pale blue,
+ * sarees and salwars in saffron, maroon, mustard, peacock blue, bottle green
+ * and rani pink, and the odd grey or navy. Whites come up most.
+ */
 const CLOTHES_COLORS = [
-  '#c04a4a',
-  '#3f6fa8',
-  '#e0b13c',
-  '#2f8f7a',
-  '#7a4f9a',
-  '#e8e4d8',
-  '#d07a3a',
-  '#c2447e',
-  '#f0f0ea',
+  '#f0eee6', // white
+  '#f0eee6',
+  '#e8dcc2', // cream
+  '#b9cde0', // pale blue shirt
+  '#e07b24', // saffron
+  '#7d2430', // maroon
+  '#d9a62e', // mustard
+  '#1f6f8b', // peacock blue
+  '#2f5e3e', // bottle green
+  '#c2307a', // rani pink
+  '#3a4a6b', // navy
+  '#7c7f86', // grey
+  '#a8502e', // rust
+  '#5a3f8e', // indigo
 ]
 
 /** How strongly vehicles mirror the sky, by day. Night dims it along with the ambient light. */
@@ -92,13 +108,17 @@ function writeTransforms(
   reach = Infinity,
   isSeatedRider = false,
   ground = ROAD_HEIGHT,
+  from = 0,
 ) {
   items.forEach((item, index) => {
+    const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
     const inRange =
-      Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach &&
+      distance < reach &&
+      distance >= from &&
       !item.hidden &&
       !(isSeatedRider && item.riderOff)
-    transform.position.set(item.x, ground + item.lift, item.z)
+    // On a raised footpath, walk on top of it.
+    transform.position.set(item.x, Math.max(ground, groundLift.at(item.x, item.z)) + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
     // Size zero is the cheapest way to skip one copy of an instanced shape.
@@ -167,6 +187,7 @@ function MovingInstances({
   reach,
   seatedRider = false,
   nearestOnly = false,
+  from = 0,
 }: {
   items: Moving[]
   geometry: THREE.BufferGeometry
@@ -181,6 +202,8 @@ function MovingInstances({
   seatedRider?: boolean
   /** Draw only the copies within `reach`, for long lists of detailed shapes. */
   nearestOnly?: boolean
+  /** Copies nearer than this aren't drawn: the far-away stand-ins start here. */
+  from?: number
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
@@ -189,7 +212,7 @@ function MovingInstances({
   useFrame(() => {
     if (!mesh.current) return
     if (nearestOnly && reach !== undefined) writeNearest(mesh.current, items, reach, palette)
-    else writeTransforms(mesh.current, items, reach, seatedRider)
+    else writeTransforms(mesh.current, items, reach, seatedRider, ROAD_HEIGHT, from)
     if (material.current) updateReflection(material.current)
   })
 
@@ -342,6 +365,13 @@ function CarHeadlights({ items, count }: { items: Vehicle[]; count: number }) {
   )
 }
 
+/** The time, for animations that run on their own: waving and the small movements of standing still. */
+const peopleClock = { uTime: { value: 0 } }
+/** A wave: the arm raised forwards and up, in radians from hanging down, and how far and fast it swings. */
+const WAVE = { raise: 2.7, swing: 0.35, speed: 9 }
+/** Standing still: a slow breath, and weight shifting from foot to foot. */
+const IDLE = { breath: 0.006, breathSpeed: 1.7, sway: 0.012, swaySpeed: 0.55, armSway: 0.05 }
+
 /** How far a limp person's arms and legs fling out, in radians. Arms go further than legs. */
 const SPRAWL_ARM = 1.5
 const SPRAWL_LEG = 0.45
@@ -413,9 +443,12 @@ const WALK_FUNCTIONS = /* glsl */ `
  * are (`aPerson.z`). Clothes take the person's colour, and the rest take their skin tone.
  */
 function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
+  Object.assign(shader.uniforms, peopleClock)
   shader.vertexShader = `
     attribute vec3 _limb;
     attribute vec4 aPerson;
+    attribute float aWave;
+    uniform float uTime;
     ${WALK_FUNCTIONS}
     ${shader.vertexShader}
   `
@@ -432,6 +465,9 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
       '#include <begin_vertex>',
       `#include <begin_vertex>
       float walking = aPerson.w * (1.0 - aPerson.z);
+      // Standing still isn't standing frozen: each person breathes and shifts their weight, in their own time.
+      float still = (1.0 - walking) * (1.0 - aPerson.z);
+      float own = aPerson.x * 3.7;
       // The hips dip as weight passes from foot to foot, and the whole body with them.
       float dip = walkDip(aPerson.x) * walking;
       if (_limb.x != 0.0) {
@@ -445,6 +481,11 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
         vec2 point = vec2(position.z, position.y);
         if (isArm) {
           float swing = -${glsl(GAIT.armSwing)} * foot.x / REACH * follow;
+          swing += still * ${glsl(IDLE.armSway)} * sin(uTime * 1.3 + own + side) * follow;
+          // One arm waves: raised forwards and up, swinging to and fro.
+          float waving = _limb.x < 0.0 ? aWave * follow : 0.0;
+          float wave = ${glsl(WAVE.raise)} + ${glsl(WAVE.swing)} * sin(uTime * ${glsl(WAVE.speed)} + own);
+          swing = mix(swing, wave, waving);
           float angle = mix(swing, -_limb.x * ${glsl(SPRAWL_ARM)}, aPerson.z);
           point = turnForward(point, _limb.y, angle);
         } else {
@@ -462,7 +503,9 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
         transformed.z = point.x;
         transformed.y = point.y;
       }
-      transformed.y += dip;`,
+      transformed.y += dip;
+      transformed.y += still * ${glsl(IDLE.breath)} * sin(uTime * ${glsl(IDLE.breathSpeed)} + own) * smoothstep(0.8, 1.5, position.y);
+      transformed.x += still * ${glsl(IDLE.sway)} * sin(uTime * ${glsl(IDLE.swaySpeed)} + own) * position.y;`,
     )
 }
 
@@ -473,13 +516,19 @@ function withPersonData(body: THREE.BufferGeometry, count: number): THREE.Buffer
     'aPerson',
     new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4),
   )
+  geometry.setAttribute('aWave', new THREE.InstancedBufferAttribute(new Float32Array(count), 1))
   return geometry
 }
 
 function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
   const attribute = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
-  people.forEach(({ stride, skin, down, walking = 1 }, index) => attribute.setXYZW(index, stride, skin, down, walking))
+  const wave = geometry.getAttribute('aWave') as THREE.InstancedBufferAttribute
+  people.forEach(({ stride, skin, down, walking = 1, wave: waving = 0 }, index) => {
+    attribute.setXYZW(index, stride, skin, down, walking)
+    wave.setX(index, waving)
+  })
   attribute.needsUpdate = true
+  wave.needsUpdate = true
 }
 
 /** A crowd, or just one person, walking by the same shader. */
@@ -502,8 +551,9 @@ export function People({
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (!mesh.current) return
+    peopleClock.uTime.value = clock.elapsedTime % 1000
     writeTransforms(mesh.current, items, Infinity, false, ground)
     writeStrides(geometry, items)
   })
@@ -562,7 +612,7 @@ function updateWheelState(state: WheelState, item: Moving, wheels: WheelSet, del
 }
 
 /** The wheels of one kind of vehicle. They're separate so that they can roll and steer. */
-function VehicleWheels({ items, wheels }: { items: Moving[]; wheels: WheelSet }) {
+function VehicleWheels({ items, wheels, reach = Infinity }: { items: Moving[]; wheels: WheelSet; reach?: number }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const states = useRef<WheelState[]>([])
   const count = items.length * wheels.positions.length
@@ -585,7 +635,8 @@ function VehicleWheels({ items, wheels }: { items: Moving[]; wheels: WheelSet })
       transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
       if (item.rotation) transform.quaternion.set(...item.rotation)
       else transform.rotation.set(0, item.heading, 0)
-      transform.scale.setScalar(1)
+      // Past `reach` the vehicle is a stand-in with wheels of its own, so these shrink to nothing.
+      transform.scale.setScalar(Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach ? 1 : 0)
       transform.updateMatrix()
       wheelBody.copy(transform.matrix)
 
@@ -650,6 +701,46 @@ const VEHICLES: { kind: VehicleKind; palette: string[] }[] = [
   { kind: 'bike', palette: BIKE_COLORS },
 ]
 
+/** Number plates are small, so past this they aren't drawn, in metres. */
+const PLATE_REACH = 70
+
+/** Where each kind carries its plates: size, height, and front and back. Autos have yellow commercial plates. */
+const PLATES: Record<VehicleKind, PlateFit & { commercial: boolean }> = {
+  sedan: { width: 0.5, height: 0.12, at: 0.45, front: true, back: true, commercial: false },
+  hatchback: { width: 0.5, height: 0.12, at: 0.45, front: true, back: true, commercial: false },
+  suv: { width: 0.5, height: 0.12, at: 0.55, front: true, back: true, commercial: false },
+  mpv: { width: 0.5, height: 0.12, at: 0.48, front: true, back: true, commercial: false },
+  auto: { width: 0.32, height: 0.11, at: 0.42, front: true, back: true, commercial: true },
+  bike: { width: 0.2, height: 0.12, at: 0.68, front: false, back: true, commercial: false },
+}
+
+/** Which of the three two-wheeler shapes a bike is: the model, a scooter or a motorcycle. Fixed for each bike. */
+function bikeShapeOf(item: Moving): number {
+  return Math.floor(item.tint * 997) % 3
+}
+
+/** Each vehicle's own KA plate, picked once from the shared picture (numberPlates.ts). */
+function NumberPlates({ items, geometry, commercial, atlas, reach = PLATE_REACH }: { items: Moving[]; geometry: THREE.BufferGeometry; commercial: boolean; atlas: THREE.Texture; reach?: number }) {
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const plates = useMemo(() => {
+    const instanced = geometry.clone()
+    const cells = new Float32Array(items.length * 2)
+    items.forEach((item, index) => cells.set(plateCell(item.tint * 1000 + index, commercial), index * 2))
+    instanced.setAttribute('aPlate', new THREE.InstancedBufferAttribute(cells, 2))
+    return instanced
+  }, [geometry, items, commercial])
+  useEffect(() => () => plates.dispose(), [plates])
+  useFrame(() => {
+    if (mesh.current) writeTransforms(mesh.current, items, reach)
+  })
+  if (items.length === 0 || geometry.getAttribute('position').count === 0) return null
+  return (
+    <instancedMesh key={items.length} ref={mesh} args={[plates, undefined, items.length]} frustumCulled={false}>
+      <meshStandardMaterial map={atlas} roughness={0.45} onBeforeCompile={showPlateCell} />
+    </instancedMesh>
+  )
+}
+
 /** Vehicles and people around the rider. Only those nearby exist at all. */
 export function Traffic({
   scooter,
@@ -658,7 +749,7 @@ export function Traffic({
   scooter: RefObject<ScooterState>
   world: TrafficWorld
 }) {
-  const { vehicles, pedestrians, shadowSize, carLights } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { vehicles, pedestrians, shadowSize, carLights, vehicleDetailDistance: detail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
@@ -707,6 +798,31 @@ export function Traffic({
     }),
     [],
   )
+  // Two of the three two-wheeler shapes are built in code (twoWheelers.ts).
+  const bikeShapes = useMemo(() => [shapes.bike, createScooterGeometry(), createMotorcycleGeometry()], [shapes])
+  const bikePlates = useMemo(() => bikeShapes.map((shape) => createPlateGeometry(shape, PLATES.bike)), [bikeShapes])
+  useEffect(() => () => {
+    bikeShapes.slice(1).forEach((geometry) => geometry.dispose())
+    bikePlates.forEach((geometry) => geometry.dispose())
+  }, [bikeShapes, bikePlates])
+  // Far away, every vehicle is a few boxes the size of its model.
+  const proxies = useMemo(
+    () =>
+      Object.fromEntries(
+        VEHICLES.map(({ kind }) => [kind, createProxyGeometry(shapes[kind], kind === 'auto' ? AUTO_PROXY_COLORS : undefined)]),
+      ) as Record<VehicleKind, THREE.BufferGeometry>,
+    [shapes],
+  )
+  useEffect(() => () => Object.values(proxies).forEach((geometry) => geometry.dispose()), [proxies])
+  const plateAtlas = useMemo(() => createPlateAtlas(), [])
+  const plates = useMemo(
+    () => Object.fromEntries(VEHICLES.map(({ kind }) => [kind, createPlateGeometry(shapes[kind], PLATES[kind])])) as Record<VehicleKind, THREE.BufferGeometry>,
+    [shapes],
+  )
+  useEffect(() => () => {
+    plateAtlas.dispose()
+    Object.values(plates).forEach((geometry) => geometry.dispose())
+  }, [plateAtlas, plates])
   const gl = useThree((state) => state.gl)
   // Shared with the rider's scooter, so it's never disposed of here.
   const reflection = getStreetReflection(gl)
@@ -744,6 +860,24 @@ export function Traffic({
     <>
       {VEHICLES.map(({ kind, palette }) => {
         const items = inPlay.filter((vehicle) => vehicle.kind === kind)
+        if (kind === 'bike') {
+          const byShape = bikeShapes.map((_, shape) => items.filter((item) => bikeShapeOf(item) === shape))
+          return (
+            <group key={kind}>
+              {bikeShapes.map((geometry, shape) => (
+                <group key={shape}>
+                  <MovingInstances items={byShape[shape]} geometry={geometry} palette={palette} castShadow={shadowSize > 0} baked reflection={reflection} reach={detail} />
+                  <NumberPlates items={byShape[shape]} geometry={bikePlates[shape]} commercial={false} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
+                </group>
+              ))}
+              <MovingInstances items={items} geometry={drawn.rider} palette={palette} castShadow={shadowSize > 0} reflection={reflection} seatedRider reach={detail} />
+              <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked reflection={reflection} from={detail} />
+              {/* Only the model has separate wheels to spin. The built shapes carry theirs. */}
+              <VehicleWheels items={byShape[0]} wheels={wheels.bike} reach={detail} />
+              <VehicleLights items={items} geometry={lights.bike} />
+            </group>
+          )
+        }
         return (
           <group key={kind}>
             <MovingInstances
@@ -753,18 +887,11 @@ export function Traffic({
               castShadow={shadowSize > 0}
               baked
               reflection={reflection}
+              reach={detail}
             />
-            {kind === 'bike' && (
-              <MovingInstances
-                items={items}
-                geometry={drawn.rider}
-                palette={palette}
-                castShadow={shadowSize > 0}
-                reflection={reflection}
-                seatedRider
-              />
-            )}
-            <VehicleWheels items={items} wheels={wheels[kind]} />
+            <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked reflection={reflection} from={detail} />
+            <VehicleWheels items={items} wheels={wheels[kind]} reach={detail} />
+            <NumberPlates items={items} geometry={plates[kind]} commercial={PLATES[kind].commercial} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
             <VehicleLights items={items} geometry={lights[kind]} />
           </group>
         )

@@ -10,11 +10,13 @@ import {
   awningColor,
   BOARD_FONT_CHECK,
   drawBoard,
+  EXTRA_NAMES,
   KANNADA_SAMPLE,
   PHOTO_BOARDS,
   SHOP_TYPES,
   type ShopType,
 } from './signboards'
+import { groundLift } from './groundLift'
 
 /**
  * Every shop front: an open doorway with the shop inside, a signboard above
@@ -44,7 +46,7 @@ const INTERIOR_GLOW = 0.6
 const BOARD_WIDTH = 1024
 const BOARD_HEIGHT = 224
 const PHOTO_TYPES = SHOP_TYPES.filter((type) => PHOTO_BOARDS[type])
-const BOARD_SLOTS = SHOP_TYPES.length + PHOTO_TYPES.length
+const BOARD_SLOTS = SHOP_TYPES.length + PHOTO_TYPES.length + EXTRA_NAMES.length
 const BOARD_ROWS = Math.ceil(BOARD_SLOTS / 2)
 const MENU_TOP = BOARD_ROWS * BOARD_HEIGHT
 const MENU_WIDTH = 256
@@ -67,6 +69,17 @@ const DARK_SLOT = 7
 
 const drawnSlot = (type: ShopType) => SHOP_TYPES.indexOf(type)
 const photoSlot = (type: ShopType) => SHOP_TYPES.length + PHOTO_TYPES.indexOf(type)
+const extraSlot = (index: number) => SHOP_TYPES.length + PHOTO_TYPES.length + index
+
+/** The boards a shop of this type may have: its drawn board, its photo board if any, and any second names. */
+function slotsFor(type: ShopType): number[] {
+  const slots = [drawnSlot(type)]
+  if (PHOTO_BOARDS[type]) slots.push(photoSlot(type))
+  EXTRA_NAMES.forEach((extra, index) => {
+    if (extra.type === type) slots.push(extraSlot(index))
+  })
+  return slots
+}
 
 type Rect = { u0: number; v0: number; u1: number; v1: number }
 
@@ -125,6 +138,11 @@ function paintBoards(canvas: HTMLCanvasElement, photos: Map<ShopType, HTMLImageE
     const photo = photos.get(type)
     if (photo) context.drawImage(photo, x, y, BOARD_WIDTH, BOARD_HEIGHT)
     else drawBoard(context, type, x, y, BOARD_WIDTH, BOARD_HEIGHT)
+  })
+
+  EXTRA_NAMES.forEach(({ type, kannada, english }, index) => {
+    const slot = extraSlot(index)
+    drawBoard(context, type, (slot % 2) * BOARD_WIDTH, Math.floor(slot / 2) * BOARD_HEIGHT, BOARD_WIDTH, BOARD_HEIGHT, { kannada, english })
   })
 
   MENU_TYPES.forEach((type, slot) => drawMenu(context, MENUS[type] ?? [], slot * MENU_WIDTH, MENU_TOP))
@@ -232,7 +250,8 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
     pushQuad(rooms, key, out, rectangle(WALL_GAP, width / 2, 0, INTERIOR_TOP, roomRect(type), variation >= 0.5))
 
     // The board: a photo board on some of the commonest shops, a drawn one on the rest.
-    const slot = PHOTO_BOARDS[type] && variation < 0.5 ? photoSlot(type) : drawnSlot(type)
+    const choices = slotsFor(type)
+    const slot = choices[Math.floor(variation * choices.length * 0.999)]
     pushQuad(boards, key, out, rectangle(SIGN_DEPTH + WALL_GAP, width / 2, SIGN_BOTTOM, SIGN_TOP, boardRect(slot)))
     // On a low roof the board stands clear, so its back needs drawing too.
     const dark = menuRect(DARK_SLOT)
@@ -405,7 +424,7 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
     const transform = new THREE.Object3D()
     const color = new THREE.Color()
     shopFronts.forEach(({ x, z, rotation, width, type }, index) => {
-      transform.position.set(x, 0, z)
+      transform.position.set(x, groundLift.at(x, z), z)
       transform.rotation.y = rotation
       transform.scale.set(width, 1, 1)
       transform.updateMatrix()

@@ -43,14 +43,26 @@ export function AdaptiveResolution() {
   const started = useGameStore((state) => state.started)
   const quality = useGameStore((state) => state.quality)
   const batch = useRef({ time: 0, frames: [] as number[], slow: 0, calm: 0, ceiling: Infinity, ceilingAge: 0, sinceRaise: Infinity, warmUp: WARM_UP, refresh: SLOWEST_REFRESH })
+  /** A resolution waiting to be applied at the start of the next frame. See `applyRatio`. */
+  const pending = useRef<number | null>(null)
 
   // A new quality starts again from its own resolution, and forgets what was too much.
   useEffect(() => {
-    useResolution.setState({ pixelRatio: startingRatio(quality) })
+    pending.current = startingRatio(quality)
     Object.assign(batch.current, { time: 0, frames: [], slow: 0, calm: 0, ceiling: Infinity, sinceRaise: Infinity })
   }, [quality])
 
-  useFrame((_, delta) => {
+  useFrame(({ setDpr }, delta) => {
+    // Changing the resolution resizes the canvas, which wipes it. Done here, just
+    // before this frame is drawn, the wiped canvas is drawn over at once. Done from
+    // React, between frames, the browser could show it empty: a black flash, as the
+    // page behind is black.
+    if (pending.current !== null) {
+      setDpr(pending.current)
+      useResolution.setState({ pixelRatio: pending.current })
+      pending.current = null
+    }
+
     // The title screen's flight over the whole city isn't what riding costs.
     const state = batch.current
     if (!started || document.hidden) {
@@ -92,11 +104,11 @@ export function AdaptiveResolution() {
         state.ceiling = pixelRatio
         state.ceilingAge = 0
       }
-      useResolution.setState({ pixelRatio: Math.max(lowest, pixelRatio - STEP) })
+      pending.current = Math.max(lowest, pixelRatio - STEP)
       state.slow = 0
       state.calm = 0
     } else if (state.calm >= CALM_BATCHES && pixelRatio < highest) {
-      useResolution.setState({ pixelRatio: Math.min(highest, pixelRatio + STEP) })
+      pending.current = Math.min(highest, pixelRatio + STEP)
       state.calm = 0
       state.sinceRaise = 0
     }

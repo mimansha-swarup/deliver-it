@@ -23,6 +23,10 @@ export type SignalPost = {
   stopX: number
   stopZ: number
   stopWidth: number
+  /** The zebra crossing in front of the stop line: its middle, and the road's width across. */
+  crossX: number
+  crossZ: number
+  crossWidth: number
 }
 
 export type TrafficSignals = {
@@ -48,8 +52,11 @@ const MAIN_ROAD_WIDTH = 7
 const MIN_JUNCTION_GAP = 130
 /** Two roads this close to a straight line count as facing each other. */
 const OPPOSITE = -0.8
-/** How far back from the crossing road traffic stops, in metres. */
-const STOP_MARGIN = 2
+/** How far back from the crossing road traffic stops, in metres. Room for the zebra crossing in front of the line. */
+const STOP_MARGIN = 5
+/** The zebra crossing: how far in front of the stop line it starts, and how deep it is, in metres. */
+export const ZEBRA_GAP = 0.8
+export const ZEBRA_DEPTH = 3
 const POLE_FROM_KERB = 0.4
 
 /** How hard a vehicle will brake for a yellow light. Harder than this, and it goes on through. */
@@ -156,6 +163,9 @@ export function createTrafficSignals(graph: RoadGraph): TrafficSignals {
         stopX: baseX + leftX * (arm.roadWidth / 4),
         stopZ: baseZ + leftZ * (arm.roadWidth / 4),
         stopWidth: arm.roadWidth / 2,
+        crossX: baseX - arm.x * (ZEBRA_GAP + ZEBRA_DEPTH / 2),
+        crossZ: baseZ - arm.z * (ZEBRA_GAP + ZEBRA_DEPTH / 2),
+        crossWidth: arm.roadWidth,
       })
     })
   }

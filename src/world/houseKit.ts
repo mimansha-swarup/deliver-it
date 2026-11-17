@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { POSTER_ASPECT, POSTER_COLUMNS, POSTER_ROWS } from './posters'
 import { FLOOR_HEIGHT, getFloors, getKitColor, hashString, hasStilts } from './buildingData'
 import { addWall, copyCollisionWorld, isNearBuilding, type CollisionWorld } from './collision'
 import { chunkCentre, chunkKey } from './chunks'
@@ -171,6 +172,131 @@ class Builder {
   }
 }
 
+/** The dark of grime and water stains: a warm near-black, laid see-through over the paint. */
+const STAIN = new THREE.Color('#241e18')
+
+/**
+ * Soft marks laid just off a wall: dark, and see-through by a different amount
+ * at each corner, so they fade out. They darken whatever paint is under them,
+ * so one colour does for every wall. Used for the shade under balconies and
+ * sunshades (ambient occlusion, baked in) and streaks under AC units.
+ */
+class StainBuilder {
+  positions: number[] = []
+  normals: number[] = []
+  colors: number[] = []
+  readonly enabled: boolean
+
+  constructor(enabled = true) {
+    this.enabled = enabled
+  }
+
+  /** A mark on a wall, from `alongFrom` to `alongTo` and `low` to `high`, as dark as `top` at its top and `bottom` at its foot. */
+  onWall(wall: Wall, [alongFrom, alongTo]: [number, number], [low, high]: [number, number], [top, bottom]: [number, number]) {
+    if (!this.enabled) return
+    const out = 0.012
+    const at = (along: number, height: number, alpha: number) => {
+      this.positions.push(
+        wall.start[0] + wall.alongX * along + wall.outX * out,
+        height,
+        wall.start[1] + wall.alongZ * along + wall.outZ * out,
+      )
+      this.normals.push(wall.outX, 0, wall.outZ)
+      this.colors.push(STAIN.r, STAIN.g, STAIN.b, alpha)
+    }
+    // Facing out from the wall: anticlockwise seen from outside.
+    const corners: [number, number, number][] = [
+      [alongFrom, low, bottom],
+      [alongTo, low, bottom],
+      [alongTo, high, top],
+      [alongFrom, low, bottom],
+      [alongTo, high, top],
+      [alongFrom, high, top],
+    ]
+    const first = new THREE.Vector3(wall.alongX * (alongTo - alongFrom), 0, wall.alongZ * (alongTo - alongFrom))
+    const second = new THREE.Vector3(wall.alongX * (alongTo - alongFrom), high - low, wall.alongZ * (alongTo - alongFrom))
+    const facesOut = first.cross(second).dot(new THREE.Vector3(wall.outX, 0, wall.outZ)) >= 0
+    const ordered = facesOut ? corners : [corners[0], corners[2], corners[1], corners[3], corners[5], corners[4]]
+    for (const [along, height, alpha] of ordered) at(along, height, alpha)
+  }
+
+  toGeometry(): THREE.BufferGeometry {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3))
+    geometry.setAttribute('normal', new THREE.BufferAttribute(Int8Array.from(this.normals, (value) => Math.round(value * 127)), 3, true))
+    geometry.setAttribute('color', new THREE.BufferAttribute(Uint8Array.from(this.colors, (value) => Math.round(Math.min(1, Math.max(0, value)) * 255)), 4, true))
+    geometry.computeBoundingSphere()
+    return geometry
+  }
+}
+
+/** Paper posters on walls, each a quad showing one poster of the shared picture (posters.ts). */
+class PosterBuilder {
+  positions: number[] = []
+  normals: number[] = []
+  uvs: number[] = []
+  readonly enabled: boolean
+
+  constructor(enabled = true) {
+    this.enabled = enabled
+  }
+
+  /** A poster on a wall, centred `along` it, its bottom at `low`, standing `out` off the wall's line. */
+  onWall(wall: Wall, along: number, out: number, low: number, poster: number) {
+    if (!this.enabled) return
+    const width = POSTER.height * POSTER_ASPECT
+    const column = poster % POSTER_COLUMNS
+    const row = Math.floor(poster / POSTER_COLUMNS) % POSTER_ROWS
+    const u = (x: number) => (column + x) / POSTER_COLUMNS
+    const v = (y: number) => 1 - (row + 1 - y) / POSTER_ROWS
+    // A slight tilt, as posters are pasted by hand.
+    const tilt = ((poster * 37) % 7 - 3) * 0.01
+    const point = (x: number, y: number): [number, number, number] => {
+      const a = along + (x - 0.5) * width + (y - 0.5) * tilt
+      const h = low + y * POSTER.height - (x - 0.5) * tilt
+      return [wall.start[0] + wall.alongX * a + wall.outX * out, h, wall.start[1] + wall.alongZ * a + wall.outZ * out]
+    }
+    const corners: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]
+    // Facing out from the wall.
+    const first = new THREE.Vector3(...point(1, 0)).sub(new THREE.Vector3(...point(0, 0)))
+    const second = new THREE.Vector3(...point(1, 1)).sub(new THREE.Vector3(...point(0, 0)))
+    const facesOut = first.cross(second).dot(new THREE.Vector3(wall.outX, 0, wall.outZ)) >= 0
+    const ordered = facesOut ? corners : [corners[0], corners[2], corners[1], corners[3], corners[5], corners[4]]
+    for (const [x, y] of ordered) {
+      this.positions.push(...point(x, y))
+      this.normals.push(wall.outX, 0, wall.outZ)
+      // Seen from the street the wall's "along" may run right to left; flip so the text reads.
+      this.uvs.push(u(facesOut ? x : 1 - x), v(y))
+    }
+  }
+
+  toGeometry(): THREE.BufferGeometry {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3))
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3))
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2))
+    geometry.computeBoundingSphere()
+    return geometry
+  }
+}
+
+const POSTER = { height: 0.7, low: 0.55 }
+/** Out of 100: compound walls with a poster beside the gate, and those with pots on the wall either side. */
+const POSTER_CHANCE = 35
+const POT_CHANCE = 45
+
+/** An outdoor AC unit, on a bracket under a window sill, and its fan grille. */
+const AC_UNIT = { width: 0.8, height: 0.55, depth: 0.3, low: 0.18, grille: 0.4 }
+const AC_COLOR = new THREE.Color('#d9d9d4')
+const GRILLE_COLOR = new THREE.Color('#3b3e43')
+/**
+ * About this share of house windows above the ground floor have an AC unit under
+ * them, out of 100. The first share shows on Medium and High, the rest only on
+ * High (the `fine` layer), so the street fills up with the quality setting.
+ */
+const AC_CHANCE = 12
+const AC_CHANCE_HIGH = 20
+
 /**
  * A wall of a house: where it starts, which way it runs (`along`), and which way
  * is out (`out`). Everything on it is placed by distance along, distance out and height.
@@ -306,7 +432,14 @@ export type HouseKit = {
    * and compound walls in `main`, and the many small chajjas on their own, as
    * they're drawn only up close. Squares are built as the rider comes near.
    */
-  buildSquare: (key: number) => { main: THREE.BufferGeometry; chajjas: THREE.BufferGeometry }
+  buildSquare: (key: number) => {
+    main: THREE.BufferGeometry
+    chajjas: THREE.BufferGeometry
+    stains: THREE.BufferGeometry
+    posters: THREE.BufferGeometry
+    /** Extra details only High draws: more AC units and pots. */
+    fine: THREE.BufferGeometry
+  }
   /** Water tanks, on the roof rooms. */
   tanks: Prop[]
   /** The shops along the fronts of shop buildings. */
@@ -317,7 +450,11 @@ export type HouseKit = {
   creepers: Prop[]
   /** Kolams drawn on the pavement outside gates. */
   kolams: Prop[]
+  /** Each compound gate: its middle and width, in metres, so the kerb in front can be lowered for vehicles. */
+  gates: Gate[]
 }
+
+export type Gate = { x: number; z: number; width: number }
 
 export type StiltVehicle = { x: number; z: number; rotation: number; variation: number; car: boolean }
 
@@ -345,7 +482,9 @@ export function planHouseKit(
   // is now, before compound walls, trees and lamps are added.
   const lookup = copyCollisionWorld(collisions)
   const idle = new Builder(false)
-  const plan = dressBuildings(buildings, roadIndex, lookup, skips, () => [idle, idle])
+  const idleStains = new StainBuilder(false)
+  const idlePosters = new PosterBuilder(false)
+  const plan = dressBuildings(buildings, roadIndex, lookup, skips, () => [idle, idle, idleStains, idlePosters, idle])
 
   for (const [start, end] of plan.compoundWalls) addWall(collisions, start, end, COMPOUND.thickness + 0.1)
 
@@ -354,14 +493,18 @@ export function planHouseKit(
     buildSquare: (key) => {
       const kit = new Builder()
       const shades = new Builder()
-      dressBuildings(plan.byChunk.get(key) ?? [], roadIndex, lookup, skips, () => [kit, shades])
-      return { main: kit.toGeometry(), chajjas: shades.toGeometry() }
+      const stains = new StainBuilder()
+      const posters = new PosterBuilder()
+      const fine = new Builder()
+      dressBuildings(plan.byChunk.get(key) ?? [], roadIndex, lookup, skips, () => [kit, shades, stains, posters, fine])
+      return { main: kit.toGeometry(), chajjas: shades.toGeometry(), stains: stains.toGeometry(), posters: posters.toGeometry(), fine: fine.toGeometry() }
     },
     tanks: plan.tanks,
     shopUnits: plan.shopUnits,
     stiltParking: plan.stiltParking,
     creepers: plan.creepers,
     kolams: plan.kolams,
+    gates: plan.gates,
   }
 }
 
@@ -375,7 +518,7 @@ function dressBuildings(
   roadIndex: RoadIndex,
   lookup: CollisionWorld,
   skips: Skip[],
-  buildersFor: (key: number) => [kit: Builder, shades: Builder],
+  buildersFor: (key: number) => [kit: Builder, shades: Builder, stains: StainBuilder, posters: PosterBuilder, fine: Builder],
 ) {
   const byChunk = new Map<number, BuildingFeature[]>()
   const tanks: Prop[] = []
@@ -383,6 +526,7 @@ function dressBuildings(
   const stiltParking: StiltVehicle[] = []
   const creepers: Prop[] = []
   const kolams: Prop[] = []
+  const gates: Gate[] = []
   // Compound walls go into the collision world only after every house is built, so one
   // house's wall can't make its neighbour think its own walls are hidden.
   const compoundWalls: [GroundPoint, GroundPoint][] = []
@@ -416,7 +560,7 @@ function dressBuildings(
     const centreX = outline.reduce((sum, [x]) => sum + x, 0) / outline.length
     const centreZ = outline.reduce((sum, [, z]) => sum + z, 0) / outline.length
     const key = chunkKey(centreX, centreZ)
-    const [kit, shades] = buildersFor(key)
+    const [kit, shades, stains, posters, fine] = buildersFor(key)
     const inSquare = byChunk.get(key)
     if (inSquare) inSquare.push(building)
     else byChunk.set(key, [building])
@@ -487,7 +631,7 @@ function dressBuildings(
     }
 
     if (isApartment) {
-      buildApartment(kit, shades, { walls, front, floors, paint, shade, hash, outline, stilts: hasStilts(building), stiltParking })
+      buildApartment(kit, shades, stains, { walls, front, floors, paint, shade, hash, outline, stilts: hasStilts(building), stiltParking })
     }
 
     if (hasBalconies && !isApartment) {
@@ -496,6 +640,7 @@ function dressBuildings(
         const level = floor * FLOOR_HEIGHT
         const span: [number, number] = [balconyFrom, balconyTo]
         box(kit, front, span, [0, BALCONY.depth], [level - BALCONY.slab, level], shade)
+        stains.onWall(front, span, [level - BALCONY.slab - 0.8, level - BALCONY.slab], [0.42, 0])
         box(kit, front, span, [BALCONY.depth - BALCONY.wall, BALCONY.depth], [level, level + BALCONY.parapet], paint)
         box(kit, front, [balconyFrom, balconyFrom + BALCONY.wall], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
         box(kit, front, [balconyTo - BALCONY.wall, balconyTo], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
@@ -528,6 +673,25 @@ function dressBuildings(
           if (underBalcony) continue
           const top = floor * FLOOR_HEIGHT + WINDOW_TOP + CHAJJA.gap
           box(shades, wall, [along - CHAJJA.width / 2, along + CHAJJA.width / 2], [0, CHAJJA.depth], [top, top + CHAJJA.thickness], shade)
+          stains.onWall(wall, [along - CHAJJA.width / 2, along + CHAJJA.width / 2], [top - 0.35, top], [0.3, 0])
+
+          // Now and then an AC unit under the sill, with water stains run down from it.
+          const roll = (hash >>> ((Math.round(along * 7) + floor * 5) % 24)) % 100
+          if (floor >= 1 && roll < AC_CHANCE_HIGH) {
+            // The commonest show from Medium up; the rest only on High.
+            const layer = roll < AC_CHANCE ? shades : fine
+            const low = floor * FLOOR_HEIGHT + AC_UNIT.low
+            const half = AC_UNIT.width / 2
+            box(layer, wall, [along - half, along + half], [0, AC_UNIT.depth], [low, low + AC_UNIT.height], AC_COLOR)
+            const g = AC_UNIT.grille / 2
+            const middle = low + AC_UNIT.height / 2
+            box(layer, wall, [along - g, along + g], [AC_UNIT.depth, AC_UNIT.depth + 0.01], [middle - g, middle + g], GRILLE_COLOR)
+            // Streaks only under units every detailed setting shows, so none hangs under nothing.
+            if (layer === shades) {
+              stains.onWall(wall, [along - 0.06, along + 0.08], [low - 1.5, low], [0.45, 0])
+              stains.onWall(wall, [along - half * 0.7, along + half * 0.6], [low - 0.8, low], [0.2, 0])
+            }
+          }
         }
       }
     }
@@ -629,6 +793,30 @@ function dressBuildings(
         box(kit, front, [at - 0.05, at + COMPOUND.pillar + 0.05], [pillarOut[0] - 0.05, pillarOut[1] + 0.05], [COMPOUND.pillarHeight, COMPOUND.pillarHeight + 0.08], PILLAR_CAP_COLOR, true)
       }
 
+      gates.push({
+        x: front.start[0] + front.alongX * ((gateFrom + gateTo) / 2) + front.outX * yard,
+        z: front.start[1] + front.alongZ * ((gateFrom + gateTo) / 2) + front.outZ * yard,
+        width: gateTo - gateFrom,
+      })
+
+      // A poster on the street side of the wall, beside the gate, now and then.
+      const wallFace = yard + COMPOUND.thickness + 0.006
+      if ((hash >>> 3) % 100 < POSTER_CHANCE && gateFrom - wallStart > 1.2) {
+        posters.onWall(front, gateFrom - COMPOUND.pillar - 0.55, wallFace, POSTER.low, (hash >>> 11) % 8)
+      }
+      // Potted plants on the wall top either side of the gate: Medium shows most, High all.
+      const potRoll = (hash >>> 5) % 100
+      if (potRoll < POT_CHANCE) {
+        const layer = potRoll < POT_CHANCE * 0.6 ? shades : fine
+        const top = COMPOUND.height
+        const middle = yard + COMPOUND.thickness / 2
+        for (const at of [gateFrom - COMPOUND.pillar - 0.4, gateTo + COMPOUND.pillar + 0.15]) {
+          if (at < wallStart + 0.2 || at + 0.25 > wallEnd - 0.2) continue
+          box(layer, front, [at, at + 0.25], [middle - 0.12, middle + 0.12], [top, top + 0.2], POT_COLOR, true)
+          box(layer, front, [at - 0.05, at + 0.3], [middle - 0.16, middle + 0.16], [top + 0.2, top + 0.48], PLANT_COLOR, true)
+        }
+      }
+
       // The gate itself: dark metal, a little shorter than the wall, with a rail across the middle.
       const gateOut: [number, number] = [yard + 0.04, yard + 0.09]
       box(kit, front, [gateFrom, gateTo], gateOut, [0.08, COMPOUND.height - 0.05], GATE_COLOR, true)
@@ -677,7 +865,7 @@ function dressBuildings(
     }
   }
 
-  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, compoundWalls }
+  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, compoundWalls, gates }
 }
 
 /** A square post standing at a point, its sides square to `facing`. */
@@ -703,7 +891,7 @@ type ApartmentParts = {
  * sunshades over the doors on its other walls, and, on stilts, the open
  * parking floor with its pillars, the stair and lift core, and bikes and cars.
  */
-function buildApartment(kit: Builder, shades: Builder, parts: ApartmentParts) {
+function buildApartment(kit: Builder, shades: Builder, stains: StainBuilder, parts: ApartmentParts) {
   const { walls, front, floors, paint, shade, hash, outline, stilts, stiltParking } = parts
 
   // ---- Balconies, one per bay, on every floor of the front ----
@@ -715,6 +903,8 @@ function buildApartment(kit: Builder, shades: Builder, parts: ApartmentParts) {
       const to = along + APARTMENT.balconyHalfWidth
       const depth = APARTMENT.balconyDepth
       box(kit, front, [from, to], [0, depth], [level - BALCONY.slab, level], shade)
+      // Shade on the wall under the slab. On stilts, the first floor's has no wall under it.
+      if (!(stilts && floor === 1)) stains.onWall(front, [from, to], [level - BALCONY.slab - 0.8, level - BALCONY.slab], [0.42, 0])
       box(kit, front, [from, to], [depth - BALCONY.wall, depth], [level, level + BALCONY.parapet], paint)
       box(kit, front, [from, from + BALCONY.wall], [0, depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
       box(kit, front, [to - BALCONY.wall, to], [0, depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
@@ -741,6 +931,7 @@ function buildApartment(kit: Builder, shades: Builder, parts: ApartmentParts) {
       for (let floor = 1; floor < floors; floor++) {
         const top = floor * FLOOR_HEIGHT + APARTMENT.doorTop + CHAJJA.gap
         box(shades, wall, [along - APARTMENT.chajjaWidth / 2, along + APARTMENT.chajjaWidth / 2], [0, CHAJJA.depth], [top, top + CHAJJA.thickness], shade)
+        stains.onWall(wall, [along - APARTMENT.chajjaWidth / 2, along + APARTMENT.chajjaWidth / 2], [top - 0.4, top], [0.32, 0])
       }
     }
   }

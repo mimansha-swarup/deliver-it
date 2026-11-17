@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { box, colored, merge } from '../world/simpleShapes'
-import { getLight, type SignalLight, type SignalPost, type TrafficSignals } from './trafficSignals'
+import { getLight, ZEBRA_DEPTH, type SignalLight, type SignalPost, type TrafficSignals } from './trafficSignals'
 import type { TrafficWorld } from './trafficLogic'
 
 const POLE_COLOR = '#23262a'
@@ -101,6 +101,38 @@ function writeStopLineMatrices(mesh: THREE.InstancedMesh, posts: SignalPost[]) {
   mesh.computeBoundingSphere()
 }
 
+/** Zebra stripes: each this wide across the road, with a gap as wide between, kept this far off the road's edge. */
+const ZEBRA_STRIPE = 0.5
+const ZEBRA_EDGE = 0.3
+
+/** Where each stripe of every crossing goes, across the road from one side to the other. */
+function zebraStripes(posts: SignalPost[]): { x: number; z: number; rotation: number }[] {
+  const stripes: { x: number; z: number; rotation: number }[] = []
+  for (const { crossX, crossZ, crossWidth, rotation } of posts) {
+    // Across the road is the arm's direction turned a quarter.
+    const acrossX = Math.cos(rotation)
+    const acrossZ = -Math.sin(rotation)
+    const count = Math.max(1, Math.floor((crossWidth - ZEBRA_EDGE * 2 + ZEBRA_STRIPE) / (ZEBRA_STRIPE * 2)))
+    for (let i = 0; i < count; i++) {
+      const offset = (i - (count - 1) / 2) * ZEBRA_STRIPE * 2
+      stripes.push({ x: crossX + acrossX * offset, z: crossZ + acrossZ * offset, rotation })
+    }
+  }
+  return stripes
+}
+
+function writeZebraMatrices(mesh: THREE.InstancedMesh, stripes: { x: number; z: number; rotation: number }[]) {
+  stripes.forEach(({ x, z, rotation }, index) => {
+    place.position.set(x, STOP_LINE_HEIGHT, z)
+    place.rotation.set(0, rotation, 0)
+    place.scale.set(ZEBRA_STRIPE, 1, ZEBRA_DEPTH)
+    place.updateMatrix()
+    mesh.setMatrixAt(index, place.matrix)
+  })
+  mesh.instanceMatrix.needsUpdate = true
+  mesh.computeBoundingSphere()
+}
+
 const lampColor = new THREE.Color()
 
 /** Repaints a pole's lamps. Lights change every few seconds, so most frames skip this. */
@@ -141,6 +173,8 @@ export function TrafficLights({ world }: { world: TrafficWorld }) {
   const poles = useRef<THREE.InstancedMesh>(null)
   const lamps = useRef<THREE.InstancedMesh>(null)
   const stopLines = useRef<THREE.InstancedMesh>(null)
+  const zebras = useRef<THREE.InstancedMesh>(null)
+  const stripes = useMemo(() => zebraStripes(posts), [posts])
   const shown = useRef<(SignalLight | null)[]>(posts.map(() => null))
 
   useEffect(() => () => poleGeometry.dispose(), [poleGeometry])
@@ -149,7 +183,8 @@ export function TrafficLights({ world }: { world: TrafficWorld }) {
     if (poles.current) writePoleMatrices(poles.current, posts)
     if (lamps.current) writeLampMatrices(lamps.current, posts)
     if (stopLines.current) writeStopLineMatrices(stopLines.current, posts)
-  }, [posts])
+    if (zebras.current) writeZebraMatrices(zebras.current, stripes)
+  }, [posts, stripes])
 
   useFrame(() => {
     if (lamps.current) updateLamps(lamps.current, signals, world.signalClock, shown.current)
@@ -180,6 +215,18 @@ export function TrafficLights({ world }: { world: TrafficWorld }) {
         <meshStandardMaterial
           color="#e6e4dc"
           roughness={0.8}
+          polygonOffset
+          polygonOffsetFactor={-8}
+          polygonOffsetUnits={-8}
+        />
+      </instancedMesh>
+
+      {/* Zebra crossings, one stripe a copy, a touch greyer than the stop line as feet and tyres wear them. */}
+      <instancedMesh ref={zebras} args={[undefined, undefined, stripes.length]} frustumCulled={false} receiveShadow>
+        <boxGeometry args={[1, 0.01, 1]} />
+        <meshStandardMaterial
+          color="#dcd9cf"
+          roughness={0.85}
           polygonOffset
           polygonOffsetFactor={-8}
           polygonOffsetUnits={-8}

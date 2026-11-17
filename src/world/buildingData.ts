@@ -6,28 +6,34 @@ import { lonLatToLocal } from './worldUtils'
 export const FLOOR_HEIGHT = 3.2
 
 /**
- * House paint, as HSR's independent houses mostly are: off-white, cream and
- * beige, with now and then a pale pastel or a bolder colour. Repeats make the
- * common ones more likely. Shared by the walls and the house kit's details, so a
- * house's balconies and compound wall match its walls.
+ * House paint, as HSR's independent houses are (ART_DIRECTION.md): colourful
+ * plaster, not only beige. Pinks, mints, yellows and terracotta, with off-white
+ * and cream still common. Repeats make a colour more likely. Shared by the walls
+ * and the house kit's details, so a house's balconies and compound wall match its
+ * walls. The weathering (weathering.ts) fades and grimes them, so they can be
+ * a little brighter here than they look in the game.
  */
 export const HOUSE_COLORS = [
-  '#f1ead8', // off-white
-  '#f1ead8',
-  '#efe3bf', // cream
-  '#efe3bf',
-  '#e9dcc3', // beige
-  '#e9dcc3',
-  '#f3e6c4', // pale yellow
-  '#e6c9a8', // sand
-  '#dfe3dc', // pale grey-green
-  '#d9c2b8', // dusty pink
-  '#cfd9e2', // pale blue
-  '#ecd27e', // turmeric
+  '#efe7d6', // off-white
+  '#efe7d6',
+  '#ecdcb6', // cream
+  '#e3d3b8', // beige
+  '#eab8b0', // pink
+  '#dc9e94', // dusty rose
+  '#bfe0c9', // mint
+  '#9fcfc6', // sea green
+  '#cfe0b4', // pistachio
+  '#f2d27c', // yellow
+  '#e8b950', // turmeric
+  '#c97b55', // terracotta
+  '#d98f68', // brick orange
+  '#f1c6a0', // peach
+  '#b9d3e4', // sky blue
+  '#cdbfe0', // lilac
 ]
 
-/** Blocks of flats: whites, greys and the odd pale blue or sand, a little cooler than houses. */
-export const APARTMENT_COLORS = ['#ece6da', '#e8e0d0', '#d8d4cc', '#c9c5bb', '#b9c7cc', '#e0d3c0', '#f0ece4']
+/** Blocks of flats: whites, greys and sand, with some pale pink, mint, blue and yellow. A little cooler than houses. */
+export const APARTMENT_COLORS = ['#ece6da', '#e8e0d0', '#d8d4cc', '#f0d9b8', '#c9dfd0', '#e9c6c0', '#bcd0dc', '#efd7a0']
 
 /** The paint colour of a house, the same every time for the same house. */
 export function getHouseColor(building: { id: string }): string {
@@ -79,6 +85,7 @@ const FLOOR_RANGES: Record<BuildingKind, { lowest: number; extra: number }> = {
   shop: { lowest: 2, extra: 3 },
   office: { lowest: 4, extra: 4 },
   civic: { lowest: 2, extra: 2 },
+  temple: { lowest: 1, extra: 1 },
 }
 /** A house smaller than this is a little single-storey or two-storey place, in square metres. */
 const TINY_HOUSE = 60

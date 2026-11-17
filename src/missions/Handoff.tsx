@@ -137,6 +137,16 @@ function nearestTo(people: Pedestrian[], x: number, z: number): Pedestrian {
   return nearest
 }
 
+/** A customer starts waving when the rider is this close, in metres, raising their arm at this rate. */
+const WAVE_RANGE = 35
+const WAVE_RESPONSE = 5
+
+/** Raises or lowers a waving arm smoothly. */
+function easeWave(person: Pedestrian, target: number, dt: number) {
+  const wave = person.wave ?? 0
+  person.wave = wave + (target - wave) * (1 - Math.exp(-WAVE_RESPONSE * dt))
+}
+
 function placeCustomer(person: Pedestrian, { x, z, rotation, tint }: WaitingCustomer) {
   person.x = x
   person.z = z
@@ -407,9 +417,15 @@ export function Handoff({
     const onShow = waitingForRider || game.phase === 'handingOver' || game.phase === 'delivered'
     setLift(customer, onShow ? 0 : HIDDEN_LIFT)
 
+    // Waving: as the rider comes near, and while the parcel reaches them, then not on the way home.
+    const riderDistance = Math.hypot(state.x - customer.x, state.z - customer.z)
+    const waveTarget =
+      (waitingForRider && riderDistance < WAVE_RANGE) || game.phase === 'handingOver' ? 1 : 0
+    easeWave(customer, waveTarget, dt)
+
     if (waitingForRider) {
       fidget(customer, idleTime.current)
-      const nearby = Math.hypot(state.x - customer.x, state.z - customer.z) < WATCH_RANGE
+      const nearby = riderDistance < WATCH_RANGE
       const heading = Math.atan2(state.x - customer.x, state.z - customer.z)
       if (nearby && waiting) turnTowards(customer, heading, dt)
     }

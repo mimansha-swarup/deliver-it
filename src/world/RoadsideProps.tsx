@@ -16,6 +16,7 @@ import {
   createTrunkGeometry,
 } from './foliage'
 import { windUniforms } from './wind'
+import { groundLift } from './groundLift'
 
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'
@@ -421,10 +422,11 @@ export function PropInstances({
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
 
     let count = 0
-    for (const { x, y = 0, z, rotation, variation, tint, size = 1 } of props) {
+    for (const { x, y, z, rotation, variation, tint, size = 1 } of props) {
       if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
 
-      transform.position.set(x, y, z)
+      // Things on the ground stand on it, raised footpaths included. Roof tanks give their own height.
+      transform.position.set(x, y ?? groundLift.at(x, z), z)
       transform.rotation.y = rotation
       transform.scale.setScalar((1 - sizeRange / 2 + variation * sizeRange) * size)
       transform.updateMatrix()

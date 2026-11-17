@@ -2,7 +2,8 @@ import { getFootprintArea, hashString } from './buildingData'
 import type { BuildingFeature, PointFeature, PolygonFeature } from './mapData'
 import { isInsideOutline, lonLatToWorld, type GroundPoint, type LonLat } from './worldUtils'
 
-export type BuildingKind = 'house' | 'apartment' | 'shop' | 'office' | 'civic'
+/** `temple` covers every place of worship, drawn by Temples.tsx rather than as a plain building (see worship.ts). */
+export type BuildingKind = 'house' | 'apartment' | 'shop' | 'office' | 'civic' | 'temple'
 
 type Properties = PolygonFeature['properties']
 
@@ -51,6 +52,7 @@ const SHOP_AMENITIES = new Set([
 
 /** When two places claim one building, the stronger clue wins: a school can have a canteen. */
 const CLUE_STRENGTH: Record<BuildingKind, number> = {
+  temple: 4,
   civic: 3,
   office: 2,
   shop: 1,

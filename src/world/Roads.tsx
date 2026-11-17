@@ -11,6 +11,7 @@ import { createFlatGeometries, positionsFor, splitLongPiece, type ChunkedPositio
 import type { LineFeature } from './mapData'
 import { getRoadWidth } from './roadData'
 import { clipToPlayArea, pushStrip, pushTriangle } from './roadGeometry'
+import { usesNewGround } from './streetEdgeConfig'
 import { PAVEMENT_HEIGHT, PAVEMENT_WIDTH, ROAD_HEIGHT } from './surface'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
 
@@ -56,6 +57,8 @@ function createRoadGeometry(
   }
 
   for (const road of roads) {
+    // Roads with the new ground are drawn by StreetEdges.
+    if (usesNewGround(road)) continue
     const width = getRoadWidth(road) + extraWidth
     const points = road.geometry.coordinates.map((position): GroundPoint => {
       const [x, , z] = lonLatToWorld(position)

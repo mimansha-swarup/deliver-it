@@ -12,6 +12,7 @@ export const WORLD_PARTS = {
   grass: 'Grass',
   roads: 'Roads',
   kerbs: 'Kerbs',
+  streetEdges: 'Street edges',
   restrictedWall: 'The military wall',
   sites: 'Building sites',
   markings: 'Road markings',
@@ -27,6 +28,8 @@ export const WORLD_PARTS = {
   shops: 'Shops',
   landmarks: 'Shop signs',
   fuel: 'Petrol bunks',
+  temples: 'Temples, mosques and churches',
+  fences: 'Walls, fences and railings',
   boundary: 'The edge of the map',
   player: 'Your scooter and the traffic',
 } as const

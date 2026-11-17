@@ -229,6 +229,33 @@ export function nearestRoadEdge(index: RoadIndex, x: number, z: number, reach: n
   return nearest
 }
 
+/** Calls `visit` for each road piece that might be within `reach` of a point. */
+export function forEachRoadNear(index: RoadIndex, x: number, z: number, reach: number, visit: (piece: RoadPiece) => void) {
+  someRoadNear(index, x, z, reach, (piece) => {
+    visit(piece)
+    return false
+  })
+}
+
+/**
+ * The road piece whose edge is nearest a point, and how far outside that edge
+ * the point is (negative on the road), or null if none is within `reach`.
+ */
+export function nearestRoadPiece(
+  index: RoadIndex,
+  x: number,
+  z: number,
+  reach: number,
+): { piece: RoadPiece; edge: number } | null {
+  let nearest: { piece: RoadPiece; edge: number } | null = null
+  someRoadNear(index, x, z, reach, (piece) => {
+    const edge = distanceToPiece(x, z, piece) - piece.width / 2
+    if (edge < reach && (!nearest || edge < nearest.edge)) nearest = { piece, edge }
+    return false
+  })
+  return nearest
+}
+
 /**
  * Points sorted into grid squares, for checking quickly whether a spot is too
  * close to something already placed there.

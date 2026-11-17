@@ -7,6 +7,7 @@ import { isNearBuilding, type CollisionWorld } from './collision'
 import type { LineFeature } from './mapData'
 import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
 import { indexRoadPieces, isClearOfRoads, toRoadPieces, type RoadIndex, type RoadPiece } from './props'
+import { usesNewGround } from './streetEdgeConfig'
 import { EDGING, KERB, PAVEMENT_WIDTH } from './surface'
 
 /** Painted kerbs alternate black and yellow in blocks this long, in metres. */
@@ -35,6 +36,7 @@ function findRuns(
   roads: RoadIndex,
   roadGap: number,
   walls: CollisionWorld | null,
+  isInCorner: (x: number, z: number) => boolean,
 ): [number, number][] {
   const [startX, startZ] = piece.start
   const length = Math.hypot(piece.end[0] - startX, piece.end[1] - startZ)
@@ -43,7 +45,7 @@ function findRuns(
   const isFree = (along: number) => {
     const x = startX + alongX * along + outX * middle
     const z = startZ + alongZ * along + outZ * middle
-    return isClearOfRoads(roads, x, z, roadGap) && !(walls && isNearBuilding(walls, x, z, 0.15))
+    return isClearOfRoads(roads, x, z, roadGap) && !(walls && isNearBuilding(walls, x, z, 0.15)) && !isInCorner(x, z)
   }
 
   const runs: [number, number][] = []
@@ -62,14 +64,15 @@ function findRuns(
   return runs
 }
 
-function createKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THREE.BufferGeometry[] {
+function createKerbGeometries(roads: LineFeature[], walls: CollisionWorld, isInCorner: (x: number, z: number) => boolean): THREE.BufferGeometry[] {
   const pieces = toRoadPieces(roads)
   const index = indexRoadPieces(pieces)
   const squares = new Map<number, Square>()
 
   for (const piece of pieces) {
     const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1])
-    if (length < 0.5) continue
+    // Roads with the new ground have their own kerbs (StreetEdges).
+    if (length < 0.5 || usesNewGround(roads[piece.road])) continue
     const alongX = (piece.end[0] - piece.start[0]) / length
     const alongZ = (piece.end[1] - piece.start[1]) / length
     const painted = PAINTED_ROADS.has(roads[piece.road].properties.highway ?? '')
@@ -83,7 +86,7 @@ function createKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THRE
       // ---- The kerb at the road's edge ----
       // Checked at its middle, which is just off this road, so only other roads cut it.
       const kerbMiddle = half + KERB.width / 2
-      for (const [from, to] of findRuns(piece, outX, outZ, kerbMiddle, index, KERB.width / 2 - 0.02, null)) {
+      for (const [from, to] of findRuns(piece, outX, outZ, kerbMiddle, index, KERB.width / 2 - 0.02, null, isInCorner)) {
         const square = squareFor(squares, piece.start[0] + alongX * from, piece.start[1] + alongZ * from)
         if (!painted) {
           const shade = CONCRETE[Math.floor(Math.abs(piece.start[0] * 7 + piece.start[1] * 3)) % CONCRETE.length]
@@ -100,7 +103,7 @@ function createKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THRE
       // ---- The edging between the pavement and the soil ----
       // Not where another road's pavement carries on, nor through a building or a wall.
       const edge = half + PAVEMENT_WIDTH
-      for (const [from, to] of findRuns(piece, outX, outZ, edge - EDGING.width / 2, index, PAVEMENT_WIDTH - EDGING.width, walls)) {
+      for (const [from, to] of findRuns(piece, outX, outZ, edge - EDGING.width / 2, index, PAVEMENT_WIDTH - EDGING.width, walls, isInCorner)) {
         const square = squareFor(squares, piece.start[0] + alongX * from, piece.start[1] + alongZ * from)
         pushBlock(square, piece.start, alongX, alongZ, outX, outZ, [from, to], [edge - EDGING.width, edge], EDGING.height, EDGING_COLOR)
       }
@@ -117,10 +120,10 @@ function createKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THRE
  */
 const built = new WeakMap<LineFeature[], THREE.BufferGeometry[]>()
 
-function getKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THREE.BufferGeometry[] {
+function getKerbGeometries(roads: LineFeature[], walls: CollisionWorld, isInCorner: (x: number, z: number) => boolean): THREE.BufferGeometry[] {
   let geometries = built.get(roads)
   if (!geometries) {
-    geometries = createKerbGeometries(roads, walls)
+    geometries = createKerbGeometries(roads, walls, isInCorner)
     built.set(roads, geometries)
   }
   return geometries
@@ -130,8 +133,17 @@ function getKerbGeometries(roads: LineFeature[], walls: CollisionWorld): THREE.B
  * Kerbs along every road, raised between the tarmac and the pavement, painted
  * black and yellow on main roads, and a low edge where the pavement meets the soil.
  */
-export function Kerbs({ roads, collisions }: { roads: LineFeature[]; collisions: CollisionWorld }) {
-  const geometries = useMemo(() => getKerbGeometries(roads, collisions), [roads, collisions])
+export function Kerbs({
+  roads,
+  collisions,
+  isInCorner,
+}: {
+  roads: LineFeature[]
+  collisions: CollisionWorld
+  /** Rounded corners where a road with the new ground meets this one: the kerb stops there. */
+  isInCorner: (x: number, z: number) => boolean
+}) {
+  const geometries = useMemo(() => getKerbGeometries(roads, collisions, isInCorner), [roads, collisions, isInCorner])
   const photo = useTexture(CONCRETE_PHOTO, preparePlasterPhoto)
   // Concrete grain on the grey kerbs, and wear showing through the paint on the striped ones.
   const material = useMemo(() => createPlasterMaterial(photo, { tile: 1.5, strength: 1.8 }, { roughness: 0.92 }), [photo])

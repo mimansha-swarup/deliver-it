@@ -421,8 +421,17 @@ export const BOARD_FONT_CHECK = `700 64px 'Baloo Tamma 2'`
  * the icon on the left, the name in Kannada over the name in English, and a band
  * along the bottom listing what's sold.
  */
-export function drawBoard(context: CanvasRenderingContext2D, type: ShopType, x: number, y: number, width: number, height: number) {
-  const { kannada, english, colors, icon, items } = BOARDS[type]
+export function drawBoard(
+  context: CanvasRenderingContext2D,
+  type: ShopType,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  name: { kannada: string; english: string } = BOARDS[type],
+) {
+  const { colors, icon, items } = BOARDS[type]
+  const { kannada, english } = name
   const [background, lettering, band] = colors
 
   context.save()
@@ -524,3 +533,22 @@ export function typeByChance(roll: number): ShopType {
   }
   return 'general'
 }
+
+/**
+ * Second names for the commonest kinds of shop, so a street's kiranas aren't all
+ * one shop. Made up, in the usual local style, like the rest. Only 11, as the
+ * board picture can't grow past 4,096 pixels tall, the most many GPUs take.
+ */
+export const EXTRA_NAMES: { type: ShopType; kannada: string; english: string }[] = [
+  { type: 'kirana', kannada: 'ಶ್ರೀ ಲಕ್ಷ್ಮಿ ಸ್ಟೋರ್ಸ್', english: 'Sri Lakshmi Stores' },
+  { type: 'general', kannada: 'ಅನ್ನಪೂರ್ಣ ಜನರಲ್ ಸ್ಟೋರ್', english: 'Annapoorna General Store' },
+  { type: 'darshini', kannada: 'ಶ್ರೀ ರಾಘವೇಂದ್ರ ಉಪಹಾರ', english: 'Sri Raghavendra Upahara' },
+  { type: 'chai', kannada: 'ಕಾವೇರಿ ಟೀ ಪಾಯಿಂಟ್', english: 'Kaveri Tea Point' },
+  { type: 'bakery', kannada: 'ಶ್ರೀ ಗಣೇಶ್ ಬೇಕರಿ', english: 'Sri Ganesh Bakery' },
+  { type: 'pharmacy', kannada: 'ಆರೋಗ್ಯ ಮೆಡಿಕಲ್ಸ್', english: 'Arogya Medicals' },
+  { type: 'clothing', kannada: 'ಲಕ್ಷ್ಮಿ ಟೆಕ್ಸ್‌ಟೈಲ್ಸ್', english: 'Lakshmi Textiles' },
+  { type: 'salon', kannada: 'ರಾಯಲ್ ಜೆಂಟ್ಸ್ ಪಾರ್ಲರ್', english: 'Royal Gents Parlour' },
+  { type: 'mobiles', kannada: 'ಶ್ರೀ ಬಾಲಾಜಿ ಮೊಬೈಲ್ಸ್', english: 'Sri Balaji Mobiles' },
+  { type: 'tailor', kannada: 'ಪರ್ಫೆಕ್ಟ್ ಟೈಲರ್ಸ್', english: 'Perfect Tailors' },
+  { type: 'hardware', kannada: 'ಮಂಜುನಾಥ ಹಾರ್ಡ್‌ವೇರ್ಸ್', english: 'Manjunatha Hardwares' },
+]

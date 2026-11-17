@@ -1,0 +1,21 @@
+Map data used in Deliver It
+===========================
+
+hsr-compact.geojson, hsr-barriers.geojson
+  Map data © OpenStreetMap contributors, available under the Open Database License (ODbL).
+  https://www.openstreetmap.org/copyright
+
+hsr-extra-buildings.geojson
+  Buildings that OpenStreetMap doesn't have yet, from Overture Maps Foundation (buildings theme,
+  release 2026-10-21.0), traced from satellite images by:
+  - Google Open Buildings, licensed under CC BY 4.0. https://sites.research.google/open-buildings/
+  - Microsoft Global ML Building Footprints, licensed under ODbL.
+    https://github.com/microsoft/GlobalMLBuildingFootprints
+  Overture Maps: https://docs.overturemaps.org/attribution/
+  Made with scripts/prepare_extra_buildings.py.
+
+hsr-extra-worship.geojson
+  Temples, mosques and churches OpenStreetMap doesn't have or hasn't named, from Overture Maps
+  Foundation (places theme, release 2026-10-21.0), licensed under CDLA Permissive 2.0, with
+  sources including Meta and Microsoft. https://docs.overturemaps.org/attribution/
+  Made with scripts/prepare_extra_places.py.

@@ -10,6 +10,7 @@ import {
 } from '../traffic/modelFiles'
 import { livePlayer } from '../game/livePlayer'
 import type { DarkStore } from './darkStore'
+import { groundLift } from './groundLift'
 
 const FRONT_HEIGHT = 3.4
 const FRONT_DEPTH = 0.3
@@ -151,7 +152,7 @@ function ParkedBike({
   )
 
   return (
-    <group position={[x, 0, z]} rotation={[0, rotation, 0]}>
+    <group position={[x, groundLift.at(x, z), z]} rotation={[0, rotation, 0]}>
       <mesh geometry={parts.body} castShadow>
         <meshStandardMaterial vertexColors roughness={0.35} metalness={0.3} />
       </mesh>
@@ -228,6 +229,9 @@ function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textu
   const openingWidth = width - 1.2
   const frontZ = WALL_GAP + FRONT_DEPTH / 2
   const faceZ = WALL_GAP + FRONT_DEPTH + 0.01
+  // The riders' bay is painted on the footpath, which may be raised.
+  const yardOut = faceZ + YARD_DEPTH
+  const yardLift = groundLift.at(store.x + Math.sin(store.rotation) * yardOut, store.z + Math.cos(store.rotation) * yardOut)
 
   return (
     <>
@@ -261,7 +265,7 @@ function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textu
         </mesh>
 
         {/* The riders' bay, painted on the ground. */}
-        <mesh position={[0, 0.09, faceZ + YARD_DEPTH]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, 0.09 + yardLift, faceZ + YARD_DEPTH]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[width, STRIPE_WIDTH]} />
           <meshBasicMaterial
             map={textures.yard}

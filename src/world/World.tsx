@@ -12,7 +12,7 @@ import { Buildings } from './Buildings'
 import { Cables } from './Cables'
 import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
-import { addPost, createCollisionWorld } from './collision'
+import { addPost, createCollisionWorld, isNearBuilding } from './collision'
 import { DarkStores } from './DarkStoreBuilding'
 import { addDarkStorePosts, findDarkStores } from './darkStore'
 import { GrassField } from './GrassField'
@@ -24,7 +24,17 @@ import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
-import { generateRoadsideProps } from './props'
+import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, toRoadPieces } from './props'
+import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWalls } from './fencing'
+import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
+// TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
+import { teleportSpots } from '../dev/teleportSpots'
+import { Temples } from './Temples'
+import { Fences } from './Fences'
+import { buildStreetEdges } from './streetEdgeGeometry'
+import { StreetEdges } from './StreetEdges'
+import { groundLift, settleParkedScooters } from './groundLift'
+import { usesNewGround } from './streetEdgeConfig'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { HouseKitMesh } from './HouseKitMesh'
@@ -88,6 +98,23 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const sites = findConstructionSites(data, collisions)
   // Petrol bunks take their forecourts before trees and lamps do, and their pillars and pumps are solid.
   const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions)
+  const roadPieces = toRoadPieces(data.roads)
+  const roadIndex = indexRoadPieces(roadPieces)
+  // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
+  const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
+  const templeWalls = planTempleWalls(templeCompounds(data.worship), roadIndex, collisions)
+  // TEMPORARY: a spot on the street in front of each Jagannath temple, facing it.
+  teleportSpots.length = 0
+  for (const site of worship.filter(({ faith }) => faith === 'kalinga')) {
+    const inside = innerPoint(site.outline)
+    const out = distanceToEdge(site.outline, inside, site.front) + 9
+    const [frontX, frontZ] = site.front
+    teleportSpots.push({ name: site.name ?? 'Jagannath temple', x: inside[0] + frontX * out, z: inside[1] + frontZ * out, heading: Math.atan2(-frontX, -frontZ) })
+  }
+  // Walls and fences go up before trees, lamps and benches, which then keep clear of them:
+  // those mapped in OSM first, where nothing is built yet, then round the parks.
+  const mappedBarriers = planMappedBarriers(data.barriers, roadIndex, collisions)
+  const parkFences = planParkFences(data, roadIndex, collisions)
   const shopFronts = fillShopUnits(houses.shopUnits, mappedShops)
   // Menu boards on the pavement are solid too.
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
@@ -95,16 +122,36 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const benches = plantParks(data, collisions, props)
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
+  // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
+  const edges = buildStreetEdges({
+    roads: data.roads,
+    pieces: roadPieces,
+    index: roadIndex,
+    gates: houses.gates,
+    trees: props.trees,
+    keepLow: (x, z) => isOnForecourt(fuel, x, z),
+  })
+  groundLift.at = edges.liftAt
+  // Before traffic takes them over: no parked scooter with one wheel on the footpath and one off it.
+  props.parkedScooters = settleParkedScooters(
+    props.parkedScooters,
+    edges.liftAt,
+    (x, z) => !isNearBuilding(collisions, x, z, 0.45) && isClearOfRoads(roadIndex, x, z, 0.35),
+  )
   const physics = createCrashPhysics(rapier, collisions)
   const features = placeRoadFeatures(graph)
   const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink)
   // After the lanes, as a pole by the kerb would otherwise close the pavement path beside it.
   for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
+  // Railings on the way into the junctions, after the lanes for the same reason.
+  const railings = planJunctionRailings(traffic.signals.posts, roadIndex, houses.gates, collisions, (x, z) => isOnForecourt(fuel, x, z))
+  const fences = [...templeWalls, ...mappedBarriers, ...parkFences, ...railings]
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
-  const surface = createSurface(data.roads, features)
+  const surface = createSurface(data.roads, features, edges.heightAt)
+  const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -127,7 +174,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
@@ -140,11 +187,12 @@ export function World() {
     <>
       <Part name="sky"><Sky /></Part>
       <Part name="lighting"><Lighting /></Part>
-      <Part name="ground"><Ground /></Part>
+      <Part name="ground"><Ground newSoilArea={newSoilArea} /></Part>
       <Part name="parks"><Parks data={data} /></Part>
       <Part name="grass"><GrassField data={data} /></Part>
       <Part name="roads"><Roads roads={data.roads} /></Part>
-      <Part name="kerbs"><Kerbs roads={data.roads} collisions={collisions} /></Part>
+      <Part name="kerbs"><Kerbs roads={data.roads} collisions={collisions} isInCorner={edges.isInCorner} /></Part>
+      <Part name="streetEdges"><StreetEdges edges={edges} /></Part>
       <Part name="restrictedWall"><RestrictedWall zones={data.restricted} /></Part>
       <Part name="sites"><ConstructionSites sites={sites} /></Part>
       <Part name="markings"><RoadMarkings roads={data.roads} /></Part>
@@ -160,8 +208,19 @@ export function World() {
       <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
       <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
       <Part name="fuel"><FuelStations stations={fuel} /></Part>
+      <Part name="temples"><Temples sites={worship} /></Part>
+      <Part name="fences"><Fences runs={fences} /></Part>
       <Part name="boundary"><Boundary /></Part>
       <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} /></Part>
     </>
   )
+}
+
+/** The box round every road with the new ground, as min x, min z, max x, max z, where the new soil is tried. */
+function findNewGroundArea(pieces: { start: [number, number]; end: [number, number] }[]): [number, number, number, number] {
+  if (pieces.length === 0) return [0, 0, 0, 0]
+  const xs = pieces.flatMap((piece) => [piece.start[0], piece.end[0]])
+  const zs = pieces.flatMap((piece) => [piece.start[1], piece.end[1]])
+  const margin = 40
+  return [Math.min(...xs) - margin, Math.min(...zs) - margin, Math.max(...xs) + margin, Math.max(...zs) + margin]
 }

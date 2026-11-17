@@ -6,15 +6,22 @@ import { QUALITY_PRESETS } from '../game/qualitySettings'
 
 /** The title screen's aerial view sees the whole map. */
 const TITLE_VIEW = 1300
-/** Fog starts at this share of the draw distance. */
-const FOG_START = 0.4
-/** Heavy rain pulls the start of the fog in by this share. */
-const RAIN_FOG = 0.6
+/**
+ * Where the haze starts, in metres from the camera: near when it's thickest
+ * (sun low), further out when it's thin (noon, night). See `haze.ts` for its curve.
+ */
+const HAZE_START_THICK = 15
+const HAZE_START_THIN = 90
+/**
+ * Heavy rain moves the haze's start this share of the draw distance behind the
+ * camera. The haze curve then begins part-way, so even nearby air is thick.
+ */
+const RAIN_FOG = 0.5
 /** How quickly the view closes in or opens up. Higher is faster. */
 const CHANGE_RESPONSE = 2
 
 /**
- * Keeps the fog and the draw distance in step. The fog is fully thick exactly
+ * Keeps the haze and the draw distance in step. The fog is fully thick exactly
  * where drawing stops, so map squares appear and vanish behind it, unseen.
  */
 export function ViewDistance() {
@@ -26,7 +33,9 @@ export function ViewDistance() {
     liveView.drawDistance += (target - liveView.drawDistance) * (1 - Math.exp(-CHANGE_RESPONSE * delta))
 
     if (scene.fog instanceof THREE.Fog) {
-      scene.fog.near = liveView.drawDistance * FOG_START * (1 - liveSky.rain * RAIN_FOG)
+      const start = HAZE_START_THIN + (HAZE_START_THICK - HAZE_START_THIN) * liveSky.look.haze
+      const dry = Math.min(start, liveView.drawDistance * 0.5)
+      scene.fog.near = dry * (1 - liveSky.rain) - liveSky.rain * RAIN_FOG * liveView.drawDistance
       scene.fog.far = liveView.drawDistance
     }
   })

@@ -3,6 +3,7 @@ import { useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
+import { patchSoil } from './groundShaders'
 import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from './worldUtils'
 
 /** The ground runs this far past the play area on every side, out to the horizon, in metres. */
@@ -28,19 +29,24 @@ function prepareGroundTexture(texture: THREE.Texture) {
   texture.anisotropy = 8
 }
 
-export function Ground() {
+/**
+ * The soil under everything. Inside `newSoilArea` (min x, min z, max x, max z),
+ * where the new ground is being tried, it's the art direction's red earth
+ * (groundShaders.ts). The photo is now used on every quality, for its grain.
+ */
+export function Ground({ newSoilArea }: { newSoilArea: [number, number, number, number] }) {
   const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const texture = useTexture('/textures/ground-color.jpg', prepareGroundTexture)
 
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: surfaces === 'plain' ? PLAIN_COLOR : SOIL_TINT,
-        map: surfaces === 'plain' ? null : texture,
-        roughness: 1,
-      }),
-    [surfaces, texture],
-  )
+  const material = useMemo(() => {
+    const soil = new THREE.MeshStandardMaterial({
+      color: surfaces === 'plain' ? PLAIN_COLOR : SOIL_TINT,
+      map: texture,
+      roughness: 1,
+    })
+    patchSoil(soil).uNewSoilArea.value.set(...newSoilArea)
+    return soil
+  }, [surfaces, texture, newSoilArea])
 
   return (
     <mesh position={GROUND_CENTRE} rotation={[-Math.PI / 2, 0, 0]} material={material} receiveShadow>

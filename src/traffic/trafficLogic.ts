@@ -374,6 +374,8 @@ export type Pedestrian = Mover & {
   stride: number
   /** How much they're walking, from 0 standing still to 1 walking. Unset is walking. */
   walking?: number
+  /** How much they're waving, from 0 to 1: a customer greeting the rider. Unset is not waving. */
+  wave?: number
   /** How dark their skin is, as a number the colour is multiplied by. */
   skin: number
   /** Not drawn. Used for a bike rider who is still on the bike. */

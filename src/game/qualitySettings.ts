@@ -16,6 +16,24 @@ type QualityPreset = {
   pixelRatio: [number, number]
   /** Sun shadow detail in pixels, or 0 for no shadows. */
   shadowSize: number
+  /** How far the sun's shadows reach from the rider, in metres. Smaller is sharper for the same detail. */
+  shadowRange: number
+  /** How soft shadow edges are, in shadow pixels. Each step costs a little more per pixel on screen. */
+  shadowSoftness: number
+  /**
+   * Ambient occlusion: darkening in corners and under things. Always worked out
+   * at half size: full size cost about 20 ms a frame on High. 'fast' takes fewer
+   * samples than 'balanced'.
+   */
+  ambientOcclusion: 'off' | 'fast' | 'balanced'
+  /** A soft glow around the brightest lights. */
+  bloom: boolean
+  /**
+   * Smoothing jagged edges, as an effect on the finished picture. FXAA is
+   * cheapest, SMAA sharper. Multisampling looked best but cost about 12 ms a
+   * frame on High, as ambient occlusion then works on four times the samples.
+   */
+  antialiasing: 'fxaa' | 'smaa'
   windows: boolean
   surfaces: SurfaceDetail
   kitDetail: KitDetail
@@ -32,6 +50,8 @@ type QualityPreset = {
   /** Tufts of grass around the rider. */
   grassTufts: number
   vehicles: number
+  /** Vehicles further than this are drawn as simple stand-ins (vehicleProxies.ts), in metres. */
+  vehicleDetailDistance: number
   pedestrians: number
   /** How many of the nearest vehicles get a real headlight at night, which lights what it hits. */
   carLights: number
@@ -41,7 +61,12 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
   low: {
     label: 'Low',
     pixelRatio: [0.75, 0.75],
-    shadowSize: 0,
+    shadowSize: 1024,
+    shadowRange: 50,
+    shadowSoftness: 1,
+    ambientOcclusion: 'off',
+    bloom: false,
+    antialiasing: 'fxaa',
     windows: false,
     surfaces: 'plain',
     kitDetail: 0,
@@ -53,6 +78,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     leafyTrees: false,
     grassTufts: 0,
     vehicles: 12,
+    vehicleDetailDistance: 35,
     pedestrians: 10,
     carLights: 0,
   },
@@ -60,6 +86,11 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     label: 'Medium',
     pixelRatio: [1, 1.25],
     shadowSize: 2048,
+    shadowRange: 90,
+    shadowSoftness: 2,
+    ambientOcclusion: 'fast',
+    bloom: true,
+    antialiasing: 'smaa',
     windows: true,
     surfaces: 'color',
     kitDetail: 1,
@@ -71,6 +102,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     leafyTrees: true,
     grassTufts: 1400,
     vehicles: 22,
+    vehicleDetailDistance: 50,
     pedestrians: 22,
     carLights: 2,
   },
@@ -80,6 +112,11 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     // more than shadows, for a difference that's hard to see while riding.
     pixelRatio: [1, 1.5],
     shadowSize: 4096,
+    shadowRange: 140,
+    shadowSoftness: 3,
+    ambientOcclusion: 'balanced',
+    bloom: true,
+    antialiasing: 'smaa',
     windows: true,
     surfaces: 'bumps',
     kitDetail: 2,
@@ -91,6 +128,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     leafyTrees: true,
     grassTufts: 3200,
     vehicles: 34,
+    vehicleDetailDistance: 70,
     pedestrians: 36,
     carLights: 4,
   },

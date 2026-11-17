@@ -12,6 +12,7 @@ import { ChunkedMesh } from './ChunkedMesh'
 import { chunkKey } from './chunks'
 import { createFacadeTextures, FACADE_LOOKS, type FacadeLook } from './facadeTextures'
 import type { BuildingFeature } from './mapData'
+import { addWeathering } from './weathering'
 import { isRingInPlayArea, lonLatToLocal, type LonLat } from './worldUtils'
 
 type KindStyle = {
@@ -51,6 +52,19 @@ const KIND_STYLES: Record<BuildingKind, KindStyle> = {
     upper: 'civic',
     colors: toColors(['#efe6cf', '#e9dcc0', '#e6e1d6']),
   },
+  // Not drawn here: Temples.tsx draws places of worship whole.
+  temple: {
+    ground: 'civic',
+    upper: 'civic',
+    colors: toColors(['#f2ead8']),
+  },
+}
+
+/** Where each look's windows are across a bay, for the streaks that run down from their sills (see facadeTextures.ts). */
+const WINDOW_SPANS: Partial<Record<FacadeLook, [number, number]>> = {
+  house: [0.27, 0.73],
+  apartment: [0.16, 0.84],
+  shopFloors: [0.1, 0.9],
 }
 
 const WALL_BUMP_STRENGTH = 0.7
@@ -72,11 +86,13 @@ function toRing(ring: LonLat[]): THREE.Vector2[] {
  * the horizontal position is measured along the wall so windows line up. Roofs
  * all use one plain spot on the texture, so they get no windows.
  */
-function applyFacadeMapping(geometry: THREE.BufferGeometry, color: THREE.Color, bayWidth: number) {
+function applyFacadeMapping(geometry: THREE.BufferGeometry, color: THREE.Color, bayWidth: number, weather: number) {
   const position = geometry.attributes.position
   const normal = geometry.attributes.normal
   const uvs = new Float32Array(position.count * 2)
   const colors = new Float32Array(position.count * 3)
+  // How weathered this building is, for the shader (weathering.ts): some are freshly painted, some not for years.
+  geometry.setAttribute('aWeather', new THREE.BufferAttribute(new Float32Array(position.count).fill(weather), 1))
   const roofColor = color.clone().multiplyScalar(ROOF_SHADE)
 
   for (let i = 0; i < position.count; i++) {
@@ -101,13 +117,14 @@ function createFloors(
   toFloor: number,
   look: FacadeLook,
   color: THREE.Color,
+  weather: number,
 ): BuildingPart {
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: (toFloor - fromFloor) * FLOOR_HEIGHT,
     bevelEnabled: false,
   })
   geometry.translate(0, 0, fromFloor * FLOOR_HEIGHT)
-  applyFacadeMapping(geometry, color, FACADE_LOOKS[look].bayWidth)
+  applyFacadeMapping(geometry, color, FACADE_LOOKS[look].bayWidth, weather)
   return { look, geometry }
 }
 
@@ -118,15 +135,17 @@ function createBuildingParts(building: BuildingFeature): BuildingPart[] {
   shape.holes = holes.map((hole) => new THREE.Path(toRing(hole)))
 
   const { ground, upper, colors } = KIND_STYLES[building.kind]
-  const color = colors[hashString(building.id) % colors.length]
+  const hash = hashString(building.id)
+  const color = colors[hash % colors.length]
+  const weather = ((hash >>> 8) % 1000) / 1000
   const floors = getFloors(building)
 
   // On stilts the ground floor is open: pillars and parking from the house kit, under the floors above.
-  if (hasStilts(building)) return [createFloors(shape, 1, floors, upper, color)]
-  if (ground === upper || floors <= 1) return [createFloors(shape, 0, floors, ground, color)]
+  if (hasStilts(building)) return [createFloors(shape, 1, floors, upper, color, weather)]
+  if (ground === upper || floors <= 1) return [createFloors(shape, 0, floors, ground, color, weather)]
   return [
-    createFloors(shape, 0, 1, ground, color),
-    createFloors(shape, 1, floors, upper, color),
+    createFloors(shape, 0, 1, ground, color, weather),
+    createFloors(shape, 1, floors, upper, color, weather),
   ]
 }
 
@@ -156,7 +175,7 @@ function createCityLayers(buildings: BuildingFeature[], plain: boolean): CityLay
 
   for (const building of buildings) {
     const ring = building.geometry.coordinates[0]
-    if (!isRingInPlayArea(ring)) continue
+    if (!isRingInPlayArea(ring) || building.kind === 'temple') continue
 
     const [east, north] = lonLatToLocal(ring[0])
     const key = chunkKey(east, -north)
@@ -236,7 +255,7 @@ export function Buildings({ buildings }: { buildings: BuildingFeature[] }) {
         const { facade, lights } = textures[look]
         const bumps = { plaster: plasterBumps, concrete: concreteBumps, brick: brickBumps }[base]
 
-        return new THREE.MeshStandardMaterial({
+        const material = new THREE.MeshStandardMaterial({
           map: windows ? facade : null,
           normalMap: surfaces === 'bumps' && bumpy ? bumps : null,
           normalScale: new THREE.Vector2(WALL_BUMP_STRENGTH, WALL_BUMP_STRENGTH),
@@ -246,6 +265,9 @@ export function Buildings({ buildings }: { buildings: BuildingFeature[] }) {
           vertexColors: true,
           roughness,
         })
+        // Streaks follow the windows, so only where they're drawn.
+        addWeathering(material, { streaks: windows ? WINDOW_SPANS[look] : null })
+        return material
       }),
     [layers, windows, surfaces, textures, plasterBumps, concreteBumps, brickBumps],
   )

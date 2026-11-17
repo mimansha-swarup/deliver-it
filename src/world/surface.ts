@@ -32,12 +32,23 @@ export const FLAT_SURFACE: Surface = { heightAt: () => 0, wetAt: () => 0 }
  * road, as the kerbs leave it. It uses the road grid, so a question looks at a
  * few dozen pieces of road rather than all 9,000. On the road, speed breakers
  * raise it and potholes lower it.
+ *
+ * Roads with the new ground (streetEdgeGeometry.ts) set their own heights through
+ * `street`: 'road' on their asphalt, including rounded corners, or a height on
+ * their kerbs and raised footpaths.
  */
-export function createSurface(roads: LineFeature[], features: RoadFeatures): Surface {
+export function createSurface(
+  roads: LineFeature[],
+  features: RoadFeatures,
+  street: (x: number, z: number) => number | 'road' | null = () => null,
+): Surface {
   const index: RoadIndex = indexRoadPieces(toRoadPieces(roads))
   return {
     wetAt: features.wetAt,
     heightAt(x, z) {
+      const set = street(x, z)
+      if (set === 'road') return ROAD_HEIGHT + features.heightAt(x, z)
+      if (set !== null) return set
       const out = nearestRoadEdge(index, x, z, PAVEMENT_WIDTH + 0.1)
       if (out <= 0) return ROAD_HEIGHT + features.heightAt(x, z)
       if (out < KERB.width) return KERB.height

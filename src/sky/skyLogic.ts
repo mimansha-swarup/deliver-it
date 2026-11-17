@@ -56,7 +56,12 @@ export type SkyLook = {
   /** How dark shadows are, from 0 to 1. Thick cloud washes them out. */
   shadowStrength: number
   ambientIntensity: number
+  /** The fill light from above: the sky, cool, so shadows read a little blue. */
   ambientColor: Rgb
+  /** The fill light from below: sun bounced off the red earth and roads, warm. */
+  groundColor: Rgb
+  /** How thick the golden haze is, from 0 to 1: thickest when the sun is low. */
+  haze: number
   zenith: Rgb
   horizon: Rgb
   cloudColor: Rgb
@@ -64,26 +69,30 @@ export type SkyLook = {
   night: number
 }
 
-const NOON_ZENITH: Rgb = [0.35, 0.6, 0.87]
-const NOON_HORIZON: Rgb = [0.81, 0.89, 0.95]
+const NOON_ZENITH: Rgb = [0.33, 0.57, 0.88]
+/** The haze at the horizon by day: a pale warm white, not blue-white. Far things fade into it. */
+const NOON_HORIZON: Rgb = [0.86, 0.87, 0.83]
 const DUSK_ZENITH: Rgb = [0.27, 0.32, 0.53]
-const DUSK_HORIZON: Rgb = [0.96, 0.62, 0.38]
+const DUSK_HORIZON: Rgb = [0.97, 0.66, 0.4]
 const NIGHT_ZENITH: Rgb = [0.03, 0.05, 0.12]
 const NIGHT_HORIZON: Rgb = [0.09, 0.12, 0.2]
 const OVERCAST: Rgb = [0.62, 0.66, 0.7]
-const SUNLIGHT: Rgb = [1, 0.95, 0.86]
-const LOW_SUNLIGHT: Rgb = [1, 0.62, 0.38]
+const SUNLIGHT: Rgb = [1, 0.9, 0.76]
+const LOW_SUNLIGHT: Rgb = [1, 0.6, 0.34]
 const MOONLIGHT: Rgb = [0.62, 0.72, 1]
-const DAY_AMBIENT: Rgb = [0.86, 0.93, 1]
+const DAY_AMBIENT: Rgb = [0.78, 0.86, 1]
 const NIGHT_AMBIENT: Rgb = [0.55, 0.65, 0.95]
+/** Sunlight bounced off red earth and warm plaster. */
+const DAY_GROUND: Rgb = [0.66, 0.5, 0.38]
+const NIGHT_GROUND: Rgb = [0.2, 0.18, 0.22]
 const DAY_CLOUD: Rgb = [0.97, 0.97, 0.97]
 const DUSK_CLOUD: Rgb = [0.98, 0.72, 0.6]
 const NIGHT_CLOUD: Rgb = [0.13, 0.15, 0.22]
 const STORM_CLOUD: Rgb = [0.48, 0.5, 0.54]
 
-const SUN_INTENSITY = 2.6
+const SUN_INTENSITY = 2.8
 const MOON_INTENSITY = 1.3
-const DAY_AMBIENT_INTENSITY = 1.1
+const DAY_AMBIENT_INTENSITY = 1
 const NIGHT_AMBIENT_INTENSITY = 1
 
 function mix(a: number, b: number, amount: number): number {
@@ -147,16 +156,32 @@ export function stepSky(state: SkyState, dt: number, random: () => number = Math
   state.wind += (target.wind - state.wind) * blend
 }
 
+/** How high the sun in the sky climbs: its height is scaled by this. It peaks at about 62°. */
+const SKY_SUN_CLIMB = 0.85
+/**
+ * How high the sunlight comes from, scaled the same way. Bengaluru's real noon
+ * sun is nearly overhead, but a lower light gives longer shadows and warmer
+ * light all day, as the art direction asks. At 0.55 it peaks at about 51°. The
+ * sky's colours still follow the real sun, so mornings stay blue, not dusky.
+ */
+const LIGHT_SUN_CLIMB = 0.55
+/** The haze at its thinnest, around noon, and at night, as shares of its thickest. */
+const NOON_HAZE = 0.45
+const NIGHT_HAZE = 0.25
+
 /** Works out the colours and lights for a moment of the day. */
 export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   // The sun rises at 6, is highest at 12 and sets at 18.
   const angle = ((hours - 6) / 12) * Math.PI
   const x = Math.cos(angle)
-  const y = Math.sin(angle) * 0.85
+  const y = Math.sin(angle) * SKY_SUN_CLIMB
   const z = 0.45
   const length = Math.hypot(x, y, z)
   const sunDirection: [number, number, number] = [x / length, y / length, z / length]
   const sunHeight = sunDirection[1]
+  const lowY = Math.sin(angle) * LIGHT_SUN_CLIMB
+  const lowLength = Math.hypot(x, lowY, z)
+  const lightSun: [number, number, number] = [x / lowLength, lowY / lowLength, z / lowLength]
 
   const daylight = smoothstep(-0.05, 0.4, sunHeight)
   const night = 1 - smoothstep(-0.22, 0.02, sunHeight)
@@ -179,19 +204,25 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   const sunUp = smoothstep(0, 0.18, sunHeight)
   const moonUp = smoothstep(0, 0.18, -sunHeight)
   const isDay = sunHeight >= 0
-  const lit = isDay ? sunDirection : ([-sunDirection[0], -sunDirection[1], sunDirection[2]] as const)
+  const lit = isDay ? lightSun : ([-sunDirection[0], -sunDirection[1], sunDirection[2]] as const)
   const lightY = Math.max(lit[1], SKY_RULES.minLightHeight)
   const lightLength = Math.hypot(lit[0], lightY, lit[2])
 
   return {
     sunDirection,
     lightDirection: [lit[0] / lightLength, lightY / lightLength, lit[2] / lightLength],
-    lightColor: isDay ? mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, sunHeight)) : MOONLIGHT,
+    lightColor: isDay ? mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])) : MOONLIGHT,
     lightIntensity: (isDay ? sunUp * SUN_INTENSITY : moonUp * MOON_INTENSITY) * (1 - cover * 0.72),
     shadowStrength: 1 - cover * 0.85,
     ambientIntensity:
       mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) * (1 - cover * 0.12),
     ambientColor: mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight),
+    groundColor: mixColor(NIGHT_GROUND, DAY_GROUND, daylight),
+    // Thickest with the sun low, thinner at noon and after dark. Cloud thickens it too.
+    haze: Math.min(
+      1,
+      mix(NIGHT_HAZE, mix(1, NOON_HAZE, smoothstep(0.15, 0.5, sunHeight)), daylight) + cover * 0.3,
+    ),
     zenith,
     horizon,
     cloudColor: mixColor(

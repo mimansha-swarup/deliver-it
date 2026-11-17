@@ -22,6 +22,8 @@ import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
 import { Splashes } from './Splashes'
 import { createScooterState } from './ScooterController'
+// TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
+import { DevTeleport } from '../dev/DevTeleport'
 
 type PlayerProps = {
   /** The home store first, then the rest across the map. */
@@ -47,6 +49,7 @@ export function Player({ stores, collisions, graph, traffic, surface, bunks }: P
     <>
       <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} surface={surface} />
       <Headlight scooter={scooterState} />
+      <DevTeleport scooter={scooterState} />
       <PlayerSounds scooter={scooterState} />
       <SkidMarks scooter={scooterState} />
       <Splashes scooter={scooterState} />

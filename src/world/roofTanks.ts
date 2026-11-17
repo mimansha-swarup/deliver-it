@@ -25,7 +25,7 @@ export function generateRoofTanks(buildings: BuildingFeature[]): Prop[] {
   for (const building of buildings) {
     const ring = building.geometry.coordinates[0]
     // Houses and shops get theirs from the house kit, on top of the staircase room.
-    if (!isRingInPlayArea(ring) || building.kind === 'office' || building.kind === 'house' || building.kind === 'shop' || building.kind === 'apartment') continue
+    if (!isRingInPlayArea(ring) || building.kind === 'office' || building.kind === 'temple' || building.kind === 'house' || building.kind === 'shop' || building.kind === 'apartment') continue
 
     const hash = hashString(building.id)
     if (hash % 100 >= TANK_CHANCE) continue

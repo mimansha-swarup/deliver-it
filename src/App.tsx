@@ -1,3 +1,7 @@
+// First, so these change three's shader code before any material is built: the golden haze,
+// and a cap on brightness that stops black frames (see brightnessCap.ts).
+import './world/haze'
+import './world/brightnessCap'
 import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGameStore } from './game/gameStore'
@@ -15,10 +19,12 @@ import { QualityPicker } from './ui/QualityPicker'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
+import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 
-const SKY_COLOR = '#cfe3f2'
+/** The sky and haze before the sky's own colours take over, a frame after start. */
+const SKY_COLOR = '#e3dbc4'
 
 function GameUi() {
   const started = useGameStore((state) => state.started)
@@ -65,11 +71,13 @@ function App() {
   return (
     <>
       <ErrorBoundary>
-        <Canvas shadows dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }}>
+        {/* No antialiasing here: everything is drawn through PostEffects, which antialiases its own picture. */}
+        <Canvas shadows dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
           <color attach="background" args={[SKY_COLOR]} />
           <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
           <ViewDistance />
           <AdaptiveResolution />
+          <PostEffects />
           {buildWorld && (
             <Suspense fallback={null}>
               <World />
@@ -83,6 +91,10 @@ function App() {
       <p className="attribution">
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
           © OpenStreetMap contributors
+        </a>
+        {' · '}
+        <a href={`${import.meta.env.BASE_URL}data/CREDITS.txt`} target="_blank" rel="noreferrer">
+          Overture Maps, Google Open Buildings, Microsoft
         </a>
         {' · '}
         <a href={`${import.meta.env.BASE_URL}models/CREDITS.txt`} target="_blank" rel="noreferrer">

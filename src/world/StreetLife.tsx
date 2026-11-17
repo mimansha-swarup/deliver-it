@@ -7,6 +7,7 @@ import { QuadBuilder } from './quads'
 import { BOARD_FONT_CHECK, KANNADA_SAMPLE } from './signboards'
 import { box, colored, merge } from './simpleShapes'
 import { CART_KINDS, cartKind, toKannadaRoadName, type StreetLife as Life, type StreetSign } from './streetPlacement'
+import { groundLift } from './groundLift'
 
 const SIGN_FONT = "'Baloo Tamma 2', 'Kannada Sangam MN', 'Noto Sans Kannada', 'Tunga', sans-serif"
 
@@ -156,8 +157,9 @@ function createKolamGeometries(kolams: Prop[]): THREE.BufferGeometry[] {
     // Square to the gate: `out` points to the road, `side` runs along the wall.
     const outX = Math.sin(rotation) * half
     const outZ = Math.cos(rotation) * half
+    const lift = groundLift.at(x, z)
     const corner = (side: number, out: number) =>
-      new THREE.Vector3(x + outZ * side + outX * out, KOLAM_HEIGHT, z - outX * side + outZ * out)
+      new THREE.Vector3(x + outZ * side + outX * out, KOLAM_HEIGHT + lift, z - outX * side + outZ * out)
     const pattern = Math.floor(variation * KOLAM_PATTERNS.length * 0.999)
     const u = (pattern % 2) / 2
     // Images count from the top, textures from the bottom.
