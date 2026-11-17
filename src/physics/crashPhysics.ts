@@ -1,4 +1,4 @@
-import type RAPIER from '@dimforge/rapier3d-compat'
+import type RAPIER from '@dimforge/rapier3d'
 import type { CollisionWorld } from '../world/collision'
 import { PLAY_AREA } from '../world/worldUtils'
 

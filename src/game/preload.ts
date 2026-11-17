@@ -50,8 +50,8 @@ const GAME_FILES: GameFile[] = [
   ].map(([name, kb]) => ({ url: `/textures/${name}.ktx2`, kb: kb as number, kind: 'model' as const })),
 ]
 
-/** The physics engine is code, not a file here, so it counts as about this much download. */
-const PHYSICS_KB = 1400
+/** The physics engine (a small script and its 3 MB .wasm file) isn't listed above, so it counts as about this much download. */
+const PHYSICS_KB = 3300
 
 /** Everything the loader downloads, in kilobytes, so the title screen can show it before it starts. */
 export const TOTAL_KB = GAME_FILES.reduce((sum, { kb }) => sum + kb, 0) + PHYSICS_KB

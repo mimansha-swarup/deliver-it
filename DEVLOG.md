@@ -8425,3 +8425,28 @@ roughly the larger of its CPU time and its GPU time (synced less the floor).
 
 Against the targets (High 16.6 ms, Low 10 ms): CPU is within both, unthrottled and at 4×; GPU
 (synced less floor) is about 6 ms on Low and 8 ms on High.
+
+## 2026-11-18: Entry 124, performance step 4: Rapier's standard build
+
+### What I did
+The physics engine moves from `@dimforge/rapier3d-compat` to `@dimforge/rapier3d` (same version,
+0.21.0). The compat build is a 4.3 MB script with the WebAssembly written inside it as text; the
+standard build is a 0.3 MB script and a separate 3 MB `.wasm` file, which the browser compiles
+while it's still downloading. `vite-plugin-wasm` wires the `.wasm` import into the build, and
+`loadRapier` no longer calls `init()`: importing the module starts it.
+
+Downloaded with compression (as a real server sends it): 1.65 MB → 1.22 MB (51 KB script +
+1.17 MB `.wasm`).
+
+### Frame time and load (24th Main, two pairs side by side with step 3, synced / CPU ms)
+
+| | Load | Low | High | Low, 4× CPU | High, 4× CPU |
+| --- | --- | --- | --- | --- | --- |
+| Step 3 | 4.6–5.4 s | 10.1–11.5 / 3.7–3.9 | 12.2–12.9 / 4.1–4.3 | 12.2–15.4 / 6.9–8.2 | 19.9–21.3 / 12.3–13.9 |
+| Step 4 | 4.7 s | 10.2–10.8 / 3.6–4.1 | 12.1–13.3 / 3.7–4.3 | 14.5 / 6.9–7.5 | 20.2–20.3 / 12.2–12.8 |
+
+No change in frame time, as expected. Load over localhost doesn't change either: the gain is the
+smaller download and compiling while downloading, which only a real connection shows.
+
+Note: three.js's own Basis transcoder also lands in `dist/assets` (its KTX2Loader names it), but
+it's never downloaded: the game points the loader at `public/basis`.
