@@ -645,16 +645,31 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
   state.heading += turn * (1 - Math.exp(-SCOOTER.wallDeflectRate * dt))
 }
 
+/**
+ * The furthest the scooter moves between collision checks, in metres. A compound
+ * wall is 0.25 m thick and the scooter 0.6 m round: moving further than their
+ * sum in one go, its middle can land past the wall's middle, and the push out
+ * then sends it through. With nitro on a slow frame it moves over a metre.
+ */
+const MAX_STEP_TRAVEL = 0.25
+const MAX_SUBSTEPS = 10
+
 function updatePosition(state: ScooterState, collisions: CollisionWorld, dt: number) {
-  const nextX = state.x + state.velocityX * dt
-  const nextZ = state.z + state.velocityZ * dt
+  const travel = Math.hypot(state.velocityX, state.velocityZ) * dt
+  const steps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(travel / MAX_STEP_TRAVEL)))
+  const stepTime = dt / steps
 
-  state.x = clamp(nextX, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
-  state.z = clamp(nextZ, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
-  if (state.x !== nextX) state.velocityX = 0
-  if (state.z !== nextZ) state.velocityZ = 0
+  for (let step = 0; step < steps; step++) {
+    const nextX = state.x + state.velocityX * stepTime
+    const nextZ = state.z + state.velocityZ * stepTime
 
-  handleCollisions(state, collisions, dt)
+    state.x = clamp(nextX, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
+    state.z = clamp(nextZ, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
+    if (state.x !== nextX) state.velocityX = 0
+    if (state.z !== nextZ) state.velocityZ = 0
+
+    handleCollisions(state, collisions, stepTime)
+  }
   state.wheelSpin += (state.speed / SCOOTER.wheelRadius) * dt
 }
 

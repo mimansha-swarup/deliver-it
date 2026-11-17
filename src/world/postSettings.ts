@@ -4,8 +4,11 @@ import type * as THREE from 'three'
 /** Overall brightness going into the tone mapping. AgX is darker than ACES at the same value. */
 export const EXPOSURE = 1.15
 
-/** Ambient occlusion: how far round a point it looks for things blocking light, in metres, and how dark it gets. */
-export const AO = { radius: 1.6, distanceFalloff: 0.6, intensity: 2.2, color: '#2a1a12' }
+/**
+ * Ambient occlusion: how far round a point it looks for things blocking light, in metres, and how dark it gets.
+ * The radius reaches up under a stilt floor (3.2 m) and a balcony's depth, so those read as shaded.
+ */
+export const AO = { radius: 2.2, distanceFalloff: 0.8, intensity: 3.0, color: '#24160f' }
 
 /**
  * Bloom: only what's brighter than `threshold` glows (lit signs, lamps, the sun

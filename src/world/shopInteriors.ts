@@ -9,6 +9,15 @@ import type { ShopType } from './signboards'
 
 type Context = CanvasRenderingContext2D
 
+/**
+ * Flat mode, for the room drawn in 3D by its shader (ShopFronts.tsx): the room
+ * is the back wall alone, seen straight on, filling the picture. Side shelves
+ * and hanging strips are left out, as the shader and the shop's 3D front have
+ * their own. The wall and floor colours are noted for the floor and ceiling tiles.
+ */
+let flat = false
+let flatColors = { wall: '#e9e2cc', floor: '#b9ab92' }
+
 /** The room, in the picture's own 0 to 1 coordinates. */
 const BACK = { left: 0.24, right: 0.76, top: 0.24, bottom: 0.7 }
 /** The rolled-up shutter, in its box along the top. */
@@ -34,6 +43,15 @@ type Box = { x: number; y: number; w: number; h: number }
 /** Walls, floor and ceiling, with a tube light. Returns the back wall's rectangle in pixels. */
 function drawRoom(c: Context, box: Box, wall: string, floor: string): Box {
   const { x, y, w, h } = box
+  if (flat) {
+    flatColors = { wall, floor }
+    c.fillStyle = wall
+    c.fillRect(x, y, w, h)
+    // A skirting of darker paint along the floor.
+    c.fillStyle = shade(wall, 0.8)
+    c.fillRect(x, y + h * 0.95, w, h * 0.05)
+    return box
+  }
   const back = {
     x: x + w * BACK.left,
     y: y + h * BACK.top,
@@ -106,6 +124,7 @@ function shelves(c: Context, area: Box, rows: number, colors: string[], seed: nu
 
 /** Shelves up a side wall, drawn in strips so they follow the wall back into the room. */
 function sideShelves(c: Context, box: Box, back: Box, side: -1 | 1, rows: number, colors: string[], seed: number) {
+  if (flat) return
   const random = sequence(seed)
   const strips = 7
   for (let strip = 0; strip < strips; strip++) {
@@ -143,6 +162,7 @@ function counter(c: Context, box: Box, color: string, top = 0.72, inset = 0.1) {
 
 /** Snack packets on strips, hanging from the front of the ceiling, as every kirana has. */
 function hangingStrips(c: Context, box: Box, seed: number, count = 9) {
+  if (flat) return
   const random = sequence(seed)
   for (let strip = 0; strip < count; strip++) {
     const x = box.x + box.w * (0.04 + (strip / count) * 0.92)
@@ -454,4 +474,48 @@ export function drawInterior(context: Context, type: ShopType, x: number, y: num
   DRAW[type](context, box, seed)
   finish(context, box)
   context.restore()
+}
+
+/**
+ * The three pictures the 3D room needs for one kind of shop, in a square of
+ * `size` at (x, y): its back wall straight on across the top three quarters,
+ * and below that its floor (left) and ceiling (right).
+ */
+export function drawInteriorTiles(context: Context, type: ShopType, x: number, y: number, size: number, seed = 1) {
+  const backHeight = size * 0.75
+  flat = true
+  context.save()
+  context.beginPath()
+  context.rect(x, y, size, backHeight)
+  context.clip()
+  DRAW[type](context, { x, y, w: size, h: backHeight }, seed)
+  context.restore()
+  flat = false
+
+  const { wall, floor } = flatColors
+  const tileTop = y + backHeight
+  const half = size / 2
+  const tileHeight = size - backHeight
+  // The floor: square tiles, with grout lines.
+  context.fillStyle = floor
+  context.fillRect(x, tileTop, half, tileHeight)
+  context.strokeStyle = 'rgb(0 0 0 / 14%)'
+  context.lineWidth = 2
+  for (let line = 1; line < 8; line++) {
+    context.beginPath()
+    context.moveTo(x + (half * line) / 8, tileTop)
+    context.lineTo(x + (half * line) / 8, tileTop + tileHeight)
+    context.stroke()
+  }
+  for (let line = 1; line < 4; line++) {
+    context.beginPath()
+    context.moveTo(x, tileTop + (tileHeight * line) / 4)
+    context.lineTo(x + half, tileTop + (tileHeight * line) / 4)
+    context.stroke()
+  }
+  // The ceiling, a little darker than the walls, with a tube light across it.
+  context.fillStyle = shade(wall, 0.82)
+  context.fillRect(x + half, tileTop, half, tileHeight)
+  context.fillStyle = '#fbfdff'
+  context.fillRect(x + half + half * 0.2, tileTop + tileHeight * 0.45, half * 0.6, tileHeight * 0.1)
 }

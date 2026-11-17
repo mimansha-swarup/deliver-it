@@ -70,7 +70,8 @@ const APARTMENT = {
 /** Bikes parked under the stilts stand this far apart, and this far in from the front, in metres. */
 const STILT_BIKE = { gap: 0.85, in: 1.0 }
 const STILT_CAR = { in: 2.5, halfLength: 2.1, minGap: 2.6, chance: 55 }
-const STILT_FLOOR = { height: 0.06, color: new THREE.Color('#8f8d88') }
+/** The floor under stilts: in the building's shade all day, so darker than the open ground. */
+const STILT_FLOOR = { height: 0.06, color: new THREE.Color('#6e6c67') }
 const PLANT_COLOR = new THREE.Color('#3f7d3a')
 const POT_COLOR = new THREE.Color('#a4552f')
 const CORE_DOOR_COLOR = new THREE.Color('#6b6e72')
@@ -640,7 +641,7 @@ function dressBuildings(
         const level = floor * FLOOR_HEIGHT
         const span: [number, number] = [balconyFrom, balconyTo]
         box(kit, front, span, [0, BALCONY.depth], [level - BALCONY.slab, level], shade)
-        stains.onWall(front, span, [level - BALCONY.slab - 0.8, level - BALCONY.slab], [0.42, 0])
+        stains.onWall(front, span, [level - BALCONY.slab - 1.1, level - BALCONY.slab], [0.6, 0])
         box(kit, front, span, [BALCONY.depth - BALCONY.wall, BALCONY.depth], [level, level + BALCONY.parapet], paint)
         box(kit, front, [balconyFrom, balconyFrom + BALCONY.wall], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
         box(kit, front, [balconyTo - BALCONY.wall, balconyTo], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
@@ -673,7 +674,7 @@ function dressBuildings(
           if (underBalcony) continue
           const top = floor * FLOOR_HEIGHT + WINDOW_TOP + CHAJJA.gap
           box(shades, wall, [along - CHAJJA.width / 2, along + CHAJJA.width / 2], [0, CHAJJA.depth], [top, top + CHAJJA.thickness], shade)
-          stains.onWall(wall, [along - CHAJJA.width / 2, along + CHAJJA.width / 2], [top - 0.35, top], [0.3, 0])
+          stains.onWall(wall, [along - CHAJJA.width / 2, along + CHAJJA.width / 2], [top - 0.5, top], [0.45, 0])
 
           // Now and then an AC unit under the sill, with water stains run down from it.
           const roll = (hash >>> ((Math.round(along * 7) + floor * 5) % 24)) % 100
@@ -904,7 +905,7 @@ function buildApartment(kit: Builder, shades: Builder, stains: StainBuilder, par
       const depth = APARTMENT.balconyDepth
       box(kit, front, [from, to], [0, depth], [level - BALCONY.slab, level], shade)
       // Shade on the wall under the slab. On stilts, the first floor's has no wall under it.
-      if (!(stilts && floor === 1)) stains.onWall(front, [from, to], [level - BALCONY.slab - 0.8, level - BALCONY.slab], [0.42, 0])
+      if (!(stilts && floor === 1)) stains.onWall(front, [from, to], [level - BALCONY.slab - 1.1, level - BALCONY.slab], [0.6, 0])
       box(kit, front, [from, to], [depth - BALCONY.wall, depth], [level, level + BALCONY.parapet], paint)
       box(kit, front, [from, from + BALCONY.wall], [0, depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
       box(kit, front, [to - BALCONY.wall, to], [0, depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
@@ -931,7 +932,7 @@ function buildApartment(kit: Builder, shades: Builder, stains: StainBuilder, par
       for (let floor = 1; floor < floors; floor++) {
         const top = floor * FLOOR_HEIGHT + APARTMENT.doorTop + CHAJJA.gap
         box(shades, wall, [along - APARTMENT.chajjaWidth / 2, along + APARTMENT.chajjaWidth / 2], [0, CHAJJA.depth], [top, top + CHAJJA.thickness], shade)
-        stains.onWall(wall, [along - APARTMENT.chajjaWidth / 2, along + APARTMENT.chajjaWidth / 2], [top - 0.4, top], [0.32, 0])
+        stains.onWall(wall, [along - APARTMENT.chajjaWidth / 2, along + APARTMENT.chajjaWidth / 2], [top - 0.55, top], [0.45, 0])
       }
     }
   }

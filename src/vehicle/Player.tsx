@@ -24,6 +24,7 @@ import { Splashes } from './Splashes'
 import { createScooterState } from './ScooterController'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
 import { DevTeleport } from '../dev/DevTeleport'
+import { placeAt, type Spawn } from '../dev/spawn'
 
 type PlayerProps = {
   /** The home store first, then the rest across the map. */
@@ -34,16 +35,19 @@ type PlayerProps = {
   surface: Surface
   /** Petrol bunks, where the nitro fills. */
   bunks: FuelStation[]
+  /** Debug: a street to start on, from `?spawn=` (see dev/spawn.ts). */
+  spawn?: Spawn | null
 }
 
-export function Player({ stores, collisions, graph, traffic, surface, bunks }: PlayerProps) {
+export function Player({ stores, collisions, graph, traffic, surface, bunks, spawn }: PlayerProps) {
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
   useEffect(() => {
+    if (spawn) placeAt(scooterState.current, spawn)
     const { x, z } = scooterState.current
     useGameStore.getState().startMissions(createMissionPlanner(stores, collisions, graph), x, z)
-  }, [stores, collisions, graph])
+  }, [stores, collisions, graph, spawn])
 
   return (
     <>

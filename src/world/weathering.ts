@@ -21,8 +21,8 @@ export const WEATHERING = {
   /** Splashed soil, multiplied into the grime band: the red earth's brown. */
   grimeTint: [0.66, 0.52, 0.42] as const,
   /** Darkening right where the wall meets the ground, over this height, in metres. */
-  contactHeight: 0.35,
-  contactStrength: 0.45,
+  contactHeight: 0.5,
+  contactStrength: 0.6,
   /** Faded patches: how much of the paint's colour they lose, at most. */
   fade: 0.45,
   /** Damp stains: how much darker, at most. */
@@ -30,6 +30,11 @@ export const WEATHERING = {
   /** Streaks under the sills: how much darker, at most, and the share of windows that have them. */
   streaks: 0.28,
   streakShare: 0.55,
+  /**
+   * Faces turned to the ground (the ceiling under stilts, the undersides of
+   * balcony slabs and sunshades) get no sky: this much darker, baked in.
+   */
+  underside: 0.5,
 }
 
 const NOISE = /* glsl */ `
@@ -100,6 +105,9 @@ function weatheringGlsl(streaks: [number, number] | null): string {
       paint = mix(paint, paint * vec3(${W.grimeTint.map(f).join(', ')}), grime * ${f(W.grimeStrength)} * isWall);
       float contact = 1.0 - smoothstep(0.0, ${f(W.contactHeight)}, height);
       paint *= 1.0 - contact * ${f(W.contactStrength)} * isWall;
+
+      // Undersides see only the ground: the stilt ceiling, slab and sunshade soffits.
+      paint *= 1.0 - ${f(W.underside)} * smoothstep(0.4, 0.8, -vWeatherNormal.y);
 
       diffuseColor.rgb = paint;
     }

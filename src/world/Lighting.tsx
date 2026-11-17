@@ -49,6 +49,9 @@ function followRider(sun: THREE.DirectionalLight, shadowSize: number, shadowRang
   sun.position.copy(focus).addScaledVector(sunForward, -LIGHT_DISTANCE)
 }
 
+/** Under a clear sky the shadow filter shrinks by up to this share of the preset's softness. */
+const CLEAR_SHADOW_CRISPNESS = 0.5
+
 export function Lighting() {
   const { shadowSize, shadowRange, shadowSoftness } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const sun = useRef<THREE.DirectionalLight>(null)
@@ -66,6 +69,8 @@ export function Lighting() {
       sun.current.intensity = look.lightIntensity
       sun.current.color.setRGB(...look.lightColor, THREE.SRGBColorSpace)
       sun.current.shadow.intensity = look.shadowStrength
+      // Crisper edges under a clear sky: a smaller filter radius (the presets' softness is the most).
+      sun.current.shadow.radius = shadowSoftness * (1 - CLEAR_SHADOW_CRISPNESS * look.shadowSharpness)
     }
   })
 

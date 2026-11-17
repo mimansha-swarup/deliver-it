@@ -5,7 +5,10 @@ import { liveSky } from '../game/livePlayer'
 import { ChunkedMesh } from './ChunkedMesh'
 import { chunkKey } from './chunks'
 import type { ShopFront } from './shopFrontPlacement'
-import { drawInterior } from './shopInteriors'
+import { drawInteriorTiles } from './shopInteriors'
+import { createShopFrontKit, SHUTTER_BOTTOM } from './shopFrontKit'
+import { useGameStore } from '../game/gameStore'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
 import {
   awningColor,
   BOARD_FONT_CHECK,
@@ -22,6 +25,12 @@ import { groundLift } from './groundLift'
  * Every shop front: an open doorway with the shop inside, a signboard above
  * it, a striped awning, and on some a chalk menu board on the pavement.
  *
+ * The inside is a room in 3D, drawn on one flat quad in the doorway by its
+ * shader (interior mapping): for each pixel it finds where the line of sight
+ * meets the room's back wall, side walls, floor or ceiling, and paints that,
+ * so the room shifts in perspective as the rider passes. In front of it stand
+ * real 3D pieces: the shutter box, rails, step, counters and goods (shopFrontKit.ts).
+ *
  * The boards and the insides are each drawn once into one big image (an atlas),
  * and every shop's quads point at their part of it, so a whole map square of
  * shops is one draw call per image.
@@ -30,7 +39,13 @@ import { groundLift } from './groundLift'
 const AWNING_HEIGHT = 2.9
 const STRIPE_WIDTH = 0.45
 
-const INTERIOR_TOP = 2.86
+const INTERIOR_TOP = SHUTTER_BOTTOM
+/** How deep the rooms are, in metres: shallower and deeper ones by `variation`. */
+const ROOM_DEPTH: [number, number] = [2.6, 4.2]
+/** By day the rooms are lit by their tube lights a little; at night more. */
+const INTERIOR_DAY_GLOW = 0.18
+/** On Low, the shops' 3D fronts are drawn only this near, in metres. */
+const LOW_KIT_DISTANCE = 60
 const SIGN_BOTTOM = 3.0
 const SIGN_TOP = 3.86
 const WALL_GAP = 0.05
@@ -150,18 +165,19 @@ function paintBoards(canvas: HTMLCanvasElement, photos: Map<ShopType, HTMLImageE
   context.fillRect(DARK_SLOT * MENU_WIDTH, MENU_TOP, MENU_WIDTH, MENU_HEIGHT)
 }
 
-// ---- The interior atlas: one room per kind of shop, four by four ----
+// ---- The interior atlas: one square per kind of shop, four by four ----
+// Each square has the back wall across its top three quarters, and the floor
+// and ceiling side by side below (see drawInteriorTiles in shopInteriors.ts).
 
-const ROOM_WIDTH = 384
-const ROOM_HEIGHT = 288
+const ROOM_TILE = 512
 const ROOM_COLUMNS = 4
-const INTERIOR_ATLAS = { width: ROOM_WIDTH * ROOM_COLUMNS, height: ROOM_HEIGHT * Math.ceil(SHOP_TYPES.length / ROOM_COLUMNS) }
+const ROOM_ROWS = Math.ceil(SHOP_TYPES.length / ROOM_COLUMNS)
+const INTERIOR_ATLAS = { width: ROOM_TILE * ROOM_COLUMNS, height: ROOM_TILE * ROOM_ROWS }
 
-function roomRect(type: ShopType): Rect {
+/** Where a kind of shop's square is in the atlas: its bottom-left corner, in texture coordinates. */
+function roomCell(type: ShopType): [number, number] {
   const slot = SHOP_TYPES.indexOf(type)
-  const x = (slot % ROOM_COLUMNS) * ROOM_WIDTH
-  const y = Math.floor(slot / ROOM_COLUMNS) * ROOM_HEIGHT
-  return toRect(x + 2, y + 2, ROOM_WIDTH - 4, ROOM_HEIGHT - 4, INTERIOR_ATLAS)
+  return [(slot % ROOM_COLUMNS) / ROOM_COLUMNS, 1 - (Math.floor(slot / ROOM_COLUMNS) + 1) / ROOM_ROWS]
 }
 
 function createInteriorAtlas(): HTMLCanvasElement {
@@ -171,9 +187,7 @@ function createInteriorAtlas(): HTMLCanvasElement {
   const context = canvas.getContext('2d')
   if (context) {
     SHOP_TYPES.forEach((type, slot) => {
-      const x = (slot % ROOM_COLUMNS) * ROOM_WIDTH
-      const y = Math.floor(slot / ROOM_COLUMNS) * ROOM_HEIGHT
-      drawInterior(context, type, x, y, ROOM_WIDTH, ROOM_HEIGHT, slot + 3)
+      drawInteriorTiles(context, type, (slot % ROOM_COLUMNS) * ROOM_TILE, Math.floor(slot / ROOM_COLUMNS) * ROOM_TILE, ROOM_TILE, slot + 3)
     })
   }
   return canvas
@@ -217,6 +231,164 @@ function toGeometries(chunks: Chunks): THREE.BufferGeometry[] {
   })
 }
 
+type Room = {
+  x: number
+  z: number
+  out: THREE.Vector3
+  rightX: number
+  rightZ: number
+  width: number
+  bottom: number
+  top: number
+  depth: number
+  cell: [number, number]
+  flip: boolean
+}
+type RoomChunk = { positions: number[]; normals: number[]; uvs: number[]; cells: number[]; sizes: number[]; rights: number[]; flips: number[] }
+type RoomChunks = Map<number, RoomChunk>
+
+/** The doorway quad of one room. `uv` runs 0 to 1 across and up it; the rest tells the shader the room's size and which way it faces. */
+function pushRoom(chunks: RoomChunks, key: number, room: Room) {
+  let chunk = chunks.get(key)
+  if (!chunk) {
+    chunk = { positions: [], normals: [], uvs: [], cells: [], sizes: [], rights: [], flips: [] }
+    chunks.set(key, chunk)
+  }
+  const centreX = room.x + room.out.x * WALL_GAP
+  const centreZ = room.z + room.out.z * WALL_GAP
+  const half = room.width / 2
+  const corner = (u: number, v: number) => ({
+    x: centreX + room.rightX * half * (u * 2 - 1),
+    y: v ? room.top : room.bottom,
+    z: centreZ + room.rightZ * half * (u * 2 - 1),
+    u,
+    v,
+  })
+  const a = corner(0, 0)
+  const b = corner(1, 0)
+  const c = corner(1, 1)
+  const d = corner(0, 1)
+  for (const point of [a, b, c, a, c, d]) {
+    chunk.positions.push(point.x, point.y, point.z)
+    chunk.normals.push(room.out.x, 0, room.out.z)
+    chunk.uvs.push(point.u, point.v)
+    chunk.cells.push(...room.cell)
+    chunk.sizes.push(room.width, room.top - room.bottom, room.depth)
+    chunk.rights.push(room.rightX, 0, room.rightZ)
+    chunk.flips.push(room.flip ? 1 : 0)
+  }
+}
+
+function toRoomGeometries(chunks: RoomChunks): THREE.BufferGeometry[] {
+  return [...chunks.values()].map(({ positions, normals, uvs, cells, sizes, rights, flips }) => {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+    geometry.setAttribute('aRoomCell', new THREE.Float32BufferAttribute(cells, 2))
+    geometry.setAttribute('aRoomSize', new THREE.Float32BufferAttribute(sizes, 3))
+    geometry.setAttribute('aRoomRight', new THREE.Float32BufferAttribute(rights, 3))
+    geometry.setAttribute('aRoomFlip', new THREE.Float32BufferAttribute(flips, 1))
+    geometry.computeBoundingSphere()
+    return geometry
+  })
+}
+
+/**
+ * The room shader (interior mapping). In the room's own frame, x runs across
+ * the doorway, y up, and z out of it, so the room is the box from (0, 0, -depth)
+ * to (width, height, 0). Each pixel follows the line of sight from the camera
+ * into that box, finds which face it meets first, and paints that face from the
+ * shop's square in the atlas, darker further back.
+ */
+function createRoomMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({ map: texture, emissive: '#ffffff', emissiveIntensity: INTERIOR_DAY_GLOW, roughness: 0.9 })
+  const cell = (1 / ROOM_COLUMNS).toFixed(5)
+  const cellHeight = (1 / ROOM_ROWS).toFixed(5)
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        'void main() {',
+        `attribute vec2 aRoomCell;
+        attribute vec3 aRoomSize;
+        attribute vec3 aRoomRight;
+        attribute float aRoomFlip;
+        varying vec3 vRoomWorld;
+        varying vec2 vRoomUv;
+        varying vec2 vRoomCell;
+        varying vec3 vRoomSize;
+        varying vec3 vRoomRight;
+        varying vec3 vRoomOut;
+        varying float vRoomFlip;
+        void main() {
+          vRoomUv = uv;
+          vRoomCell = aRoomCell;
+          vRoomSize = aRoomSize;
+          vRoomRight = aRoomRight;
+          vRoomOut = normal;
+          vRoomFlip = aRoomFlip;`,
+      )
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vRoomWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        `varying vec3 vRoomWorld;
+        varying vec2 vRoomUv;
+        varying vec2 vRoomCell;
+        varying vec3 vRoomSize;
+        varying vec3 vRoomRight;
+        varying vec3 vRoomOut;
+        varying float vRoomFlip;
+        void main() {`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `vec3 roomView = normalize(vRoomWorld - cameraPosition);
+        vec3 rd = vec3(dot(roomView, vRoomRight), roomView.y, min(dot(roomView, vRoomOut), -0.0001));
+        vec3 ro = vec3(vRoomUv.x * vRoomSize.x, vRoomUv.y * vRoomSize.y, 0.0);
+        float tx = rd.x > 0.00001 ? (vRoomSize.x - ro.x) / rd.x : (rd.x < -0.00001 ? -ro.x / rd.x : 1e6);
+        float ty = rd.y > 0.00001 ? (vRoomSize.y - ro.y) / rd.y : (rd.y < -0.00001 ? -ro.y / rd.y : 1e6);
+        float tz = -vRoomSize.z / rd.z;
+        float t = min(tx, min(ty, tz));
+        vec3 hit = ro + rd * t;
+        float roomDepth = clamp(-hit.z / vRoomSize.z, 0.0, 1.0);
+        vec2 tileUv;
+        vec2 tileOrigin = vec2(0.0, 0.25);
+        vec2 tileSize = vec2(1.0, 0.75);
+        float roomLight = 1.0;
+        if (t == tz) {
+          tileUv = hit.xy / vRoomSize.xy;
+        } else if (t == tx) {
+          // The side walls carry on the back wall's shelves, from its edge forwards.
+          float along = 0.3 * (1.0 - roomDepth);
+          tileUv = vec2(rd.x > 0.0 ? 1.0 - along : along, hit.y / vRoomSize.y);
+          roomLight = 0.8;
+        } else if (rd.y < 0.0) {
+          tileUv = vec2(hit.x / vRoomSize.x, 1.0 - roomDepth);
+          tileOrigin = vec2(0.0, 0.0);
+          tileSize = vec2(0.5, 0.25);
+        } else {
+          tileUv = vec2(hit.x / vRoomSize.x, roomDepth);
+          tileOrigin = vec2(0.5, 0.0);
+          tileSize = vec2(0.5, 0.25);
+          roomLight = 0.9;
+        }
+        if (vRoomFlip > 0.5 && t != ty) tileUv.x = 1.0 - tileUv.x;
+        tileUv = clamp(tileUv, 0.01, 0.99);
+        vec2 roomCellSize = vec2(${cell}, ${cellHeight});
+        vec2 roomUv = vRoomCell + (tileOrigin + tileUv * tileSize) * roomCellSize;
+        // Gradients from the smooth doorway coordinates, so the face edges don't flash the smallest mip.
+        vec2 roomScale = roomCellSize * 0.75;
+        vec4 roomColor = textureGrad(map, roomUv, dFdx(vRoomUv) * roomScale, dFdy(vRoomUv) * roomScale);
+        roomColor.rgb *= roomLight * mix(1.0, 0.62, roomDepth);
+        diffuseColor *= roomColor;`,
+      )
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= roomColor.rgb;')
+  }
+  material.customProgramCacheKey = () => 'shop-room'
+  return material
+}
+
 /**
  * Every board, menu board and doorway as flat quads, joined into one geometry
  * per map square for each atlas. "Right" is the viewer's right when facing the
@@ -224,7 +396,7 @@ function toGeometries(chunks: Chunks): THREE.BufferGeometry[] {
  */
 function createStorefrontGeometries(shopFronts: ShopFront[]) {
   const boards: Chunks = new Map()
-  const rooms: Chunks = new Map()
+  const rooms: RoomChunks = new Map()
 
   for (const { x, z, rotation, width, type, variation, menuBoard } of shopFronts) {
     const key = chunkKey(x, z)
@@ -246,8 +418,10 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
       ]
     }
 
-    // The shop inside, mirrored on every other one so neighbours of a kind differ.
-    pushQuad(rooms, key, out, rectangle(WALL_GAP, width / 2, 0, INTERIOR_TOP, roomRect(type), variation >= 0.5))
+    // The shop inside: a room drawn by its shader, mirrored on every other one so neighbours of a kind differ.
+    const lift = groundLift.at(x + out.x * 0.6, z + out.z * 0.6)
+    const depth = ROOM_DEPTH[0] + (ROOM_DEPTH[1] - ROOM_DEPTH[0]) * ((variation * 7.31) % 1)
+    pushRoom(rooms, key, { x, z, out, rightX, rightZ, width, bottom: lift, top: INTERIOR_TOP + lift, depth, cell: roomCell(type), flip: variation >= 0.5 })
 
     // The board: a photo board on some of the commonest shops, a drawn one on the rest.
     const choices = slotsFor(type)
@@ -299,7 +473,7 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
     }
   }
 
-  return { boards: toGeometries(boards), rooms: toGeometries(rooms) }
+  return { boards: toGeometries(boards), rooms: toRoomGeometries(rooms) }
 }
 
 /** A sloped sheet one metre wide, stretched to fit each shop. Its back edge is at the wall. */
@@ -339,7 +513,7 @@ function createAwningMaterial(): THREE.MeshStandardMaterial {
 
 function updateGlow(boards: THREE.MeshStandardMaterial, rooms: THREE.MeshStandardMaterial) {
   boards.emissiveIntensity = liveSky.look.night * SIGN_GLOW
-  rooms.emissiveIntensity = liveSky.look.night * INTERIOR_GLOW
+  rooms.emissiveIntensity = INTERIOR_DAY_GLOW + liveSky.look.night * INTERIOR_GLOW
 }
 
 /**
@@ -379,16 +553,12 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
     return { boardMaterial: material, boardCanvas: canvas, photos: photoMap }
   }, [])
 
-  const roomMaterial = useMemo(() => {
-    const texture = toTexture(createInteriorAtlas())
-    return new THREE.MeshStandardMaterial({
-      map: texture,
-      emissive: '#ffffff',
-      emissiveMap: texture,
-      emissiveIntensity: 0,
-      roughness: 0.9,
-    })
-  }, [])
+  const roomMaterial = useMemo(() => createRoomMaterial(toTexture(createInteriorAtlas())), [])
+  const kitGeometries = useMemo(() => createShopFrontKit(shopFronts), [shopFronts])
+  const kitMaterial = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.1 }), [])
+  const { propDistance, kitDetail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  // On Low, the counters and goods out front only near the rider.
+  const kitDistance = kitDetail === 0 ? LOW_KIT_DISTANCE : propDistance
 
   // Repaint the boards once the photos and the Kannada letters are ready.
   useEffect(() => {
@@ -445,6 +615,7 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
         receiveShadow
       />
       <ChunkedMesh geometries={geometries.rooms} material={roomMaterial} />
+      <ChunkedMesh geometries={kitGeometries} material={kitMaterial} castShadow maxDistance={kitDistance} />
       <ChunkedMesh geometries={geometries.boards} material={boardMaterial} />
     </>
   )

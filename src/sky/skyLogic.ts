@@ -67,6 +67,8 @@ export type SkyLook = {
   cloudColor: Rgb
   /** 0 by day, 1 at night. */
   night: number
+  /** How crisp shadows are: 1 in clear daylight, where the sun is a small hard light; 0 under cloud and at night. */
+  shadowSharpness: number
 }
 
 const NOON_ZENITH: Rgb = [0.33, 0.57, 0.88]
@@ -89,6 +91,25 @@ const DAY_CLOUD: Rgb = [0.97, 0.97, 0.97]
 const DUSK_CLOUD: Rgb = [0.98, 0.72, 0.6]
 const NIGHT_CLOUD: Rgb = [0.13, 0.15, 0.22]
 const STORM_CLOUD: Rgb = [0.48, 0.5, 0.54]
+
+/**
+ * Clear skies (ART_DIRECTION.md: a low warm sun with crisp shadows). With no
+ * cloud, the sun is warmer and a little stronger, the sky overhead a deeper
+ * blue, and the fill a touch lower so the shadows read. All of it fades out as
+ * cloud comes in, so cloudy and rainy days are as they were.
+ */
+export const CLEAR_SKY = {
+  /** Cloud cover at which clear-sky looks start and stop fading. Clear weather sits at 0.2, cloudy at 0.75. */
+  cloudsFrom: 0.25,
+  cloudsTo: 0.55,
+  sunBoost: 1.2,
+  sunColor: [1, 0.84, 0.64] as Rgb,
+  /** How much of `sunColor` goes into the midday sun. */
+  sunWarmth: 0.65,
+  zenith: [0.17, 0.42, 0.86] as Rgb,
+  /** The fill light, as a share of what it would be. */
+  ambient: 0.88,
+}
 
 const SUN_INTENSITY = 2.8
 const MOON_INTENSITY = 1.3
@@ -193,6 +214,10 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   zenith = mixColor(zenith, DUSK_ZENITH, dusk)
   horizon = mixColor(horizon, DUSK_HORIZON, dusk)
 
+  // A clear sky is a deeper blue overhead (not at the horizon, which stays hazy).
+  const clear = 1 - smoothstep(CLEAR_SKY.cloudsFrom, CLEAR_SKY.cloudsTo, clouds)
+  zenith = mixColor(zenith, CLEAR_SKY.zenith, clear * daylight * (1 - dusk))
+
   // Cloud cover greys everything, and dims it after dark too.
   const cover = smoothstep(0.3, 1, clouds)
   const brightness = mix(0.14, 1, 1 - night)
@@ -211,11 +236,13 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   return {
     sunDirection,
     lightDirection: [lit[0] / lightLength, lightY / lightLength, lit[2] / lightLength],
-    lightColor: isDay ? mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])) : MOONLIGHT,
-    lightIntensity: (isDay ? sunUp * SUN_INTENSITY : moonUp * MOON_INTENSITY) * (1 - cover * 0.72),
+    lightColor: isDay
+      ? mixColor(mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])), CLEAR_SKY.sunColor, clear * CLEAR_SKY.sunWarmth)
+      : MOONLIGHT,
+    lightIntensity: (isDay ? sunUp * SUN_INTENSITY * mix(1, CLEAR_SKY.sunBoost, clear) : moonUp * MOON_INTENSITY) * (1 - cover * 0.72),
     shadowStrength: 1 - cover * 0.85,
     ambientIntensity:
-      mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) * (1 - cover * 0.12),
+      mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) * (1 - cover * 0.12) * mix(1, CLEAR_SKY.ambient, clear * daylight),
     ambientColor: mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight),
     groundColor: mixColor(NIGHT_GROUND, DAY_GROUND, daylight),
     // Thickest with the sun low, thinner at noon and after dark. Cloud thickens it too.
@@ -231,6 +258,7 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
       cover,
     ),
     night,
+    shadowSharpness: clear * daylight,
   }
 }
 

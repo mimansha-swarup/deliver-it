@@ -29,6 +29,7 @@ import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWal
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
 import { teleportSpots } from '../dev/teleportSpots'
+import { findSpawn, requestedSpawn } from '../dev/spawn'
 import { Temples } from './Temples'
 import { Fences } from './Fences'
 import { buildStreetEdges } from './streetEdgeGeometry'
@@ -149,9 +150,12 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   const surface = createSurface(data.roads, features, edges.heightAt)
   const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
+  // Debug: ?spawn=<street> starts the rider on that street (dev server, or with ?debug).
+  const spawnSlug = requestedSpawn()
+  const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -174,7 +178,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
@@ -211,7 +215,7 @@ export function World() {
       <Part name="temples"><Temples sites={worship} /></Part>
       <Part name="fences"><Fences runs={fences} /></Part>
       <Part name="boundary"><Boundary /></Part>
-      <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} /></Part>
+      <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} /></Part>
     </>
   )
 }
