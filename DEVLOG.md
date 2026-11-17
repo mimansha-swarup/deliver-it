@@ -3083,3 +3083,5250 @@ was in the order the two parts met. Tracing one object on its own is what showed
 ### Next
 
 Your scooter and rider, or letting flying things hit pedestrians if you want that.
+
+## 2026-11-07: Entry 27, your scooter and rider
+
+### What I did
+
+The old scooter was a stack of boxes with no rider at all. Now:
+
+- **The scooter** has a sculpted, glossy body, leg shield, seat, mudguard, cowl, alloy wheels with
+  round tyres, forks, mirrors, a working brake light, and a clean, unbranded delivery box.
+- **The rider** wears a helmet with a reflective visor. Hands stay on the grips as the bars turn,
+  the left foot drops to the ground when you stop, and they crouch at speed and lean into bends.
+
+### What I checked
+
+Type check, lint and build pass, and the browser shows no errors. I viewed it from the side and from
+the normal camera, using a temporary camera change, since reverted.
+
+**Not checked:** I haven't watched it move, so I haven't seen the steering arms, leaning, crouch or
+the foot coming down. Crashes still tip the rider over with the scooter.
+
+### Lesson 101: inverse kinematics
+
+Normally you rotate a joint and see where the hand ends up. **Inverse kinematics** works backwards: you
+say where the hand must be, and solve for the elbow. Two fixed bones can only meet on a circle, so
+`findJoint` uses the triangle's sides to place it, and picks the side a real elbow would bend to.
+
+My first rider's arms were dead straight, because the seat was too far from the bars for the arm
+length. IK can't bend what's already at full stretch, so the fix was the pose, not the maths.
+
+### Lesson 102: lofting again
+
+The scooter's panels are the car's trick, with rounded square slices called superellipses. The
+`power` number moves a slice between a circle and a square, which is how plastic panels get their
+soft corners.
+
+## 2026-11-07: Entry 28, different buildings look different
+
+### What I did
+
+Every building used to be the same box with the same window. Now each one is a house, apartment
+block, shop, office or civic building, and each kind has its own walls, colours, height and night
+lighting:
+
+| Kind | In the play area | How it looks |
+|---|---|---|
+| House | 1,256 | 1 to 3 floors mostly, bright paint, small grilled windows |
+| Apartment | 110 | 4 to 6 floors, balconies, open stilt parking at street level |
+| Shop | 157 | Display windows and shutters at street level, wide windows above |
+| Civic | 18 | Long window bands, a sunshade and a painted stripe |
+| Office | 4 | Glass walls, 4 to 7 floors, no water tanks |
+
+The map only names about 4% of buildings, so `classifyBuildings` in `buildingKinds.ts` works down from
+the surest clue to the weakest: the building's own tags, a mapped shop or school beside it, the area
+it stands in, then its size. The window drawing moved to `facadeTextures.ts`.
+
+I also fixed an older bug where lit windows ran in solid vertical columns.
+
+### What I checked
+
+Type check, lint and build pass. I counted the kinds by running the real code on the real map. In
+headless Chrome I saw the whole town from above by day, and one street at night.
+
+**Not checked:** shops, offices and civic buildings at street level, daytime street level, Low
+quality, and the frame rate on a real graphics card. Sizes are a guess at use: a big building with
+no clues becomes apartments, even if it's really something else.
+
+### Lesson 103: one material, one draw call
+
+A draw call can only use one material, so splitting the city by look means more of them. There were
+37 building meshes before and 153 now, before Three.js skips what's off-screen. Low quality has no
+window textures, so nothing tells the looks apart, and `createCityLayers` puts everything back in
+one layer there.
+
+### Lesson 104: a floor can be its own mesh
+
+A real building's street level rarely matches its upper floors. `createBuildingParts` extrudes the
+same outline twice, once for the ground floor and again for the rest, each with its own texture. A
+hidden roof is left where they meet, which costs a few triangles.
+
+### Lesson 105: read the data before you design around it
+
+The obvious plan was "switch on the `building` tag". But 96% of those tags just say `yes`, so that
+plan would have changed almost nothing. Shops are usually mapped as dots beside a building, which is
+why joining dots to their nearest building found far more of them.
+
+### Lesson 106: a hash isn't always random enough
+
+`hashString` turned `0,0` and `0,1` into almost the same number, because a change to the last
+character barely reaches the top digits, and those decide the result. So each row of windows matched
+the one above it. Hashing the hash spreads that change through every digit.
+
+### Try it
+
+1. Press N until it's night, then look under an apartment block for the tube lights.
+2. In `buildingKinds.ts`, raise `LARGE_HOME` to `800` and watch apartments turn back into houses.
+3. In `facadeTextures.ts`, change the stripe colour in `paintCivic`.
+4. Set `litShare` to `1` on `office` for a tower with every light on.
+
+### Next
+
+Silhouettes, as every kind is still a straight-sided box. Roof parapets or set-back top floors would
+do the most.
+
+## 2026-11-07: Entry 29, a real city kit on real outlines
+
+### What I did
+
+I used Quaternius's Downtown City MegaKit (CC0) in three ways:
+
+- **Real wall textures.** Apartments, offices and civic buildings now have concrete under the paint,
+  and shop upper floors have brick.
+- **Details.** Cornices and a door on apartments, shops, offices and civic buildings, plus up to one
+  planter beside the door. Planters are solid.
+- **Walls built from pieces.** Shops and offices get 2 m kit pieces, floor by floor, around their real
+  map outlines.
+
+The kit is 244 MB and the game needs about 1% of it. `scripts/prepare_city_kit.py` packs 12 pieces
+into a 1.7 MB `city-kit.glb`, and `cityKitPlacement.ts` decides where each one goes.
+
+| Quality | Kit shown | Most triangles it can add |
+|---|---|---|
+| Low | Planters | 29,000 |
+| Medium | Plus cornices and doors | 457,000 |
+| High | Plus whole walls | 1,388,000 |
+
+### What I checked
+
+Type check, lint and build pass. In headless Chrome on High I saw a shop street by day, an office by
+night, and the whole town from above. A first version crashed on load in a way the type check
+couldn't see, and rendering it is what found that.
+
+**Not checked:** Low and Medium, the frame rate on a real graphics card, an office from street level
+by day since I lightened its glass, and riding into a planter. Walls that face another building
+closely are skipped, so some buildings have a kit front and a painted side.
+
+### Lesson 107: instancing
+
+Instancing sends one shape to the GPU once, plus a list of positions, then draws it thousands of
+times in one call. The game places 15,291 pieces. `CityKit.tsx` uses `InstancedMesh`, with one mesh
+per piece, per material and per 320 m square, so faraway squares can be hidden.
+
+### Lesson 108: fit the piece to the wall, not the wall to the piece
+
+A wall of 7.3 m doesn't divide by 2 m. `findEdges` fits 3 pieces and stretches each to 2.43 m. Rounding
+down keeps the stretch small, and nobody notices a window 20% wider, while a gap is obvious.
+
+### Lesson 109: a model is more than it looks
+
+Each window piece held an inner wall we'd never see, a fake interior needing a custom shader, two sets
+of texture coordinates and paint masks. Stripping those is why packing a kit yourself pays off.
+
+### Lesson 110: glass without reflections goes black
+
+Real glass mostly shows you the sky. Three.js doesn't do that unless you give it a picture of the
+surroundings, so my first offices were black slabs. Pale blue stands in for the sky by day, and
+`updateWindows` dims it as night falls, or it would look lit.
+
+### Lesson 111: types describe what you said, not what happens
+
+`useTexture` is typed to hand its callback the same shape you passed in, but at runtime it gave an
+array. TypeScript was happy and the page crashed. Only running the code shows this.
+
+### Try it
+
+1. Switch between Low, Medium and High, and watch the shop walls change.
+2. In `cityKitPlacement.ts`, set `LIT_CHANCE` to `100` and go out at night.
+3. Change `apartment`'s cornice to `'Cornice_Trim_Center'` in `STYLES`.
+4. Add `ground` and `upper` to `apartment` in `STYLES`, and see how it looks in brick.
+
+### Next
+
+Check the frame rate on your Mac on High. If it's fine, your car models come next.
+
+## 2026-11-07: Entry 30, real Indian traffic
+
+### What I did
+
+Traffic now uses real models: a sedan, hatchback, SUV and MPV, an auto, and three kinds of pedestrian.
+SUVs and MPVs are new vehicle kinds with their own size and crash weight.
+
+The downloads held about 5 million triangles, so `scripts/prepare_traffic_models.mjs` bakes them into
+one 2.7 MB file. Cars end up at 12,000 to 14,000 triangles, and people at about 3,500 to 4,000.
+
+| Step | Why |
+|---|---|
+| Shrink-wrap the cars and the woman | Gives one clean skin, and interiors vanish |
+| Flat paint colours on vehicles | Printed badges can't survive it |
+| Mark the paint | Only paint takes a car's colour, so glass and tyres keep theirs |
+| Work out limbs from the bones | The walking shader needs to know what swings |
+| Stand people on the ground, facing forward | The files disagree on scale and direction |
+
+### What I checked
+
+Type check, lint and build pass. I viewed every model from the front and back. The game loads them
+with no errors, and you've seen autos running in your browser, which is how the backwards auto got
+caught.
+
+**Not checked:** people walking, night headlights on the new sizes, crashes with SUVs and MPVs, Low
+and Medium, and frame rate. My one in-game shot had no traffic in it.
+
+**Known issues:** the man's long white cloth covers his torso, as it does in the file. Shapes are still
+recognisably real cars, even without badges. One of the two women in `south_indian_women` was left
+out, because her hair mesh is named after a game character, which suggests it was ripped. Entry 31
+removes the other one too.
+
+### Lesson 112: triangle count isn't the whole story
+
+My first cars hit the target and looked crash-damaged. Simplifying works by collapsing edges on a
+continuous surface, and a car is hundreds of overlapping panels. Good input matters more than a
+clever setting.
+
+### Lesson 113: rebuild instead of reduce
+
+A shrink-wrap throws the mesh away. It fills space with tiny cells, floods in from outside so the
+inside is never reached, makes a new skin, then snaps it onto the original. The same steps removed
+interiors, joined panels and made a mesh that simplifies well.
+
+### Lesson 114: one flood needs thick walls
+
+A gap between two panels is enough for the flood to leak into the car. Thickening the walls before
+flooding, then taking the thickness off again, is called a morphological closing.
+
+### Lesson 115: instancing and skinning don't mix easily
+
+Bones are normally worked out for each character, which is costly for a crowd. Here each vertex just
+stores how much it swings and from where, so one shader animates everyone. It can't bend an elbow,
+but nobody watching a passer-by will notice.
+
+### Lesson 116: check a guess against the model
+
+My "bring the arms down" step assumed every model stood in a T-pose. The man's skeleton was already
+relaxed, so it made him worse. Printing his joint positions showed it in a minute.
+
+### Lesson 117: a viewer pays for itself
+
+Without a page showing every model side by side, I'd have judged these by triangle counts, which
+said the crash-damaged cars were fine.
+
+### Try it
+
+1. In `prepare_traffic_models.mjs`, set a car's `triangles` to `3000` and rerun it.
+2. Change `wrapCell` to `0.08` to see what cell size does.
+3. In `Traffic.tsx`, add a colour to `CAR_COLORS`.
+4. Reorder `VEHICLE_MIX` in `trafficLogic.ts` for more SUVs.
+
+### Next
+
+Check walking and crashes while riding. The old `carModel.ts` shapes, `createAutoGeometry` and
+`peopleShapes.ts` are no longer used, and can go once you're happy.
+
+## 2026-11-07: Entry 31, wheels that turn, and a safer stand-in
+
+### What I did
+
+- **Wheels** are now their own parts. They roll as a vehicle moves, and front wheels steer into bends.
+  This covers all four cars and the auto, but not motorbikes or parked scooters.
+- **The auto** was one solid piece, so the bake cuts holes where its wheels were and borrows the
+  hatchback's wheel, scaled to fit.
+- **The woman** from `south_indian_women` is gone, as the file's other figure had hair that looked
+  ripped from a game. The older woman built in code stands in until there's a replacement.
+
+### What I checked
+
+Type check, lint and build pass, and the game loads with no errors. In the model viewer every wheel
+sits in its arch. I worked through the spin direction by hand for both sides.
+
+**Not checked:** I haven't watched a wheel roll or steer, as my in-game shots have no traffic in them.
+If they spin backwards, flip the sign in `updateWheelState`.
+
+### Lesson 118: animate parts, not vertices
+
+Limbs use a shader because a person's joints stay connected. A wheel is a separate object, so an
+ordinary instanced mesh works, and it costs 4 extra matrices per car per frame. Choosing the simple
+tool for each job beats forcing one trick onto both.
+
+### Lesson 119: derive motion, don't store it
+
+Traffic never had to learn about wheels. `updateWheelState` compares where a vehicle is with where it
+was: distance divided by radius gives the roll, and how fast it's turning gives the steering angle.
+Anything that moves a vehicle now turns its wheels for free.
+
+### Lesson 120: the same wheel, turned around
+
+Only one wheel per car is stored. The far side is that wheel turned 180 degrees, which reverses its
+spin, so `isLeft` negates the roll to match.
+
+### Lesson 121: measure, don't estimate
+
+I placed the auto's front wheel by eye and got two overlapping tyres. Finding the lowest points of the
+mesh showed where each tyre really meets the ground, and the fix took one number.
+
+### Try it
+
+1. Follow a car around a corner and watch its front wheels.
+2. In `Traffic.tsx`, raise `MAX_STEER` to `0.9` for very dramatic turns.
+3. Lower `STEER_EASING` to `2` and see the steering lag behind.
+
+### Next
+
+A replacement woman, with a clear origin. Then the bike, if you want your Yamaha download used.
+
+## 2026-11-07: Entry 32, black and white delivery bikes
+
+### What I did
+
+A real delivery bike model was baked in black or white, with a white box and rolling wheels. Its blue
+paint and number plate are gone, and the rider was rebuilt from joints measured off the bike. Entry 33
+moves this bike to the player, and traffic takes the Yamaha.
+
+I also fixed a bug from Entry 30, where car paint was multiplied by the model's original paint. That
+was near-black on at least the sedan, so its colour would barely have shown.
+
+The Yamaha was held back at this point, because it's CC-BY-NC-SA. Entry 33 uses it, on your decision.
+
+### What I checked
+
+Type check, lint and build pass, and the game loads with no errors. In the model viewer I've seen both
+bike colours, with their riders, from the front and back.
+
+**Not checked:** bikes in moving traffic, and how the rider looks when a bike leans or crashes.
+
+### Lesson 122: check a licence before the work, not after
+
+The `license.txt` in a Sketchfab zip takes seconds to read. CC-BY needs credit, NC bans commercial use,
+and SA spreads its licence to your edits. It's now the first step for every model.
+
+### Lesson 123: multiply, don't replace
+
+A shader's tint multiplies what's there. White times red is red, but near-black times red is still
+near-black. So anything meant to be tinted must be stored white. My viewer set the colour directly,
+which hid the bug that the game would show.
+
+### Lesson 124: a better model exposes what's next to it
+
+The old rider looked fine on a bike made of boxes, because both were equally rough. On a detailed bike
+the same rider looked broken. Detail has to rise together.
+
+### Try it
+
+1. In `Traffic.tsx`, add a third colour to `BIKE_COLORS`.
+2. In `vehicleShapes.ts`, move the rider's hands by changing the joints in `createBikeRiderGeometry`.
+
+### Next
+
+A replacement woman. Parked scooters still use the old shape, and could use a matching model.
+
+## 2026-11-07: Entry 33, your own delivery bike, and Yamahas in traffic
+
+### What I did
+
+- **You** now ride the delivery bike: black paint, a white box, and a white jacket and helmet. Its
+  front end is a separate part, so steering and leaning work as they did on the scooter. The rider's
+  hands, hips and feet were moved to fit it, and the wheel radius is now 0.296 m.
+- **Traffic bikes** are Yamahas in five colours, with a crouched rider fitted to their low bars.
+
+**Licence warning:** the Yamaha is CC-BY-NC-SA, so no commercial use, and edits share its licence.
+This was your decision. It lives in its own `yamaha.glb` with its own credit, so replacing it later
+means changing one file. Replace it before anything commercial.
+
+### What I checked
+
+Type check, lint and build pass, and the game loads with no errors. In the game I saw you on the bike
+from behind, standing still. In the model viewer I saw the Yamaha with its rider in two colours.
+
+**Not checked:** riding it. That means steering, leaning, the rider's arms following the bars, the foot
+coming down at a stop, and bikes in traffic. The handling itself didn't change, but the bike is a
+different shape from the scooter.
+
+### Lesson 125: pivots live where the part turns
+
+The bike's front end is modelled in the bike's own space, so turning it directly would spin it around
+the middle of the bike. `Scooter.tsx` moves a group to the steering axis, moves the part back by the
+same amount inside it, and turns the outer group. That two-group trick works for any hinge.
+
+### Lesson 126: keep different licences in different files
+
+Share-alike terms follow edits of that model. Keeping the Yamaha in its own file makes the boundary
+obvious, and makes it easy to remove.
+
+### Lesson 127: names can lie
+
+`plastic_d8` sounded like the bodywork, but it was the black fairing, and a plain-sounding
+`Material.004` was the blue paint. Reading the colours took a minute, and guessing cost a rebake.
+
+### Try it
+
+1. In `Scooter.tsx`, change `PAINT_COLOR` to white for a fully white bike.
+2. In `Rider.tsx`, change `JACKET` to black.
+3. In `Traffic.tsx`, edit `BIKE_COLORS`.
+
+### Next
+
+A replacement woman, and a check of everything above while riding. `scooterShapes.ts` is no longer
+used, and can go along with the other old shapes.
+
+## 2026-11-07: Entry 34, no more getting stuck after a crash
+
+### What I did
+
+Fixed a bug where you couldn't accelerate until you reversed. With your nose against a wall, within
+about 37 degrees of head-on, your speed was wiped every frame, and steering needs speed to work. So
+you could neither move nor turn, and a crash's spin often left you in just that spot.
+
+Now, holding the throttle against something swings the bike along it, towards the way you're steering,
+or the nearest way if you aren't. The same applies when you're pressed against a vehicle or a loose
+parked scooter.
+
+### What I checked
+
+I ran the real controller in a test script, before and after, for 3 seconds of holding W:
+
+| Situation | Before | After |
+|---|---|---|
+| Up to 30 degrees off head-on | Stuck, moved about 0.5 m | Free in about 1.2 s |
+| Steering away from the wall | Stuck | Free in about 1.2 s |
+| Nose on a planter or tree trunk | Not tested | Free in about 0.9 s |
+| Inner corner, with steering | Not tested | Free in about 0.6 s |
+
+With no keys pressed against a wall, the bike stays put. Fast hits still crash, as that code didn't
+change. Type check, lint and build pass.
+
+**Not checked:** riding it for real, and pressing against a vehicle, which only went through the type
+check. In an inner corner, holding W with no steering can still leave you bouncing between the walls,
+so steer or reverse there.
+
+### Lesson 128: one rule can undo another
+
+"Steering fades at low speed" stops a parked scooter spinning on the spot. "Head-on hits stop you dead"
+is fair too. Each is sensible alone, and together they trap you. Look for bugs where rules meet.
+
+### Lesson 129: a magic number can hide a shape
+
+`headOnThreshold: 0.8` looks like a tuning value, but it's a cosine, and arccos(0.8) is the 37 degree
+line the bug sat on. The test showed stuck at 30 degrees and free at 40, which pointed straight to it.
+
+### Lesson 130: reproduce it before you fix it
+
+"Sometimes" bugs feel random until you remove the randomness. A short script placing the bike at set
+angles turned "sometimes" into an exact rule, and then proved the fix on the same cases.
+
+### Try it
+
+1. In `vehicleConfig.ts`, lower `wallNudgeRate` to `0.5` and ride into a wall.
+2. Raise it to `6` to feel it snap around.
+
+### Next
+
+Your report on how the new bike rides, and a replacement woman.
+
+## 2026-11-07: Entry 35, traffic lights
+
+### What I did
+
+Added working traffic lights at 16 junctions. The map marks no signals, so `trafficSignals.ts` picks
+junctions where at least two main roads meet, and keeps them 130 m apart.
+
+- **Timing:** roads facing each other share a turn, with 10 s of green, 2.5 s of yellow and 1.5 s when
+  everyone waits on red, so a junction can clear.
+- **Traffic obeys them.** Vehicles brake smoothly to a stop line. On yellow, they stop only if they
+  comfortably can.
+- **Poles** stand on the left kerb, with one set of lights over the road and a lower set you can see
+  when you've stopped at the line.
+
+Nothing forces you to stop, and there's no penalty for running a red. Pedestrians ignore the lights.
+
+### What I checked
+
+I ran real traffic on the real map for 15 simulated minutes, about 120 km of driving:
+
+| Crossings | Count |
+|---|---|
+| On green | 138 |
+| On yellow | 7 |
+| Red-light runs | 0 |
+| Past the line just after spawning, ignored | 3 |
+
+The longest wait was 15.5 seconds, so nothing gridlocked. That run used the lights' final logic and
+spacing. In the game I saw the lights by day and night, and the stop lines in the right place on each
+approach. Type check, lint and build pass.
+
+**Not checked:** watching traffic queue at a light with my own eyes, and frame rate. There are 53 poles,
+but they're very cheap to draw.
+
+### Lesson 131: new rules meet old rules
+
+Vehicles had a "patience" rule: after 4 seconds, go anyway. Unchanged, it would have sent every car
+through every red. So the light caps the speed after patience is applied, and time at a light doesn't
+count as waiting, or the whole queue would barge off together on green.
+
+### Lesson 132: stopping smoothly
+
+The speed that stops you in time is the square root of 2 x braking x distance. That one line gives a
+natural slow-down, with no timers or states to manage.
+
+### Lesson 133: test what you actually mean
+
+My first test said 35 red crossings, but they were cars creeping to the line at 0.2 m/s. The next said
+11, and those were real, because vehicles couldn't see past a fork. Defining "ran a red" properly is
+what found the true bug.
+
+### Lesson 134: when you can't see it, make it impossible to miss
+
+I blamed the stop line's height, then thought a pale band on the road was it. Painting it bright
+magenta proved it wasn't, because nothing magenta appeared. Roads here use `polygonOffset`, which nudges
+what the depth test sees, so being physically above the road wasn't enough. Only a stronger nudge wins.
+
+### Try it
+
+1. In `trafficSignals.ts`, set `green` to `4` and watch the queues grow.
+2. Change `MIN_JUNCTION_GAP` to `60` for many more lights.
+3. Sit at a red, then watch the cross traffic go.
+
+### Next
+
+Whether running a red should matter, such as a small hit to your performance score. Your call.
+
+## 2026-11-07: Entry 36, the rider's phone
+
+### What I did
+
+The map, order details, time, weather and earnings now live on a phone, which sits small in the
+bottom-left. Press P or click it to bring it up, with a wider map and the full order. The game keeps
+running, so glancing at it while riding has a real cost.
+
+- **Tucked away:** map, route, time, weather, the current stop, its distance and the on-time timer.
+- **Raised:** also the order number, delivery type, both stops, what it pays, and your credits and XP.
+- **Pay** shows the guaranteed amount with bonuses as extras, matching the rule that a delivery
+  always pays its base reward.
+
+The old mission, wallet and clock cards are gone, and `PhoneMap.tsx` replaces the round `Minimap.tsx`.
+Speed, the direction arrow and crash notices stay on screen. bengalooru.com redirected to a domain sale
+page, so this is an original design from the description.
+
+### What I checked
+
+Type check, lint and build pass. I saw it tucked and raised by day, raised at night with the moon icon,
+and the title screen. The route and stop are drawn from live game data.
+
+**Not checked:** the rain and cloud icons, the red timer, a long stop name, the delivered state, the
+drop-off leg, and whether the raised phone gets in the way while riding. A window under about 660 px
+tall shrinks the raised phone, and its contents could get cramped.
+
+### Lesson 135: guard every exponential
+
+`1 - Math.exp(-rate * delta)` is a lovely smoothing formula, but a negative `delta` makes `exp` explode.
+Once one value turns into `NaN`, it stays `NaN` forever, as anything multiplied by it is `NaN` too.
+Clamping `delta` to zero or more stops it at the source.
+
+### Lesson 136: canvases have two sizes
+
+A canvas has its pixel size (`width`) and the size CSS shows it at. If they differ, it stretches and
+blurs. `fitCanvas` matches them each frame. Setting `width` wipes the canvas, so it only sets it when
+the size has really changed.
+
+### Lesson 137: only the tree you can see
+
+Text scaled down with a CSS transform gets tiny, so the phone changes its real size and swaps what's
+shown. Different sizes need different content, not just different scale.
+
+### Lesson 138: clean up only what you wrote
+
+Removing `!important` across the whole stylesheet also removed three rules on the title screen that
+weren't mine. Searching first would have shown that. Fixes should be as narrow as the mistake.
+
+### Try it
+
+1. In `PhoneMap.tsx`, change the second number in `METRES_PER_PIXEL` to `3` for a much wider raised map.
+2. Change `PHONE_KEY` in `Phone.tsx` to `'Tab'`.
+3. Change `HURRY_SECONDS` to `60`.
+
+### Next
+
+Your thoughts on the phone while riding, and whether it should show more, like a list of past orders.
+
+## 2026-11-07: Entry 37, the dark store and the handover
+
+### What I did
+
+Deliveries are now one loop, from a single dark store:
+
+- **The dark store** is a real building on 27th Main Road, picked by `findDarkStore`. It gets a lit
+  sign, an open front with shelves of parcels, a striped riders' bay, parked bikes and a staff member.
+- **Pickup:** stop at the store, and staff walk out and put the parcel in your box.
+- **Customers** wait at the kerb, and turn to watch you once you're close.
+- **Handover:** the bike holds still and the camera swings side-on. The customer walks up, the parcel
+  arcs from your box to their hands, they hop among confetti, and the reward appears as they walk off.
+
+The on-time clock stops when you arrive, and pay is worked out then, so the animation can't lose you
+a bonus. Credits are added once the parcel lands.
+
+I also fixed the man's walk, which pedestrians share. His hem counted as a leg, and his arms swung too
+far. A rebake was all it took.
+
+### What I checked
+
+Type check, lint and build pass. I stepped through the real game frame by frame with a script: store,
+pickup, ride state, handover and reward, with no errors. I planned 500 orders on the real map: all
+start at the store, with 232 local, 189 across town and 79 long haul.
+
+**Not checked:** a real ride from the store to a customer. My test moved the customer beside the bike,
+so `Delivered in 0:00` on my reward card is from that. Also unchecked: night, Low quality, traffic
+during a handover, and the teen as a customer.
+
+Software rendering ran everything very slowly, so I can't vouch for the timing. By the numbers, a
+pickup should take a few seconds, and staff hurry when you stop far out. That may still feel long by
+the tenth order.
+
+### Lesson 139: a state machine for a show
+
+`collecting` and `handingOver` are real mission phases. While one is active, there's no stop, so the
+marker, route and clock all pause by themselves. The mission only moves on when `finishHandoff` is
+called, and the animation owns that moment.
+
+### Lesson 140: a cutscene is just a target
+
+No camera rig was needed. `liveShot` holds where the camera wants to be, and `FollowCamera` blends
+towards it. Everything in the game keeps running, so traffic carries on behind the moment.
+
+### Lesson 141: test animations by stepping through them
+
+One screenshot can't judge motion. Taking many frames found a camera aimed at the wrong spot, a parcel
+hidden behind a person, and a broken walk. All three looked fine in the code.
+
+### Lesson 142: fix the order, not just the symptom
+
+The camera read the customer's place before the customer had moved there, in the same frame. Doing
+things in the right order within a frame is a whole class of bug.
+
+### Lesson 143: rare cases need counting
+
+Trying a few orders by hand would have looked perfect. Planning 500 showed 2% of customers against a
+wall on narrow streets. When something is random, test it in bulk.
+
+### Try it
+
+1. In `Handoff.tsx`, set `ARC_HEIGHT` to `2` for a much higher toss.
+2. Change `CONFETTI_COUNT` to `200`.
+3. Raise `STAND_OFF` to `3` so the parcel flies further.
+4. In `DarkStoreBuilding.tsx`, change the name on the sign.
+
+### Next
+
+Your thoughts after a real run. A shorter pickup, or skipping it after the first few, could be next.
+
+## 2026-11-07: Entry 38, a black T-shirt
+
+### What I did
+
+Your rider now wears a black T-shirt with SILK printed on the back in white. The sleeves stop at the
+elbow, with bare forearms below, and the helmet's stripe turns black to match. Trousers became dark
+blue jeans, as near-black ones would have made a black shirt on a black bike look like one dark shape.
+
+### What I checked
+
+Type check, lint and build pass. I saw it from the normal riding camera, where the lettering reads the
+right way round, above the delivery box.
+
+**Not checked:** the print while leaning or in a crash, and up close in the handover shot.
+
+### Lesson 144: a print is a piece of the shape
+
+Rather than a flat sticker, the print is a strip of the same cylinder as the torso, a hair larger, open
+at the ends and covering only the back. So it curves with the body, and it leans with the rider because
+it sits in the same group. `CylinderGeometry` takes a start angle and a length for just this.
+
+### Try it
+
+1. In `Rider.tsx`, change `SHIRT_PRINT`.
+2. Raise `PRINT_Y` to move it up the back.
+3. Change `SHIRT` to any colour.
+
+## 2026-11-07: Entry 39, staff T-shirts and heavier lettering
+
+### What I did
+
+- **Staff** at the dark store now wear the same black T-shirt, with SILK on the back.
+- **The lettering** on both shirts is now heavy, narrow and slanted, based on a reference image. It's
+  built from the Impact font, squeezed and leaned over in `shirtPrint.ts`. It's a similar feel, not
+  the same font as the reference. Without Impact, it falls back to Arial Black or Arial.
+
+The rider and staff share one `shirtPrint.ts`, so there's a single place to change the shirt.
+
+### What I checked
+
+Type check, lint and build pass, and the game ran with no errors. I saw the staff from the front and
+from behind, the print on their back, and the rider's new lettering.
+
+**Workaround to know about:** I never found why the staff's print was hidden when drawn normally. A
+depth map shows it should sit clear of the shirt, and a magenta test put it in the right spot, yet it
+only appears with the depth test off. So it's drawn over the shirt, and shows only when their back
+faces the camera within 30 m. Something passing in front of them could have the print drawn over it.
+Staff face you when idle, so you'll mostly see it as they walk away.
+
+**Not checked:** the print at a distance, at night, or with traffic passing in front.
+
+### Lesson 145: be sure which side you're looking at
+
+I spent several tries "fixing" a print on what may have been the staff member's front. They turn to
+watch the rider when idle. Forcing a known direction for a test ends that kind of doubt.
+
+### Lesson 146: sample points can lie
+
+A simplified model has big triangles with few corners, so checking corners missed the real surface.
+Rasterising the triangles gave a true depth map.
+
+### Lesson 147: change one thing at a time
+
+Magenta and depth-off proved the position. Then lettering with depth on showed it was the depth test.
+Each run answered one question, and after that the fix was small.
+
+### Try it
+
+1. In `shirtPrint.ts`, change `PRINT_SLANT` to `0.4` for a faster lean.
+2. Change `PRINT_SQUEEZE` to `0.65` for narrower letters.
+
+## 2026-11-10: Entry 40, playing on a phone in landscape
+
+### What I did
+
+- **Touch controls.** On a phone, the left thumb gets ◀ ▶ to steer. The right thumb gets a big Gas
+  button, Brake beside it and Drift above. They're in `src/ui/TouchControls.tsx`.
+- **One input for both.** The buttons write into `touchInput` (`src/vehicle/touchInput.ts`).
+  `useDriveInput` now combines keyboard and touch, so the scooter code didn't change.
+- **Phone layout.** On touch screens, `<html>` gets a `touch` class (set in `main.tsx`), and the CSS
+  at the bottom of `index.css` rearranges the HUD. The rider's phone moves to the top left and shrinks,
+  the speed sits under Quality, the arrow is smaller and the credits line moves to the bottom middle.
+  The bottom corners belong to the thumbs. `env(safe-area-inset-*)` keeps clear of the notch.
+- **Landscape only.** Held upright, a "Turn your phone sideways" screen covers the game
+  (`RotatePrompt.tsx`, shown by a CSS media query). On Android, Start riding also asks for full screen
+  and locks it to landscape (`game/fullscreen.ts`). iPhone Safari allows neither, so there the prompt
+  does the job.
+- **Home screen.** `public/manifest.webmanifest` and the meta tags in `index.html` make it open full
+  screen and in landscape when added to the home screen.
+- **Phones start on Low quality.** A quality you've already picked is kept.
+- **No zooming or selecting.** Pinch zoom, double-tap zoom, text selection and the long-press menu are
+  off on touch screens, so a thumb held on Gas doesn't zoom the page.
+- **Testing on a computer.** Add `?touch` to the address, for example `localhost:5173/?touch`, and
+  the phone layout appears. The mouse works the buttons.
+
+### Why
+
+- **Buttons, not a joystick.** The scooter takes on/off controls (`DriveInput` is all booleans), so
+  buttons match exactly. A joystick would give in-between steering that the controller would have to
+  round off anyway.
+- **Look up the button under the finger.** A plain `onPointerDown` on each button would break when a
+  thumb slides from Gas to Brake. Touch pointers stick to the element they started on. So the code
+  remembers each finger by `pointerId` and, on every move, asks `document.elementFromPoint` which
+  button is under it.
+- **`(pointer: coarse)` rather than screen width.** A narrow desktop window isn't a phone, and a big
+  tablet is still touch. What matters is whether the main pointer is a finger.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome with `?touch`, at about 844 × 303 and 1512 × 772:
+
+- The title screen shows the touch controls and fits.
+- Holding Gas reached 44 km/h in 2.5 s. Sliding the same finger onto Brake lit Brake and slowed to
+  4 km/h. Lifting released everything.
+- The raised phone fits above the steering buttons. On the shortest screen, its order details scroll.
+
+**Not checked:** a real phone. That means the rotate prompt, full screen, the notch, multi-touch with
+two thumbs, iPhone Safari's address bar and frame rate on Low. To try it on your phone, run
+`npm run dev -- --host` and open the "Network" address it prints, on the same Wi-Fi.
+
+### Lesson 148: the game loop reads, the UI writes
+
+The scooter reads `input.current` every frame inside `useFrame`. It doesn't care who wrote it.
+Keyboard handlers and touch buttons both just flip booleans in plain objects, outside React state. A
+press therefore costs nothing: no re-render, no new object. Even the button's lit-up look is set
+with `dataset.pressed` straight on the DOM for the same reason. In R3F, anything that changes many
+times a second belongs in refs or plain objects, never `useState`.
+
+### Lesson 149: a getter can merge two sources without copying each frame
+
+`useDriveInput` returns `{ get current() { … } }`. It looks like a ref to the scooter, but each read
+fills one reused object with `keyboard || touch`. That keeps the old interface and makes no garbage,
+which matters because garbage collection pauses show up as stutters in a 60 fps game.
+
+### Try it
+
+1. In `index.css`, change `.touch-gas` to `width: 110px; height: 110px` for a bigger throttle.
+2. Swap the order of the Brake and Gas buttons in `TouchControls.tsx`, and feel which suits your
+   thumb.
+3. Open `localhost:5173/?touch` and make the window taller than it is wide. The rotate prompt
+   appears, because `orientation: portrait` only compares the window's height with its width.
+
+## 2026-11-10: Entry 41, the real reason you couldn't ride off after a crash
+
+### What I did
+
+- **Fixed being unable to accelerate after a crash.** It wasn't the wall: Entry 34 fixed that one. Now
+  anything slower than `STOPPED_SPEED` (0.05 m/s) counts as stopped, so the throttle drives instead of
+  braking (`ScooterController.ts`, `applyControls`). Reverse got the same rule.
+- **The shirts now say KILLS** instead of SILK (`SHIRT_PRINT` in `shirtPrint.ts`). Five letters are
+  shrunk to fit by the existing `PRINT_MAX_WIDTH` rule.
+
+### Why it happened
+
+A crash sets the scooter spinning (`spin`) and sliding sideways (`slip`). Both fade by multiplying
+by a little less than 1 each frame, so they get tiny but never reach exactly zero. Each frame the
+scooter turns a hair, and some of that tiny slide ends up pointing slightly backwards. The speed
+comes out as something like −0.00000001 m/s.
+
+`applyControls` said: holding the throttle while going backwards? Brake to zero first. So every
+frame it braked that speck to zero, and never got to the accelerating line. Reverse worked because
+it took a different branch, which matches "I can't accelerate until I reverse".
+
+Whether you got stuck depended on which way the crash spun you, which is why it only happened
+sometimes.
+
+### What I checked
+
+I ran the real controller in a script. The scooter hit a parked car at 50 km/h at 33 different angles
+and then held the throttle for 12 seconds:
+
+| | Stuck afterwards |
+|---|---|
+| Before | 12 of 33 |
+| After | 0 of 33 |
+
+The wall crash tests from Entry 34 still ride away. Type check, lint and build pass.
+
+**Not checked:** riding it in the game, and the KILLS print on screen.
+
+### Lesson 150: floating point never quite reaches zero
+
+`value *= Math.exp(-rate * dt)` is a smooth fade, but it only approaches zero. Any rule that asks
+`if (speed < 0)` will see these crumbs. Compare against a small margin instead (an "epsilon" or a
+"dead zone"), or snap the value to 0 once it's tiny.
+
+### Lesson 151: when a fix doesn't fix it, find the second cause
+
+Entry 34 fixed a real case of the same symptom, being pressed against a wall. This bug looked the same
+from the saddle but happened in open road. Dumping the whole state at the stuck moment showed speed 0,
+grip normal and nothing nearby. That pointed away from collisions and straight at the controls.
+
+### Try it
+
+1. In `ScooterController.ts`, set `STOPPED_SPEED` to `0`, crash into a car at a slight angle and hold W.
+   Sometimes you'll be stuck.
+2. Change `SHIRT_PRINT` in `shirtPrint.ts` to any word.
+
+## 2026-11-11: Entry 42, pedestrians can be hit
+
+### What I did
+
+- **You can hit pedestrians.** Touch one fast enough and they become a real Rapier body, thrown by
+  weight like a car or a parked scooter. A person is 70 kg and you're 180 kg, so they fly and you just
+  lose some speed. They lie there for at least 3 seconds, get up where they landed, and walk back to
+  their path. The code is `hitPedestrian` and `stepKnockedPedestrian` in `trafficLogic.ts`.
+- **You never fall.** The hit changes your velocity directly instead of going through `applyImpact`,
+  which is what decides crashes. There's a small camera shake and nothing else. It doesn't count as a
+  crash, so the clean-ride bonus is safe.
+- **They only dodge slow riders.** Before, anyone within 4 m always stepped aside, so they could
+  never be hit. Now they only do that when you're under 18 km/h (`dodgeMaxRiderSpeed`).
+- **Walking back is a walk.** After a dodge or a fall, they return to their path at 1.4 m/s
+  (`returnSpeed`). Before, they slid back quickly, which would have looked silly from 6 m away.
+- **The handover people** (`Handoff.tsx`) got the three new fields, but they can't be hit.
+
+### What I checked
+
+I ran the real `stepTraffic`, `stepScooter` and Rapier in a script, with one person standing on a
+pavement across the rider's path:
+
+| Rider speed | Thrown | Landed | Highest | Rider after | Rider fell |
+|---|---|---|---|---|---|
+| 10 km/h | yes, a stumble | 1.6 m | 0.24 m | 6 km/h | no |
+| 25 km/h | yes | 5.9 m | 1.8 m | 16 km/h | no |
+| 40 km/h | yes | 13.5 m | 2.7 m | 26 km/h | no |
+| 55 km/h | yes | 10.1 m | 2.6 m | 33 km/h | no |
+
+After that I raised the throw threshold (`pedestrianKnock`) from 2 to 3 m/s, so the 10 km/h case is now
+just a nudge aside. Type check, lint and build pass.
+
+**Not checked:** seeing it in the game. That covers how the tumbling looks, the getting-up pop
+(they snap upright, as there's no get-up animation) and whether 55 km/h landing short of 40 km/h
+looks odd. It's from more spin and earlier ground contact.
+
+### Lesson 152: the same rule makes every hit feel consistent
+
+`resolveHit` shares a hit out by weight, and it's the code cars and parked scooters already use. Passing
+the person as the first thing and the rider as the second means `change` is what the person feels, and
+`other` is what the rider feels. Nothing new had to be invented for "how far should they fly". It's
+speed times a weight ratio, which is why the table grows steadily with speed.
+
+### Lesson 153: arcade until it's interesting
+
+Pedestrians walk by simple lane rules with no physics, because 36 bodies would cost frame rate for
+nothing. Only at the moment of a hit does one become a Rapier body, and when it settles it goes back to
+the cheap rules. It's the same pattern as wrecked cars.
+
+### Try it
+
+1. In `trafficLogic.ts`, raise `maxThrowUp` and watch people fly higher. It's shared with vehicles.
+2. Set `dodgeMaxRiderSpeed` to `0` so nobody dodges, and ride slowly into a crowd.
+3. Change `PERSON_SHAPE.mass` to `200` and feel yourself slow down far more.
+
+## 2026-11-11: Entry 43, Bengaluru traffic, horns, and a stricter phone check
+
+### What I did
+
+**Traffic that feels like Bengaluru** (`trafficLogic.ts`):
+
+- **More of it, closer to you.** Up to 34 vehicles (Low 12, Medium 22, High 34, from 6, 12 and 18).
+  They appear 90–180 m from you instead of 150–260 m, so they're packed around you instead of spread
+  over the map.
+- **Bumper to bumper.** Cars leave 1.4 m to the vehicle in front, and two-wheelers and autos 0.6 m.
+  Before, every vehicle kept 6.5 m between centres, whatever its size. Gaps are now measured bumper to
+  bumper, using each vehicle's real length and width.
+- **Two-wheelers and autos weave.** With something within 8 m ahead, they try the gap to the right
+  (past cars and partly into the other side of the road) and along the kerb on the left (past other
+  two-wheelers). They take whichever has more room, then drift back to their lane when it's clear
+  (`squeezeThrough`). Oncoming traffic counts as in the way, so they won't pull out into it.
+- **Some ignore red lights.** 35% of two-wheelers and 25% of autos (`rebel`).
+- **Horns.** Stuck behind you, they honk about every 1–2 seconds until you move. In a queue they honk
+  now and then, and occasionally on the move too (`maybeHonk`).
+- **No driving through each other.** The "after 4 s, go anyway" rule now applies only to traffic
+  crossing at a junction, which is what it was for. In a queue, it was making cars pass through the car
+  in front, and bumper-to-bumper jams would have made that obvious.
+
+**Sound, for the first time** (`src/audio/horns.ts`). Horns are made in code with the Web Audio API,
+so there are no sound files. Each is two tones played together and filtered: cars a low blast, autos
+a nasal double toot, two-wheelers a quick "peep peep". Nearer is louder, and they pan left or right
+by where the vehicle is. At most 5 sound at once, so a jam doesn't become noise. Sound starts when you
+press Start riding, as browsers only allow sound after a click or tap.
+
+**Your own horn.** Press H, or tap Horn on a phone (`PlayerHorn.tsx`, `TouchControls.tsx`).
+
+**The phone layout is for phones only** (`touchDevice.ts`). It now needs a mobile browser *and* a
+finger as the main pointer. iPads count, as they report themselves as a Mac with a touchscreen. A
+touchscreen laptop or a desktop browser keeps the keyboard layout. `?touch` still forces the phone
+layout, for testing.
+
+### What I checked
+
+I ran the real `stepTraffic` in a script on a straight road, with a car at 5 km/h leading three cars,
+three bikes and an auto, for 40 seconds:
+
+| | Before the fixes in this entry | After |
+|---|---|---|
+| Got past the slow car | none (squeezing 1.4 m wasn't enough to clear a car) | the auto and two bikes |
+| Smallest bumper gap between cars | cars inside each other (−4.2 m) | 1.4–2.0 m |
+| Rider parked in the lane | — | 30 honks in 40 s |
+
+The game loads and rides on desktop with no console errors, using the desktop layout. Type check,
+lint and build pass.
+
+**Not checked:** hearing the horns (I can't hear), how jams look in the game, the frame rate with 34
+vehicles on High, and the Horn button and mobile detection on a real phone.
+
+### Lesson 154: make the sound, don't load it
+
+A car horn is mostly two notes a third apart, played on harsh waves, with the top cut off. The Web
+Audio API builds that from parts: `OscillatorNode`s for the notes, a `BiquadFilterNode` for the tone,
+a `GainNode` for each beep's fade in and out, and a `StereoPanner` for left and right. A few lines
+replace a folder of recordings, and every honk can be detuned a little so no two sound the same.
+
+### Lesson 155: ask "what if I moved over?"
+
+To let bikes weave, `findGapAhead` got a `sideways` argument. It measures the gap as if the vehicle
+were that far to the side. Trying three answers and picking the best is all the "AI" there is. The
+`+ 1.5` margin before changing stops them dithering between two nearly equal gaps.
+
+### Try it
+
+1. In `trafficLogic.ts`, set `bikeRebels` to `1` and watch every bike sail through red.
+2. Set `honkAtRiderAfter` to `3` for more patient drivers.
+3. In `horns.ts`, change `CAR.tones` to `[300, 300]` for one flat note, and hear how much the
+   second note matters.
+
+## 2026-11-11: Entry 44, a radio on the rider's phone
+
+### What I did
+
+The raised phone now has a radio along the bottom: ‹ › to change station, ♪ to turn music on or off,
+and 📯 to turn horns on or off. R changes station from the keyboard. Your choices are saved with your
+progress.
+
+| Station | What it is | Made by |
+|---|---|---|
+| Chai Break FM | Lo-fi: lazy swung beat, soft electric-piano chords, vinyl crackle | Code |
+| Tabla Taxi | Tanpura drone, tabla playing keherwa, a sitar-like line in raga Kafi | Code |
+| Ring Road Nights | Synthwave: four-on-the-floor kick, running bass, arpeggio | Code |
+| HSR Indie | 12 Bengaluru and Indian indie songs on YouTube | YouTube |
+
+HSR Indie plays, in order and then on loop: Raghu Dixit's *Lokada Kalaji* and *Hey Bhagwan*, When Chai
+Met Toast's *Firefly*, Prateek Kuhad's *cold/mess*, Swarathma's *Raah e Fakira*, Ritviz's *Udd Gaye*,
+*Belageddu* from Kirik Party, The Local Train's *Choo Lo*, Easy Wanderlings' *Mellow*, Anuv Jain's
+*Baarishein*, Thermal and a Quarter's *Origami*, and Lifafa's *Jaago*. Each is the artist's or label's
+own upload. I checked each one with YouTube's oEmbed address, which answers only for videos that allow
+playing on other sites.
+
+New files:
+
+- `audio/audioEngine.ts`: one AudioContext with a music bus and a sound-effects bus, so each can be
+  muted. It suspends while the game is in the background.
+- `audio/instruments.ts`: kick, snare, hi-hat, crackle, tabla, held tones and plucked strings.
+- `audio/stations.ts`: the four stations. `audio/radio.ts`: the scheduler that plays code stations.
+- `ui/Radio.tsx`: the radio buttons, the YouTube player, and `RadioPlayer`, which keeps the sound in
+  step with the settings.
+
+### Why
+
+- **Music made in code is the default.** It always works, offline too, with no sign-in, ads or
+  licences.
+- **YouTube is one station, not the plan.** It has real songs, but YouTube's rules say the player must
+  stay visible and at least 200 × 200 px. So on that station the video takes the map's place on the
+  phone, and the phone grows to fit it. On a phone in landscape, the order details are hidden under it
+  to make room. The direction arrow still points the way.
+- **Not Spotify.** Its full player needs Premium, a login and a registered app, and doesn't run in
+  mobile browsers. Its simple embed plays 30-second previews to anyone not signed in.
+
+### What I checked
+
+- In Chrome: the radio shows on the raised phone, ‹ › cycles through all four stations, and the
+  settings save. On HSR Indie, YouTube's player loads at 302 × 200 px with the first song cued. There
+  are no console errors.
+- I rendered 8 seconds of each code station silently into a buffer (`OfflineAudioContext`) and
+  measured it:
+
+| Station | Peak (1.0 is clipping) | Average loudness (RMS) |
+|---|---|---|
+| Chai Break FM | 0.31 | 0.030 |
+| Tabla Taxi | 0.22 | 0.021 |
+| Ring Road Nights | 0.28 | 0.034 |
+
+Type check, lint and build pass.
+
+**Not checked:** listening to any of it (I can't hear), YouTube actually playing (my test clicks
+came from a script, and browsers don't count those as a real tap, so autoplay was blocked), and the
+radio and video on a real phone.
+
+### Lesson 156: two clocks
+
+`setInterval` is late by tens of milliseconds whenever the page is busy, and the game's page is
+always busy. So `radio.ts` never plays a note "now". The timer wakes every 25 ms and books every note
+due in the next 0.12 s, at an exact time on `context.currentTime`, the audio card's own clock. A late
+timer only means a note is booked a little closer to its time, never played late.
+
+### Lesson 157: a bus is just a gain
+
+Muting music doesn't stop anything. It fades the music bus's `GainNode` to 0 with `setTargetAtTime`,
+which avoids the click a sudden jump makes. Every station has its own fader into the bus, so the old
+one fades out while the new one fades in.
+
+### Lesson 158: test sound without hearing it
+
+`OfflineAudioContext` renders audio as fast as it can into a buffer instead of the speakers. Run a
+station into one, and you can measure the peak (is anything clipping?) and the loudness (are the
+stations balanced?). It's the audio version of a screenshot test.
+
+### Try it
+
+1. In `stations.ts`, change Chai Break's `tempo` to `90`, or its `swing` to `0` and hear the lilt go.
+2. Swap Tabla Taxi's raga: replace `kafi` with `[0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19]` (Yaman).
+3. Add a YouTube video id to `hsrIndie.videos`.
+
+## 2026-11-11: Entry 45, clearer stop markers on the phone map
+
+### What I did
+
+The stop on the phone's map was a plain coloured dot. When the stop was off the map, the same dot sat
+at the edge, so it was hard to tell "it's here" from "it's that way". In `PhoneMap.tsx`:
+
+- **On the map, it's a pin.** It's a round badge on a point, with the point exactly on the stop. The
+  badge has a picture: a box (orange/yellow) to collect, a house (green) to deliver to.
+- **Off the map, it's an arrow.** The badge sits at the edge with an arrow pointing the way to the
+  stop. Next to it is the distance by road, the same number as on the order sheet. It pulses gently,
+  so it reads as "over there", not as a place on the map.
+- The pin's head stands above its point, so it counts as off the map a little sooner at the top.
+  That way the head is never cut off by the status bar.
+
+### What I checked
+
+In Chrome, at the start of a delivery with the pickup 275 m away:
+
+- Tucked away, the map shows about 130 m each side, so the pickup was off it. The box badge sat at
+  the left edge with the arrow pointing left and "275 m" beside it.
+- Raised, the map shows about 300 m each side, and the pickup showed as a pin at the end of the route
+  line.
+
+My first box icon looked like a padlock, and the second like a pause button. The third, a box with a
+wider lid, reads as a parcel. Type check and lint pass.
+
+**Not checked:** the green house marker on screen. I couldn't skip the mission ahead from a script,
+but it's the same drawing code with a different shape.
+
+### Lesson 159: an arrow needs a direction, and a direction is just atan2
+
+The stop's place on the screen, relative to the rider, is `(x, y)`. `Math.atan2(y, x)` turns that into
+an angle, and `cos` and `sin` of that angle give a one-pixel step towards the stop. The arrow is three
+points: a tip 19 px along that step, and two corners either side of the badge. "Either side" means
+turning the step a quarter turn, which is just swapping it to `(-y, x)`. The label goes the opposite
+way, `-step`, so it can never sit under the arrow.
+
+### Try it
+
+1. In `PhoneMap.tsx`, change `PIN_RADIUS` to `12` for bigger markers.
+2. Remove the `nudge` from `drawOffMap` to stop the pulsing, and see if it still reads as "that way".
+
+## 2026-11-11: Entry 46, the YouTube player stops covering the map
+
+### What I did
+
+YouTube's player must stay visible and at least 200 × 200 px while it plays, but it doesn't have to
+cover the map. Now (`Phone.tsx`, `Radio.tsx`, `index.css`):
+
+- **On a computer**, the video has its own card beside the phone, 356 × 200 px, above the controls
+  hint. It slides along when the phone is raised. The phone always shows the map.
+- **On a phone**, the video shows on the raised phone only. Put the phone away and the map is back
+  and the music pauses. Raise it again and it carries on from the same song and second (`resumeAt`).
+  There's no free 200 px spot on a phone held sideways, and this keeps the map while riding.
+- The three code stations play in the background everywhere, as before.
+
+### What I checked
+
+In Chrome, on HSR Indie:
+
+| | Map | Video |
+|---|---|---|
+| Computer, phone down | shown | card at the left, 356 × 200 |
+| Computer, phone up | shown | card moved right, 356 × 200, same player, so no restart |
+| Phone layout, phone up | hidden | in the phone, 270 × 200 |
+| Phone layout, phone down | shown | gone |
+
+Type check, lint and build pass. I put your station back to Chai Break FM after testing.
+
+**Not checked:** carrying on from the same second. Nothing actually played, as my test clicks
+weren't real taps. Also, YouTube showed *Firefly*, the second song, ready to play first rather than
+*Lokada Kalaji*. That song may not be allowed to play on other sites where you are, in which case
+YouTube skips it.
+
+### Lesson 160: unmount, but remember
+
+React removes a component's DOM when it stops rendering it, and YouTube's player goes with it. That's
+what makes "visible or not playing" easy to keep to. To make it feel like a pause, the cleanup
+function saves the song and second into a plain module variable, which outlives the component, and
+the next player starts from there with `start` and a turned playlist.
+
+## 2026-11-11: Entry 47, the YouTube card above the phone, or beside it on a phone
+
+### What I did
+
+You asked for the YouTube player above the rider's phone on a computer, and to its right on a phone.
+It now always has its own card, and never covers the map (`Phone.tsx`, `index.css`):
+
+- **Computer:** the card sits just above the rider's phone, 10 px apart, as wide as the phone: 238 ×
+  200 tucked, 316 × 200 raised. To make room, the raised phone on this station is 246 px shorter
+  than usual (`.phone-raised.phone-video-above`). That's the card's 200 px, the 10 px gap and the
+  usual top and bottom margins.
+- **Phone held sideways:** the card sits at the top, just right of the rider's phone, at YouTube's
+  smallest allowed size, 200 × 200. It moves along when the phone is raised.
+- So on a phone, HSR Indie now keeps playing while you ride, rather than only while the phone is up
+  (Entry 46). The player is no longer removed when you put the phone away, so the "carry on from the
+  same second" code is rarely needed now. It stays for when you switch stations and come back.
+
+### What I checked
+
+In Chrome, measured on screen:
+
+| | Rider's phone | Video card |
+|---|---|---|
+| Computer, phone down | 238 × 372, top at 444 | 238 × 200, top at 234, so it ends 10 px above |
+| Computer, phone up | 316 × 582, top at 234 | 316 × 200, top at 24 |
+| Phone layout, phone down | 150 × 190 at the top left | 200 × 200, from x 168, right of it |
+| Phone layout, phone up | 280 wide | 200 × 200, from x 298, right of it |
+
+On an 844 × 390 phone, the card ends at x 368 and y 208. It stays clear of the direction arrow (from x
+390) and the steering buttons (from y 304). On a narrower phone, such as 667 wide, it would overlap
+the arrow a little. Type check, lint and build pass. I put your station back to Chai Break FM.
+
+## 2026-11-11: Entry 48, your playlist: HSR After Hours
+
+### What I did
+
+The YouTube station is now **HSR After Hours**, your 30-song list, in your order (`stations.ts`).
+Its id stays `hsr-indie`, so anyone who had the station picked keeps it.
+
+Most of the list was YouTube search links, not videos. For each one I took the top results, read
+each video's title and channel through YouTube's oEmbed address, and picked the artist's or label's
+own upload. I skipped covers, lyric-video channels and fan uploads.
+
+| # | Song | What I used |
+|---|---|---|
+| 3 | Alag Aasmaan | The acoustic version on Anuv Jain's channel |
+| 4 | Aaftab | The official audio, spelt "Aaftaab" |
+| 5, 15, 17 | Doora, Tulasi, Ghaib | The artist's own upload or YouTube's official "Topic" channel |
+| 11 | Ninna Notavu | Sony Music South's visualiser |
+| 12 | Jamba | British Council Soundpad's video. It's not on Swarathma's own channel |
+| 21 | Bass Rani | *Bass Rani* is an album, so its track *Aaja* on Nucleya's channel |
+
+**Stand-ins:** three songs weren't on YouTube under the name given, so the closest song by the same
+artist takes their place. They're marked "stand-in" in the code.
+
+| # | On your list | Stand-in |
+|---|---|---|
+| 9 | Savera, by OAFF and Savera (the duo's name) | *Doobey*, by OAFF and Savera |
+| 14 | Namma Bengaluru, by Thermal and a Quarter | *Bangalore Blues*, by Thermal and a Quarter |
+| 26 | A Song for the Moon, by The Bicycle Days | *Circles*, by The Bicycle Days |
+
+### What I checked
+
+All 30 ids are different, and all 30 pass the oEmbed check, which means they allow playing on other
+sites. Type check, lint and build pass.
+
+**Not checked:** playing through the list. Some videos may still be blocked in your country or
+age-restricted, which oEmbed doesn't show. YouTube skips those.
+
+## 2026-11-11: Entry 49, a poster on every lamp post
+
+### What I did
+
+Your "Diwali Dhamaka Days" poster for Kills now hangs on every lamp post (`RoadsideProps.tsx`):
+
+- It's a two-sided board, 0.6 × 0.9 m, from 2.2 m to 3.1 m up, out of reach of passers-by. It's
+  strapped to the side of the post, sticking out a little towards the road.
+- It faces along the road, so you see it head-on when riding towards a post from either direction.
+  The back is the same picture, not mirrored.
+- The image is `public/textures/poster-kills.jpg`: your 1024 × 1536, 1.6 MB PNG, resized to 512 ×
+  768 and saved as an 83 KB JPEG.
+- Every poster is one copy in the same instanced mesh as the lamp posts, with the same distance
+  culling: one draw call and 16 triangles each.
+
+### What I checked
+
+In Chrome, near the start: 93 lamp posts were being drawn and 93 posters. Close-up frames rendered
+2.5 m in front of and behind one poster show the whole design reading correctly from both sides. Type
+check and lint pass.
+
+**My first try faced the wrong way.** I assumed a lamp's +X pointed over the road, because the code
+comment says "A lamp's arm reaches back over the road". But the rotation in `props.ts` makes +X run
+**along** the road, and +Z point out over it, so my first posters faced across the road, side-on to
+riders. Turning the poster a quarter turn fixed it. The same maths means the lamp's arm also runs
+along the road, not over it. I haven't changed that.
+
+**Not checked:** posters at night (they're unlit, so they'll go dark), and the frame rate on Low.
+
+### Lesson 161: read the maths, not the comment
+
+`atan2(-directionZ * side, directionX * side)` as a Y rotation sends the model's +X to
+`(cos, -sin)`, which is `side × (directionX, directionZ)`: the road's own direction. The comment
+beside it said otherwise. When a placement looks wrong, work out where one axis ends up by hand. It
+takes a minute and settles it.
+
+### Lesson 162: one picture, many copies, still one draw call
+
+An `InstancedMesh` draws one shape many times, so all the copies share one material and one texture.
+The poster's board edges still need a colour, so their UVs all point at one spot in the poster's plain
+maroon corner. One picture covers the faces and the edges, and the poster stays a single shape.
+
+### Try it
+
+1. Change `POSTER_BOTTOM` to `1.6` and the posters come down to eye level.
+2. Drop a different image at `public/textures/poster-kills.jpg`. Any 2:3 picture fits.
+
+## 2026-11-11: Entry 50, crashes that look like real crashes
+
+### What I did
+
+You said crashes and throws didn't feel real, for people, you, autos or bikes. I measured them first,
+with the real code and Rapier in a script, and the numbers agreed:
+
+| At 40 km/h, before | Highest | Turned | Slid |
+|---|---|---|---|
+| A person | 2.6 m | 3.3 full turns | 25 m |
+| A bike | 2.0 m | 1.3 turns, end over end | 7.7 m |
+
+Real hits at wheel or leg height mostly shove the bottom along while the top lags, so things **tip
+over and slide**. They don't fly and spin. Changes:
+
+**1. A throw rule per kind of thing** (`throwFor` and `THROW_STYLES` in `trafficLogic.ts`):
+
+- People fall over any way.
+- Two-wheelers fall onto their side, and hardly ever go end over end.
+- Autos are tall and narrow, so they roll onto their side when hit from the side, and only rock when
+  hit from behind.
+- Cars mostly just get shoved.
+
+The push is split into "across" and "along" the thing using its heading, and each part tips it by
+its own amount. Lift is small and capped.
+
+**2. How each one slides** (`CrashSurface` in `crashPhysics.ts`): each kind has its own friction,
+bounce and slowing. A body drags to a stop and can't keep rolling like a box. A bike on its side skids
+further. People also soak up a hit (`bodyBounciness`) rather than bouncing off it like metal.
+
+**3. Your scooter no longer bulldozes bodies.** Your shape in the physics world never moves, and it
+was shoving fallen people 25 m down the road as you rode on. Collision groups now keep it from
+touching bodies.
+
+**4. People go limp and get up.** A knocked-over person's arms fling out and legs part, by a
+`down` value from 0 to 1 that the walking shader blends to. After lying a few seconds, they turn
+smoothly from however they landed back to standing over about a second (`blendRotation`, a slerp),
+then walk back to the pavement.
+
+**5. Bike riders are thrown off.** A hit bike's rider becomes a real body of their own. They carry on
+with most of the bike's speed and tumble. Then they lie a moment, get up, walk back to the bike, and
+get on as it's stood back up. Fallen vehicles are stood back up over 0.9 s, rather than snapping.
+
+**6. You're thrown off.** In a crash above about 14 km/h, the rider comes off over the bars and rolls
+forward under gravity. They land, slide to a stop, settle flat, lie still, get up, jog back and climb
+on as the scooter is lifted. Walls stop them dead. It's plain maths in `stepThrownRider`
+(`ScooterController.ts`), not Rapier. The rider is still drawn inside the scooter, so `placeRider`
+(`Scooter.tsx`) turns their world pose into one relative to the scooter's lean group. It blends
+between that pose and the seat while they get on. Their arms and legs get standing, walking and limp
+poses (`Rider.tsx`).
+
+**7. Traffic stops for anyone lying in the road.** Knocked-over people, thrown riders and you, while
+off the scooter, now count as in the way. Cars and bikes stop short and honk, instead of driving on
+and shoving the body along.
+
+### What I checked
+
+The same script before and after:
+
+| At 40 km/h | Highest | Turned | Slid | Comes to rest |
+|---|---|---|---|---|
+| A person, before | 2.6 m | 3.3 turns | 25 m | never, in 8 s |
+| A person, after | 0.24 m | a quarter turn, falls flat | 6.9 m | 1.9 s |
+| A bike, before | 2.0 m | 1.3 turns | 7.7 m | 2.5 s |
+| A bike, after | 0.27 m | a quarter turn, onto its side | 4.2 m | 1.6 s |
+| An auto hit side-on | 0.85 m | rolls onto its side | 1.1 m | 1.6 s |
+
+At 25 km/h a person slides 5.5 m. A thrown bike rider at 40 km/h travels 5.6 m, is back on after
+4.9 s, and the bike is riding again after 5.8 s.
+
+You, hitting a stopped car:
+
+| Speed | Thrown | Hips highest (seat is 0.93 m) | Riding again after |
+|---|---|---|---|
+| 30 km/h | 4.6 m | 1.09 m | 4.1 s |
+| 40 km/h | 6.6 m | 1.14 m | 4.8 s |
+| 50 km/h | 9.0 m | 1.18 m | 5.6 s |
+
+A car driving at someone lying in its lane stopped with its bumper 2.3 m short and honked 8 times in
+15 s. The traffic-jam test from Entry 43 still passes. In Chrome I rode into a building and rendered
+frames through the crash. You fly off, slump against the wall, lie flat by the scooter, which is on
+its side, are up at 2 s, and back on soon after. Type check, lint and build pass.
+
+**Bugs found on the way:**
+
+- At first a person still "slid" 25 m. That was the bulldozing above.
+- My first rider "glided" further at 40 km/h than at 50. Rolling through upright made the hips pop
+  up off the ground, so friction stopped working. Landing now sticks.
+- My first rider did a headstand against a wall, because an upside-down body was treated as having
+  its hips high.
+
+**Not checked:** watching people and bike riders fall and get up in the game (I checked them by the
+numbers), and the frame rate when several things crash at once. A limp arm can still poke into a
+wall, and a thrown rider passes through cars, as they only collide with buildings.
+
+### Lesson 163: measure the feel
+
+"Doesn't feel real" turned into four numbers: highest point, turns, distance and time to rest.
+Each fix was then a change to one of them, and the before-and-after tables say whether it worked.
+
+### Lesson 164: a quaternion blend for getting up
+
+Standing a body back up is a turn from "however it landed" to "upright, facing the same way". A
+quaternion slerp (`blendRotation`) follows the shortest turn between any two orientations, and an
+eased amount (`smooth`) makes it start and finish gently. The same few lines right a fallen bike.
+
+### Lesson 165: a child in world space
+
+The rider is inside the scooter's lean group, but a thrown rider has a place in the world. Each
+frame, `placeRider` builds the world matrix it wants, multiplies by the inverse of the parent's
+world matrix, and uses the result as the child's local matrix. That's how you place a child exactly
+in world space without moving it out of its parent.
+
+### Try it
+
+1. In `trafficLogic.ts`, raise `AUTO_THROW.roll` to `0.6` and autos tip over at the slightest touch.
+2. In `ScooterController.ts`, set `RIDER_CARRY` to `0.9` for longer throws.
+3. Set `throwOffSpeed` in `vehicleConfig.ts` to `99` and the rider never comes off.
+
+## 2026-11-12: Entry 51, top speed up to 56 km/h
+
+### What I did
+
+The scooter's top speed is now 56 km/h, up from 50 (`maxSpeed`, 14 → 15.56 m/s, in `vehicleConfig.ts`).
+Everything that scales with top speed follows on its own: the engine's pull near the top, the lean, the
+camera's widening view, and the rider's crouch. The crouch had 14 written in by hand in `Rider.tsx`, so
+it now reads `SCOOTER.maxSpeed` instead. Boost still adds 3 m/s on top, now about 67 km/h.
+
+The on-time timer is unchanged, as it's based on an average route speed of 6.7 m/s, not the top
+speed, so deliveries get slightly easier to finish on time.
+
+### What I checked
+
+Type check, lint and build pass. **Not checked:** riding it.
+
+## 2026-11-12: Entry 52, levels and new kinds of order
+
+### What I did
+
+Step 1 of the progression plan. XP now gives you a **level**, and levels unlock new work.
+
+**Levels** (`src/game/progression.ts`). Reaching level L takes 50 × (L − 1) × L XP in all, up to
+level 20:
+
+| Level | Total XP | Unlocks |
+|---|---|---|
+| 2 | 100 | Long haul orders |
+| 3 | 300 | Rush orders |
+| 4 | 600 | Night shift pay |
+| 5 | 1,000 | Double drops |
+| 10 | 4,500 | — |
+
+The level is never saved. It's worked out from your saved XP, so old saves are already the right
+level.
+
+**New kinds of order** (`missionPlanner.ts`, `missionConfig.ts`, `missionLogic.ts`):
+
+- **Rush** (level 3, a quarter of orders): the timer is 70% of normal. On time, the bonus is 65
+  instead of 25, plus 10 XP. Late, you still get the full base pay.
+- **Double drop** (level 5, up to a fifth of orders): one pickup, then two customers 120–500 m apart
+  by road. Each customer pays the base reward. The timer covers the whole trip. If no second customer
+  fits, it becomes a standard order.
+- **Night shift** (level 4): delivered after dark, base and distance pay go up 25%.
+- Long haul orders now need level 2.
+
+**On the phone:** a "Rush" tag and "Drop off 1/2" on the order sheet. The raised phone shows the
+order kind, every customer in turn, the rush bonus and night pay, and a level bar with your XP. The
+results card says "Both orders delivered" for a double drop and shows night pay. When you go up a
+level, a green card says what you've unlocked. The title screen shows your level.
+
+### What I checked
+
+In a script, with the real store and pay rules:
+
+| Order | Credits | XP |
+|---|---|---|
+| Standard, Local, on time | 85 | 25 |
+| Rush, Local, on time | 125 | 35 |
+| Rush, Local, late | 60 (base 50 + clean 10) | 25 |
+| Double, Across town, on time, at night | 204 (base 2 × 50, night +34) | 65 |
+
+A double drop went through the store in order: store, first customer, second customer, then pay.
+Starting at 280 XP, it crossed 300 and announced level 3 with Rush unlocked.
+
+On the real map in Chrome, I asked the planner for 40 orders at each level:
+
+- Level 1 gave only Local and Across town.
+- Level 5 gave 9 rush, 4 double drops and 9 Long haul.
+- Rush timers averaged 98 s, against 129 s for standard.
+- Second customers were 210–360 m from the first.
+
+The raised phone showed a double drop correctly. Type check, lint and build pass.
+
+**Not checked:** riding a full rush or double drop, and the night bonus during real play. **Known
+rough edge:** on a double drop, the one customer figure moves to the second address once the first
+handover ends, so the first customer disappears instead of walking home.
+
+### Lesson 166: derive, don't store
+
+The level could have been saved next to the XP, but then the two could disagree, say after a change
+to the XP curve. Working it out from XP every time (`levelFromXp`) means there's one truth.
+
+### Try it
+
+1. In `progression.ts`, change `xpForLevel` to `30 * (level - 1) * level` for faster levels.
+2. In `missionConfig.ts`, set `rushChance` to `1` to make every order a rush.
+
+## 2026-11-12: Entry 53, the Garage at the dark store
+
+### What I did
+
+Step 2 of the progression plan. Credits now buy things.
+
+**The Garage** opens from a button on the raised phone, but only while you're stopped near the dark
+store's kerb (within 16 m, below 5 km/h). Elsewhere the button says "Garage · stop at the dark store".
+Riding off or putting the phone away closes it. It has three tabs:
+
+| Upgrade | Each of 3 levels | Prices |
+|---|---|---|
+| Engine | +2 km/h top speed, +6% pull | 150 / 350 / 700 |
+| Tyres | +10% grip, and wins back a third of the grip rain takes | 150 / 350 / 700 |
+| Brakes | +15% braking | 120 / 280 / 560 |
+
+Paints: Midnight, which you have, plus six colours at 100 each. Helmets: White, which you have, plus
+three colours at 80 each. A colour you own is free to switch back to.
+
+**Rain now costs grip**: up to 30% in a downpour. Before, rain made no difference to riding, so
+better tyres would have done nothing.
+
+How it works:
+
+- `src/game/garage.ts` is the catalogue: items, prices and effects.
+- `src/vehicle/tuning.ts` holds the scooter's live handling: `SCOOTER` plus upgrades plus rain. The
+  controller, camera and rider read `tuning` instead of `SCOOTER` for top speed, pull, grip and
+  braking.
+- The store saves what you own and what's in use, and calls `applyUpgrades` whenever the upgrades
+  change, including when a saved game loads.
+- `MissionTracker` reports `atStore` along with the speed and distance.
+- The paint repaints the scooter model, and the helmet colour changes the helmet material.
+
+### What I checked
+
+In a script: buying went 1,000 → 850 → 500 credits for engine levels 1 and 2. Level 3 (700) was
+refused at 500, and brakes level 1 then cost 120. A paint bought with 150 left 50, a 100 paint was
+refused at 50, and owned paints switched for free. Handling, using the real scooter code:
+
+| | Top speed | 0–50 km/h | Stopping from 50 | Sliding in a hard turn |
+|---|---|---|---|---|
+| Stock, dry | 56 km/h | 2.8 s | 8.7 m | 0.97 m/s |
+| Stock, heavy rain | 56 km/h | 2.8 s | 8.7 m | 1.36 m/s |
+| Tyres 3, heavy rain | 56 km/h | 2.8 s | 8.7 m | 0.74 m/s |
+| Everything maxed, dry | 62 km/h | 2.2 s | 5.9 m | 0.81 m/s |
+
+In Chrome, a script rode the route to the dark store in 34 s. The phone said "Open the Garage", and
+the Garage showed the three upgrades and prices. Buying Signal red took 155 → 55 credits and turned
+the scooter red. I then put your save back. That ride also finally showed the green house marker with
+its arrow on the phone map (from Entry 45). Type check, lint and build pass.
+
+**Not checked:** the Garage on a phone in landscape, and the helmet colour on screen.
+
+### Lesson 167: one place for "how it handles now"
+
+The controller used to read fixed numbers from `SCOOTER`. Upgrades and rain change those numbers,
+so they now live in one plain object, `tuning`, worked out from `SCOOTER`. Anything that needs the top
+speed (the controller, the camera's widening view, the rider's crouch) reads `tuning.maxSpeed`, and
+an upgrade changes all of them at once.
+
+### Try it
+
+1. In `garage.ts`, make all prices `[10, 20, 30]` and max everything out in a couple of deliveries.
+2. In `tuning.ts`, set `RAIN_GRIP_LOSS` to `0.6` for a truly slippery monsoon.
+
+## 2026-11-12: Entry 54, career chapter 1 and the daily shift
+
+### What I did
+
+Step 3 of the progression plan.
+
+**Ravi from dispatch**, a made-up dispatcher at the made-up dark store, now messages you. He writes in
+English with common Bengaluru Kannada mixed in: *Namaskara*, *maga*, *bega banni* (come quickly),
+*olle kelsa* (good work), *jopana* (careful), *sakkath* (awesome), *chennagide* (it's nice), *swalpa
+adjust maadi*, *nale sigona* (see you tomorrow). A new message pops up at the top right for 7 seconds.
+The Career tab keeps the last few.
+
+**Chapter 1, "First week in HSR"** (`src/game/career.ts`). Five goals, done in order, each with a
+message from Ravi:
+
+1. Finish your first delivery.
+2. Deliver 3 orders on time.
+3. Finish a delivery with no crashes.
+4. Finish an Across town or Long haul order.
+5. Deliver after dark or in the rain.
+
+Finishing the chapter pays 300 credits and unlocks **Dark store green**, a paint that can only be
+earned, never bought. The Garage shows it as "Career reward" until then.
+
+**The daily shift.** Each calendar day in your own time zone brings 3 goals. The date seeds the
+random choice, so a day always has the same goals. The goals are picked from what your level allows:
+
+- 5 deliveries
+- 3 on time
+- 3 with no crashes
+- 2 rush orders on time (level 3 and up)
+- a Long haul (level 2 and up)
+- a delivery after dark
+- ride 5 km
+- 3 drift boosts
+
+Finishing all three pays 150 credits and 50 XP, plus 25 credits for each day in a row, up to +100.
+A missed day resets the streak.
+
+**On the phone:** the raised phone has three tabs. **Order** is as before. **Career** shows the
+chapter's goals, ticked off or with a count, and Ravi's messages. **Today** shows the three goals with
+progress bars, the bonus and the streak. A dot on Today means goals are left.
+
+How it works: `career.ts` holds the goals and small pure functions (`advanceCareer`, `advanceDaily`,
+`finishShift`). The store's `applyEvent` feeds them every delivery, plus ridden distance (sent every 2
+seconds) and drift boosts from `MissionTracker`, then pays out and adds Ravi's messages. The career,
+shift, streak and messages are all saved.
+
+### What I checked
+
+In a script with the real store:
+
+- Starting gave Ravi's welcome and today's shift.
+- Seven deliveries moved the chapter on only when each goal's own condition was met.
+- A full run through all five goals paid 300 credits, sent the chapter message, and gave the paint,
+  which could then be used.
+- A date always gave the same goals, and different days gave different ones.
+- The day before 1 March is 28 February, and the day before 1 January is 31 December of the year
+  before.
+- Streak bonuses went 150, 175, 200, then back to 150 after a missed day.
+
+In Chrome: Ravi's welcome popped up on a first start, and the Career and Today tabs looked right. Two
+bugs came up and are fixed:
+
+- The pop-up missed the welcome, because the pop-up only appears once the game has started, and by
+  then the welcome already counted as old. "Old" now means "there when the page loaded".
+- The daily progress bars had no height, because they were inline elements.
+
+I put your save back as it was, career not started, so the welcome is yours to see. Type check, lint
+and build pass.
+
+**Not checked:** playing through the chapter and a whole shift in the game, the tabs on a phone in
+landscape, and the shift changing at midnight while playing. That should work, as each event checks
+the date.
+
+### Lesson 168: same seed, same day
+
+`createDailyShift` doesn't use `Math.random`. It hashes the date into a small seeded random number
+generator, so "2026-11-12" always gives the same three goals: today, after a reload, and on anyone's
+machine. Repeatable randomness is what makes a daily challenge feel like *the* day's challenge.
+
+### Lesson 169: keep rules pure, let the store remember
+
+The career rules take a state and an event and return a new state, with no store, React or timers.
+That's why a script could run a whole week of play in milliseconds. The store only decides when to
+call them and saves the result.
+
+### Try it
+
+1. In `career.ts`, add a goal to `CHAPTER_ONE.goals`, say "Earn 2 drift boosts", copying the shape of
+   the others.
+2. Change `DAILY_BONUS.credits` to `300` for a generous shift.
+
+## 2026-11-13: Entry 55, real headlights, solid traffic, a rider-following camera, and sound
+
+### What I did
+
+Five fixes you asked for.
+
+**1. Headlights light things up.** Both the scooter's beam and traffic's were shapes painted on the
+road, so nothing they "hit" got brighter. Now:
+
+- The scooter has a real spotlight (`Headlight.tsx`), so it lights the road, walls, people and the
+  vehicles in front.
+- Traffic gets a small pool of real spotlights (`CarHeadlights` in `Traffic.tsx`), handed each frame
+  to the nearest moving vehicles: none on Low, 2 on Medium, 4 on High (`carLights` in
+  `qualitySettings.ts`). Further vehicles keep their painted glow.
+- The lights are never added or removed, only turned down to 0 by day. Changing how many lights there
+  are makes three.js rebuild every material, which would cause a hitch at dusk.
+
+**2. Crashed vehicles' tyres no longer sink into the road.** Each vehicle's crash box started 20–30 cm
+above the ground, at the bottom of the body, so a vehicle resting on its box sank its wheels into the
+road. Every box now runs from the ground to the roof (`VEHICLE_SHAPES`).
+
+**3. Nothing passes through anything** (`trafficLogic.ts`):
+
+- **Vehicles and people** (`hitPersonWithVehicle`): a moving vehicle knocks a person over by weight,
+  brakes hard and honks. A crawling one nudges them aside.
+- **Traffic stops for people in its path**, walking or down, and honks. Walkers are narrow, so people
+  on the pavement don't stop anything. Someone stepping into the road, such as at a corner, does.
+- **People and people** (`separatePeople`): walkers keep 0.6 m apart, stepping back and to the side,
+  so two meeting head-on slip past each other.
+- **Vehicles and vehicles** (`mustGiveWay`): if two would overlap, at a crossing or with a bike
+  squeezing past, whichever has the other in front of it stops. Side by side, the earlier one goes
+  first.
+- At low speed, the scooter now moves a person fully aside, instead of half-way into them.
+
+**4. The camera follows the rider after a crash.** While they're off the scooter it eases over to
+them, looks at them rather than past them, and stops turning with the spinning scooter. It eases back
+once they're on (`FollowCamera.tsx`).
+
+**5. Sound**, all made in code, with no recordings:
+
+- **Engines** (`engines.ts`): a buzz at the firing rate, an octave below for body, filtered noise for
+  rasp, and a filter that opens under throttle. Each kind sounds different: the scooter's busy buzz,
+  cars' low hum, the auto's two-stroke rattle and the motorbike's sharper note.
+- **Your engine follows the throttle you actually press**, so it revs even standing still, as at a
+  light. A crash stalls it until you're back on (`PlayerSounds.tsx`).
+- **Traffic engines**: the 3 nearest moving vehicles get an engine voice each. The voices are reused,
+  so a jam of 30 cars costs 3 voices, not 30. They're quieter further away and placed left or right
+  (`trafficSounds.ts`).
+- **The neighbourhood** (`ambience.ts`): a low rumble of distant traffic, rain that follows the
+  weather, birds by day and crickets at night.
+- **A tyre skid** that follows how much you're sliding.
+- **Thuds** for your crashes, and for anything traffic hits or you knock over.
+- All of it is in the sound-effects mix. The 📯 toggle on the phone is now 🔊 "Sound effects", and it
+  turns these off too.
+
+### What I checked
+
+| Check | Result |
+|---|---|
+| A car hit side-on, at rest (rendered in a script) | Base sat 0.22 m into the road with the old box, 0.00 m now |
+| A car approaching someone standing in its lane | Stopped 1.7 m short, didn't knock them over |
+| Two cars sent at the same crossing at once | Both got through, never overlapping (nearest 4.5 m apart) |
+| Two people walking head-on | Never closer than 0.6 m, and both walked on past |
+| The Entry 43 traffic jam | Still flows: bikes and autos weave past, cars queue 1.4–2 m apart |
+| The Entry 50 crashes | Unchanged: a person slides 6–7 m, a bike tips over and slides 4–5 m |
+
+**Sound**, rendered silently and measured (peak, where 1.0 is clipping):
+
+- The engines at idle, mid and full revs all play, from 0.06 to 0.14.
+- Day and night background and heavy rain all play.
+- A hard skid is about 40% as loud as your engine.
+- A crash thud reaches 0.16.
+- Nothing clips. I turned up the city rumble, crickets and skid after the first measurement, as they
+  were barely there.
+
+**In Chrome:**
+
+- At night, the headlight lit the road ahead, the walls beside it, and the back of an auto in front.
+- Riding into a building, the camera followed the rider as they flew off, slumped and got up, then
+  swung back behind the scooter once they were on. Afterwards the camera sat close because the
+  scooter had stopped against a building corner, and the camera moves in when a wall is behind it.
+- I put your save back as it was.
+
+Type check, lint and build pass.
+
+**Not checked:** listening to any of it, as browsers don't let a script start sound and I can't hear.
+Also not checked: traffic headlights lighting something up close, the frame rate on High at night
+with 5 spotlights, and how often traffic knocks people over in real play.
+
+### Lesson 170: real lights cost per pixel, so use a few and hand them out
+
+Every real light adds work to every pixel of every lit material, so 34 headlights would be ruinous. A
+few lights handed each frame to the vehicles you can actually see up close look almost the same,
+because distant headlights barely light anything you'd notice. A fixed number of lights also means
+three.js never rebuilds its materials.
+
+### Lesson 171: one voice per thing you can hear, not per thing
+
+The same goes for sound. Your ears pick out the nearest few engines and blur the rest into a rumble.
+So three engine voices for the three nearest vehicles, plus one rumble for the rest of the city,
+sound like a whole street.
+
+### Try it
+
+1. In `qualitySettings.ts`, set `carLights` on High to `8` and watch the frame rate at night.
+2. In `engines.ts`, change the scooter's `wave` to `'square'` for a harsher engine.
+3. In `ambience.ts`, raise `RUMBLE_VOLUME` for a busier city.
+
+## 2026-11-13: Entry 56, a new title screen that downloads the game
+
+### What I did
+
+You found the old title card over the live 3D world a bit odd, and showed a reference: a full-bleed
+game image, a bold name, a big play button and a line of facts. I kept that idea and made our own
+look. Nothing is copied from that site.
+
+**The screen** (`TitleScreen.tsx`, the title styles at the end of `index.css`):
+
+- **Backdrop:** three screenshots from our own game (`public/title/`) fade from one to the next every
+  7 seconds, drifting slowly larger. They're darkened from the left and bottom, where the words sit.
+  A small badge says they're in-game screenshots, with a caption.
+- **The name:** "Deliver It" in Baloo Tamma 2, by the Indian foundry Ek Type. One family covers
+  English and Kannada, so ಡೆಲಿವರ್ ಇಟ್ sits under the name in the same type. The name is tilted
+  like a sticker, with a maroon drop and a marigold road underline that has a dashed centre line.
+- **Colours** come from the game's world: the maroon-black of the Kills poster, Diwali marigold for
+  the one button that matters, chalk for text and jacaranda for the Kannada.
+- **The Start button is the download bar.** It fills as files arrive ("Downloading the city 42%",
+  with "4.7 of 11.1 MB downloaded" beneath), then says "Building HSR Layout" with a moving sheen,
+  then becomes a solid marigold "Start riding" button with an Enter hint. Enter works from anywhere
+  on the page.
+- **How to ride** opens the controls in a panel. Welcome back and Quality sit top right.
+- If the download fails, the button becomes "Download failed. Try again" and the facts line says why.
+
+**The loader** (`src/game/preload.ts`) downloads the map, the 3 models and the 18 textures, four at
+a time, counting bytes as they arrive, and starts the physics engine alongside. It hands each file
+to three.js's own cache under the exact key its loader looks for (`file:` for models, `image:` for
+textures), and keeps the map for `mapData.ts`. The 3D world is only built once the downloads are
+done (`App.tsx`), so it finds everything already there. In development, any file the world loads
+that isn't in the list is reported in the console.
+
+### What I checked
+
+In Chrome:
+
+- A fresh load went from 0 to 84% in 0.3 s locally, then "Building HSR Layout", then "Start riding"
+  at about 5.8 s.
+- Each of the 25 files downloaded once. My first version downloaded the 3 models twice, because each
+  model file called `useGLTF.preload` as soon as its code loaded, before the cache was filled. Those
+  calls are gone.
+- At 42%, the button's fill and the MB line read clearly.
+- How to ride opens and closes, the backdrop moves on to the next screenshot, and Enter starts the
+  game.
+
+Type check, lint and build pass. The console is clean, after one more fix: the people shader used
+each figure's own colour without checking it existed. When it didn't, three.js couldn't build the
+shader, and those figures, such as thrown bike riders, weren't drawn. I put your save back
+afterwards.
+
+**Not checked:** the screen on a phone held sideways (it has its own tighter layout below 500 px of
+height), a slow connection, and the "Building" sheen on screen.
+
+### Lesson 172: preload into the loader's own cache
+
+Downloading files early only helps if the loaders then use them. Each three.js loader checks
+`THREE.Cache` under its own key before fetching, so the preloader fills exactly those keys. Anything
+that starts a download early by itself, like `useGLTF.preload`, defeats it.
+
+### Try it
+
+1. Add your own screenshot to `public/title/` and to `SCREENSHOTS` in `TitleScreen.tsx`.
+2. In Chrome's developer tools, Network tab, choose "Slow 4G" and reload to watch the bar fill.
+
+## 2026-11-13: Entry 57, computers only
+
+### What I did
+
+You decided Deliver It is a computer game, played with a keyboard. So the phone version is gone, and
+phones and tablets get a page saying where to play.
+
+**Deleted:** the on-screen touch buttons (`TouchControls.tsx`, `touchInput.ts`), the rotate-your-phone
+screen (`RotatePrompt.tsx`), the full-screen and landscape lock (`fullscreen.ts`), and about 40
+phone-layout rules in `index.css`. Also:
+
+- **`useDriveInput`** reads the keyboard only again.
+- **Quality** starts on High.
+- **The in-game phone** always says "Open · P".
+- **The YouTube card** always sits above the in-game phone.
+- **The page head** no longer has the mobile meta tags, and the app manifest no longer asks for
+  landscape and full screen.
+
+The in-game phone (map, orders, radio, Garage, career) is part of the game and stays.
+
+**Kept:** the device check, renamed `mobileDevice.ts`. It's a mobile browser *and* a finger as the main
+pointer, so touchscreen laptops still get the game.
+
+**Phones and tablets** see `MobileNotice.tsx`: the title screen's look, "Deliver It is played on a
+computer, with a keyboard", and buttons to share or copy the link. `Root.tsx` decides which to show,
+and the game is only loaded on a computer (`lazy(() => import('./App'))`). A phone downloads the
+small main bundle, about 70 KB compressed, and none of three.js, the 1.2 MB game code, the 4.3 MB
+physics engine or the 11 MB of city files. Add `?mobile` to the address to see the phone page on a
+computer.
+
+### What I checked
+
+In Chrome:
+
+- With `?mobile`, the notice showed, with no 3D canvas and none of the game's files downloaded.
+- Without it, the normal title screen loaded and reached "Start riding", with no console errors.
+
+Type check, lint and build pass. **Not checked:** a real phone or tablet.
+
+## 2026-11-13: Entry 58, the koel and a busier city
+
+### What I did
+
+Two background sounds you asked for, both made in code like the rest (`ambience.ts`).
+
+**The cuckoo.** In Bengaluru that's the Asian koel, a cuckoo whose rising *ku-OO, ku-OO* carries
+over everything. Each song is 4–7 calls. Each call is a short low note, then a long note sliding up
+by about a third. Every call starts 6% higher than the one before, so the run climbs, as a real
+koel's does. A soft octave overtone gives the hollow, flute-like edge. A short echo (0.21 s) makes it
+sound like it's coming from a tree between buildings. It sings every 20–45 seconds by day, a quarter
+as often at night, never in heavy rain, and each song comes from a different direction.
+
+**A busier city.** On top of the existing low rumble:
+
+- **Traffic out of sight** swells and fades every 0.6–2 seconds, and its pitch wanders, as vehicles
+  pass on nearby streets.
+- **A murmur of people and shops** by day, rising and falling quickly. It's quieter in the rain and
+  silent at night.
+- **Distant horns** from any direction, 45–85 m away, every 2.5–8 seconds by day and every 10–25 at
+  night. A mix of cars, autos and bikes.
+
+The whole city gets about two-thirds quieter at night.
+
+### What I checked
+
+Rendered silently and measured:
+
+- The daytime background is now about twice as loud as before (about 0.023 average, against 0.007),
+  but stays well under your engine, peaking at 0.10 against the engine's 0.12.
+- The night background is about a quarter of the daytime level.
+- Measured at the koel's pitch (700–1,300 Hz), its first version was only 1.4 times the city noise,
+  and would have been lost. I nearly tripled it, and it's now 5.5 times the city noise while
+  singing, then drops away once it stops.
+
+Type check, lint and build pass. **Not checked:** listening to it. I can't hear, and a script can't
+start sound in a browser.
+
+### Try it
+
+1. In `ambience.ts`, set `KOEL_EVERY` to `[3, 6]` to hear the koel right away.
+2. Lower `DISTANT_HORNS_DAY` to `[0.5, 2]` for a proper Silk Board jam.
+
+## 2026-11-13: Entry 59, a myna, a passing scooter, rain drips, a tyre squeal and an SUV
+
+### What I did
+
+You shared sound files from benglooru.com. They're another game's own sounds, and I couldn't see a
+licence for reusing them, so you chose to keep making our sounds in code. These match what those
+files covered (`ambience.ts`, `engines.ts`):
+
+- **Common myna**, Bengaluru's chattiest bird: 5–9 notes picked from what mynas mix. A clear whistle
+  sliding up or down, a harsh "chake" (two quick bursts of filtered noise), and a bubbly gurgle (a
+  tone wobbled fast). Every 8–20 seconds by day, not in rain, from a random direction.
+- **A scooter passing** on a nearby street: it swells and fades over 2–3.5 seconds, moving from one
+  side to the other, and its note drops as it passes (the Doppler effect). It also gets brighter as
+  it's closest. Every 6–15 seconds by day, 18–40 at night.
+- **Rain drips** off roofs and leaves: a tiny "plip" whose pitch rises fast. More of them the harder
+  it rains.
+- **A tyre squeal** on top of the scrubbing skid: two tones wobbling quickly through a narrow filter,
+  the sound of rubber catching and slipping. It only comes in on a real slide, as it follows the
+  slide squared, and rises in pitch the faster you slide.
+- **An SUV engine**: SUVs used the car's sound. Now they have a lower, growlier diesel.
+
+### What I checked
+
+Rendered silently and measured:
+
+- **Tyre squeal:** at its pitch, 4.8 times louder sliding hard than still.
+- **SUV engine:** heavier than the car (average 0.053 against 0.044).
+- **Passing scooter:** shows as a clear swell in the daytime mix. Its first version peaked at 0.156,
+  louder than your own engine (about 0.12) for something out of sight, so I halved it. The daytime
+  mix now peaks at 0.107.
+- **Myna:** its notes are short and share their pitch range with the koel's overtone, so a level
+  reading undersells it. I doubled its volume to be safe.
+- **Drips:** they share their pitch range with the rain's hiss, so I raised them a little. I couldn't
+  measure them apart from it.
+
+Type check, lint and build pass. **Not checked:** listening to any of it.
+
+## 2026-11-13: Entry 60, the HSR house kit
+
+### What I did
+
+The buildings didn't read as HSR. The map says almost nothing about each building, but by size and
+place the game treats 1,310 of them as houses, about four in five. Each was an extruded outline with
+windows painted on. Now every house gets the details that make an HSR street (`houseKit.ts`):
+
+- **Chajjas:** a thin concrete sunshade over every window. They line up exactly with the painted
+  windows, which repeat every 3.4 m by a world direction, not from each wall's corner, so
+  `windowCentres` works out the same positions the paint uses.
+- **Balconies** on every upper floor of the side facing the road: a slab, a solid parapet and a dark
+  metal rail. About a third have washing hung over the rail in bright colours.
+- **The terrace:** a parapet wall around the roof, and a staircase room ("headroom") with a door. The
+  black water tanks now stand on top of it, as on most Bengaluru homes, rather than on the roof slab.
+- **A front door** in a window bay away from the balconies. The painted window above it reads as a
+  ventilator.
+- **A compound wall with a gate** between the house and the pavement, where there's at least 1.2 m to
+  spare and the pavement keeps 1.6 m. It has two pillars with pale caps, a dark metal gate with a rail
+  across, and short walls back to the house. The walls are solid to the scooter and to everything
+  placed after them (trees, lamps, parked scooters).
+- **HSR colours:** house paint is now mostly off-white, cream and beige, with the odd pastel or
+  turmeric. The walls and the kit share one palette, `HOUSE_COLORS`, so balconies match.
+
+The front of a house is the visible wall nearest a road, found by stepping out from each wall until
+the road starts. That gap also sets where the compound wall goes.
+
+Everything is plain boxes merged into one shape per map square, so the extra draw calls are small.
+Chajjas are their own layer: drawn within 180 m, on Medium and High only. Every face checks its own
+corner order, because map outlines run either way round and a face only shows from one side.
+
+### What I checked
+
+Over the real map, in a script: the kit builds for all 1,310 houses in 0.44 s, adding about 327,000
+triangles of main details and 113,000 of chajjas across 32 map squares, and 1,676 water tanks.
+
+In Chrome:
+
+- **Street level:** balconies with washing, a door, and a compound wall with a gate down the street.
+- **A drone's-eye view:** terraces with parapets and staircase rooms with tanks on top, all across
+  the rooftops, plus chajjas and balconies on the street side.
+- **Speed on High:** 114 frames a second on this Mac, 421 draw calls.
+
+I put your save back. Type check, lint and build pass.
+
+**Not checked:** slower machines and Low quality, night, and riding along a street of compound walls.
+The camera moves in when there's a wall behind it, which could happen more often now. **Known
+limits:** walls with another building close in front get no chajjas, and houses still have no stilt
+parking or car porch.
+
+### Lesson 173: one source of truth for what the paint shows
+
+The chajjas sit over windows that only exist in a texture. Rather than guess, the kit uses the same
+measurements the painting code uses (`FACADE_LOOKS.house.bayWidth` and the window's size). Change the
+paint, and the chajjas follow.
+
+### Lesson 174: let the face decide which way it's wound
+
+A triangle shows from the side where its corners run anticlockwise. Instead of working out the right
+order for every box against outlines that run either way, `quad` takes the normal it should have,
+checks the corners against it with a cross product, and swaps them if needed.
+
+## 2026-11-13: Entry 61, shop fronts that stay on their wall
+
+### What I did
+
+Your screenshot showed a CLOTHING shop whose awning, shutter and sign ran past the corner of the
+building into the air, with a black corner column cutting through the middle of them. There were two
+causes:
+
+1. **Shop fronts ignored the wall's ends.** Each is centred on the point of the wall nearest the
+   mapped shop, up to 7 m wide, and nothing checked where the wall ended. Near a corner, half of it
+   hung off the building. Now `findNearestWall` also says where the wall starts, which way it runs and
+   how far along the nearest point is. `generateShopFronts` slides each front along, and narrows it if
+   it must, so it stays at least 0.5 m inside both corners. The spacing between shop fronts is now
+   checked at their final position.
+2. **Corner columns ignored awnings.** The city kit puts a dark column on every corner to hide the
+   seam between walls. Now a corner within an awning's half-width plus 1 m gets no column on the two
+   floors the awning and sign reach (`placeCorner` in `cityKitPlacement.ts`).
+
+### What I checked
+
+Over the whole map, in a script: all 113 shop fronts now sit fully inside their wall, none hanging
+past a corner. In Chrome, the CLOTHING shop's awning stops inside its wall. Type check, lint and build
+pass.
+
+**Not checked:** the corner column next to that shop, on screen. My camera angles didn't catch the
+corner.
+
+**Still to do:** the shop blocks themselves still use the European brick-and-glass kit, which doesn't
+look like Bengaluru. The plan is an HSR shop kit, like the house kit.
+
+## 2026-11-13: Entry 62, HSR shop streets
+
+### What I did
+
+Shop buildings now look like HSR's: a house upstairs, a row of small open shops at street level.
+
+1. **Your five boards are in the game.** The kirana, darshini, chai stall, bakery and medicals boards
+   you made are cropped to the board itself and saved as `public/textures/board-*.jpg` (about 90 KB
+   each, 1024×224). The loader downloads them with everything else.
+2. **Every other board is drawn in code** (`src/world/signboards.ts`), in the same layout as yours:
+   icon on the left, the name in Kannada over the name in English, and a band along the bottom listing
+   what's sold. There are 16 kinds of shop: kirana, darshini, chai stall, bakery, medicals, clothing,
+   salon, jewellers, electronics, supermarket, chat centre, filter coffee, mobiles, tailor, hardware,
+   general stores. For the five with a photo board, half the shops get the photo and half get a drawn
+   board with a different name, so a street doesn't repeat itself.
+3. **Shops are open, with a room behind the shutter** (`src/world/shopInteriors.ts`), drawn from your
+   reference picture. Each kind has its own room, painted in perspective onto one flat picture: the
+   kirana has packed shelves, snack strips hanging from the ceiling and rice sacks at the door; the
+   darshini has white tiles, a menu board and steel tables; the chai stall has a marigold garland,
+   biscuit jars and a steaming kettle; the bakery has pendant lamps and a glass case of cakes and
+   puffs; the medicals has white shelves of boxes and a green cross. Every other one of a kind is drawn
+   mirrored. Rooms and boards light up at night.
+4. **Striped awnings** in each shop's colour, and **chalk menu boards** on the pavement outside some
+   kiranas, darshinis, chai stalls, bakeries and medicals ("Idli, Dosa, Vada, Meals, Filter Coffee").
+   Menu boards are solid.
+5. **Shop buildings use the house kit.** The European brick-and-glass kit is gone from them. They're
+   painted in house colours, with chajjas, balconies from the second floor up (the first is behind the
+   signboards), a terrace parapet and a roof room with tanks. Their road-facing wall is split into
+   units of about 4 m with a concrete pier between each. A unit standing where a shop is mapped becomes
+   that kind of shop. The dark store's building is left alone.
+
+### Why
+
+Mapped shops only gave 113 awnings across the whole map, on whatever wall was nearest. Splitting
+every shop building's front into units gives 458 shops, and a street of them looks like an HSR main
+road.
+
+### What I checked
+
+Type check and lint pass. In Chrome, on High: 458 shop fronts built, no console errors. Close up, a
+row of three reads clearly: medicals photo board, Sneha Fashions with its striped purple awning and
+clothes racks, the Udupi Darshini photo board. Down a street: kirana, salon, Iyengar bakery with a
+chalk menu board outside. About 85 fps in that view, 358 draw calls.
+
+**Not checked:** the night glow on screen, and the Kannada on the drawn boards by a Kannada reader.
+The names are transliterations I wrote, and they're worth a check before the game is shown widely.
+
+### Lesson 175: a texture atlas lets 458 shops share one draw call
+
+Each shop has its own board and room, but they're all parts of two big images drawn once at start-up
+(`BOARD_ATLAS` and `INTERIOR_ATLAS` in `ShopFronts.tsx`). A shop's quads carry texture coordinates
+that point at its part of the image, so all the shops in a map square are one geometry, with one
+material, drawn in one call. A different texture for each shop would mean a draw call each.
+
+### Lesson 176: a painted room is one quad
+
+A real room behind each shutter would be five walls and a lot of shelf boxes. From the road you
+only ever see it from the front, so `drawInterior` paints the back wall smaller and the side walls,
+floor and ceiling as shapes that run back to it: one-point perspective, as in a drawing. The eye reads
+depth, and the GPU draws two triangles.
+
+### Lesson 177: changing a built-in material in a shader hook
+
+The striped awnings use ordinary `MeshStandardMaterial` with `onBeforeCompile`, which lets you edit
+three.js's shader text before it's compiled. The vertex shader reads how wide each awning is stretched
+from its instance matrix (`length(instanceMatrix[0].xyz)`), so every stripe is 45 cm whatever the
+awning's width, and the fragment shader mixes in white on every other stripe. Lighting, shadows and
+fog all still work, because it's still the standard material.
+
+### Try it
+
+Ride down any main road with shops. Look for the darshini board with idli on a banana leaf, and the
+chalk menu outside. Then wait for night and watch the rooms light up.
+
+## 2026-11-13: Entry 63, parked bikes that look like bikes
+
+### What I did
+
+You said the parked scooters looked dull and boxy. They were five plain boxes. Now they're built from
+the same sculpted model as your own bike in `traffic.glb` (`createParkedScooterGeometry` in
+`src/traffic/vehicleShapes.ts`):
+
+- **The delivery box is cut off.** Every triangle that isn't paint, sits above 0.82 m and is behind
+  the seat is dropped, as a bike parked outside a shop isn't on a delivery.
+- **They're parked the way bikes park:** front wheel and bars turned 0.35 rad about the steering axis,
+  and the whole bike leaning 0.11 rad onto its side stand.
+- **Only the paint takes each bike's colour.** They use the same paint shader as the traffic, so the
+  seat, tyres, rims and chrome keep their own colours.
+
+The model is detailed (about 28,000 vertices), and there are 747 parked bikes. Before, the far ones
+were shrunk to nothing, but the GPU still works through every vertex of a shrunken copy. Now
+`writeNearest` in `Traffic.tsx` writes only the bikes within 90 m to the instanced mesh and sets its
+`count` to match, so only those are drawn: 89 near a busy shop row, none at the start.
+
+### What I checked
+
+Type check and lint pass. In Chrome, close up outside a row of shops: proper bikes with spoked wheels,
+mudguards, seat and rear rack, leaning on their stands with bars turned, in different colours. Your
+save is unchanged.
+
+**Not checked:** the frame rate with them. My measurement script failed, so I don't have a number.
+
+### Lesson 178: an instanced mesh draws `count` copies, not "the ones you can see"
+
+Setting a copy's scale to zero hides it, but the GPU still runs the vertex shader for every one of its
+corners. For a cheap shape that doesn't matter. For a detailed one, pack the visible copies at the
+front of the list and set `instancedMesh.count` to how many there are. Copies past `count` cost
+nothing.
+
+## 2026-11-13: Entry 64, blocks of flats on stilts (in progress)
+
+### What I did
+
+The 159 apartment blocks now get the house kit too (`buildApartment` in `houseKit.ts`). The European
+city kit is gone from them.
+- **Stilts:** a block of 3 or more floors has an open ground floor (`hasStilts` in `buildingData.ts`;
+  `Buildings.tsx` starts its walls one floor up). It has pillars round the edge every 4.6 m and in a
+  5.5 m grid inside, a stair and lift core with a grey door, and a concrete floor slab.
+- **Parking underneath:** a hatchback in about half the gaps between the front pillars, and bikes in
+  the rest, some backed in, some nose first (`StiltParking.tsx`). They're drawn only within 75 m.
+- **Balconies** on every bay of the front, on every floor, some with a potted plant or washing.
+  Sunshades go over the windows on the other walls you can see. The apartment wall texture is now a
+  wide grilled window with a sill, instead of a painted balcony that clashed with the real ones.
+- **Roof:** a terrace parapet, a bigger stair and lift room, and three tanks in a row. A compound wall
+  has a 4.2 m gate in the middle where there's room.
+- Apartment paint is in `APARTMENT_COLORS`, shared by the walls and the kit.
+
+### What I checked
+
+Type check and lint pass. In Chrome, before the last two changes: a four-storey block on stilts with
+pillars, three parked cars and bikes underneath, and balconies with a plant and washing.
+
+**Checked since (with Entry 65):** the grilled windows and the stilt floor are on screen and look
+right from the road, and the frame rate held at 120 on High in a street with two blocks of flats.
+
+**Not checked yet:** the view from inside the stilts. The building's footprint is still solid, so riding
+into the open parking floor stops you at the edge, like an invisible wall.
+
+## 2026-11-13: Entry 65, HSR in bloom: flowering roads, bougainvillea, kolams, carts and name boards
+
+### What I did
+
+You asked for a prettier city that feels more like HSR. The houses and shops were already HSR's, but
+the streets between them were bare: trees in random colours, plain walls, nothing on the pavement.
+Five things changed.
+
+1. **Whole roads flower together.** Before, each tree picked its own colour, so one tree in three was
+   in flower and no two neighbours matched. HSR's roads were planted a species at a time, which is
+   why a whole cross road turns pink in tabebuia season. Now every road gets one planting from its
+   name (`AVENUES` in `props.ts`), so all the pieces of 18th Cross Road match: plain green, big rain
+   trees, pink tabebuia, yellow tabebuia, gulmohar or jacaranda. On a flowering road about seven
+   trees in ten are in flower. Trees on roads 7 m wide or more grow a fifth bigger, and there are
+   more of them (seven slots in ten are planted, up from just over half).
+2. **Petals on the road.** Every tree in flower has about 260 small petals lying under it, in its own
+   colour, thickest near the trunk (`createPetalGeometry` in `foliage.ts`).
+3. **Bougainvillea over compound walls**, on about one house in three with a long enough wall:
+   mostly magenta, some orange or white. It's built from the same leaf cards as the trees, in two
+   layers, green behind and flowers in front, so each can take its own colour.
+4. **Kolams at the gates** of just under half the houses: four patterns (a lotus, a star, a dotted
+   pulli kolam and a sun), drawn in code as white rice-flour lines with pink and yellow powder
+   (`StreetLife.tsx`).
+5. **Vendors' carts and street name boards** (`streetPlacement.ts`). Carts stand at the back of the
+   pavement, each under a striped umbrella: tender coconuts, vegetables, or flowers with garlands
+   hanging from a rail. Name boards are blue with white letters, Kannada over English, and use the
+   map's real road names. Both are solid.
+
+The Kannada on the boards is only written for numbered roads, where it follows a fixed pattern: "18th
+Cross Road" becomes "18ನೇ ಅಡ್ಡ ರಸ್ತೆ", and "24th Main Road" becomes "24ನೇ ಮುಖ್ಯ ರಸ್ತೆ". Roads named after
+people and places (Gurumurthy Swamy Temple Road, for one) get English only, as I'd be guessing at the
+spelling.
+
+### Why
+
+Each of these is something you'd notice was missing if you stood on a real HSR cross road, and each is
+cheap. The trees cost nothing more than before: they're the same shapes with a chosen colour. The
+petals, kolams and boards are flat faces. The carts are a few hundred triangles, drawn as copies.
+
+Carts stand 2 m from the kerb because people walk 0.7 m from it and need 0.4 m clear. Any closer and
+`createLanes` would find the pavement blocked and stop sending walkers down that side.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome, with no errors in the console:
+
+- **Counts over the whole map:** 583 trees, 267 of them in flower; 268 bougainvilleas; 344 kolams;
+  64 carts; 64 name boards.
+- **On High, on screen:** a road of pink tabebuia with petals on the tarmac; a gulmohar beside a
+  coconut cart; bougainvillea over a compound wall; a sun kolam outside a gate; and a board reading
+  "18ನೇ ಅಡ್ಡ ರಸ್ತೆ / 18th Cross Road", the right way round.
+- **On Low:** the same things in their simple shapes, with a vegetable cart in view.
+- **Speed on High:** 120 frames a second on this Mac, which is as fast as the screen goes.
+
+Two things I fixed on the way. The petals were first drawn as 25 cm squares, which looked like pink
+tiles, so they're now 12 cm diamonds and there are more of them. And the board's pole ran through the
+middle of its lettering, so the board now sits just in front of the pole.
+
+**Not checked:** night, rain, Medium quality, and slower machines. I didn't ride into a cart or a
+board to test that they're solid, and I haven't seen the flower cart or the back of a name board on
+screen. The Kannada on the boards is worth a look from a Kannada reader, like the shop boards.
+**Known limits:** a kolam sits on bare ground, not paving, where a house is set far back from the
+road. Some name boards are partly hidden behind a house corner. Riding under a block of flats is
+still blocked at its edge.
+
+### Lesson 179: give copies the facts, not a random number to decode
+
+Every tree used to carry one number, `variation`, and the drawing code worked out size, colour and
+shape from it. That was fine while they were all random. It can't say "this tree is on a pink road".
+So `Prop` gained three optional fields, `tint`, `kind` and `size`, and `PropInstances` uses them when
+they're there: `colors[tint ?? ...]` in `setColorAt`, and `* size` on the scale. The placement code
+decides what a tree is, and the drawing code only draws it. Park trees and water tanks leave the
+fields out and behave as before.
+
+### Lesson 180: one texture coordinate can be a whole colour
+
+A name board needs a picture, and its pole needs plain grey. Two materials would mean two draw calls
+per map square. Instead, the first cell of the boards' image is filled with grey (`paintSigns`), and
+all four corners of every pole face point at the same spot in the middle of it (`grey` in
+`createSignGeometries`). A face whose corners share one texture coordinate comes out as one flat
+colour, so boards and poles are one shape with one material.
+
+### Lesson 181: which side of a face shows, and why a wrong one looks mirrored
+
+A board must read correctly from both sides, so it's two faces back to back. For a face looking along
+`normal`, the reader's right-hand side is `up × normal`, which for a level direction is
+`(normal.z, 0, -normal.x)`. Corners then go bottom-left, bottom-right, top-right, top-left, which is
+anticlockwise from the front, so three.js draws the face from that side only. Get "right" backwards
+and two things go wrong together: the face shows from behind, and its picture is mirrored. If you
+ever see mirrored writing in a scene, check the corner order first.
+
+### Try it
+
+From the start, turn round and ride north about 15 m to the T-junction, then turn left. There's a
+coconut cart on the left and a gulmohar behind it. Then use the phone map to reach the next road
+north that runs east to west, about 75 m north of the start, and ride along it under the pink trees.
+Its blue board at the west end reads 18th Cross Road. In `props.ts`, change `AVENUE_BLOOM` from 72 to
+100 and reload: every tree on a flowering road is now in flower.
+
+## 2026-11-13: Entry 66, street and area names on the phone map
+
+### What I did
+
+You asked for street and area names on the map, like Google Maps. The phone map now shows:
+
+- **Street names along the roads**, from the map's real names: "25th Main Road", "18th Cross Road",
+  and so on. Main roads are a little bolder and brighter. A name runs along its road, turns as the
+  map turns, and is never upside down.
+- **The road you're on**, in a pill at the top of the map, as a map app shows while navigating. It
+  hides on unnamed roads and off the road. It only changes when another road is clearly closer, so
+  it doesn't flicker at a junction.
+- **Area names:** neighbourhoods in spaced grey capitals (PARANGIPALYA, HSR LAYOUT, SECTOR 2), park
+  names in green italics (Kaveri Park, Hemavati Park), and housing colonies and campuses in pale
+  blue (Purva Fairmont, CPWD Quarters, National Institute of Fashion Technology).
+- **Parks are green** on the map, where before they were the same dark grey as the ground.
+
+All of it comes from the map file, nothing made up. Neighbourhood names come from the addresses
+OpenStreetMap gives some places (`addr:place`), and "Sector 2" from the name of a bank's ATM there,
+so there are only three. If the area names should be the HSR sectors throughout, they'd need adding
+by hand from a real sector map.
+
+### Why
+
+The map image is drawn once at start-up and then turned every frame to keep "ahead" at the top. Text
+painted into that image would turn with it and end up sideways or upside down. So the names are a
+separate layer (`src/ui/mapLabels.ts`), placed again every frame, on top of the turned image.
+
+### What I checked
+
+Type check and lint pass. In Chrome, with no console errors:
+
+- **Phone down:** a "25th Main Road" pill at the top, "25th Main Road" running up its road and
+  "18th Cross Road" across the bottom, readable over the orange route.
+- **Phone raised:** 27th, 25th and 23rd Main Road, PARANGIPALYA, and a green park.
+- **After turning onto a diagonal:** "24th Main Road" and "25th Main Road" lie along their
+  diagonal roads, the right way up.
+
+**Not checked:** how much the name layer costs per frame on its own. The game ran at 95 frames a
+second in that last view, but I didn't measure the same spot with names off. I also haven't seen the
+park and campus names on screen yet, only the code that places them.
+
+### Lesson 182: draw what turns into a picture, and what must stay upright every frame
+
+A rule of thumb for 2D canvases that move: anything that should move with the world (roads,
+buildings, parks) goes in a picture you draw once and then transform. Anything that should stay
+upright for the reader (names, pins, the rider's arrow) is drawn each frame at the screen position
+the transform gives it. `toScreen` in `PhoneMap.tsx` is that transform written out by hand, and
+`drawMapLabels` uses it to find where each name goes.
+
+### Lesson 183: keeping a name the right way up
+
+A name along a road takes the road's angle on screen, from `Math.atan2`, which can be anything from
+-180° to 180°. Anything past ±90° would read upside down, so `drawMapLabels` turns it half a turn
+(adds or takes away π), which keeps it on the same line but reading left to right.
+
+### Lesson 184: overlap checks with circles
+
+Names at different angles are turned rectangles, and testing two turned rectangles for overlap
+takes some maths. Instead, each name is covered by a row of small circles along its length
+(`footprint`), and two names overlap if any two circles do: a distance check. It's a little rough
+at the corners, which is fine for labels. Names are placed in order of importance, and each one
+that would overlap one already placed is skipped.
+
+### Try it
+
+Raise the phone with P and ride round a corner: watch the street names turn with the map and flip
+over as a road passes upright. In `mapLabels.ts`, set `STREET_LABEL_SPACING` to 30 for more repeats
+of each name, or `MAX_BEND` to 0.3 to let names sit on bendy roads too.
+
+## 2026-11-13: Entry 67, soft headlights and street lamps
+
+### What I did
+
+You said other vehicles' headlights had "one trapezium that is looking weird", and that the street
+lights looked flat.
+
+**Vehicle lights** (`createVehicleGlowGeometry` in `src/traffic/vehicleShapes.ts`):
+
+- **The trapezium was the pool of light** every vehicle paints on the road ahead after dark. It
+  faded along its length, but its two sides were sharp lines, so it read as a shape painted on the
+  road. It's now a grid of 8 × 7 squares whose brightness falls away to nothing towards both sides
+  and the far end. It also builds up from the bumper rather than starting at full strength. It has
+  no edges.
+- **Headlamps and tail lamps were flat squares.** They're now small round lamps, a bright middle
+  with a halo that fades out.
+
+**Street lamps** (`RoadsideProps.tsx`):
+
+- **The pool on the ground** faded in a straight line to a hard rim. It's now seven rings on a bell
+  curve, brightest under the lamp, with no rim.
+- **A cone of light** falls from each bulb to the ground: faint on a clear night, hazier in rain.
+- **A halo round each bulb** always turns to face you, so lamps glow down the length of a street.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome at night, on High:
+
+- An oncoming SUV and a hatchback with round headlamps, and soft pools of light on the road ahead
+  of them, with no hard sides.
+- A street lamp with a glowing bulb, a warm pool on the pavement, and in rain a hazy cone, as well
+  as halos on the lamps further down the street.
+
+Two things went wrong on the way and are fixed. The new lamp pool was invisible at first, because its
+triangles faced down (see Lesson 186). The cone was also too faint to see, so for one look I made it
+ten times brighter to check it was drawn, then set it back to a subtle haze.
+
+**Not checked:** Low and Medium quality, and the frame rate with the cones. They're one draw call
+each, for the lamps within reach. After a hot reload in development, the lamps once disappeared until
+the page was reloaded. I didn't chase that, as a normal page load shows them.
+
+**Then you spotted** that tyres, feet and anything else standing in a pool of light looked sunk
+into it. The pools floated 12 to 14 cm above the road, and were also pulled towards the camera
+(`polygonOffset` -6) so they'd never flicker against it. Because they add light on top of whatever is
+behind them, they painted over the bottom 12 to 14 cm of anything standing in them. Now every pool
+sits at 6.5 cm, just 1.5 cm above the road (which is at 5 cm) and 3.5 cm above the pavement, with half
+the pull (-3). Fallen petals and kolams came down to the same height. In Chrome, a lamp post and an
+oncoming bike now stand cleanly in their pools, with no flicker in that view.
+
+### Lesson 185: soft light needs corners to fade between
+
+`MeshBasicMaterial` with vertex colours blends a triangle's colour between its three corners. One big
+triangle can only fade one way, from a bright corner to dark ones, so a trapezium fades along its
+length but keeps sharp sides. To fade both ways, cut it into a grid and give every corner its own
+brightness. Here that's `sides × length`: a bell curve across and a ramp up then down along.
+
+### Lesson 186: a face that's drawn back to front isn't drawn at all
+
+The new lamp pool didn't show at first. Its triangles went round the wrong way, so they faced
+down, and three.js skips the back of a face by default. The fix was to swap two corners so each
+triangle goes a → b → c in the same order as its square's corners go round. It's the same rule as
+Lesson 174, and a good first thing to check when something you built is invisible.
+
+### Lesson 187: a ShaderMaterial on an InstancedMesh
+
+The cone and the halo use `THREE.ShaderMaterial`, where you write the GLSL yourself. On an instanced
+mesh, three.js still supplies `instanceMatrix`, but you must use it: `modelMatrix * instanceMatrix`
+gives each copy's place. The halo uses that only for the bulb's position, `uBulb`. It moves the bulb
+into camera space with `viewMatrix`, then adds the square's corners there, so the square always lies
+flat to the screen: a billboard, with no work on the CPU. The cone fades at its edges with
+`abs(dot(normal, toCamera))`. A side facing you means you're looking through lots of lit air, and a
+side seen edge-on means very little.
+
+### Lesson 188: a see-through layer above the ground covers what stands in it
+
+Anything drawn without writing depth (`depthWrite: false`), such as additive light, still has to pass
+the depth test. So it shows wherever nothing nearer the camera has been drawn. A tyre's bottom 14 cm
+is behind a pool 14 cm up when you look down at it, so the pool's light lands on top of the tyre.
+Keep such layers as close to the surface as the depth buffer allows. A small `polygonOffset` is a
+better way to win the depth fight with the road than lifting the layer up.
+
+### Try it
+
+Press N until it's night and M until it rains, then look down a street of lamps. In `RoadsideProps.tsx`,
+change the cone's `(0.3 + uRain * 0.35)` to `3.0` to see the whole cone, which is how I checked it
+was there.
+
+## 2026-11-13: Entry 68, the whole of the new map
+
+### What I did
+
+You put a new export from overpass-turbo in `public/data/hsr-compact.geojson` and asked to render all
+of it. It's a different size of map:
+
+| | Before | Now |
+| --- | --- | --- |
+| File | 1.6 MB | 14.7 MB |
+| Buildings | 1,654 | 16,470 |
+| Play area | 600 × 1,440 m | 3,700 × 3,080 m (every building, with about 40 m to spare) |
+| Road in play | about 21 km | 332 km |
+| Road points | about 2,000 | 33,975 |
+
+`PLAY_AREA` now covers every building in the file (x −3,340 to 360, z −1,720 to 1,360). The origin
+hasn't moved, so the start, the dark store and your save are where they were. Some roads in the file
+run on for kilometres past the buildings; they're cut off at the edge, as before.
+
+Just widening the play area made the game take more than a minute to start, and it never got as far
+as the Start button. Here's what was slow, and what fixed it:
+
+| Step | Before | After | Fix |
+| --- | --- | --- | --- |
+| Trees, lamps, parked bikes | 13.1 s | 0.03 s | A road index and a point grid (Lesson 189) |
+| Park trees and benches | 3.9 s | 0.03 s | The road index |
+| House kit plan | 2.5 s | 0.4 s | The road index |
+| Road markings | 4.4 s | 0.06 s | Junctions in a point grid |
+| Working out what each building is | about 2 s | under 0.1 s | Ruling out far buildings by their box first |
+| A route to one stop | 1.06 s | 0.004 s | A heap in Dijkstra's algorithm (Lesson 190) |
+| The whole world, built about 15 times over | over a minute | once, about 1.1 s | Built outside React (Lesson 191) |
+
+Four other changes were needed for the bigger map:
+
+- **The house kit is built as you ride** (`HouseKitMesh.tsx`). For all of HSR it's 8.2 million
+  triangles, close to 900 MB. The plan (tanks, shops, parked vehicles, compound walls) is still worked
+  out for everything at the start. The shapes are built only for the 160 m map squares within 600 m,
+  nearest first, a few milliseconds a frame. Squares left behind are freed. Within reach that's about
+  50 squares and 1.2 million triangles. Normals and colours are now a byte per number instead of
+  four, which halves what's left.
+- **Traffic and people are spawned from nearby roads.** They were picked at random from every road on
+  the map until one landed 90 to 180 m from you. On a map 13 times bigger, that would almost never
+  happen and the streets would empty. Lanes are now sorted into 60 m squares, and only those near you
+  are tried.
+- **The ground, the crash-physics floor and the edge walls** follow the play area, which no longer
+  fits in the old 6 km square around the origin.
+- **The phone map's picture** is drawn at a resolution that keeps it under 16 million pixels (1.18
+  pixels per metre now, 2 before), or it would have been 180 MB. Street names are skipped for roads
+  nowhere near the screen.
+
+Also: the title screen draws trees and lamps within 400 m rather than all of them, and the loader's
+size for the map file is updated to 14.3 MB.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome:
+
+- **Start-up:** the Start button is ready about 6 to 10 s after the page opens, including downloading
+  24 MB from the dev server.
+- **Riding from the start, on High:** 120 frames a second. Balconies, bougainvillea and a kolam build
+  in around you, and the phone map shows 25th Main Road.
+- **Far west, 2.3 km from the start:** houses, a yellow tabebuia, a coconut cart, an SUV, a bike and
+  people walking. 120 frames a second, and the phone map names Hosur Road and its service road.
+- **Low, Medium and High,** switched while riding, with no errors.
+- **Route finding:** the new version gives exactly the same distance as the old one for all 33,975
+  points, in 4 ms instead of 1,060 ms.
+
+One thing I tried and took out: freeing the house kit's JavaScript copy once the GPU had it. It
+worked until the quality changed, when three.js needed to upload it again and everything went black.
+
+**Not checked:** a slower computer, the memory used in total (Chrome's figure wasn't reliable here),
+night, and a full delivery far from the start. The dark store is still the one near the start, so
+some deliveries may now be long rides. **Also:** `public/data/a.geojson` is the old map, which you
+kept. Vite copies everything in `public` into the build, so it ships with the game (1.6 MB) until
+it's moved or deleted.
+
+### Lesson 189: a grid turns "check everything" into "check what's near"
+
+Placing a tree asked "is this spot clear of every road?", which meant looking at all 9,207 road
+pieces. Do that for 25,000 spots and it's 230 million distance checks. `indexRoadPieces` in
+`props.ts` sorts each piece into the 32 m squares it touches once, at the start. A check then only
+looks in the few squares around the spot. `PointGrid` does the same for things already placed. It's
+the same idea as the collision world's grid from earlier entries. Any time code runs a loop inside a
+loop over things spread across the map, a grid is the first thing to try.
+
+### Lesson 190: Dijkstra's algorithm needs a priority queue
+
+Dijkstra's algorithm settles one point at a time, always the nearest one not yet settled. The old
+`createRouteField` found that point by looking at all of them, every time: for 34,000 points, over a
+billion checks. A binary heap (`MinHeap` in `roadGraph.ts`) keeps the nearest at the front, and adding
+or taking one costs about 15 steps (log₂ of 34,000) instead of 34,000. The same answer, 250 times
+faster.
+
+### Lesson 191: React may throw away a render, memos and all
+
+`useMemo` keeps a value between renders of a component that has been shown. While a component is
+being shown for the first time and a child suspends (a texture or model still loading), React
+throws away the unfinished work, memos included, and starts again once it has loaded. `World` has many
+children that load things, so its memo ran about 15 times. That was cheap for a small map. For a large
+one it became over a minute. `getWorld` keeps the built world in a module variable, keyed by the map
+data, so it's built once however many times React starts over. Dev mode's StrictMode runs memos twice
+on purpose to catch problems like this.
+
+### Lesson 192: only keep the part of the world that's near
+
+The game already drew only the map squares near you (`ChunkedMesh`), but every square still existed in
+memory. For the house kit, that was most of a gigabyte. `HouseKitMesh` goes one step further: a square
+doesn't exist until you come near, and is freed when you leave. The plan for each building is fixed,
+so a square rebuilt later is identical. That only holds because the kit reads a copy of the
+collision world taken at the start, before trees and lamps are added (`copyCollisionWorld`).
+
+### Try it
+
+Ride west from the start for a couple of kilometres. Watch the balconies build in ahead and look for
+Hosur Road on the phone map. In `HouseKitMesh.tsx`, set `BUILD_BUDGET` to 0.5 and ride fast: you'll
+see squares arrive a moment late, which is the work being spread over frames.
+
+## 2026-11-13: Entry 69, dark brown soil
+
+### What I did
+
+You said the soil looked too light. The ground's photo is a pale, dusty soil, drawn untinted. Now
+`Ground.tsx` tints it with a mid brown (`SOIL_TINT`, `#8a6447`), which turns it into the dark brown
+earth of HSR's empty plots and verges. On Low, where there's no photo, the plain colour is now a
+dark brown too (`#5b4330`, was a pale khaki). (Changed again in Entry 71.)
+
+### What I checked
+
+Type check and lint pass. In Chrome, on Medium, on 18th Cross Road: the empty plot beside the road is
+dark brown, with the green grass tufts standing out on it. **Not checked:** Low, and the soil at
+night.
+
+### Lesson 193: a material's colour multiplies its texture
+
+In `MeshStandardMaterial`, `color` and `map` are multiplied together for each pixel. White
+(`#ffffff`) shows the photo as it is. Any other colour scales each channel: `#8a6447` keeps about 54%
+of the red, 39% of the green and 28% of the blue, so a pale photo comes out darker and browner while
+keeping all its grain. It's the cheapest way to recolour a texture: no new image, no shader.
+
+## 2026-11-13: Entry 70, paved park paths
+
+### What I did
+
+You asked what the grey areas on the footpath and in the park were. They were footpaths from the map,
+drawn as flat 2 m strips of plain grey (`#b9b2a2`) with no texture and no shading, so they read as
+grey paint. Two kinds of them didn't belong at all:
+
+- **Sidewalks** (`footway=sidewalk`, 229 of them) are OpenStreetMap's own lines for pavements. The
+  game already draws a pavement along every road, so these sat on top of it as grey bands.
+- **Crossings** (`footway=crossing`, 142) are zebra crossings, drawn as grey bands across the tarmac.
+
+Now `Parks.tsx` leaves both out, and the paths that are left, through parks and between streets, are
+paved with the pavements' own stones, a shade warmer (`PATH_TINT`). On Low, which has no textures,
+they're a darker plain stone colour.
+
+### What I checked
+
+Type check and lint pass. In Chrome, on Medium, at Kaveri Park on 16th Cross Road: the paths through
+the park and the one meeting the pavement are now paved, with no grey bands. **Not checked:** Low, and
+whether any crossings or sidewalks were the only way into somewhere. They're only drawn shapes, not
+the paths people walk on, so nothing moves differently.
+
+### Lesson 194: map data says more than one thing about the same place
+
+OpenStreetMap lets people map a pavement twice: as a tag on the road (`sidewalk=both`) and as a
+separate line beside it (`footway=sidewalk`). A game that draws its own pavement for every road
+should skip the separate lines, or it draws the same pavement twice. Before drawing a kind of feature,
+count its tags (as in Entry 1) and check which ones the game already shows some other way.
+
+## 2026-11-13: Entry 71, zig-zag pavers, and soil that sits with them
+
+### What I did
+
+**Footpaths.** You asked for a better footpath texture. I put ten paving textures from Poly Haven side
+by side, and you chose Patterned Concrete Pavers: the grey interlocking zig-zag blocks that most of
+HSR's BBMP footpaths are laid with. It replaces Brick Pavement 03 in `pavement-color.jpg` and
+`pavement-normal.jpg`, re-saved at about 270 KB and 155 KB, and `CREDITS.txt` names the new source
+(CC0). One repeat of the photo covers 1.8 m, against 2.5 m for the old one, so `PAVEMENT_TILE` is
+now 1.8 in `Roads.tsx` and `Parks.tsx`, and each paver comes out about 20 cm, as real ones are. The
+photo is a warm beige, so the pavements are tinted towards concrete grey (`PAVEMENT_COLOR`,
+`#c8c8c6`), and park paths a touch warmer (`PATH_TINT`, `#d6d0c6`).
+
+**Soil.** You said the ground wasn't blending. You'd tried `#C97A50`, a red earth, which came out
+orange against the grey pavers. I kept the red earth but dusty and dulled (`SOIL_TINT`, `#a07a63`),
+so it sits between the paving's grey and the plants' green. On Low it's `#6e5444`.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome on High: the zig-zag pattern is clear on the pavement near
+Kaveri Park, and on 18th Cross Road the soil, the pavers and the grass read as one street. **Not
+checked:** Low and Medium, night, and rain.
+
+**Still hard:** where the pavement meets the soil it's a straight, sharp line. Real footpaths have a
+kerb there, often painted black and yellow, which would hide the join. That would be the next thing to
+add.
+
+### Lesson 195: a texture's real size
+
+Every Poly Haven texture lists how much ground its photo covers: 1.8 m for these pavers. The game
+repeats a texture every `TILE` metres, so `TILE` should match, or every paver comes out stretched or
+shrunk by the same amount. When you swap a texture, check its size along with its look.
+
+## 2026-11-13: Entry 72, kerbs
+
+### What I did
+
+The pavement met the road and the soil in flat, sharp lines, which looked more like a game than a
+street. `src/world/Kerbs.tsx` adds two kinds of edge along every road:
+
+- **A kerb between the road and the pavement:** 18 cm wide, standing 13 cm high. On main roads
+  (secondary and tertiary) it's painted in alternating black and yellow blocks of 0.9 m, as HSR's are,
+  with a thin gap between blocks. On other roads it's bare grey concrete, in one of three shades.
+- **A low edge between the pavement and the soil:** 12 cm wide and 7 cm high.
+
+Each edge is walked in 50 cm steps, and a stretch is left out where it would cross another road
+(the kerb) or another road's pavement, a building or a wall (the edge). So junctions stay open, and
+nothing runs through a compound wall. Only the top and the two long faces are made, as the ends and
+the bottom are never seen, and the sides are a shade darker than the top.
+
+Kerbs are only for looks: the scooter rides over them, so nothing about riding changes.
+
+### Why the numbers
+
+The whole map has about 950,000 triangles of kerb. They're drawn within 260 m, in the map's 160 m
+squares, with normals and colours a byte each (as for the house kit), which halves their memory. They
+take about 0.6 s to build. The first version was built 14 times while the game loaded, because React
+starts over while textures load (Lesson 191), which added about 8 s. They're now kept in a `WeakMap`
+keyed by the road list, so they're built once.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome on High:
+
+- **18th Cross Road:** a grey kerb along both sides of the road, and the low edge where the pavers
+  meet the soil.
+- **24th Main Road:** black and yellow kerbs, open where 18th Cross Road joins.
+- **Start-up:** ready in 8.4 s, back to what it was. 120 frames a second.
+
+**Not checked:** Low and Medium, night, and how a kerb looks across a gate or driveway. It runs
+straight across, where real ones dip.
+
+### Lesson 196: build only the faces anyone can see
+
+A box has six faces, but a kerb lying on the ground never shows its bottom, and its ends are hidden
+against the next block or the junction. Leaving those three out halves the triangles. Ask which faces
+can ever be in view before building a shape that will be copied a million times.
+
+### Lesson 197: a WeakMap as a cache
+
+`built` in `Kerbs.tsx` is a `WeakMap` keyed by the array of roads. A normal `Map` would keep the
+roads and their kerbs in memory for ever. A `WeakMap` lets both go once nothing else holds the roads,
+which suits a cache that should live as long as the data it was made from.
+
+### Try it
+
+Ride along 24th Main Road and look down at the painted kerb. In `Kerbs.tsx`, add `'residential'` to
+`PAINTED_ROADS` to paint every street, then take it out again. Painted everywhere, it's too busy, which is
+why HSR keeps it for the main roads.
+
+## 2026-11-13: Entry 73, nothing slides any more
+
+### What I did
+
+You saw people and vehicles sliding, moving sideways instead of turning. There were three causes,
+all in `src/traffic/trafficLogic.ts`:
+
+1. **Everything was pinned to a point on its path.** A path is a chain of straight lanes that turns
+   sharply at each junction. Each frame the body was pulled towards the point on the lane, and its
+   heading eased round separately. At a corner the point jumped onto the new lane at once, so the body
+   moved off in the new direction while still facing the old one.
+2. **Bikes squeezing past and people stepping aside** were moved sideways off their line, with no
+   turning at all.
+3. **People who met were pushed apart sideways every frame** (`separatePeople`).
+
+Now everything steers (`steerAlong`):
+
+- It aims at a point a little way ahead on its path: 2.5 to 7 m for vehicles, depending on speed,
+  1.1 m for people. That point carries on round the next corner, so the next lane is now chosen in
+  advance (`pickNext`).
+- It turns towards that point no faster than it can. A vehicle turns no tighter than its turning
+  circle (4.5 m for cars, 2.4 m for bikes and autos), so it can't turn at all while stopped. People
+  turn on the spot.
+- It only ever moves the way it faces. Corners come out as curves.
+- Its place on the path (`along`) runs on as before, so traffic lights, gaps and queues work as they
+  did. The body goes a little slower when ahead of that place, as when cutting a corner, and a little
+  faster when behind.
+- Vehicles now slow down before sharp turns (`nextTurn`): a right angle at 4.5 m/s, gentler bends
+  faster.
+- A sideways move (a bike squeezing past, someone dodging the rider) moves the line it aims at, so it
+  steers over.
+- People notice each other 2.2 m off and each step aside, opposite ways, so they pass on the footpath.
+  They're only pushed apart if they still touch, which in my test didn't happen.
+- Anything more than 2.5 m from its path (after a knock, or when the next path starts on the other
+  pavement) turns and heads straight back to it, a little quicker, as someone crossing the road does.
+  Before, it was dragged sideways across.
+
+### What I checked
+
+I measured the angle between the way each one faces and the way it actually moved, every frame, in
+Chrome:
+
+| | Steps measured | Off by more than 10° |
+| --- | --- | --- |
+| Vehicles | 29,217 | 0 (largest 0.00°) |
+| People, standing at the start | 32,001 | 206 (0.6%), in the first version |
+| People, riding through traffic, final version | 35,972 | 0 |
+
+Type check, lint and build pass. **Not checked on screen:** how the curves through a junction look,
+and whether vehicles now slowing for turns makes queues at junctions longer. A vehicle that bumps
+someone at a crawl still nudges them aside, which is a push, not a slide.
+
+### Lesson 198: move along the heading, and steer the heading
+
+The simplest way to make something follow a path is to set its position on the path every frame and
+point it along the path. Do that, and position and direction are two separate things, which is what
+sliding is. A vehicle moves the other way round: it can only go where it's pointing, and it changes
+where it's pointing by steering. Moving only by `sin(heading)` and `cos(heading)`, and changing
+`heading` by a limited amount each frame, makes sliding impossible by construction.
+
+### Lesson 199: pure pursuit
+
+Aiming at a point a fixed distance ahead on the path and steering towards it is called pure pursuit,
+and it's how many real self-driving cars follow a route. A short distance follows the path tightly
+but weaves. A long one is smooth but cuts corners. Tying it to speed (`aimTime`) gives tight
+following when slow, and smooth lines when fast.
+
+### Try it
+
+Stop at a junction and watch a car turn across in front of you: it slows, swings round in a curve
+and straightens up. In `trafficLogic.ts`, set `carTurnRadius` to 12 and watch cars swing wide like
+buses. Then set it back.
+
+## 2026-11-14: Entry 74, the Iblur Military Area is walled off
+
+### What I did
+
+You asked to make the Iblur Military Area off limits, with a high wall round it. It's a single
+fenced outline in the map file (`landuse=military`), 8.6 km round. Most of it lies east of the play
+area, but about 0.2 km² of its western edge is inside it, along 27th Main Road.
+
+- **No way in** (`src/world/restricted.ts`). When the map loads, every road and footpath is cut where
+  it crosses the boundary, and only the parts outside are kept. One road and three tracks went
+  inside. They now stop at the wall, so no traffic, people, delivery stop or route goes in.
+  Everything that builds on the road list (lanes, kerbs, trees, the phone map's names) sees the cut
+  roads.
+- **A wall** (`RestrictedWall.tsx`) wherever the boundary falls inside the play area:
+  - Plastered and 3 m high, with a darker band along the bottom.
+  - Pillars every 4 m, each with a post on top carrying four strands of barbed wire that sag a little
+    between posts.
+  - A red-and-white board on the outside about every 140 m, centred between two pillars: "ನಿರ್ಬಂಧಿತ
+    ಪ್ರದೇಶ / RESTRICTED AREA / NO ENTRY · NO PHOTOGRAPHY".
+- **Solid** (`addRestrictedWalls`). Added to the collision world before anything else is placed, and
+  1.5 m thick on the inside, out of sight, so even a fast scooter on a slow computer can't get
+  through in one frame.
+- **On the phone map**, the area is filled dark olive, and its name was already labelled there.
+
+The kerb code's box builder moved to `src/world/blocks.ts` so the wall could use it too. It now also
+makes end faces (for pillars) and boxes that start above the ground (for the posts and the wall above
+its band).
+
+### What I checked
+
+Type check, lint and build pass. In Chrome on High, on 27th Main Road: the wall with pillars, barbed
+wire and a warning board, behind the soil verge and the painted kerb. Riding straight into it at full
+speed, the scooter stopped and slid along the outside. The phone map shows the olive area.
+
+**Not checked:** the wall's southern stretch (near x 160–250, z −1,610 to −1,300), night, and Low. The
+Kannada on the board is mine and worth a check, as with the other boards. The one building inside
+the area is still drawn, behind the wall.
+
+### Lesson 200: change the data, and everything downstream follows
+
+The wall could have been drawn and made solid on its own, with traffic, deliveries and routes each
+taught to avoid it. Instead the roads are cut once, as the map loads (`cutOutRestricted`), and
+everything built from them (lanes, kerbs, trees, routes, labels) simply never sees a road inside.
+When a rule applies to the world itself, put it as early as possible, in the data, and the rest of
+the code needs no changes.
+
+### Lesson 201: where two lines cross
+
+`crossings` finds where a road segment from a to b crosses a boundary edge from c to d. Write each
+as a start plus a fraction of its length: a + t(b − a) and c + u(d − c). Setting them equal gives two
+equations, and their solution has the same denominator, the 2D cross product of the two directions.
+It's 0 when the lines are parallel. They cross only if both t and u are between 0 and 1. The road is
+cut at each t, in order, flipping between inside and outside each time.
+
+### Try it
+
+Use the phone map to reach 27th Main Road about 650 m south of the start, near the olive area, and
+ride along it: the wall runs beside you on the east side. Then try to ride into it.
+
+## 2026-11-14: Entry 75, plaster on balconies, compound walls and boundary walls
+
+### What I did
+
+You asked for texture on the walls of houses, balconies and boundaries. The house walls already
+had the plaster photo, but everything the house kit adds was flat paint: balconies, parapets, roof
+rooms, compound walls, gate pillars, and also the new military wall and the kerbs. Next to the
+mottled house walls, those looked like plastic.
+
+They have no texture coordinates, so `src/world/plaster.ts` adds the photo in the shader instead
+(`createPlasterMaterial`):
+
+- The UVs come from the world position, projected from whichever way each face points: walls facing
+  east or west use Z and Y, walls facing north or south use X and Y, tops use X and Z. Where a face
+  leans, the three are blended. This is triplanar mapping (Lesson 202).
+- Only the photo's light and shade is used, divided by its average brightness (measured once from a
+  32 × 32 copy), so each piece keeps its own paint and just gains grain and patches.
+- The plaster photo is soft, so its contrast is boosted: 2.2 times for the house kit, 2.6 times for
+  the long military wall, and 1.8 times for the kerbs, which use the concrete photo. The result is
+  kept between 60% and 135% of the paint, so a dark speck can't turn into a black hole.
+- On Low, the kit stays flat paint, as Low's house walls have no photo either.
+
+Two fixes on the way. Changing quality used to free every house-kit square, because the clean-up was
+tied to the material. Now a quality change only swaps the material on the squares already built.
+And the first strength (0.55) was too subtle to see, so I tried 3 to make sure the shader ran, then
+settled on 2.2.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome on High, on 18th Cross Road, the compound walls and
+balcony have the same patchy plaster as the house walls behind them. On 27th Main Road, the military
+wall has it along its length. 97 frames a second there. **Not checked:** Medium, night, and the
+cost of the extra texture reads on a slower machine.
+
+### Lesson 202: triplanar mapping
+
+A texture needs to know where on the image each point of a surface is (its UV). Shapes built in
+code often don't have UVs, and working them out for every box is tedious. Triplanar mapping skips
+it. Each pixel looks up the image three times, as if projected from the side, from the front and
+from above, using its world position as the coordinates, and blends them by its normal. A wall facing
+east gets almost all of the side projection. The cost is three texture reads instead of one, and
+it's why the kit, the wall and the kerbs could all be textured without touching their geometry.
+
+### Lesson 203: three.js compiles a shader once and shares it
+
+`customProgramCacheKey` returns the same key for every plaster material, so three.js compiles the
+GLSL once. Each material still gets its own uniforms, which is how the kit, the wall and the kerbs
+can use different photos and strengths with the same shader.
+
+## 2026-11-14: Entry 76, crashed riders and wrecks are solid
+
+### What I did
+
+You found two ways through traffic:
+
+1. **Your thrown rider went through cars.** When you crash, the rider flying off the scooter is moved
+   with simple maths in `ScooterController.ts` (`stepThrownRider`), which only checked buildings and
+   walls. Cars, bikes and parked scooters weren't in that check.
+2. **A car that had already crashed could be ridden through.** When a vehicle is hit hard, it becomes
+   a Rapier body. From then on, `stepTraffic` stepped its physics and moved on, skipping
+   `hitRider`, the check that stops the scooter at a vehicle. The same was true while it was being
+   stood back up.
+
+Both are in `src/traffic/trafficLogic.ts`, which knows about every vehicle:
+
+- **`blockRider`** runs for crashed and righting vehicles. It's a bump by weight (`resolveHit`), as
+  for a moving vehicle, but it never launches anything: a wrecked car stops the scooter, and a light
+  fallen bike barely slows it. Rapier was already pushing the body with the scooter's invisible
+  "pusher". This is the other half, which stops the scooter, as Rapier doesn't move it.
+- **`blockThrownRider`** runs after each physics step, while you're off the scooter (thrown, lying,
+  getting up or walking back). Any vehicle, moving or crashed, and any parked scooter pushes your
+  body out of itself. The speed you were carrying into it is turned round with a little bounce,
+  sliding along the side is kept, and your roll is cut. A hard hit plays a thud. Thrown higher than a
+  vehicle's roof by 15 cm or more, you clear it, so a big crash can still throw you over a bike.
+
+### What I checked
+
+In Chrome, with the scooter and traffic briefly reachable from the console:
+
+- **Into a car at 15 m/s:** the scooter crashed, the rider was thrown, lay down, got up and walked
+  back, and never came within the car's outline.
+- **Into a crashed car at 9 m/s** (a hatchback turned into a resting body): the scooter stopped 0.6 m
+  from its side, which is the scooter's own radius, and crashed as against any car. It never got
+  inside, and the car didn't move. Before this change, nothing stopped it there.
+- **Into a fallen bike:** the scooter's pusher shoves it away before they touch, which is what a
+  light bike lying in the road should do.
+
+Type check, lint and build pass. **Not checked on screen:** how the rider's bounce off a car looks.
+Pedestrians are still not in the rider's check, so a thrown rider can pass through someone standing.
+
+### Lesson 204: two physics, one world
+
+The game runs two kinds of physics side by side: arcade rules for the scooter and traffic, which are
+quick and predictable, and Rapier for things that tumble. They don't see each other on their own.
+Rapier sees the scooter only as a "kinematic pusher" that moves things but is never moved itself, and
+the arcade code sees Rapier's bodies only if it asks. Every pair that should touch needs a check in
+both directions: Rapier for the body's side, arcade code for the scooter's. A missing direction is
+exactly what makes something pass through.
+
+## 2026-11-14: Entry 77, building sites on open plots, and a faster start
+
+### What I did
+
+You asked for buildings under construction on a few open plots. `src/world/sitePlacement.ts` finds
+plots, and `ConstructionSites.tsx` draws them.
+
+**Where they go:** the areas the map marks `landuse=construction` (25 of them), where a plot fits, and
+now and then an empty plot beside a residential road, set back from the pavement and facing it. A
+plot must be clear of buildings, walls, roads, parks and military land, and at least 300 m from
+another site. That gives 54 sites across HSR. They're placed after the house kit and before trees and
+lamps, and each gets a solid wall round it, so trees keep clear and the scooter can't ride in.
+
+**What a site looks like**, as an HSR building going up:
+
+- A bare concrete frame of 2 to 4 floors: columns every 3.6 m, and slabs on every floor but the top.
+- Rebar sticking up out of the top floor's columns.
+- Brick walls going in on the lower floors: the back and sides, and part of the front.
+- Bamboo scaffolding across the front, with green shade net hung on part of it (see-through, drawn
+  separately).
+- In the yard: a heap of sand, a stack of bricks, cement bags under a blue tarp, and the builder's
+  board on two posts.
+
+The concrete has the concrete photo's grain (`createPlasterMaterial`, from Entry 75).
+
+### The slow start, and the fix
+
+The first version took 37 s to reach the Start button. Placing the sites was quick (16 ms), but each
+new part that loads a texture adds another round of React starting over (Lesson 191). With no
+boundaries, every part of the world not yet on screen was thrown away and rebuilt each time.
+
+`World` now wraps every part, the player and traffic included, in its own `<Suspense>`. A part that's
+still loading only holds up itself, and the rest go on screen and stay there. On the dev server the
+start went from 37 s to about 13 s. On the production build it's about 9 s with files cached, as it
+was before the sites.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome on High, from 21st Cross Road: a four-floor site facing
+the road, with the frame, brick walls, scaffolding and green net, and the sand, bricks, tarp and board
+in its yard. **Not checked:** night, Low, the sites inside construction areas (which face along the
+area's longest side, not necessarily the road), and whether any site blocks a delivery stop.
+
+**Still slow:** about 6 s of start-up, after the world is built, goes on the parts setting
+themselves up. The buildings are the biggest at about 3 s. That's the next thing to speed up.
+
+### Lesson 205: Suspense boundaries keep finished work
+
+Suspense isn't only for loading spinners. When a component suspends, React keeps everything up to the
+nearest boundary above it and throws away the rest of the unfinished render below that boundary. One
+boundary round a whole scene means any texture still loading throws away the whole scene, however
+much work it took. A boundary per part means a part that's ready goes on screen and stays there. With
+`fallback={null}`, nothing shows for a part until it's ready, which is fine behind a title screen.
+
+## 2026-11-14: Entry 78, smooth riding on a sharp screen
+
+### What I did
+
+You said the deployed game felt a little laggy. I measured a production build in Chrome on this Mac
+(Apple M5, 120 Hz screen, 2 screen pixels per point), riding 1 km up 24th Main Road on High.
+
+**What I found:**
+
+- Frames took about 10.5 ms. The screen refreshes every 8.3 ms, so some pictures stayed up for one
+  refresh and others for two. That uneven rhythm is the lag you felt, even at about 95 fps.
+- The JavaScript per frame was small: about 1 ms for every `useFrame` together, and 2.5 ms for
+  three.js to send the draw calls. The GPU was the limit.
+- I switched things off one at a time to see what the GPU spends its time on:
+
+  | At 2 pixels per point | Average frame |
+  |---|---|
+  | As it was | 11.2 ms |
+  | No traffic-light lamps (600,000 triangles) | 11.2 ms |
+  | No shadows from the house kit | 10.8 ms |
+  | Shadow map 2048 instead of 4096 | 11.0 ms |
+  | No shadows at all | 8.4 ms (the screen's limit) |
+  | 1.5 pixels per point | 8.4 ms (the screen's limit) |
+
+  Triangles barely mattered. Pixels did: High drew at 3024 × 1656, five million pixels, and each one
+  looks up the shadow map several times.
+
+**The fixes:**
+
+- High now draws at most 1.5 pixels per point, not 2 (`qualitySettings.ts`). That's just over half
+  the pixels, and while riding it's hard to see the difference. Riding the same road: 120 fps, no
+  late frames, slowest frame 10 ms.
+- A new `AdaptiveResolution` component (`src/world/AdaptiveResolution.tsx`, store in
+  `src/game/resolution.ts`) watches frame times and lowers the resolution a quarter step at a time
+  when frames are late, down to 0.75. It steps back up after five calm seconds. Slower laptops get
+  smooth riding instead of a stutter.
+  - A frame is late when it takes over 1.3 refreshes. The refresh is the fastest the screen has been
+    seen to go, never taken as slower than 60 Hz nor faster than 120.
+  - Two late seconds in a row are needed, so one hitch doesn't change anything. It waits 3 s after
+    Start, while shaders compile.
+  - If a step up is too much straight away, that level isn't tried for a minute, so the picture
+    doesn't keep sharpening and blurring.
+- Traffic-light lamps use 8 × 5 spheres instead of 12 × 8: 3,582 lamps, 600,000 triangles down to
+  about 230,000. It made no difference here but helps a weaker GPU.
+
+### What I checked
+
+Type check, lint and build pass. I tested the adaptive part by adding a delay that grows with the
+pixel count, to act like a slower GPU. It stepped from 1.5 to 1.25 and tried 1.5 once more. That was
+too slow, so it went back to 1.25 and held there. A minute after the delay was removed it was back at
+1.5, at 120 fps. **Not checked:** night and rain (more light pools, more pixels to shade), Medium and
+Low, and a real slower machine.
+
+### Lesson 206: frame pacing, and finding what the GPU is busy with
+
+**Pacing.** A screen shows a new picture only when it refreshes. If a frame takes 10 ms and the
+screen refreshes every 8.3 ms, that frame waits for the next refresh, so pictures stay up for 8.3 ms,
+then 16.7 ms, unevenly. 90 uneven frames a second feel worse than 60 even ones. What matters is
+fitting under the refresh every time, not the average.
+
+**Finding the cost.** The GPU works in parallel with JavaScript, so timing `gl.render()` only
+measures sending the work, not doing it. The honest test is to make the GPU the limit (here, by
+drawing at 2 pixels per point), then switch one thing off and see if frames get faster. If halving
+the pixels helps and halving the triangles doesn't, the cost is per pixel ("fill rate"): resolution,
+shadows, heavy shaders. If triangles matter, it's geometry: draw distance, detail, instancing.
+
+**Resolution in R3F.** `<Canvas dpr={[1, 2]}>` means "the screen's own pixel ratio, kept within 1
+and 2". R3F reapplies this prop every time the Canvas renders. So to change the resolution while
+playing, the prop itself has to change: here it reads from a small store that `AdaptiveResolution`
+updates. Calling `setDpr` directly would be undone the next time the Canvas renders.
+
+## 2026-11-14: Entry 79, Play straight away, and a loading screen that builds while it downloads
+
+### What I did
+
+You asked for the Play button to work from the start, with the download running in the background
+from the first page, and a big loading screen after Play that shows the download and the building
+side by side.
+
+**The title page.** Play works as soon as the page shows (Enter works too). Under it, a thin bar and
+a line: "Downloading the city in the background: 18%, 4.4 of 24.1 MB", then "City downloaded". The
+download starts when the page opens, as before.
+
+**The loading screen** (`src/ui/LoadingScreen.tsx`), after Play:
+
+- The game's own screenshots, cut into panels with black gutters, in three layouts: one big panel
+  with two stacked beside it, a wide panel over two, and one full-screen shot. The layouts take
+  turns every 9 s, cross-fading, and each panel drifts slowly.
+- A tip along the bottom left, a new one every 7 s: drifting, the phone, the base reward, the radio
+  and horn, time and weather, and OpenStreetMap.
+- Bottom right, two progress lines and a spinner:
+  - the download, if it isn't finished ("Downloading the city 83%, 20.2 of 24.1 MB");
+  - the build: "Waiting for the map", then "Laying out the streets", then "Built: trees and lamps"
+    and so on as each part goes on screen, then "Ready".
+- When every part is on screen and the first delivery is planned, the ride starts and the loading
+  screen fades out over it.
+- If the download fails, it says so, with a Try again button.
+
+**Building while downloading.** The world used to wait for every file. Now it starts once the map
+and the physics engine are in, and the models and textures carry on downloading. A part that needs
+a file that hasn't arrived waits on its own (each part has its own Suspense boundary, from Entry 77),
+and the rest go ahead.
+
+That only works if nothing is downloaded twice, so the preloader (`src/game/preload.ts`) now
+fetches models and textures through three.js's own loaders, the ones the world uses:
+
+- `FileLoader` keeps a list of requests in flight. If `useGLTF` asks for a model the preloader is
+  still downloading, it's added to that request instead of starting another.
+- `ImageLoader` puts each image in `THREE.Cache` the moment it starts. If `useTexture` asks for it,
+  it waits for that image to finish.
+- The map is downloaded by the preloader alone, and the map loader waits for it
+  (`waitForPreloadedMap`).
+
+The shop fronts loaded their photo boards with a plain `new Image()` when the cache didn't have
+them yet, so with a slow connection they came down twice. They now use `ImageLoader` too, which
+also fixes a board being drawn blank from an image still downloading.
+
+**Knowing what's built.** `src/game/launch.ts` holds the list of world parts and their names, and a
+small store: Play pressed, the loading screen painted, the streets laid out, and the parts on
+screen. In `World`, each part is wrapped in `<Part name="...">`, which is its Suspense boundary plus
+a tiny `Built` component beside the part. `Built` mounts only when its whole boundary does, so its
+effect says "this part is on screen".
+
+### What I checked
+
+Type check, lint and build pass. On the dev server, Play goes straight to the loading screen, the
+lines move, and it fades into the ride. To test a slow connection, I put a proxy in front of the
+dev server that slowed the models and textures to 120 KB/s each and the map to 2 MB/s. The streets
+were being laid out at 83% downloaded, and the build was at "trees and lamps" at 99%. Every file was
+downloaded once (it was five twice before the shop board fix). The ride started about 25 s after
+Play. **Not checked:** a phone-sized screen, reduced motion, the failure message, or Safari.
+
+### Lesson 207: animation that keeps going while JavaScript is busy
+
+Building the city keeps the page's one JavaScript thread busy for seconds at a time. Nothing done in
+JavaScript can move then: no React update, no `requestAnimationFrame`, no timer. But browsers run
+CSS animations and transitions of `transform` and `opacity` on a separate thread, the compositor,
+which only moves and fades layers that are already painted. So everything that moves on the loading
+screen (the drifting panels, the scenes taking turns, the tips, the spinner, the glint on the bar)
+is a CSS animation of those two properties, with timings set by `animation-delay`, not timers. The
+numbers in the progress lines change only between the busy stretches, and that's fine.
+
+Two details make it work. The screen must be painted before the busy work starts, so the world
+waits until the loading screen has decoded its pictures and two frames have passed (the
+`curtainDrawn` flag). Otherwise the click would freeze the title page instead. And
+`will-change: transform` tells the browser to give an element its own layer up front, so the
+compositor can move it without asking the main thread.
+
+**Follow-up:** the Play button no longer takes focus by itself. A button focused when the page opens
+counts as focused "by keyboard", so it showed the white focus ring straight away. Enter still plays,
+as the title page listens for it on the whole window. Pressing Tab still shows the ring, for people
+who use the keyboard to move around.
+
+## 2026-11-15: Entry 80, wheels on the road, and people who walk like people
+
+### What I did
+
+**Why things sank.** The road is drawn 5 cm above the soil, the pavement 3 cm, the kerbs stand
+13 cm, and the scooter, its rider and all the traffic were drawn at height 0. So every tyre was
+always 5 cm into the road, and a kerb went straight through the wheel. On top of that, the scooter
+tilted about a point on the ground: braking dipped the nose and pushed the front tyre into the
+road, and a crash tipped it 1.3 radians about its middle, putting half the bike under the tarmac.
+
+- **New `src/world/surface.ts`** holds the surface heights (moved out of `Roads.tsx` and
+  `Kerbs.tsx`) and `createSurface(roads)`, which answers "how high is the ground here?" from the
+  road grid: road, kerb, pavement, edging or soil, by how far the point is outside the nearest road's
+  edge (new `nearestRoadEdge` in `props.ts`). It's built once in `buildWorld` and given to the player.
+- **Each tyre follows the ground** (`followGround` in `ScooterController.ts`). Up a step it rolls
+  up over a little forward travel (`climbPerMetre`), the way a round wheel meets an edge. Down a
+  step it falls under gravity, so riding off a kerb is a little drop and landing.
+- **`Scooter.tsx` has a new nesting**: position and heading, then a `terrain` group that tilts with
+  the two wheel heights (nose up while only the front is on the kerb), then `lean`, which holds the
+  wheels, then `body`, which carries everything the suspension carries. Braking and throttle pitch
+  only `body`, so the tyres stay on the road.
+- **Nothing goes into the ground.** The scooter's shapes are boiled down to about two hundred
+  "probes" (`createScooterProbes`). Every frame, after leaning, the scooter lifts by however far the
+  lowest probe went under. Riding, that's the edge of a tyre's rounded tread. On its side, it's the
+  side of the body, so a fallen scooter now lies on the road instead of in it. The rider gives
+  twelve probes too (hips, chest, helmet, elbows, hands, knees, feet), which lift a thrown rider
+  lying face down, whose helmet used to be in the road.
+- **Traffic** is drawn on the road surface, and pedestrians on the pavement. Road markings came
+  down to 1 cm above the road (their polygon offset stops flicker), so tyres don't sink into them.
+
+**Walking.** Pedestrians' legs were straight sticks swinging on a sine wave, and the body bounced
+highest when the legs were furthest apart. So their feet skated, one foot passed through the ground
+on every step, and they floated. Now (`traffic/gait.ts` and the shader in `Traffic.tsx`):
+
+- each foot is **planted** for 55% of a stride, sliding back under the body at exactly the speed
+  the body moves, then **lifted and swung** forward;
+- the legs have **knees**: a ring of corners at knee height, and the shader works out the thigh and
+  shin angles that put each foot where it should be (inverse kinematics);
+- the hips **dip** when both feet are down, the way a body does;
+- strides follow the **ground actually covered**, so someone hurrying out of your way doesn't
+  moonwalk;
+- people standing still (customers at the door) stand with their feet together, with a little
+  weight shift, instead of frozen mid-step.
+
+The thrown rider now **jogs** back to the scooter in the same way, with the jog's own numbers
+(`JOG` in `riderShape.ts`): speeding up from a standstill, turning to face the scooter rather than
+snapping round, arms bent and pumping, a lean into the run. Two old slips are fixed with it: once off
+the scooter, the shoulders were still where they are when sitting, 16 cm in front of the body, and
+the head kept tipping back as if peering over handlebars.
+
+### What I checked
+
+Type check, lint and build pass, and the console is clean. On the dev server, with a temporary hook
+(removed): riding over a kerb, the front wheel goes 0.05 → 0.13 (kerb) → 0.03 (pavement) and back,
+smoothly. In a crash, the scooter lies on its side on top of the road, and the rider lies on the
+pavement, not in it. The jog back has a knee up and the arms pumping. A pedestrian walking past is
+mid-stride with a bent knee and both feet on the pavement. **Not checked:** night, Low and Medium
+quality, a phone, how the delivery customers look walking, and kerb bumps at full speed for long.
+Kerbs are found from the roads, not from the kerb blocks themselves, so a gap in the kerb (where it
+meets a wall) still counts as kerb.
+
+### Lesson 208: standing on the ground, and why feet skate
+
+Three ideas made this work, and they come up in every game with things on the ground.
+
+**One source of truth for the ground.** If the road is drawn at 5 cm, everything that touches it
+has to ask the same question, "how high is the ground here?", of the same code. Here it's
+`Surface.heightAt`. Constants copied into each file drift apart, and that's how the tyres ended up
+5 cm in the road.
+
+**Lift by the lowest point, not by the middle.** A rotation turns about one point, but what touches
+the ground changes as something tilts: the tyre tread, then the side of the bike. So instead of
+working out a pivot for every case, turn freely, then find the lowest point and lift by that much.
+Checking every corner of a model each frame is too slow, so a few "probe" points stand in for the
+shape: only the outermost points of each slice can ever be lowest.
+
+**A planted foot moves with the ground.** A foot on the ground doesn't move in the world, so in the
+body's own space it slides backwards at exactly the walking speed. A sine wave can't do that: it's
+fast in the middle and slow at the ends, so the foot skates. The gait here is in two parts: a
+straight line back at the body's speed while planted, then a quick swing forward through the air.
+How fast the stride goes comes from how far the body has moved, not from time. Then inverse
+kinematics (as with the rider's arms on the handlebars) bends the knee to put the foot there.
+
+## 2026-11-15: Entry 81, cars that turn in time
+
+### What I did
+
+Some cars swung wide at junctions and drove through the buildings on the far side. I added a
+temporary probe that checked every car, every frame, for being inside a building. In 30 seconds it
+caught four, and none of them had been hit: all were driving normally, 3 to 8 m off their lane, just
+after a sharp turn.
+
+**Why.** A car can't turn tighter than its 4.5 m turning circle. It steers by aiming at a point a
+little ahead on its lane, and at junction speeds that point was only 2.5 m ahead. So the car didn't
+start turning until 2.5 m before the corner, which is too late for a 4.5 m circle, and it ran wide
+into the corner building. Meanwhile its place on the lane carried on round the corner, and the car,
+now behind, hurried to catch up, which made it look wilder still.
+
+- **Turn in time** (`stepVehicle` in `trafficLogic.ts`): coming up to a corner, the aim point
+  reaches at least `radius × tan(angle / 2)` ahead, which is how early a turn on that circle must
+  start (`sharpestCorner` caps it for near U-turns).
+- **Walls stop driving traffic.** The traffic world now keeps the collision world, and each moving
+  vehicle is pushed out of any building it would enter (`wallMargin`), the same push the scooter uses.
+- **No grinding for ever.** A vehicle pressed against a wall for 3 s, more than 30 m from the rider,
+  is taken away, and a new one appears elsewhere (`pinned`, `pinnedTime`).
+
+### What I checked
+
+Type check, lint and build pass, and the console is clean. The same 30-second probe found no cars in
+buildings, and neither did a 40-second run. Eight rams at 16 m/s knocked four cars, and no thrown
+car went into a wall. Nine cars touched a wall in that 40 seconds and were stopped by it, so some
+corners are still taken a bit wide. I also saw a car stopped at a red light 21 m from its lane,
+facing the wrong way. It wasn't in a wall, and I've left it for now.
+
+### Lesson 209: measure before guessing
+
+"Cars pass through walls" had several possible causes: the crash physics (thin walls a fast body can
+tunnel through), cars heading straight back to their lane after a knock, or the normal steering. A
+probe running every frame, recording each car found inside a building along with what it was doing
+(hit or not, how far from its lane, how fast), settled it at the first try: undamaged cars, just
+after corners. A short trace of one car showed its heading turning a fixed amount each frame while
+the gap to its lane grew, which pointed straight at the turning circle and the aim point. Then the
+same probe, run again, showed the fix worked. Keep these probes temporary, and take them out after.
+
+**Follow-up, the same day: cars on the footpath at turns.** The fix above swapped one fault for
+another. Aiming further round the corner made cars start turning early, but steering at a point
+far ahead cuts the inside of a bend, so they mounted the footpath on the inside instead.
+
+The better fix gives each corner a real curved path (`findCorner` in `trafficLogic.ts`). Where one
+lane meets the next, the corner is rounded off with a quadratic Bézier curve. The curve leaves the
+first lane a short way (the "leg") before the point where the two lanes' lines cross, bends through
+that point, and joins the second lane the same distance after it. The leg is r × tan(angle / 2),
+about the turning circle, kept within half of each lane so the curves at the two ends of a short
+lane don't overlap. `pathPoint` maps a place on the lanes onto this path, so a vehicle near a
+corner aims at a point on the curve. That needed `prevLane` on each mover, as the end of the curve
+lies on the next lane. Two numbers also changed:
+
+- the shortest look-ahead went from 2.5 m to 1.2 m (`aimMin`), as a long one shortcuts a tight curve;
+- vehicles may turn a little tighter than their nominal circle (`steeringSlack`), to hold curves
+  that come out tight on short lanes.
+
+The earlier "aim further round the corner" change is gone. The wall push and the stuck-car
+replacement stay as a safety net.
+
+**Checked**, with temporary hooks (removed). Every one of the 501 corner curves within 400 m stays
+on the road. Cars were cutting about 1 m inside the curve before the look-ahead change. Over
+40 seconds of traffic, a corner of a car was off the road in 0.49% of car-frames (1.77% before),
+its centre in 0.11% (0.71% before), and no car touched a wall. A car watched turning out of a side
+street stayed on the tarmac. Most of what's left is the corner of a car's body just over the inside
+kerb on narrow roads. Lanes run 1.4 m left of the road's centre whatever the road's width, so the
+inside kerb is close on a 5 m road. Type check, lint and build pass.
+
+## 2026-11-15: Entry 82, kolams that fit the pavement
+
+### What I did
+
+Kolams outside house gates were running under the kerb, which cut them in two. Each one is 1.5 m
+wide and was put 0.95 m out from the compound wall, so it reached 1.7 m out. The pavement in front
+of a compound wall is often only about 1.3 m wide to the kerb. The house kit finds the road in 0.5 m
+steps, so the pavement can be narrower than planned.
+
+Now `houseKit.ts` measures the real room. It asks how far the road's edge is from the wall's face
+(`nearestRoadEdge`) at the gate's middle and at both sides of where the kolam would go, because the
+road needn't run square to the wall. Then it takes off the kerb and a small gap at each side. The
+kolam is drawn as wide as that, up to 1.5 m, and left out where there's less than 0.9 m. `Prop` has
+a new `width` for this, which `StreetLife` uses for the kolam's size. Kolam is the Tamil name; this
+is what the user calls a rangoli.
+
+### What I checked
+
+On the dev server, with a temporary hook (removed), I tested every kolam in the city, at 81 points
+across each one, against the surface heights. Before this second version, 27 of 2,025 touched a
+kerb, all where the road runs at an angle to the wall. Now 0 of 1,952 touch a kerb or the road.
+About half are full size, and the smallest is 0.9 m. Type check, lint and build pass. **Not
+checked:** looking at one on screen.
+
+## 2026-11-15: Entry 83, the woman's face and arms
+
+### What I did
+
+The women walking about are still built in code (`createWomanGeometry` in `peopleShapes.ts`), and
+their skin looked patchy. Her hair was a ball of radius 0.12 m, centred just 3.5 cm above and 1.5 cm
+behind the head, which is a ball of 0.115 m. Round the sides of the face, the two surfaces were
+within a millimetre of each other, so the graphics card couldn't settle which was in front, and the
+face showed in blotches of skin and hair. Her arms were bare skin sticks with flat ends.
+
+- The hair is now clearly bigger (0.13 m) and sits up and back, so it covers the top and back of
+  the head, and the face is plainly in front of it.
+- She has half sleeves in her outfit's colour, with a ball rounding each shoulder, skin forearms,
+  and hands. The new balls swing with the arms (same `swing` and `joint` as the arm).
+- `ball()` takes an `x` now, for the shoulders and hands.
+
+### What I checked
+
+Type check, lint and build pass. On the dev server, with a temporary hook (removed), I looked at a
+woman from the front, close up: the face is evenly skin-coloured with the hair on top, and the
+shoulders, sleeves, forearms and hands look right. **Not checked:** her walking up close, or at night.
+
+### Lesson 210: z-fighting
+
+The depth buffer keeps, for every pixel, how far away the nearest surface drawn there is, and only
+draws something nearer. It stores that distance with limited precision. Two surfaces closer together
+than that precision draw as a toss-up that changes from pixel to pixel and frame to frame:
+"z-fighting", which shows as stripes or patches that crawl as the camera moves. The fix is to keep
+surfaces clearly apart. A few millimetres is plenty up close, but it needs more far away, because
+precision falls off with distance. Where two surfaces have to lie flat on each other, as road
+markings do, `polygonOffset` nudges one forward in the depth test only.
+
+## 2026-11-15: Entry 84, the man in the dhoti, rebuilt
+
+### What I did
+
+The man in the dhoti walked like a plank in a robe. His dhoti ran from his shoulders to his feet,
+swung as one stiff slab, and his feet poked out beside it.
+
+**Why.** The walking shader swings each limb from the joint height stored with it (`_limb.y`). The
+model script (`scripts/prepare_traffic_models.mjs`) took those heights from the skeleton. In his
+source file, the skeleton is about 1.6 times the size of his mesh: his hips joint is at 1.02 units
+on a mesh 1.2 units tall. So on the finished 1.72 m man, his hips came out at 1.47 m and his
+shoulders at 2.16 m. Three things followed from that one number:
+
+- the script stretches the dhoti up to "hip + 10 cm", so it reached his chest;
+- his legs pivoted from chest height;
+- the new walk (Entry 80) treats anything that pivots above 1.1 m as an arm, so his dhoti and feet
+  swung like an arm.
+
+**The fix, at the source.** `bakePerson` now records, for each joint, the heights of the corners it
+moves most. `fitJointsToMesh` fits a straight line, by least squares, from each joint's height to
+the middle of its corners, and the hip and shoulder heights go through that line. Where skeleton and
+mesh agree, it changes almost nothing: the teen's hips moved from 0.85 to 0.82 m, and her shoulders
+stayed at 1.31 m. For the man, the hips are now at 0.95 m and the shoulders at 1.40 m. I rebuilt
+`public/models/traffic.glb` from the original downloads. Every vehicle came out byte for byte the
+same; only the man's mesh (his dhoti, refitted to his real waist) and the people's joint labels
+changed.
+
+**The shader** (`Traffic.tsx`) also stops assuming everyone is built like the code-made people:
+
+- each leg uses its own model's hip height (`_limb.y`), with the knee at the same share of it;
+- how strongly a part follows its limb (`|_limb.x|`) scales its swing. That's 0.3 for the loose
+  dhoti, 0.4 for the man's arms (`armSwing` in the script), and fractions where a limb meets the
+  body. The old shader did this, and the new one had dropped it.
+
+### What I checked
+
+Type check, lint and build pass. I compared the rebuilt model file with the old one mesh by mesh
+(vertex counts and data hashes): all 12 vehicle meshes are identical, the teen's mesh is identical,
+and only the man's changed. On the dev server, with a temporary hook (removed), the man now has a
+shirt above his waist and a dhoti from waist to ankle, and his feet step beneath its hem. Before
+rebuilding, I tried a fix at load time (resetting joint heights from body proportions), but removed
+it once the file was right. **Not checked:** the delivery customers who use these models, at the
+door.
+
+### Lesson 211: rest pose, bind pose and the mesh
+
+A skinned model has a skeleton (joints in a tree) and a mesh whose corners each follow a few joints.
+Each joint also has an "inverse bind matrix": it carries a corner from the mesh's own space into the
+joint's space, as the joint stood when the mesh was attached (the bind pose). Exporters don't always
+keep these in step with the joints' own positions (the rest pose). Then the joints can sit at a
+different scale from the mesh, as here, and the model still draws correctly, because drawing only
+uses the two together. Anything that reads joint positions on their own must be checked against
+the mesh. Matching each joint to the corners it moves is a simple, robust way to do that.
+
+## 2026-11-15: Entry 85, a man in a kurta instead of the dhoti
+
+### What I did
+
+Even with the right joint heights (Entry 84), the dhoti still looked wrong. The dhoti in that model
+is a huge sheet: four times his width, reaching his shoulders, with no legs modelled under it. I
+tried two fixes in the script: squashing that sheet, then wrapping a new dhoti of my own round him.
+With nothing under it to give it shape, the new one read as a stiff lampshade.
+
+The user then found three more models:
+
+- **"Indian Male Character" by Kalakar** (CC BY 4.0): a man in a kurta and pyjama, with a full
+  skeleton. He now replaces the dhoti man as the `man` model, so the game code didn't change.
+- "semi cartoon - Indian Human 3D Character": no skeleton, so its arms and legs can't move, and its
+  cartoon style wouldn't match. Not used.
+- "Indian Man In Dhoti (1)": byte for byte the same file as before.
+
+The model script (`scripts/prepare_traffic_models.mjs`) needed four things for him:
+
+- **Rigify bone names.** His skeleton is Blender's Rigify, as MB-Lab characters use: `DEF-thigh_L`,
+  not `LeftUpLeg`. `RIGS` lists each part's name for each kind of skeleton, and a person picks one
+  with `rig`.
+- **Muscle bones.** Much of his skin is moved by "muscle" bones (thigh muscles, biceps and so on)
+  that hang off the pelvis and shoulders, not off the limb. So a limb is now its bones *and* any bone
+  matching that rig's `legParts` or `armParts`. Without this, his thighs wouldn't have swung.
+- **Corners with no weights.** 26 corners of his kurta are tied to no bone at all, which made
+  impossible numbers. Weights are now scaled to add up to 1, and a corner with none follows its
+  first bone.
+- **Rigid parts.** His hair isn't skinned. It hangs off his head bone, and the script only read
+  skinned meshes, so he came out bald. Meshes that hang off a bone now move with it. His hair has no
+  colour in the file, so `colors` gives it one (near black).
+
+The dhoti code is gone. Only his kurta takes each person's colour; its border and his white pyjama
+keep theirs. `CREDITS.txt` now credits Kalakar in place of the dhoti model's author. To rebuild, the
+models folder needs `indian_male_character` (unzipped from `indian_male_character.zip`).
+
+### What I checked
+
+Type check, lint and build pass. The rebuilt file has the same 12 vehicle meshes and the same teen,
+byte for byte; only `man` changed. His joints came out at 0.86 m (hips) and 1.35 m (shoulders), with
+about 400 corners on each leg and each arm. On the dev server, with a temporary hook (removed): a
+kurta with its coloured border, white pyjama, dark hair, and legs stepping. **Not checked:** him as
+a customer at the door, or up close at night. His face is coarse at 4,500 triangles, which suits a
+crowd but not a close-up.
+
+## 2026-11-15: Entry 86, sharper cars
+
+### What I did
+
+Up close, the traffic cars looked melted: lumpy, dented panels, with door lines, lights and the
+grille smeared away. Two causes, both in the model script:
+
+- **A coarse wrap.** Each car is hundreds of separate panels, with an interior. The script wraps a
+  new outer skin round it on a grid of 3.5 cm cells (`shrinkWrap`), so the interior and overlaps
+  vanish and the result can be simplified. 3.5 cm is too coarse for a door line or a headlight edge.
+  The skin was then cut down to 12,000 to 14,000 triangles.
+- **Borrowed normals.** Each corner of that skin snaps back onto the nearest original surface and
+  takes its normal from there. Neighbouring corners can snap to different panels, so a smooth door
+  was shaded as if it were dented.
+
+The fixes:
+
+- The four cars wrap on a 1.8 to 2.1 cm grid and keep 24,000 to 28,000 triangles.
+- New `smoothNormals` works out every corner's normal again from the finished surface: the average
+  of the faces round it, weighted by area. Faces turned more than 50° from the corner's old normal
+  are left out, so real edges stay crisp. It runs on every wrapped model, so the player's scooter
+  and the Yamaha are shaded this way too; their shapes are unchanged.
+
+I tried leaving the wrap out altogether. The simplifier then can't get the cars below 30,000 to
+157,000 triangles, as a car made of separate panels has nothing it can merge, so the wrap stays.
+
+### What I checked
+
+Type check, lint and build pass. `traffic.glb` went from 3.2 to 4.9 MB. Mesh by mesh: the four
+cars changed, the scooter's and the Yamaha's normals changed (their positions didn't), and the
+wheels, the auto and the people are the same. In the game, a sedan and an MPV seen close up have
+smooth panels, door lines, handles, mirrors, lights, a grille and roof rails. With 34 vehicles about
+on the dev server, frames held at 8.3 ms (120 fps), 99% under 9.3 ms, on the M5. **Not checked:**
+a slower machine, or night. Some dark specks remain along panel edges, where the colour is taken
+from the gap between two panels.
+
+### Lesson 212: why simplifying needs a clean mesh
+
+A simplifier merges neighbouring corners (an "edge collapse"), choosing the merges that move the
+surface least. It only merges corners joined by edges. A car modelled as hundreds of separate
+panels, with seats and a dashboard inside, has few such joins and many tiny loose pieces, so the
+simplifier soon runs out of safe merges. Rebuilding the outside as one closed skin first (here, by
+filling a grid of small cells and keeping the outer boundary) gives it a mesh it can reduce
+smoothly. The grid size sets the smallest detail that survives, so it's a trade between detail and
+size.
+
+## 2026-11-15: Entry 87, speed breakers, potholes and puddles
+
+### What I did
+
+**Where they go** (new `src/world/roadFeatures.ts`, placed once from the road graph with a fixed
+seed, so they're in the same places every visit):
+
+- **Speed breakers**, 3,628 of them, on roads up to 10 m wide (HSR's side roads, not its main
+  ones). From each junction, every road leaving it is walked to the next junction. A breaker goes
+  5 m past the edge of the widest road at the junction, on 60% of these approaches, and on long
+  stretches every 140 m. Each spans the road: a smooth hump 0.9 m deep and 7.5 cm high
+  (`breakerHeight`), painted in worn yellow and black stripes.
+- **Potholes**, 902: a chance on each 10 m of road, placed where wheels run, not near breakers or
+  junctions. Each is a 4 cm bowl.
+- **Puddles**, 1,765: over every pothole (a little wider), and extra ones along road edges.
+
+**How you feel them.** `Surface.heightAt` adds the features to the road's height, so the tyres from
+Entry 80 ride over breakers and dip into potholes. `followGround` now keeps some of a tyre's upward
+speed as it rolls up a slope (`launchShare`, at most `maxLaunch`), so taken fast, a breaker gives a
+small hop. Landing harder than 0.9 m/s is a jolt: a camera shake, a soft thud, and a little lost
+speed. In the rain, a tyre entering a puddle throws a splash (`Splashes`: droplets from a fixed
+pool, with a hiss), and the tyres lose up to 60% of their grip, which comes back over a moment.
+
+**Traffic.** Each lane knows where its breakers are (`breakersOnLink`, by the road link the lane
+follows). Vehicles slow to 2.2 m/s for one (3.5 for two-wheelers and autos), braking in time as
+they do for corners, and rise over the hump as they cross.
+
+**Drawing** (new `RoadDetails.tsx`): breakers as coloured geometry, and potholes and puddles as flat
+pictures on the road, in map squares (`ChunkedMesh`). Potholes have a pale broken rim round a dark
+gritty hollow. Puddles are a shiny, dark material reflecting the street, in four soft shapes. They
+fade in as `water.level` rises: it follows the rain, filling over about 14 s and drying over 70 s.
+The flat-picture builder moved out of StreetLife into `quads.ts`, so both can use it.
+
+### What I checked
+
+Type check, lint and build pass. On the dev server, with temporary hooks (removed):
+
+| Speed into a breaker | Jolts | Strongest (0 to 1) | Speed after |
+| --- | --- | --- | --- |
+| 22 km/h | 2 | 0.21 | 15 km/h |
+| 32 km/h | 2 | 0.28 | 27 km/h |
+| 45 km/h | 2 | 0.36 | 39 km/h |
+| 56 km/h | 1 | 0.37 | 52 km/h |
+
+At 45 km/h the front tyre peaks 13 cm above the road (a 6 cm hop over the hump). My first version
+threw the rear tyre 36 cm off a kerb at speed, so the hop is now capped. Over 15 seconds, traffic
+crossed breakers at an average of 2.8 m/s and never faster than 3.5. Through a puddle at 36 km/h:
+two splashes, one for each tyre, and grip fell from 12 to 4.8. Frame times with puddles full
+matched the dry baseline: 95% of frames under 10.3 ms. **Not checked:** night, Low and Medium
+quality, a slower machine, or how often riders meet breakers on a real delivery route. Potholes
+are subtle to ride through at speed, as the tyre skims a small one.
+
+## 2026-11-15: Entry 88, a gentler pick-up
+
+### What I did
+
+The scooter went from standing to top speed (56 km/h) in 3.2 seconds, like a sports bike. Its
+engine pull started at 6.5 m/s² and only tailed off near the top, as it shrank with the square of
+the speed.
+
+Now it starts at 4 m/s² and falls off evenly to 1 m/s² at top speed (`engineForce` in
+ScooterController.ts, numbers in `SCOOTER`). That gives 20 km/h in 1.6 s, 40 km/h in about 4 s and
+54 km/h in about 6.7 s: like a 110 cc delivery scooter, a little quicker for fun. Garage engine
+upgrades still add their 6% a level to both numbers.
+
+Each stretch between turns now takes a little longer, and the speed breakers slow things too, so
+the on-time limit for a delivery is now based on 6 m/s rather than 6.7 (`onTimeRouteSpeed`): about
+10% more time. A delivery still always pays its base reward.
+
+### What I checked
+
+I simulated both curves first. In the game, with the throttle held from a standstill up 24th Main:
+20 km/h at 1.6 s, 30 at 2.7 s and 40 at 4.3 s, as simulated. Type check, lint and build pass.
+**Not checked:** how a full delivery feels against the new time limit.
+
+## 2026-11-15: Entry 89, the pick-up halfway between
+
+### What I did
+
+Entry 88's pick-up felt too slow in play. The pull now starts at 5.25 m/s² and falls off evenly to
+1.4 m/s² at top speed, halfway between the two earlier versions. The on-time limit's route speed is
+6.3 m/s, also halfway (between 6.7 and 6).
+
+| Speed | Entry 87 | Entry 88 | Now |
+| --- | --- | --- | --- |
+| 20 km/h | 0.9 s | 1.6 s | 1.2 s |
+| 40 km/h | 2.0 s | 4.3 s | 3.0 s |
+| 54 km/h | 3.2 s | 6.7 s | 5.0 s |
+
+### What I checked
+
+The same simulation that matched the game for Entry 88 (only the engine acts on speed while the
+throttle is held). Type check and lint pass. Not ridden in the game this time.
+
+### Lesson 213: tune by feel, in halves
+
+When one value feels too much and another too little, try halfway between them before reaching for
+a new number. Each try halves the gap. Writing the times down (0 to 40 km/h) turns "feels slow" into
+something you can compare.
+
+## 2026-11-15: Entry 90, every delivery is a small story
+
+### What I did
+
+Each order now says who it's for, what's in it, and what the customer wrote, and ends with the
+customer's star rating, a tip and a line in their words. New file `src/missions/orderStory.ts`
+holds all of it as plain data and pure functions.
+
+- **Stories:** 16 made-up customers (Priya, Lakshmi aunty, Suresh uncle, …) and 16 items, each with
+  its own note ("Phone is on 3%. Please hurry!"). The planner gives each customer a story, double
+  drops included, and the stop is named after them ("Priya on 24th Main").
+- **Care:** a few items need it.
+  - **Fragile** (cake, eggs, pickle jars, a plant): hard landings count while it's on board
+    (`knocks` in the store, counted by MissionTracker from the scooter's `bumpCount`). An amber
+    "Bump!" notice shows for a moment.
+  - **Cold** (ice cream, kulfi, paneer): minds the clock.
+- **Rating:** starts at 5 stars and loses:
+  - 1 for being late, or 2 if very late (over 1.5× the limit);
+  - 1 per crash, up to 2;
+  - for fragile items, 1 for 2–3 bumps or 2 for 4 or more (one bump is forgiven);
+  - for cold items, 1 more when late.
+  - It never goes below 1. The card lists why stars went, e.g. "3 bumps −1★".
+- **Tip:** 30 for 5★, 15 for 4★, 5 for 3★. Each 5-star delivery in a row after the first adds 5,
+  up to 25 more.
+- **Rider rating:** the average of the last 20 is saved, with the 5-star streak. It shows on the
+  results card and next to the credits on the phone.
+- **Phone and results card:** the phone shows the item and a Fragile or Cold tag. Raised, it adds
+  the note, how to carry the item, and "Customer's tip: up to +30 for 5★".
+
+The base reward never changes. The rating only decides the tip, which is always extra, and nothing
+is ever broken: a bumpy ride only makes the customer less happy.
+
+`calculateReward` now takes a `RideRecord` object (crashes, knocks, streak, nightPay) instead of
+loose arguments.
+
+### What I checked
+
+Type check, lint and build pass. In the game:
+
+- The phone showed "A birthday cake for Rahul · FRAGILE" with the note and the care hint.
+- I drove the store through deliveries from the console:
+  - a fragile order with 3 bumps gave 4★ and a tip of 15;
+  - three clean ones in a row gave tips of 30, 35 and 40;
+  - one very late with a crash gave 2★ and no tip, with the base reward still paid.
+- The results card showed the stars, the quote and the reasons.
+
+Those test deliveries were saved to the real progress (credits, XP, career goals, today's goals,
+ratings), so I put them back as they were. **Not checked:** knocks counted from a real ride over a
+breaker (it reuses the same `bumpCount` the camera jolt uses, which was tested in Entry 87), phone
+width, and how often players see each item.
+
+### Lesson 214: game state as plain functions
+
+The rating is a pure function: inputs in, stars out, no React, no three.js. That made it possible
+to test every rule from the browser console in seconds, without riding a single delivery. Keep game
+rules out of components, and the components only show what the rules decided.
+
+## 2026-11-15: Entry 91, nitro, and "Package is safe" only with a package
+
+### What I did
+
+**Crash notice.** "Crash!" always shows, but "Package is safe" now only shows with an order on board
+(`phase === 'toCustomer'`). On the way to the dark store there's no package to be safe.
+
+**Nitro.** Hold Shift with the throttle for a burst. The numbers are in `SCOOTER` in vehicleConfig.ts:
+
+- **Speed and pull:** it adds 7 m/s² of pull and lifts the speed limit by 5 m/s (18 km/h), to about
+  74 km/h.
+- **Tank:** a full tank burns in 3.5 s, and starting a burst needs 15% in the tank so it doesn't
+  flicker on and off.
+- **Filling:** it fills while riding, with the speed ratio squared, so near top speed it fills from
+  empty in about 40 s and crawling barely fills it. Each drift boost adds 20%. A new game starts at
+  60%.
+- **Crashes:** a crash stops the burn.
+
+In ScooterController.ts:
+
+- **State:** `ScooterState` has `nitro` and `nitroOn`, and `DriveInput` has `nitro`, mapped to both
+  Shift keys.
+- **`updateNitro`:** burns and fills the tank each step.
+- **`speedLimit` and `engineForce`:** they now add the drift boost and nitro together, in one place
+  each, where the limit used to be written out twice.
+
+**On screen:**
+
+- The speedometer has a tank bar with a Shift key cap, dim until there's enough to start. It glows
+  while burning, and a blue "Nitro" label shows.
+- The camera widens by 6° more.
+- The rider crouches as for a boost.
+- The controls hint lists "Shift nitro".
+
+### What I checked
+
+Type check, lint and build pass. On 24th Main from a standstill, with a temporary hook (removed):
+
+- **Throttle only:** 30 km/h at 2 s and 49 km/h at 4.5 s.
+- **With nitro:** 35 km/h at 1 s, 60 km/h at 2 s and 74 km/h at 2.5 s. The tank went from 1 to 0.17
+  in 3 s, as set.
+- **Both runs:** each ended in a crash further up the street at speed, which shows the cost of
+  going that fast.
+- **On screen:** the gauge, label and wider view showed.
+
+My saved progress copy was put back afterwards. **Not checked:** the engine sound above top speed,
+and whether 74 km/h feels too fast for HSR's narrow streets.
+
+### Lesson 215: one place for a rule
+
+The speed limit was written out twice: once for the throttle and once for the slide recovery. Adding
+nitro to one and forgetting the other would have let corners cap the speed at the old limit. Before
+adding to a rule, find every copy of it, and make it one function.
+
+## 2026-11-15: Entry 92, the phone comes up at each stop, and fashion orders
+
+### What I did
+
+**The phone at stops.** When a parcel starts changing hands (`collecting` at the dark store,
+`handingOver` at the customer), the phone comes up by itself on the Order tab. It goes down once the
+rider is more than 11 m (`zoneRadius` + 4) from where it came up. The Phone component subscribes to
+the store (`useGameStore.subscribe`), which the telemetry updates ten times a second, and checks
+`livePlayer`'s position. Raising or lowering it by hand (P or the button) leaves it to the rider.
+
+While a parcel changes hands, the order sheet used to show only "Collecting the order". It now shows
+the whole order with that as its heading: the customer, the item, their note, the route and the pay.
+So at the dark store you read who the order is for, and after a drop you see the next order before
+riding off.
+
+**Fashion only.** The dark store now sells fashion: clothes, shoes and accessories.
+
+- **Items:** the 16 items are all fashion, such as a silk saree, white sneakers, glass bangles, a
+  formal blazer and jeans to try on. All are made up, with no brands.
+- **Care types:** "Cold" became "Event" (pink tag): a saree for a wedding at 7, a blazer for an
+  interview. It minds the clock in the same way, and lateness costs "Nearly missed the event −1★".
+- **Fragile items:** perfume, glass bangles, sunglasses and a gift-wrapped watch.
+
+### What I checked
+
+Type check, lint and build pass. In the game, with a temporary hook (removed), using the real arrival
+code (the scooter placed on the stop):
+
+| Step | Phase | Phone |
+| --- | --- | --- |
+| Arrive at the dark store | collecting | up, showing "A sherwani for Nandini · EVENT" and her note |
+| 20 m away | toCustomer | down |
+| Arrive at Nandini | handingOver | up |
+| Delivered (5★, "Just in time! I look sakkath") | delivered | up |
+| Next order, then 20 m away | toPickup | down |
+
+The saved progress was put back afterwards. **Not checked:** phone-width screens, where the raised
+phone covers more of the view during a handover.
+
+### Lesson 216: subscribe outside React for things that change often
+
+`useGameStore.subscribe` calls a function on every store change without re-rendering anything.
+It's the right tool when a component only needs to *react* to a change (here: raise or lower the
+phone) rather than show the value. A selector (`useGameStore((s) => s.x)`) would re-render the
+phone ten times a second just to check a distance.
+
+## 2026-11-15: Entry 93, the phone is up only during the handover
+
+### What I did
+
+Entry 92's phone stayed up until the rider was 11 m away. Now it's up only while the handover
+animation plays: it comes up when the phase becomes `collecting` or `handingOver`, and goes down the
+moment the phase moves on (to `toCustomer`, or `delivered` when the results card shows). The distance
+check and `livePlayer` are gone from Phone.tsx. A phone raised or lowered by hand is still left
+alone.
+
+### What I checked
+
+Type check and lint pass. In the game, at a customer: the phase was `handingOver` with the phone up,
+then `delivered` with the phone down and the results card showing. That was a real delivery, so I
+put the saved progress back to how it was (155 credits, 60 XP, the first career goal, today's goals
+at 0, no ratings).
+
+## 2026-11-15: Entry 94, a nitro flame
+
+### What I did
+
+New `src/vehicle/NitroFlame.tsx`, mounted in the scooter's body group (so it pitches and leans with
+the bike), at the exhaust: low on the right, behind the rear wheel (`EXHAUST`).
+
+- **Three cones** pointing backwards: a white-hot core, a blue flame (0.95 m) and a faint orange
+  edge. They are made with `ConeGeometry`, moved so the base sits at the pipe, and tipped over.
+- **Two glow sprites:** a wide blue haze and a small white centre. Sprites always face the camera,
+  which matters because the chase camera sits behind the bike, looking almost straight down the
+  flame. Without them it read as a thin spike.
+- **Materials:** all additive, unlit, not tone mapped and not writing depth, so the flame shines the
+  same by day or night and only brightens what's behind it.
+- **Motion:** it grows in quickly when the nitro lights and fades out more slowly, so it never pops.
+  Its length flickers with two sine waves at speeds that don't line up, so the flicker never looks
+  like a loop.
+- **Cost:** hidden when not burning. There's no light, as adding or removing a light makes three.js
+  recompile every lit material.
+
+### What I checked
+
+Type check, lint and build pass. On 24th Main with nitro burning: a bright blue jet with a white
+centre at the exhaust, flickering, gone a moment after letting go. The first version was too thin
+from behind, so it got wider and the two glows. The saved progress was put back afterwards.
+**Not checked:** night (it should glow more there), and Low quality.
+
+### Lesson 217: additive blending for light
+
+`AdditiveBlending` adds the colour to what's behind instead of covering it. Black adds nothing, and
+overlapping parts get brighter. That's how fire, sparks and glows look right without any lights.
+Pair it with `depthWrite: false`, so the see-through parts don't hide each other.
+
+## 2026-11-15: Entry 95, nitro speed carries on
+
+### What I did
+
+After a nitro burst, the speed fell back to top speed in about 1.7 s, so the burst felt like it
+vanished. The pull back down (`overspeedDrag`, with the throttle held) is now 1.2 m/s² instead of 3:
+from full nitro speed back to 56 km/h takes about 4 s. Drift boosts carry on longer too, as they use
+the same drag.
+
+Off the throttle, it used to slow at that same over-speed rate. Now it coasts down at the normal
+`coasting` rate (1.6 m/s²) whatever the speed, so letting go after nitro doesn't suddenly slow you
+less than letting go at normal speed would.
+
+### What I checked
+
+Type check, lint and build pass. In the game, on 24th Main riding south, with the throttle held
+throughout and nitro for its last 2 s:
+
+> 73 km/h as the tank ran out, then 72, 70, 68, 66, 63, 61, 56 every half second, then a steady 56.
+
+Riding north, two runs crashed at about 60 m at nitro speed, so that direction isn't a good test
+road at 70+ km/h. The saved progress was put back afterwards.
+
+## 2026-11-15: Entry 96, new title covers, bright and without the purple cast
+
+### What I did
+
+**New covers.** The three title screenshots were from before the shops, signboards, traffic, the
+delivery scooter, rain puddles and nitro, so they showed an empty town. They're replaced by three
+new in-game shots in `public/title/` (the old ones are removed):
+
+| File | Shot |
+| --- | --- |
+| `shop-street-morning.jpg` | The rider coming down 27th Main Road at 9 am, shops either side (Sneha Fashions on the right) |
+| `nitro-night-rain.jpg` | Nitro burning in the rain at night, the shops lit, the rider on the right |
+| `midday-handover.jpg` | A customer holding her parcel as the confetti goes up, gulmohar trees behind |
+
+The bright morning shot comes first, and `index.html` preloads it. The loading screen's panel crops
+and the phone notice use the new files. Every shot keeps its subject on the right, as the title
+words cover the left.
+
+**No more pink and purple.** The screen darkened every photo from the left with a maroon-purple
+wash (92% at the edge), gave the name a maroon shadow and made the Kannada lavender. Now:
+
+- **Shade:** neutral (no tint), and lighter: 72% at the edge, gone by 55% across, and only the
+  bottom third from below.
+- **Photos:** a touch more saturated and contrasty with a CSS filter.
+- **Colours:** the name has a chilli-red sticker shadow, and the Kannada is marigold. The panels'
+  maroon backgrounds are neutral too.
+
+**How the shots were taken:** temporary hooks (all removed) let me place the camera anywhere, set
+the hour and the weather, and drive the scooter from the console, with the HUD hidden by a style.
+The handover was the hardest. The customer walks over first, so the confetti peaks about 2.3 s after
+arriving, and the scooter had to be turned to face along the road, or the camera ended up behind a
+wall.
+
+### What I checked
+
+Type check, lint and build pass. On the title screen, all three covers fade in turn. The morning shot
+is bright with no colour cast, the night shot shows the flame on the right, and the handover is clear
+of the words.
+
+Taking the shots made real deliveries, which were saved. The first time I put the save back, the
+game saved again as the page closed. So I restored it again on the title screen, reloaded, and
+checked: "Welcome back. Level 1, 155 credits".
+
+### Lesson 218: overlays tint everything under them
+
+A dark gradient over a photo, to keep text readable, isn't neutral unless its colour is. A dark
+maroon at 90% turns every photo maroon-purple. Use a near-black with no hue, keep it only where the
+text sits, and let the rest of the picture show its own colours.
+
+## 2026-11-15: Entry 97, HSR's well-known shops and petrol bunks, at their real spots
+
+### What I did
+
+You sent the positions of 33 well-known shops and food places and 8 petrol bunks. They're now in
+the game at those spots. The brief says no real brands without approval, so every chain has a
+made-up name and look. A chain's branches share theirs, as real chains do. For example: Stitch &
+Strut (2 branches), Clearview Optics (4), Slice Station (3), Brew Republic (3), Stride Shoe Co. (3),
+Crispy Coop, Big Bun Burgers and Swarna Mahal. The fuel brands are Surya Fuels, Kaveri Petroleum,
+Hampi Petro and Coral Energy.
+
+**Shop signs** (`landmarks.ts`, `LandmarkSigns.tsx`):
+
+- **Data:** 22 chains, each drawn in code with a name, tagline, colours and one of three lettering
+  styles, so none copies a real logo. The 33 branches are kept as positions.
+- **Placement:** each sign goes on the wall its building faces the street with. It looks for walls
+  from the mapped spot and 8 points round it, and takes the nearest wall with a road in front.
+- **Look:** a big backlit sign box above the ground floor's awnings (3.3 m up, up to 8 m wide).
+  It's slightly lit by day and glows at night.
+- **Cost:** all 33 placed, as two meshes and one texture.
+
+**Petrol bunks** (`fuelStationData.ts`, `FuelStations.tsx`):
+
+- **The roof problem:** at five of the six inside the map, OpenStreetMap has the bunk's canopy as a
+  building tagged `roof`, which the game was drawing as a solid block. Those roofs are now taken out
+  of the buildings (`MapData.fuelRoofs`), and the bunk's canopy goes exactly where the roof was, at
+  its size.
+- **Facing the road:** each bunk faces the nearest road at least 6 m wide. The nearest road of any
+  width was usually the bunk's own 4 m driveway.
+- **What's built:** a white canopy on four pillars with the brand's band and name round it, two or
+  three pump islands with two pumps each, and a tall price sign (Petrol, Diesel, Power) behind the
+  pavement. There's a concrete forecourt, and lights under the canopy that brighten after dark.
+- **Collisions:** the pillars, pumps and sign pole are solid.
+- **Cost:** three meshes for all of them.
+- **Outside the map:** the two Haralur Road bunks are 0.5 and 1.3 km east of where the map ends, so
+  they're left out.
+
+**Phone map:** every shop and bunk shows as a dot in its sign colour, with its name, after the
+street names, where there's room.
+
+### What I checked
+
+Type check, lint and build pass. In the game, using temporary hooks (removed) to place the camera
+and the time of day:
+
+- Sprint Lab and Silicon Square sit above the shop awnings on 27th Main Road.
+- Big Bun Burgers glows at night on 14th Main.
+- Surya Fuels at Agara and Kaveri Petroleum on 27th Main stand on their mapped roofs. At night the
+  canopy is lit and the price sign reads clearly.
+- "Roll & Sub" shows on the phone map with a green dot.
+
+The first canopy band didn't show. The canopy's depth offset (`polygonOffset`) pulled the box in
+front of the band, which sat only 1 cm proud, so the band now stands 4 cm out. The saved progress
+was put back afterwards.
+
+**Not checked:** all 33 signs one by one (a sign on the wrong wall is possible where buildings are
+packed tightly), and grass tufts that grow on a bunk's forecourt.
+
+### Lesson 219: the map's data has its own meaning
+
+OpenStreetMap tags a petrol bunk's canopy as `building=roof`: a roof on posts, not a building. The
+game treated every building as a solid block, so canopies turned into boxes. When something looks
+wrong where a real place is, check how the map tagged it, and draw what the tag means.
+
+## 2026-11-16: Entry 98, petrol bunks fill the nitro
+
+### What I did
+
+Pull in under a bunk's canopy and slow below about 9 km/h, and the nitro tank fills, from empty to
+full in 2.5 seconds. Riding through fast doesn't count, so a refill costs a stop.
+
+- **`bunkAt(stations, x, z)`** in `fuelStationData.ts`: the bunk whose canopy is over a spot, with
+  1.5 m of reach past its edge. It turns the spot into the canopy's own "along the road" and "back
+  from it" directions, so a turned canopy is checked as the rectangle it is.
+- **`BunkRefill`** (`src/vehicle/BunkRefill.tsx`): each frame, while riding, not crashed, not
+  burning nitro and slow, it tops up the tank under a canopy. It tells the store which bunk (by its
+  made-up name) only when that changes, so the HUD doesn't re-render every frame.
+- **HUD:** "Filling nitro · Kaveri Petroleum" above the speed, then "Nitro full".
+- `World` passes the placed bunks to `Player`.
+
+### What I checked
+
+Type check, lint and build pass. In the game, with a temporary hook (removed): stopped at Kaveri
+Petroleum on 27th Main with an empty tank, it was 40% full after 1 s and full by 3 s, and the HUD
+showed both messages. Riding through the forecourt at 32 km/h added only the normal riding top-up
+(0.30 to 0.31) and showed no message, and the message went away after leaving. The saved progress
+was put back afterwards.
+
+### Lesson 220: point in a turned rectangle
+
+To ask "is this point inside a rectangle that's turned at some angle?", don't turn the rectangle.
+Take the point relative to the rectangle's middle and project it onto the rectangle's two unit
+directions with dot products (`dx * alongX + dz * alongZ`). Those two numbers are the point's
+position in the rectangle's own frame, and the test becomes `|along| <= length / 2` and
+`|out| <= depth / 2`.
+
+## 2026-11-16: Entry 99, nothing planted on a bunk's forecourt
+
+### What I did
+
+A street lamp stood in the middle of the Kaveri Petroleum forecourt on 27th Main, beside the pumps.
+The bunk only made its pillars, pumps and price sign solid, so the roadside placer saw open ground
+there and planted a lamp, a tree and two parked scooters.
+
+- **`isOnForecourt(stations, x, z)`** in `fuelStationData.ts`: from the road's edge to 1 m behind the
+  canopy, and 3 m past each end, where the price sign stands.
+- **`generateRoadsideProps`** takes a `keepClear(x, z)` check. Trees, lamps and parked scooters
+  skip any spot it says yes to. `World` passes the forecourt check.
+
+The forecourt stays rideable: it's kept clear without being made solid.
+
+### What I checked
+
+Type check, lint and build pass. With a temporary hook (removed), I listed everything placed in the
+world near each bunk. Before: a lamp, a tree and two parked scooters at Kaveri on 27th Main, and a
+tree at two other bunks. After: none of the 10,372 trees, 3,986 lamps or 3,868 parked scooters are
+on a forecourt.
+
+### Lesson 221: solid and kept clear are different things
+
+The collision world answers one question: can you ride here? The placers ask another: is this
+spot free to put something on? A forecourt, a driveway or a bus stop must be free of trees but
+still rideable, so it needs its own check passed to the placers, not a wall in the collision world.
+
+## 2026-11-16: Entry 100, dark stores across all of HSR
+
+### What I did
+
+Every order started at the one dark store, and customers were at most 1.5 km away by road. The store
+is at the map's east edge, so only 21% of the streets ever got an order. The west four-fifths of the
+map, which came in with the bigger map file, never did.
+
+- **`findDarkStores`** (`darkStore.ts`): finds the home store as before (same spot, so nothing
+  changes for a save), then adds stores until no more than 4% of the streets are out of reach, up
+  to 8. Each new one goes where the most out-of-reach streets are: they're counted in 100 m squares,
+  and the square with the most within 800 m wins. The nearest suitable shop building within 450 m
+  of it becomes the store. If none suits, that area is given up and the next is tried.
+- **Names:** the home store keeps its plain name. The others add their road, such as "Deliver It
+  dark store, Begur Road". Plain "Service Road", unnamed roads and flyovers are skipped for the
+  nearest better name within 250 m.
+- **Orders** start at the store nearest the rider (`nearestStore` in `missionPlanner.ts`), with
+  customers from that store by the same trip lengths. Since the next order is planned where the last
+  one ended, a long haul out west brings orders from the stores there.
+- **Each store** has its front, bikes and a staff member. The order's own store does the handover.
+  The shirt print follows whichever staff member is nearest the camera.
+- **One light:** each store front had a point light. Now one light moves to the store nearest the
+  rider. Every light in a scene adds work to every lit surface, and a far store's light can't be
+  seen anyway.
+- **Garage** opens at any dark store. **Phone map:** every store shows as an orange "Dark store" dot,
+  drawn before shops so it wins the space.
+- `planHouseKit` skips a list of store buildings instead of one.
+
+### What I checked
+
+Type check, lint and build pass.
+
+- **Coverage:** placement run in Node against the real map file, through Vite's `ssrLoadModule`.
+  6 stores, 93.7% of the streets within 1.5 km by road of one (was 21%), placed in 173 ms. The home
+  store is at (171, −136), as before.
+- **In the game:** each store is within 11 m of its pickup point. Orders planned from the west, the
+  south-west, the north and the south each came from the nearest store, with customers around it.
+  At the Begur Road store the front, bikes and staff showed, and the staff member walked the parcel
+  out. Credits stayed at 155, and the saved progress was put back afterwards.
+
+**Not checked:** the moving night light at a store after dark, and Low quality.
+
+### Lesson 222: greedy covering
+
+To place a few things so they reach as much as possible, place them one at a time. Each goes where
+the most is still unreached, then you recount. It isn't the best possible answer, but it's close,
+simple and fast. The trick that keeps it fast is counting into a coarse grid once per round, so
+scoring a spot means adding up nearby squares, not visiting every street.
+
+## 2026-11-16: Entry 101, the lighting pass
+
+### What I did
+
+Following ART_DIRECTION.md: one tone mapping and one colour grade over everything, a low warm sun,
+a warm golden haze, and ambient occlusion and bloom where the quality allows.
+
+- **Post effects** (`PostEffects.tsx`, new packages `@react-three/postprocessing` and
+  `postprocessing`, with N8AO): ambient occlusion, then bloom, then AgX tone mapping, then the grade
+  as a 32×32×32 LUT, then antialiasing. Every quality gets the tone mapping and grade, so the game
+  looks the same on each. The canvas's own antialiasing is off, as everything is drawn through the
+  effects.
+- **Colour grade** (`colorGrade.ts`): warmer white balance, saturation at 88%, a gentle S-curve and
+  a faded warm black. One function, `gradeColor`, baked into the LUT.
+- **Sun** (`skyLogic.ts`): the light comes from lower (peaking at about 51° instead of 62°) and
+  warmer. The sky's colours still follow the real sun, so mornings stay blue rather than dusky.
+- **Ambient fill:** the hemisphere light's ground colour is now a warm red-earth bounce that
+  follows the time of day. The sky colour is a little cooler, so shadows read slightly blue.
+- **Haze** (`haze.ts`): replaces three's fog shader. It builds slowly over the view, then closes
+  in over the last 40%, so it's still solid where drawing stops. It starts 15 m out when the sun is
+  low and 90 m out at noon. In rain its start moves behind the camera, so even nearby air is
+  thick. The day horizon is a pale warm white.
+- **Shadows** cover a smaller box that follows the rider, so they're sharper: Low 50 m at 1024 px
+  (Low had none before), Medium 90 m at 2048, High 140 m at 4096. Edges are softened, and a
+  normal bias stops striping.
+
+### What I checked
+
+Type check, lint and build pass. In Chrome, on an Apple M5 with a 120 Hz screen, at a fixed spot,
+with the resolution held steady and the sky pinned (temporary hooks, removed), each preset ran for
+5 seconds by day (10:00) and at night (21:00):
+
+| Preset | FPS before | FPS after | CPU ms before → after |
+| --- | --- | --- | --- |
+| Low, day / night | 120 / 120 | 120 / 119 | 3.2 → 3.6 / 3.6 → 4.1 |
+| Medium, day / night | 120 / 120 | 118 / 110 | 3.9 → 6.1 / 4.2 → 7.1 |
+| High, day / night | 118 / 114 | 87 / 79 | 6.6 → 7.4 / 7.3 → 9.7 |
+
+Two fixes came out of measuring. Multisampling cost about 12 ms a frame on High, as ambient
+occlusion then works on four times the samples, so antialiasing is now an effect at the end (FXAA on
+Low, SMAA above). N8AO found transparent materials and drew the whole scene twice more every frame,
+about 5 ms of CPU, so that's off. Full-size AO cost about 20 ms on High, so it's always half size.
+
+Screenshots at 9:00, 17:20, 21:00 and in rain, on Medium and Low, and the title screen. The saved
+progress was put back afterwards.
+
+**Not checked:** a mid-range laptop. Medium and High on a 120 Hz screen will see the resolution
+scaler step down, as before.
+
+### Lesson 223: measure each part, not just the total
+
+Turning everything on showed High at 42 FPS. Turning each part off one at a time showed where that
+went, and two of the costs weren't the effects themselves: multisampling made ambient occlusion
+four times the work, and the AO library quietly drew the scene again for transparent objects. When a
+total is bad, take it apart before cutting features.
+
+### Lesson 224: a GPU timer can mislead on tiled GPUs
+
+WebGL's timer query said High took 26 ms on the GPU while the game ran at 87 FPS, which needs under
+12 ms. Apple's GPUs overlap frames, and the timer counts that overlap. Frame rate (and the time
+until the GPU is truly done) is the number to trust. The timer is only good for comparing settings.
+
+## 2026-11-16: Entry 102, black frames when braking at night
+
+### What I did
+
+The whole screen flashed black for a few frames at a time, mostly when braking or reversing. It
+came from the lighting pass's effects meeting an old problem.
+
+- **The cause:** the headlight is a spotlight 0.95 m up at the scooter's nose, and a light that
+  fades with distance gets without limit brighter the closer a surface is. When braking dips the
+  nose, part of the scooter comes right up against the lamp. That pixel overflows the effects'
+  picture (half floats top out at 65,504) to infinity. Bloom's blur then mixes it into every
+  pixel as NaN, which shows as black. Before the effects, one bad pixel was all it ever was.
+- **The fix** (`brightnessCap.ts`): like the haze, it changes the shader code every built-in
+  material shares. Each pixel's light is capped at 64 (tone mapping already shows anything above
+  about 16 as white), and NaN or infinity becomes black, before any effect sees it. App imports it
+  first.
+
+### What I checked
+
+Type check, lint and build pass. To see what was really on screen, I captured the canvas as a video
+stream (`canvas.captureStream()` read through `MediaStreamTrackProcessor`) and measured each
+delivered frame. The same ride each time, at the same spot, at 22:30 in cloud, on High (temporary
+hooks, removed):
+
+| | Before | After |
+| --- | --- | --- |
+| No AO | 73 of 761 frames black | 0 of 721 |
+| Everything on | 70 of 726 | 0 of 530 to 558 |
+| Daytime | 0 of 652 | — |
+
+A night screenshot while braking looks as it should. The saved progress was put back afterwards.
+
+### Lesson 225: one bad pixel, and a blur, make a black screen
+
+Blurs, bloom and ambient occlusion all mix many pixels into each one. Anything mixed with NaN is
+NaN, so a single broken pixel can become a whole broken frame. With post effects, cap brightness
+and clear NaN where colours are made, not after.
+
+### Lesson 226: test what's on screen, not what you can read
+
+My first checks read pixels back from the canvas. They reported black frames that weren't there,
+when the game happened to draw after the read, and missed real ones. A video stream of the canvas
+gives exactly the frames that were shown. When a bug is "I saw it flicker", measure the frames
+that were seen.
+
+## 2026-11-16: Entry 103, black flashes by day too
+
+### What I did
+
+After Entry 102 you still saw occasional black flashes, at 11:15 in cloud, so not the headlight.
+I couldn't make one happen there in 45 seconds of riding and braking, nor by changing the
+resolution six times. So rather than chase every possible source, the picture is now made safe
+before anything blurs it.
+
+- **Clean-picture pass** (`cleanPicture.ts`): one full-screen pass straight after ambient occlusion
+  and before bloom. Any pixel that is NaN or infinite becomes black, and brightness is capped at
+  64. It catches what the material cap can't: the four custom shaders (sky, rain, car reflections,
+  light cones) and the AO pass itself.
+- **A sturdier test** (`safeColorGlsl` in `brightnessCap.ts`): it checks a number's bits (all
+  exponent bits set means NaN or infinity) instead of `isnan()`. Apple's GPUs compile with "fast
+  math", which may drop an `isnan()` check as impossible. The material cap uses it too.
+
+### What I checked
+
+Type check, lint and build pass. I put a small test object in front of the camera, at 11:15 in
+cloud on High, whose shader outputs infinity, and recorded the frames shown (temporary hooks,
+removed):
+
+| | Clean pass on | Clean pass off |
+| --- | --- | --- |
+| Infinite pixel | 0 of 59 frames black | 44 of 44 black |
+| No test object | 0 of 60 | — |
+
+So one infinite pixel did black out every frame, and the pass stops it. The game looks the same.
+The saved progress was put back afterwards.
+
+**Not found:** what made your daytime flash. The pass stops it whatever it was. If a flash still
+shows, it isn't a broken pixel, and the next suspect is a hitch in drawing.
+
+### Lesson 227: guard the place every path goes through
+
+When something can break in many places (any shader, any pass), fixing each one you find leaves
+the ones you haven't. Put one guard where all of them have to pass, here the moment before the
+blurring effects, and test it with a deliberate fault.
+
+## 2026-11-17: Entry 104, the flash when the resolution changes
+
+### What I did
+
+You still saw black flashes, at 10:45 as the sun gave way to rain. Over 2,070 frames of that
+weather, recorded from the canvas, none were black, with no errors and no lost context. So the
+flash was never in a drawn frame. It was the moments between them.
+
+- **The cause:** the resolution scaler changes the canvas's size, and resizing a canvas wipes it.
+  The change went through a React prop, so it happened during React's update, between frames. If
+  the browser showed the page before the next frame was drawn, you saw the wiped canvas, and the
+  page behind it is black (`color-scheme: dark`). The lighting pass made this more likely: High
+  now runs below a 120 Hz screen's rate, so the scaler steps more often. In one minute's riding it
+  stepped twice, from 1.25 to 0.75.
+- **The fix** (`AdaptiveResolution.tsx`): a new resolution is kept until the start of the next
+  frame and applied there, with R3F's `setDpr`, before that frame is drawn. The wiped canvas is
+  drawn over straight away. The store, and the Canvas prop it feeds, are updated at the same time,
+  so React then finds nothing to change. A quality change goes the same way.
+
+### What I checked
+
+Type check, lint and build pass. I watched every write to the canvas's size and where it came
+from (temporary hooks, removed), during a quality change and a step by the scaler: all 6 came from
+the frame loop, through `AdaptiveResolution`, and none from React. I can't see the browser's own
+compositing, so the flash itself can't be recorded. This removes the gap it needs. The saved
+progress was put back afterwards.
+
+I also checked whether the effects keep their old size when only the resolution changes. They
+don't: the composer compares the pixel ratio every frame and resizes itself.
+
+### Lesson 228: change the canvas only where you draw
+
+Anything that resizes a WebGL canvas (its width, the pixel ratio) wipes the picture. Do it in the
+same frame as the next draw, inside the render loop. Done from a React update or an event, the
+browser may show the wiped canvas first, which looks like a flash.
+
+## 2026-11-17: Entry 105, the new ground, tried on 27th Main Road
+
+### What I did
+
+The ground, to ART_DIRECTION.md, on one road first: `NEW_GROUND_ROADS` in `streetEdgeConfig.ts`
+lists only 27th Main Road. The old ground (`Roads`, `Kerbs`) skips the roads on that list, and
+`StreetEdges` draws them. Rolling out is one change: make `usesNewGround` return true.
+
+- **Kerbs** (`streetEdgeGeometry.ts`): 15 cm above the road, 20 cm wide, with a 4 cm bevel on the
+  road side, built along each road edge from the OSM lines. Painted in 1 m black and yellow blocks,
+  each a little worn. End faces only where a run starts or stops. In front of a compound gate (gate
+  positions now kept by `planHouseKit`) the kerb drops to 4 cm.
+- **Rounded corners:** at each junction, the corner between two neighbouring roads (45° to 150°
+  apart) gets an arc of 3 m radius, or 1.5 m between short pieces. The asphalt fills the web inside
+  the arc, the kerb follows it, and the footpath fills the corner out to where the two footpaths'
+  far edges meet. Straight kerbs and footpaths stop at the corner, found to within millimetres by
+  bisection. The old kerbs of a side street stop there too.
+- **Footpaths:** level with the kerb top, from the kerb's back out to 3 m, or less where another
+  road is nearer (the median of a dual carriageway). Not raised across a petrol bunk's forecourt.
+  An edge stone stands along the far side, and a face drops to the ground wherever a footpath
+  ends against something lower.
+- **Pavers** (`groundTextures.ts`): interlocking I-shaped blocks drawn in code, 4 across and 8 rows
+  in each 0.96 m repeat, every block a slightly different grey, with a normal map from the same
+  drawing. UVs are in world metres, so the pattern runs on across pieces. The shader adds broad
+  variation, grime, and soil dust drifted onto the far side.
+- **Soil:** the palette's base, dry and damp, mixed by broad noise (about 80 m and 15 m across),
+  with the photo's grain at 40%, so it's earth, not gravel. Only in a box round 27th Main for now,
+  fading out over 30 m.
+- **Dust and damp:** a 0.9 m strip of dust on the soil beside the edge stones. Each tree on the
+  footpath gets a square pit with an edge-stone frame and damp soil. Trees on the verge get a soft
+  patch of damp soil.
+- **Asphalt** (`groundShaders.ts`): the palette's #4E4F57, with the photo for fine grain only, broad
+  variation, darker smoother tyre tracks in each lane, a darker gutter strip by the kerb, and dust
+  at the edges. The gutter and dust show only where a kerb runs beside them, so a side street's
+  opening stays clean. It darkens and shines in the rain.
+- **Decals:** one 1024 px picture holds a tar patch, a crack, a manhole and a newer patch, laid
+  along the road by a seeded random walk: 153 on 27th Main, 13 of them manholes.
+- **Standing on the raised footpath:** `groundLift.at(x, z)` gives the footpath's height there
+  and 0 elsewhere. Roadside props, carts, people (pedestrians and the handover), shop fronts,
+  kolams and the dark store's bikes and bay use it. The physics surface takes the new ground's
+  heights too, with "road" in the rounded corners.
+
+Everything is merged per 160 m map square: one geometry per kind per square.
+
+### What I checked
+
+Type check, lint and build pass. In the game, with temporary hooks (removed): kerbs, corners, pavers,
+a tree pit, the edge stone and dust, a manhole and a tar patch, by day on High and on Low. Across
+the road's east side the surface runs: road, 0.20 m from the kerb out (kerb top and footpath level),
+0.212 m on the edge stone, then soil. Corners' webs are road.
+
+Two fixes on the way. The first asphalt didn't show, as its triangles faced down. And the gutter
+and dust appeared in the middle of junctions, until they were limited to where a kerb runs.
+
+Frame rate on an Apple M5 at the same spot on 27th Main, with the resolution held steady:
+
+| Preset | Old ground | New ground |
+| --- | --- | --- |
+| Low | 120 FPS | 118 FPS |
+| Medium | 120 FPS | 120 FPS |
+| High | 93 FPS | 89 FPS |
+
+27th Main came to about 138,000 vertices, after cutting the first build's 440,000 (one footpath
+piece per stretch of even width, and kerb end faces only at run ends). Kerbs are 103,000 of them.
+
+**Before rolling out:** kerbs for the whole map at this rate would be about 15 million vertices,
+too many to keep on the GPU. They should become long runs with the stripes painted by the shader.
+Where a road with the new ground meets one without, the corner steps down to the old, lower
+footpath.
+
+### Lesson 229: test a look on one street, behind one switch
+
+A change to the whole ground touches every road, every junction and everything standing on the
+pavement. Behind a single list of roads, it could be tried, measured against the old one on the
+same street, and compared, without the rest of the map changing at all.
+
+## 2026-11-17: Entry 106, weathered buildings in more colours
+
+### What I did
+
+ART_DIRECTION.md asks for colourful plaster and weathering, with nothing brand new, and without
+heavy textures. Everything here is shader maths, vertex data, or see-through quads in one colour.
+
+- **Colours** (`buildingData.ts`): houses now draw from 16 colours. Off-white, cream and beige
+  are a quarter of them; the rest are pink, dusty rose, mint, sea green, pistachio, yellow,
+  turmeric, terracotta, brick orange, peach, sky blue and lilac. Flats gain sand, pale pink, mint,
+  blue and yellow. The house kit's balconies and compound walls follow, as before.
+- **Wall weathering** (`weathering.ts`, `addWeathering`), on the building walls and the house kit:
+  - a ragged band of grime at the foot of every wall (up to about 0.75 m), splashed red-brown
+    by the soil, and darker where the wall meets the ground: baked ambient occlusion;
+  - paint faded in broad patches, paler and greyer, and darker damp stains;
+  - on house, flat and shop-upstairs walls, thin streaks run down from about half the window
+    sills, matching each look's window width;
+  - how weathered a building is comes from a per-building `aWeather` (0 to 1), so some look
+    freshly painted and some haven't been for years. The kit uses a fixed 0.5.
+- **Stains** (`StainBuilder` in `houseKit.ts`): see-through dark quads, faded by vertex alpha,
+  just off the wall. They darken whatever paint is under them, so one colour does for every
+  house. Under every balcony slab (0.8 m) and sunshade (0.35 m), as baked ambient occlusion.
+- **AC units:** about 18% of house windows above the ground floor have an outdoor unit under the
+  sill: a pale box with a dark grille. Water stains run down from each, a thin dark streak and
+  a wider faint one.
+- The stains are drawn as a third mesh per house-kit square, up to 220 m away, on every quality.
+
+### What I checked
+
+Type check, lint and build pass. In the game, by day on High: the new colours along 25th and 24th
+Main. On a pink house, streaks under the sills, the grime band, faded patches and shade under the
+balcony. On flats, mottled paint. AC units with their streaks. Temporary hooks were removed, and
+the saved progress put back.
+
+Frame rate on an Apple M5, the resolution held, at the spawn, looking at a block of flats:
+
+| Preset | Weathering off | Weathering on |
+| --- | --- | --- |
+| Low | 119 FPS | 120 FPS |
+| Medium | 86 FPS | 85 FPS |
+| High | 59 FPS | 56 FPS |
+
+**Not checked:** night (window glow over the streaks), rain, and Low up close.
+
+### Lesson 230: darken, don't paint
+
+A stain that's a colour has to match the wall it's on, and with 16 paints and patchy fading it
+never would. A stain that's a see-through dark, faded at its edges, darkens whatever it's laid
+on, so one quad works on every wall. The same goes for baked shade: draw the shadow, not the
+shaded paint.
+
+## 2026-11-17: Entry 107, corners in the road, on 27th Main
+
+### What I did
+
+Your screenshot showed a rounded kerb corner and a slab of footpath in the middle of 27th Main, with
+an orange line and a brown patch. 19 of the 73 corners had their footpath on a road. Where the
+dual carriageway splits, or a road runs close, the "corner" between two arms is the other
+carriageway or the Outer Ring Road.
+
+- **Corners must be clear:** a corner is kept only if its footpath fill (its centre, the far
+  corners, and points along the kerb's back) is clear of every road. 54 corners remain, none on
+  a road.
+- **No kerb stubs:** a kerb needs 0.6 m of room behind it before the next road, and runs shorter
+  than 1.2 m are dropped. That removed the short kerbs floating in the carriageway where it splits.
+- **Paving underneath:** wedges of red soil showed between the footpath, which narrows near a
+  side road, and the corner fill. Like the old ground, a low paved strip now runs under each road
+  and its footpaths, at the old 3 cm, so any gap shows paving. Corners no longer shade dust from
+  their far point, which had spread orange across them.
+
+### What I checked
+
+Type check, lint and build pass. The same view as your screenshot's junction, before and after,
+with temporary hooks (removed). The saved progress was put back.
+
+**Still to fix:** a small gap where a corner's kerb meets the straight kerb.
+
+### Lesson 231: check a shape against the world, not just its own maths
+
+The corner maths was right for two roads meeting. It never asked what else was there. A cheap test
+(sample a few points of the result, and ask whether they're on a road) catches every case the
+maths didn't think of.
+
+## 2026-11-17: Entry 108, waving customers and KA plates (people and vehicles, part 1)
+
+### What I did
+- **People** (`Traffic.tsx` walking shader): a shared clock and a per-person `aWave`. Customers raise one arm and wave as the rider comes within 35 m and while the parcel reaches them, easing in and out (`Handoff.tsx`). People standing still breathe and shift their weight, each in their own time. Clothing colours are now everyday Indian wear.
+- **Number plates** (`numberPlates.ts`): one 1024×512 picture of 32 made-up Karnataka plates (KA 01/03/05/51/53...), black on white, and black on yellow for autos. Each kind's plates are placed on the model's own bumper, found by scanning its shape at plate height. Drawn instanced, within 70 m, one draw call per kind.
+
+### What I checked
+Type check, lint and build pass. In the game: plates on an SUV (front and back), autos (yellow, front and back) and a bike (rear). The wave was not seen in the game. The saved progress was put back.
+
+### Still to do
+The wave seen in the game, scooter and commuter-motorcycle shapes, distance level of detail for vehicles, and the prop kit gaps from Entry 107's list.
+
+## 2026-11-17: Entry 109, two-wheelers, far-away vehicles and the prop kit's gaps
+
+### What I did
+- **Waving checked:** in the game, a customer raises an arm and waves as the rider arrives (Entry 108).
+- **Two-wheelers** (`twoWheelers.ts`): an unbadged step-through scooter (small wheels, floorboard,
+  leg shield) and a commuter motorcycle (tank, long seat, engine, exhaust), with real proportions
+  and simplified parts, each under 400 triangles. Bikes in traffic are now a third each of the
+  model, the scooter and the motorcycle, picked once per bike. All carry the seated rider and a
+  rear KA plate. Only the model has separate spinning wheels.
+- **Far-away vehicles** (`vehicleProxies.ts`): beyond `vehicleDetailDistance` (70 m on High, 50 m
+  Medium, 35 m Low), each vehicle is a stand-in of a few boxes, sized from its own model: a body in
+  its colour, a dark cabin and four wheels, 48–72 triangles against about 28,000 for a car model.
+  Wheels and plates stop at the same distance. Autos' stand-ins are green with a yellow canopy.
+- **Shop names:** 11 second names for the commonest shops (Sri Lakshmi Stores, Royal Gents Parlour,
+  Kaveri Tea Point...), all made up, picked per shop. The board picture grows to 2048 × 3936, inside
+  the 4,096 limit many GPUs have, which is why there aren't more.
+- **Posters** (`posters.ts`): one generated picture of 8 posters (tuition, yoga, to-let, a made-up
+  film, a Rajyotsava greeting, packers and movers, water tank cleaning, music classes), with no
+  parties, real people or brands, and numbers in the unassigned 90000 range. About a third of
+  compound walls carry one beside the gate, slightly tilted, on the street side.
+- **Potted plants** on the compound wall top either side of about 45% of gates.
+- **Density by quality:** AC units, pots, posters and wall stains now live in the house kit's
+  detail layers. Low shows none, Medium most, and High adds more in a new `fine` layer. AC water
+  streaks go only with units that Medium shows, so none hangs under nothing.
+
+### What I checked
+Type check, lint and build pass. In the game: the wave, the scooter side-on, a motorcycle with its
+plate, stand-ins down a long road, "Royal Gents Parlour", a pot on a wall top and a "Water Tank
+Cleaning" poster (206 posters built near the spawn). The saved progress was put back.
+
+**Not checked:** frame rate after these changes, and the scooter and motorcycle at night (no
+headlight glow of their own; they share the bike's).
+
+### Still to do
+The small gap where a rounded corner's kerb meets the straight kerb on 27th Main.
+
+### Lesson 232: a texture has a ceiling
+Adding names meant a taller atlas, and WebGL only promises textures up to 4,096 pixels on many
+devices. Check the size against that limit before growing an atlas, and choose what's worth the room.
+
+## 2026-11-17: Entry 110, parked bikes on the footpath, zebra crossings, railings and park walls
+
+### What I did
+- **Bikes sinking into the footpath:** a parked scooter's height came from its middle only. Parked
+  nose-in or tail-in to a shop on 27th Main, one wheel could be up on the raised footpath and the
+  other below it. `settleParkedScooters` (`groundLift.ts`) now checks both wheels. A scooter whose
+  wheels are on different levels slides along its length, up to 1.5 m, to a level spot. If none is
+  free, it isn't placed. To do this, the street edges are now built before traffic.
+- **Zebra crossings** at every signal junction (597 approaches): white stripes 0.5 m wide and 3 m
+  deep across the road, just in front of the stop line. The stop line moved back from 2 m to 5 m
+  past the crossing road to make room, so traffic now waits behind the zebra.
+- **Junction railings** (`fencing.ts`, `Fences.tsx`): 16 m of steel railing along both kerbs on
+  the way into each signal, starting just back from the stop line. They're 1 m high with three
+  rails, and panels alternate yellow and black like the kerbs. A panel is left out where it would
+  block a gate, a petrol bunk, a building or a side road, or where the road bends away. 12.7 km in
+  all.
+- **Park walls:** a 0.45 m plaster plinth with green iron railings on it, around every park
+  (5.7 km). There's a gap wherever a path comes in, a 3.5 m gate halfway along sides over 40 m, and
+  nothing on the pavement. The bars are one flat strip per panel with an alpha map cutting the
+  gaps, two triangles a side instead of a dozen thin boxes.
+- Railings and park walls are solid, merged per map square, and drawn out to the props distance
+  for the chosen quality.
+
+### What I checked
+Type check, lint and build pass. In the game: zebra crossings at the Outer Ring Road and at a small
+junction, railings on the 27th Main footpath, and a park wall in the rain. All 3,903 parked scooters
+now have both wheels on one level (98 of them stand on the raised footpath). About 107 FPS on High at
+a park, as a rough check. The saved progress was put back.
+
+### Lesson 233: an alpha map reads green
+The park railing first drew as a solid green sheet. The bar pattern was in the texture's alpha
+channel, but three.js reads `alphaMap` from the **green** channel (so a greyscale JPEG works). Put
+the pattern in RGB.
+
+## 2026-11-17: Entry 111, park fences on every side, and walls and barriers from OSM
+
+### What I did
+- **Park fences were missing on most sides.** Two reasons:
+  - Any panel within a pavement's width of a road was dropped, and most parks' mapped edges run
+    right up to the road.
+  - Any panel near a footpath was dropped too, and HSR's parks have walking tracks running just
+    inside the edge.
+
+  Now a fence point too close to a road moves inwards (up to 6 m) until it's behind the pavement.
+  Openings are left only where a path actually crosses the fence line, or ends at it. Park
+  fencing went from 5.7 km to about 17 km.
+- **Fence styles**, from a web search on what Bengaluru uses. BBMP's park and vacant-land tenders
+  specify chain-link, MNK Park has steel railings, and the plinth-and-iron-railing park wall is
+  common. Each park gets one style, seeded: green railing on a plinth (half), chain-link on
+  concrete posts with barbed wire (30%), or tubular steel railing (20%).
+- **Walls and barriers from OSM** (`public/data/hsr-barriers.geojson`, 159 ways, made with
+  Overpass and loaded beside the map). In the play area:
+  - 2.9 km of boundary walls: plastered, with a coping and pillars every 3 m, in one of five
+    colours.
+  - 4.7 km of fences: chain-link, or steel railing where tagged metal.
+  - 340 m of stone retaining wall.
+  - 65 m of yellow-and-black concrete road divider.
+  - All of OSM's crash barriers (4.1 km) lie outside the play area; there's a drawing for them if
+    it grows.
+  - Barriers on flyovers (`layer=1`) are left out, as the game's roads are flat.
+  - Walls keep off roads and out of anything already there, such as the house kit's compound
+    walls.
+  - Everything is clipped to the play area, which at first it wasn't.
+- The chain-link mesh is a second cut-out strip with a diamond pattern, drawn to 60% of the props
+  distance. From further away it thins out, as real chain-link does.
+
+### What I checked
+Type check, lint and build pass. In the game: a park's green railing set back behind the pavement
+along its whole road side, a 663 m chain-link fence, a tech park's boundary wall, steel railing on
+the Outer Ring Road service road and the divider on 17th Cross. The saved progress was put back.
+
+### Lesson 234: map data has edges too
+The OSM query box was the map's box, and the play area is smaller. The first barriers I looked at
+stood in empty soil past the map's edge wall. Data from a second source needs the same clipping
+as the first.
+
+## 2026-11-17: Entry 112, missing buildings, and temples (Agara's Jagannath temple in the Kalinga style)
+
+### What I did
+- **Why buildings looked wrong:** the map file matches today's OpenStreetMap closely (16,470
+  buildings in the play area against OSM's 16,949), but OSM simply lacks thousands of buildings
+  nobody has traced. Overture Maps (free) adds footprints traced from satellite images by Google
+  Open Buildings and Microsoft.
+  - `scripts/prepare_extra_buildings.py` (DuckDB + Shapely) takes the 5,770 in the play area. It
+    leaves out 748 smaller than 20 m² (mostly trees and shadows) and 1,282 that sit on an OSM
+    building, a road or its pavement, a park or military land.
+  - The remaining 3,740 go in `public/data/hsr-extra-buildings.geojson`, loaded beside the map.
+    The city goes from 16,470 to 20,204 buildings.
+  - They're classified like any other building, mostly as small houses, and get the house kit.
+- **Temples, mosques and churches** (`worship.ts`, `Temples.tsx`). OSM had 41 places of worship;
+  the game drew none.
+  - `scripts/prepare_extra_places.py` adds Overture's (Meta and Microsoft) places of worship with
+    confidence of at least 0.6 that OSM lacks: 38, 5 of which only name a place OSM has unnamed.
+    That's how the Agara Jagannath temple was found: OSM has its compound with no name.
+  - Matching:
+    - a building tagged as a place of worship is one;
+    - a compound's buildings are its, the largest being the main one;
+    - a pin takes the building it's in (up to 1,200 m², not flats or offices), or the nearest
+      small building within 10 m. Otherwise the game builds one, sized to the compound or as a
+      roadside shrine, shrinking it until it fits.
+  - Their buildings get the kind `temple`, so the plain buildings, house kit and roof tanks leave
+    them alone. 62 places of worship in all.
+  - **Hindu (Dravidian):** cream walls on a red-ochre plinth and parapet, a stepped, painted
+    vimana with a dome and gold kalasha, a gold flag post (dhwajastambha) in front when there's
+    room (13 have one), and compounds walled in red-ochre and white kaavi stripes with a gateway
+    towards the road.
+  - **Jagannath (Kalinga):** a rekha deula in ten ribbed courses, rising straight and then curving
+    in, with ochre ribs, a wide amalaka, kalasha, Nila Chakra and red flag, plus a stepped pidha
+    roof over the hall in front. Agara's is in its OSM compound; HSR's other Jagannath temple,
+    which OSM lacks, is generated by Silk Board.
+  - **Mosques:** green bands, a dome on a drum, two minarets. **Churches:** a bell tower with a
+    pyramid roof and a cross. **Buddhist:** a white stupa dome.
+- Credits: `public/data/CREDITS.txt` and the on-screen line name Overture Maps, Google Open
+  Buildings (CC BY 4.0) and Microsoft (ODbL).
+
+### What I checked
+Type check, lint and build pass. In the game: Agara's Jagannath temple from the road (striped
+wall, flag post, the Kalinga tower; the first version, a smooth lathe, looked like a rocket and
+was rebuilt in ribbed courses), HSR's Jagannath temple, a Dravidian temple with its flag post, a
+mosque and a church. 120 FPS on both High and Low at a dense spot, but that's the display's cap
+on this Mac. A mid-range laptop isn't tested. Settings were put back.
+
+### Lesson 235: a name tells you more than a tag
+OSM had Agara's Jagannath temple all along, as an unnamed compound tagged only "hindu". Matching
+a second source by place, not just adding it, turned "missing" into "unnamed". And the name is
+what decides its style.
+
+## 2026-11-17: Entry 113, shops with real depth
+
+### What I did
+The inside of every shop was one picture painted in perspective on a flat quad in the doorway. It
+only looked right from straight in front; from anywhere else it was plainly a screen.
+
+- **A room the shader draws (interior mapping):** the doorway is still one quad, but its shader
+  follows each pixel's line of sight into a box behind the wall (as wide and tall as the doorway,
+  2.6 to 4.2 m deep). It finds which face it meets first (back wall, side walls, floor or ceiling)
+  and paints that face from the shop's square in a new atlas, darker further back. The room
+  shifts in true perspective as you ride past.
+  - The atlas has one 512 px square per kind of shop: its back wall straight on (the old
+    drawings, reused in a new flat mode), then a tiled floor and a ceiling with a tube light.
+  - The side walls carry on the back wall's shelves.
+  - `textureGrad` with gradients from the doorway's own coordinates stops the face edges flashing
+    the smallest mipmap.
+  - The rooms glow a little by day (tube lights), more at night.
+- **3D fronts** (`shopFrontKit.ts`), merged per map square, all shops:
+  - the rolled-up shutter in its box, guide rails down each side, and a granite step;
+  - **kirana:** strips of snack packets hanging from the shutter box, a counter with sweet jars,
+    and rice sacks;
+  - **darshini:** a steel counter with big vessels;
+  - **chai:** a kettle, glasses and a bench;
+  - **bakery:** a glass display with trays of cakes;
+  - glass counters at chemists, phone and jewellery shops;
+  - a rail of clothes at clothing shops;
+  - buckets and leaning pipes at hardware shops;
+  - and so on for each type, plus a cool-drinks fridge by the door at some.
+  - Drawn to the props distance, but only within 60 m on Low.
+
+### What I checked
+Type check, lint and build pass. In the game: a kirana (shelves on the back and side wall, tiled
+floor, hanging packets, jars, sacks), a bakery from an angle, and a darshini. 120 FPS on High on a
+shop street (the display's cap; 2,730 shops in all). Not checked: Low on a mid-range laptop, and
+the rooms at night. The saved progress was untouched.
+
+### Lesson 236: a room can live in a pixel shader
+Interior mapping draws a convincing 3D room on one quad: intersect the view ray with a box in the
+quad's own frame and colour by whichever face it hits. It's cheap, works from every angle, and
+needs no hole in the building, which here is a solid extrusion.
+
+## 2026-11-17: Entry 114, a debug spawn, a clear-sky sun, deeper shade, and walls that hold
+
+### What I did
+- **`?spawn=<street>`** (`src/dev/spawn.ts`) starts the rider on that street, in the left lane,
+  facing along it.
+  - The street is a slug of its name: `27th-main-road`, or just `27th-main`.
+  - If several roads match, the longest stretch in the play area wins.
+  - It logs which road it chose, or warns with some names that exist.
+  - Only in the dev server, or anywhere with `?debug` (for `vite preview`). Players never get it.
+- **Clear-weather sun** (`CLEAR_SKY` in `skyLogic.ts`). With no cloud:
+  - the sun is 20% stronger and warmer (towards `#ffd6a3`);
+  - the sky overhead is a deeper blue (the hazy horizon is left alone);
+  - the fill light drops to 88%, so shadows read;
+  - shadows are crisper: the PCF filter radius shrinks by up to half (`shadowSharpness`).
+
+  All of it fades out between cloud 0.25 and 0.55, so cloudy and rainy days are unchanged.
+- **Ambient occlusion:**
+  - N8AO's radius goes from 1.6 to 2.2 m (it reaches up under a 3.2 m stilt floor) and its
+    intensity from 2.2 to 3.0.
+  - Baked into the wall shader, every downward face is 50% darker: stilt ceilings, and the
+    undersides of slabs and sunshades.
+  - Wall-base contact shade: 0.5 m and 60%, up from 0.35 m and 45%.
+  - Shade under balconies and sunshades: deeper and taller.
+  - The stilt floor is a darker concrete.
+- **Walls that hold.** Buildings and compound walls (with their closed gates) were already
+  solid. But with nitro on a slow frame (the game allows down to 20 fps) the scooter moves over a
+  metre per step. That's more than the 0.25 m wall plus the scooter's 0.6 m radius, so its middle
+  landed past the wall's middle, and the push out sent it through. Movement is now cut into steps
+  of at most 0.25 m, each checked against the walls (up to 10 per frame).
+
+### What I checked
+Type check, lint and build pass.
+- **Collisions:** the real collision code, run outside the game. At 23.5 and 30 m/s at 20 fps,
+  the old single step went through a compound wall; with sub-steps it stops at the wall every
+  time. Normal speeds were unchanged.
+- **In the game:**
+  - `?spawn=27th-main` started on 27th Main Road in the left lane;
+  - the clear morning sun is warmer;
+  - under an apartment's stilts reads as shaded;
+  - 120 FPS on High, the display's cap.
+
+The saved progress was untouched.
+
+### Lesson 237: collide in steps no longer than the thing you hit
+Collision by "push out of whatever you overlap" only works if each move is shorter than the
+thinnest wall plus your own radius. Fast objects on slow frames need sub-steps (or a swept test),
+or they pass straight through.
+
+## 2026-11-17: Entry 115, polishing 27th Main Road, and new title covers
+
+### What I did
+Tested throughout with `?spawn=27th-main&debug=1`.
+
+1. **Clear-weather light** (`CLEAR_SKY` in `skyLogic.ts`, `Sky.tsx`, `Lighting.tsx`):
+   - The sun is 25% stronger and warmer under a clear sky.
+   - During the riding windows, **8–11 am and 4–6 pm**, it's 15% stronger and warmer still. In
+     those windows the fill light drops to 82% and the warm ground bounce to 75%, so shadows are
+     darker.
+   - Shadows are crisper: the PCF radius shrinks by up to 60%.
+   - The zenith is a deeper blue, and under a clear sky the blue comes further down the sky
+     (gradient exponent 0.55 → 0.36), so the sky a rider sees is blue above a warm haze.
+   - Cloudy and rainy days are unchanged.
+2. **Product cards in shops** (`productCards.ts`): the back walls of the 3D rooms now show framed
+   picture cards drawn in code, all generic with no brands:
+   - **jewellery:** necklaces, bangles, rings and earrings on dark red;
+   - **phone and electronics shops:** handsets, earphones, chargers and power banks;
+   - **hardware:** hammers, spanners, paint tins, taps, padlocks and screwdrivers;
+   - **darshini:** a green picture menu of dosa, idli, vada, coffee and meals, with prices;
+   - **chaat:** the same kind of menu, in red;
+   - **kirana, general and supermarket:** chips, biscuits, noodles, bottles and chocolate.
+
+   Rooms are darker than the street: by-day glow 0.18 → 0.06, and an 82% shade.
+3. **Forecourts:** where shops on a new-ground street stand back from the footpath, the ground
+   from the footpath to their walls is paved with the same pavers.
+   - Neighbouring shops' forecourts join up, within 4 m.
+   - Each end is dusty, with a face down to the soil and dust blown out onto it.
+   - The street's height includes them, so the rider, parked bikes and people stand on them.
+   - Grass stays off them.
+   - 27th Main's right side now matches its left.
+4. **Weathering:**
+   - **Kerbs:** paint chipped to grey concrete in patches, most on the tops where tyres scuff,
+     with a band of road grime at the base (a shader step on the kerb material).
+   - **Gutters:** silt in patches along the gutter, more roadside dust, and drifts of dry leaves
+     along the kerbs.
+   - **Asphalt marks:** every 4 m instead of 6, with more tar patches and cracks.
+   - **Walls:** the grime band at wall bases is taller and stronger (everywhere).
+5. **Night:** about 30% of signboards are backlit boxes, glowing 2.4× (the bloom picks them up);
+   the rest glow at 0.55×. Each open shop throws a soft pool of warm light onto the footpath in
+   front of it after dark.
+6. **The hatched stub:** it was the dark store's riders' bay, painted 4.1 m from the wall. On 27th
+   Main's footpath that's across the kerb and onto the road. It's now placed from the real road
+   edge, inside the footpath, and lit by the shared sun (it was unlit).
+7. **People at shops** (`ShopPeople.tsx`, `shopPeoplePlacement.ts`):
+   - a shopkeeper in the doorway of about 45% of shops;
+   - 2–3 customers at the counter of each darshini, chaat, tea and coffee stall;
+   - now and then one at a kirana.
+
+   Only on new-ground streets, and drawn only within 70 m of the rider (45 m on Low), as a
+   person model is up to 9,300 triangles.
+
+**Title covers** (`public/title/`), all three re-shot on the new 27th Main, 1500×779:
+- **Morning:** the rider riding towards the camera at 9:20.
+- **Midday:** the rider pulled up by the chaat centre and medicals, customers at the counter.
+  The caption is now "Pulling up at the chaat centre, midday", as there's no handover in it.
+- **Night:** nitro in the rain at 9 pm, the medicals lit, light on the footpath.
+
+The old covers are kept in the session's scratchpad.
+
+### What I checked
+Type check, lint and build pass. Every part above was looked at in the game, by day and by night.
+
+Frame cost was timed with `gl.finish()`, so the GPU's share counts. The display caps at 120 FPS.
+
+| | FPS before | FPS after | Frame (median / 90th percentile) before | after | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- | --- |
+| High | 119 | 112–113 | 3.7 / 4.0 ms | 4.0 / 4.2 ms | 514 → 518 | 3.87 M → 4.10 M |
+| Low | 119 | 120 | 3.2 / 3.7 ms | 2.7 / 3.1 ms | 297 → 299 | 2.49 M → 2.66 M |
+
+On High about 3 FPS of the drop is the shop people (measured by hiding them). Before limiting them
+to near the rider, they added 1.1 M triangles. Low's change is within noise.
+
+Taking the shots made a delivery, which saved (+80 credits). The save was put back on the title
+screen and checked: 850 credits, 280 XP, High.
+
+### Lesson 238: count triangles before trusting the frame rate
+At a 120 Hz cap, FPS hides cost. The per-frame triangle count showed a million triangles of
+people the rider could never see. Time the GPU and count what's drawn, not just frames per
+second.
+
+---
+
+## 2026-11-17: Entry 116, final polish on 27th Main: people, shop goods, stains, the rider's colours
+
+### What I did
+Tested throughout with `?spawn=27th-main&debug=1`.
+
+1. **Proper people at the shops** (`ShopPeople.tsx`): the grey, cone-shaped figure outside Ganga
+   Jewellers was the woman built in code (`createWomanGeometry`), whose long kurta is a cone.
+   Shop people now use only the two models traffic uses, the man and the teen. Traffic's
+   walkers still include the coded woman, until a model with a clear licence takes her place.
+2. **Life on the footpath** (`shopPeoplePlacement.ts`, the walking shader in `Traffic.tsx`):
+   - **Idle poses** (`IDLE_POSE` in `gait.ts`), done on the graphics card like the walk:
+     - **weight shift:** the hips move about 4 cm onto one leg, stay there, then move to the other;
+     - **phone:** forearm up across the body, bent at the elbow, head bowed;
+     - **chatting:** in pairs facing each other, a hand coming up now and then, taking turns.
+   - **Walkers:** about a third of shops have someone pacing the footpath past them, on a lane
+     0.85 m out from the walls. That's clear of counters and fridges, which reach about 0.6 m,
+     and of the parked scooters, which start about 1.15 m out. A walker only uses a stretch where
+     nobody is standing. They stop at each end for 1–4 s, turn, and walk back.
+   - **Less uniform:**
+     - 1–3 customers instead of 2–3, unevenly spaced;
+     - shopkeepers placed differently in each doorway;
+     - turned more or less towards the counter;
+     - each person on their own timing, where before all of them breathed in step.
+3. **Shop goods at real size** (`productCards.ts`, the room shader in `ShopFronts.tsx`):
+   - The back wall used to stretch one picture across the doorway, so a 7 m shop showed bangles
+     a metre wide. The picture now covers a fixed 3.5 m of wall and repeats along wider walls.
+     One `fract()` in the shader does it.
+   - Shelves and glass cabinets now hold rows of small goods, several of each side by side:
+     - **jewellery:** pieces about 15 cm, in velvet cabinets;
+     - **phones:** about 10 × 17 cm;
+     - **snacks:** packets about 15 × 22 cm on six shelves;
+     - **chemist:** medicine boxes about 9 × 12 cm;
+     - **bakery:** loaves, buns, cakes and puffs.
+   - Darshinis and chaat stalls keep their picture menu, now a board high on the wall, with
+     tumblers and bottles on a shelf below it.
+   - **Glass counters** (`shopFrontKit.ts`) at jewellers, phone shops and chemists show rows of
+     small goods behind the glass. Each item is a flat quad of two triangles, merged into the
+     existing shop-front mesh, so it adds no draw calls.
+4. **Oil stains** (`groundTextures.ts`, `StreetEdges.tsx`):
+   - **Softer:** a soft halo, a see-through core and pooled spots, all radial gradients, instead
+     of one opaque black blob.
+   - **Wet look:** the decal material turns glossier (roughness 0.85 → 0.28) where a stain is
+     dense, so it catches the light. This is one shader step, with no extra texture or pass.
+   - **More variants:** two smaller round stains and a trail of drips along the lane.
+   - The decal picture is now 4 × 2 cells instead of 2 × 2 (`DECAL_COLUMNS`/`DECAL_ROWS`).
+5. **The hatched stub is gone.** It was the dark store's riders' bay stripe: a single 0.5 m
+   hatched band on the footpath, which read as a broken zebra crossing. A zebra crossing
+   belongs on the road, so the stripe, its texture and `placeRidersBays` were removed rather
+   than converted.
+6. **The rider in brand colours** (`brandPrint.ts`, `Rider.tsx`, `Scooter.tsx`):
+   - **Dye:** a purer yellow, `BRAND_DYE` `#ffd200`, not the wordmark's on-screen `#f6b32b`.
+     From behind, the rider's back faces away from the sun and is lit mostly by the bluish sky
+     fill, and the warm grade pushes it towards orange. `#f6b32b` came out as cardboard tan; the
+     purer yellow comes out as the logo's marigold. The material changed, not the light.
+   - **Jacket:** dyed with it, with full sleeves, a dark brown collar and
+     "Deliver It" across the back in the wordmark's style: heavy dark brown, tilted 3°, over a
+     chilli-red stroke.
+   - **Box:** split off the scooter model (`splitDeliveryBox`) so it gets its own non-metallic
+     plastic material in the same dye. Its baked shading is brightened so the marigold
+     comes through rather than a tan.
+   - **Box logo:** the name with the Kannada underneath, on the back and both sides, with light
+     grime and scuffs.
+   - The dark store's staff keep their black T-shirts.
+
+7. **Road marks showing through the delivery marker** (`MissionMarker.tsx`): the beam and the
+   road's stain and patch decals are both see-through. Three.js draws see-through shapes far to
+   near by their middles. A map square's decals are one big shape whose middle is often nearer
+   the camera than the beam, so they were drawn over it. The beam now has `renderOrder={10}`,
+   so it's always drawn after them.
+
+Debug aids (`?debug` or the dev server only):
+- `DevStats.tsx` puts the renderer, scene and camera on `window.__deliverIt`.
+- `DevTeleport.tsx` puts the rider's state on `window.__deliverItScooter`, so the console can
+  move the rider.
+
+### What I checked
+Type check, lint and build pass. I looked at every part in the game.
+
+Frame cost was timed with `gl.finish()`, at the spawn point, in the first minute after loading:
+morning, dry, Low then High, twice each. The display caps at 120 FPS. Results were noisy on this
+Mac: two whole runs, one before and one after, came out twice as slow as the rest, so the
+before and after runs were alternated. These are the matching quiet runs:
+
+| | FPS before | FPS after | Frame (median / 90th percentile) before | after | Draw calls | Triangles |
+| --- | --- | --- | --- | --- | --- | --- |
+| Low | 118.6 | 120 | 2.8 / 3.1 ms | 2.8 / 3.0–3.1 ms | 306–308 → 305–306 | 2.67 M → 2.66–2.72 M |
+| High | 118.5 | 118.8–119.2 | 3.7–3.8 / 4.1 ms | 3.9–4.0 / 4.5–7.5 ms | 519–523 → 525–526 | 4.09–4.13 M → 4.22–4.33 M |
+
+- Low is unchanged. Low draws people only within 45 m, and moves only half the walkers.
+- High costs about 0.2 ms more a frame: more people near the rider, the box's own material and
+  its three logo quads.
+
+### Lesson 239: control the scene before you time it
+At first the "after" run looked twice as slow. That wasn't the change:
+- The game clock had run to night and the rain had come in.
+- On High, `AdaptiveResolution` had moved between 1.5× and 0.75× resolution partway through.
+
+Before comparing two timings, check that they had the same time of day, weather and pixel
+ratio. Also alternate the before and after runs, so drift in the machine itself (heat, other
+apps) lands on both.
+
+### Try it
+In the room shader in `ShopFronts.tsx`, change
+`fract(hit.x / ${BACK_WALL_TILE.toFixed(3)})` to `hit.x / vRoomSize.x` and reload. The back
+wall stretches across the whole doorway again, so in a wide shop every item comes out wider
+than it should, and wider in one shop than in the next. That's the problem this entry fixed:
+`fract()` repeats the picture every 3.5 m instead.
+
+---
+
+## 2026-11-17: Entry 117, street presets across the whole map, and a rider on the pedestrians' model
+
+### What I did
+27th Main Road is the approved reference street. What was built for it is now a set of
+data-driven presets, rolled out to every street.
+
+1. **Street presets** (`streetPresets.ts`). There are three, each a plain object of sizes,
+   shares and switches:
+
+   | | Shop street | Residential street | Main road |
+   | --- | --- | --- | --- |
+   | Footpath | 3 m | 1.8 m | 3.2 m |
+   | Kerb | 0.2 m, black and yellow | 0.18 m, bare grey | 0.3 m, black and yellow |
+   | Median | none | none | 1 m, on two-way roads 9 m or wider |
+   | Marks on the asphalt | one tried every 4 m, 55% kept | every 6 m, 40% | every 3 m, 60% |
+   | People at shops | most | fewest | in between |
+   | Scooters parked per shop | up to 4 | up to 2 | up to 3 |
+   | Washing / creepers on houses | 30% / 20% | 45% / 40% | 20% / 15% |
+   | Traffic placed here (weight) | ×1.5 | ×1 | ×3, and buses |
+
+   **Picking a road's preset** (`assignStreetPresets`) is done once per named street, so a
+   street doesn't change kind from block to block:
+   - Any motorway, trunk or primary piece makes it a main road.
+   - Otherwise, 2.5 or more shops per 100 m along it (shop buildings and mapped shops, within
+     28 m) make it a shop street. 27th Main has about 10.
+   - Otherwise, a mostly secondary street is a main road.
+   - The rest are residential.
+   - Service roads and tracks keep the plain ground.
+
+   27th Main is mapped partly as a secondary road and partly as a tertiary one. Deciding per
+   street makes all of it a shop street.
+
+   **Across the map:**
+
+   | Preset | Road length |
+   | --- | --- |
+   | Shop street | 29 km |
+   | Residential | 220 km |
+   | Main road | 53 km |
+   | Plain ground | 40 km |
+
+   `usesNewGround(road)` now just asks whether the road has a preset.
+2. **The edge builder per preset** (`streetEdgeGeometry.ts`):
+   - Footpath and kerb width come from each road's preset. A junction corner between two kinds
+     of street uses each road's own footpath, and the wider kerb.
+   - **Painted kerbs are long pieces now, not 1 m blocks.** The kerb shader paints the black and
+     yellow blocks from a new `aStripe` attribute: metres along the kerb, or -1 for bare
+     concrete. Each block gets its own wear and a dark joint.
+   - **Medians:** a main road's two kerbs fit into a narrow gap to the next carriageway, each up
+     to half its width, so dual carriageways get a painted median. A wide two-way main road gets
+     a median strip down the middle, stopping 9 m short of each junction. It's made solid only
+     after traffic's lanes are laid out, as a lane beside it would otherwise count as blocked.
+3. **Buses** (`bus.ts`):
+   - An 11.2 m city bus, built in code, with doors on the left.
+   - The livery is made up: green, red, blue or ochre below a cream band, with no operator's
+     name.
+   - It has a deep air horn, and only takes lanes on main roads.
+   - Each lane carries its street's traffic weight, and new vehicles are placed in proportion
+     to it (`Lane.weight`), so main roads are busier.
+4. **Seeded per street** (`streetSeed`, `streetRandom`):
+   - Marks on the asphalt and the people at shops are seeded by their street and their spot,
+     so a street looks the same on every visit and different from its neighbours.
+   - Everything else placed in the world was already seeded.
+5. **A pool of shop names** (`shopNames.ts`):
+   - Six made-up names for each kind of shop, from about 30 common first words (Sri Lakshmi,
+     Kaveri, Nandi, New, Royal…) and each kind's own words, in Kannada and English.
+   - That's 96 more boards. The board atlas went to four columns of 512 × 112 to hold 128 and
+     stay under 4,096 px tall.
+   - `assignBoards` gives each shop a board no other shop within 250 m has, while there's one
+     to give.
+6. **Solid plots** (`houseKit.ts`):
+   - Every compound wall was already solid, gates included, and so is every building, and every
+     wall on the map.
+   - Checked by driving the scooter at walls at 10 m/s in 16 directions: it never ended up
+     inside one.
+   - What was open was the side passage between houses into the plot behind. A plot's side
+     walls now run back past its house, where the line is clear of the house, other buildings
+     and roads, so a corner plot keeps its open side.
+7. **Build time.** The rollout made the new-ground build ~6 s; it's now 3.8 s:
+   - The kerb check against gates went through every gate for every 0.25 m of kerb. Kerbs now
+     get their lowered stretches from the gates near them.
+   - Gutter leaves were most of the dust layer's 3.6 M vertices, so they're thinner, by preset.
+   - Triangles are built without allocating vectors.
+   - Railings and walkers checked every gate and every shop map-wide. Both now use grids:
+     railings 3.3 s → 44 ms, shop people 1.4 s → 20 ms.
+   - Forecourt heights, asked every frame, are in a grid too.
+8. **Low** draws kerbs and edge stones to 140 m and the small layers (dust, tree pits, marks)
+   to 70 m. The new ground has seven layers per map square where the old had two.
+9. **The rider on the pedestrians' character base** (`riderModel.ts`, `Rider.tsx`):
+   - The rider is now the man model the walkers use, bent by a shader the same way they are,
+     rather than cylinders.
+   - The existing inverse kinematics still decides where the hands and feet go. Each frame
+     those become shoulder, elbow, hip and knee angles: the law of cosines for the bend, then
+     two turns to aim the limb, in the model's own frame.
+   - The normals turn with the limbs, so the arms light correctly.
+   - **Dressed once at load:** the jacket over the shirt with full sleeves, gloves, trousers,
+     shoes. The head and neck are hidden under the helmet and collar.
+   - **Stopping:** the foot goes down on tiptoe and the hips shift over, as a real-sized leg
+     doesn't reach the ground flat from the seat.
+   - The helmet, print and branded box are unchanged.
+
+**Review streets** (`?spawn=…`, see `REVIEW_STREETS` in `spawn.ts`):
+
+| Spawn | Street |
+| --- | --- |
+| `shop-street` | 24th Main Road |
+| `residential-street` | 13th Cross Road |
+| `main-road` | Sarjapur Road |
+| `27th-main` | the reference street, as before |
+
+**Debug aids:**
+
+| Aid | What it does |
+| --- | --- |
+| `?streets=reference` | Dresses only 27th Main, for comparing costs |
+| `window.__deliverItStreets()` | Lists the longest streets of each preset |
+| `window.__deliverItSolidAt(x, z, r)` | Says whether a point is inside something solid |
+
+### What I checked
+Type check, lint and build pass. I looked at each review street in the game, and at the rider
+side-on, both riding and stopped.
+
+**Load and memory:**
+
+| | Only 27th Main dressed | Full rollout |
+| --- | --- | --- |
+| Time until the rider can ride | 21 s | 21 s |
+| Scene geometry | 15.6 M vertices, 428 MB | 17.4 M vertices, 568 MB |
+
+Geometry grows less than the rollout might suggest, because the new ground replaces the old
+roads' and kerbs' meshes.
+
+**Frame cost.** Timed with `gl.finish()`, morning and dry, in the first minute after load, as in
+Lesson 239. This Mac was running about twice as slow as in Entry 116 throughout: the last commit
+itself measured 5.0 ms on Low at 27th Main, against 2.8 ms then. So compare the columns, not
+these numbers with Entry 116's. "Before" is the same build with `?streets=reference`, except at
+27th Main, where it is the last commit.
+
+| Street (preset) | Low before | Low after | Low draw calls | High before | High after | High draw calls |
+| --- | --- | --- | --- | --- | --- | --- |
+| 27th Main (shop) | 5.0–5.1 ms | 5.4 ms | 300 → 290 | 10.1–14.7 ms | 7.8–12.6 ms | 522 → 523 |
+| 24th Main (shop) | 4.6–5.2 ms | 5.4–5.5 ms | 257 → 277 | 12.3–13.2 ms | 10.3–12.1 ms | 530 → 548 |
+| 13th Cross (residential) | 5.7–5.8 ms | 5.5–5.6 ms | 254 → 290 | 10.8–11.4 ms | 10.3–13.9 ms | 485 → 524 |
+| Sarjapur Road (main) | 4.3–5.1 ms | 5.5–5.8 ms | 177 → 200 | 8.6–9.3 ms | 6.2–8.7 ms | 313 → 332 |
+
+- **FPS:** Low held 117–120 everywhere, against the 120 Hz cap.
+- **High:** the resolution moved between 0.75× and 1.5× from run to run, so its milliseconds
+  are rougher. They're within noise of before.
+- **Low:** up to about 1 ms more at three of the four streets, from about 20–36 more draw calls.
+  The 27th Main and 24th Main rows were measured before the Low draw distances in item 8; the
+  27th Main row after them shows fewer draw calls than before.
+
+### Lesson 240: describe a street as data, and let the code read it
+A preset is a plain object (footpath width, kerb paint, how often a mark appears, how many
+people stand about), and every builder asks the road for its preset instead of keeping its own
+numbers. Adding a fourth kind of street is a new object, not a change to a dozen files. And
+because a road's preset is decided once, by its name, the whole of a street is one kind.
+
+### Try it
+In `streetPresets.ts`, set the residential preset's `kerb.painted` to `true` and reload with
+`?spawn=residential-street`. Every residential kerb on the map is now black and yellow,
+painted by the shader from `aStripe`. The kerbs' shapes are the same; only the stripe values
+and base colour they're built with change, and the shader does the rest.
+
+### Follow-up: the picture had gone blurry
+The automatic resolution scaler (`AdaptiveResolution.tsx`) had two problems:
+- **It chased the screen's refresh.** On a 120 Hz screen it counted any frame over about 11 ms
+  as late. On a busy street High takes 10–13 ms at its full 1.5×, so the scaler stepped down,
+  first to 1×, then to 0.75×: a quarter of a Retina screen's pixels, while the game ran a smooth
+  but blurry 120 FPS.
+- **It ignored High's own floor.** 0.75× is below the 1× minimum High is meant to have.
+
+The fix:
+- It now judges frames against 60 FPS whatever the screen's refresh.
+- It never goes below the quality's own lowest resolution: 1× on High and Medium, 0.75× on Low.
+
+On 27th Main in the rain, High now holds 1.5× at about 70 FPS on this Mac, where before it had
+dropped to 0.75×.
+
+### Follow-up: shadows moving every second
+Two causes:
+- **The day was 10 real minutes long** (`SKY_RULES.dayLength` 600), so the sun turned about
+  0.6° a second and every shadow visibly swept. A day now lasts 30 minutes (1800): about 0.2° a
+  second, and about 16 minutes of daylight before night, which still runs twice as fast.
+- **The light's direction was updated every frame**, so the shadow map's pixel grid turned a
+  fraction every frame and shadow edges crawled and shimmered. `Lighting.tsx` now keeps the
+  direction until the sun has moved 0.25°, then steps. Each step moves a 10 m building's shadow
+  by about 4 cm.
+
+Measured in the game: over 10 s the sun moved 1.77°, and the light changed direction 7 times in
+301 frames, where before it changed every frame.
+
+### Follow-up: Low was pixelated on a Retina screen
+Low rendered at a fixed 0.75× (`qualitySettings.ts`). That's mildly soft on an ordinary
+1× laptop screen, but on a 2× (Retina) screen it is under 40% of the native pixels across: each
+rendered pixel is a block of about 2.7 × 2.7 screen pixels.
+
+Low's range is now 0.75–1. It starts at 1× (the screen's scale, capped at 1), and
+`AdaptiveResolution` steps down to 0.75× only if the computer can't hold about 60 FPS, so a slow
+laptop still gets the cheaper picture. Checked in the game: switching to Low now gives 1× on this
+Mac, where it gave 0.75× before.
+
+## 2026-11-17: Entry 118, filling the streets, a skyline past the edge, and a jacket that doesn't tear
+
+### What I did
+A review round across the three test streets (`?spawn=shop-street`, `residential-street`,
+`main-road`).
+
+1. **Shops on the shop streets' ground floors** (`addGroundFloorShops` in `streetPresets.ts`).
+   24th Main showed mostly plain buildings because OSM tags most of its buildings as houses or
+   apartments, and only buildings tagged as shops got a shop front. Now any house or apartment
+   within 9 m of a shop street's or main road's frontage becomes a shop on the ground floor (90%
+   on shop streets, 80% on main roads; picked by a hash of the building's id, so the same ones every
+   visit). That's 1,674 buildings. They're kept out of the count that decides whether a street is a
+   shop street, so converting them can't change the presets.
+2. **Empty plots filled** (new `infillPlots.ts`). Each side of every preset street is walked,
+   and wherever a plot's worth of ground beside the footpath is clear (of buildings, roads, parks,
+   schools, petrol pumps and the map's edge) it's built on:
+   - residential: houses behind a 3 m yard (`houseKit.ts` gives them their compound walls and
+     gates), a car in about a third of the yards, and a building site on about one plot in 14;
+   - shop streets: shops, close to the footpath;
+   - main roads: shops and showrooms, hoardings on some gaps (new `Hoardings.tsx`, eight made-up
+     Kannada and English ads), petrol pumps on long gaps (at most one every 900 m) and small
+     roadside temples (at most one every 700 m).
+
+   Where a full-depth plot won't fit in front of a building standing further back, it tries
+   shallower ones (down to a 6 m row of one-room shops, or a small house behind a 1.5 m yard), so
+   no deep strip of bare earth is left by the road. Totals on a fresh load: 7,306 buildings, 407
+   building sites, 1,766 cars in yards, 46 hoardings, 7 petrol pumps, 4 temples.
+3. **The map's edge hidden** (new `Skyline.tsx`, `haze.ts`). Outside the boundary wall: a line of
+   trees, then two rows of building silhouettes in HSR's plaster colours, with water tanks on the
+   roofs and windows drawn by their shader. The whole ring is three instanced draw calls. The
+   haze is thicker too: `HAZE_STRENGTH` 0.3 → 0.42 and the far wall starts closing in sooner
+   (`HAZE_WALL` 0.6 → 0.5), so the skyline reads as far-off city.
+4. **The rider's shoulders.** The spikes were in the model, not only in the posing: with the arms
+   at rest, colouring each corner by what it is showed the shirt's edges are ragged round the
+   shoulders (made to sit under skin), and bare arm skin pokes through the sleeves. Bending those
+   corners far enough to reach the bars tore them. The rider now wears a jacket of simple shapes
+   merged into the model (`createJacketShell` in `riderModel.ts`): a torso of rings fitted to the
+   body, a ball at each shoulder centred on the joint, sleeves to the elbow, a ball at the elbow
+   and sleeves to the cuff. The model's own arms and shirt underneath are hidden. Each shape
+   carries the same `_limb` weights as the model, so the same shader poses it, and the back print
+   now wraps the jacket.
+5. **Crack decals** (`groundTextures.ts`): drawn as a soft halo at 12% plus a thin line at 45%,
+   blurred by 0.8 px, where before they were thick opaque black lines.
+6. **No shop name twice within 300 m.** Whole names on the board atlas ran out (96 names for
+   about 8,000 shops). Now a board is its kind's blank board with a name laid over it as two words,
+   a first word and one of the kind's words (`shopNames.ts`), each drawn once in white on the atlas
+   and tinted with the kind's lettering colour. That gives dozens of names per kind from a few
+   hundred words. Repeats within 300 m went from 3,582 to 0. The atlas is 4096 × 2428, under the
+   4,096 limit.
+7. **Busier main roads.** Main roads' traffic weight is 4 → 10 (shop streets 1.5 → 2), and the
+   traffic pool is a little larger (16 / 28 / 40 vehicles on Low / Medium / High, was 12 / 22 / 34).
+   About 400 m of main road in the spawn ring competes with kilometres of residential lanes, so at
+   a weight of 4 it got only about a quarter of the pool. Buses (made-up liveries, no operator
+   name) run only on main roads.
+
+### Frame rate
+Standing at each spawn, 6 s per reading, this Mac (120 Hz screen):
+
+| Street | Low | High |
+| --- | --- | --- |
+| Shop street (24th Main) | 100–117 FPS, 8.3 ms median | 52–56 FPS, 16.7 ms median, p95 25–32 ms |
+| Residential (13th Cross) | 119 FPS, 8.3 ms | 84 FPS, 8.6 ms |
+| Main road (Sarjapur Road) | 117 FPS, 8.3 ms | 83 FPS, 9.0 ms |
+
+Low stays well above 60 everywhere. High on the shop street is the cost of the new buildings: the
+same spot with `?streets=reference` (infill on the reference streets only) runs 87 FPS at 551
+draw calls and 4.29 million triangles; with infill everywhere it's 588 calls and 5.25 million.
+
+### Lesson 241: take the bend out before blaming the bend
+The shoulders looked like a posing bug, and the first two fixes were to the posing:
+position-based weights, then a gentler blend. Neither helped, because the fault was in the shape
+being posed. The test that settled it took one line: zero every arm weight so nothing bends, and
+look again. Still ragged, so the posing was innocent. Then colour each corner by its class (arm
+skin, arm cloth, torso cloth, other) and the culprits are obvious. When a deformed mesh looks
+wrong, first switch the deformation off.
+
+A second lesson came from the shoulder weights: `average` over both arms gave a shoulder x of
+nearly 0, because left and right cancel out. Measure one side and mirror it.
+
+### Try it
+In `infillPlots.ts`, set `SITE_SHARE` to `0.5` and reload with `?spawn=residential-street`. Every
+other empty plot on the residential streets is now a building site with scaffolding. Every plot is
+seeded from the street and the spot, so the same plots change on every visit.
+
+Note: in the dev server, a hot reload reruns the infill on map data that already holds the last
+run's buildings, so the logged counts drop. Reload the page for true numbers.
+
+## 2026-11-17: Entry 119, loading in under 15 seconds, people on the traffic bikes, and traffic that never overlaps
+
+### What I did
+1. **Loading** (Play to riding: 41.7 s before, 11.6 s now, on the production build).
+   A load timeline (`src/dev/loadTimeline.ts`, `__deliverItLoad()` in the console) timed every
+   planning step and every part going on screen. The waits, and what was done about each:
+   - **Shop goods, 6.2 s.** Every counter, crate and bucket was its own three.js shape, about
+     300,000 of them, merged at the end. `shapeWriter.ts` makes each kind of shape once and writes
+     every copy straight into one array per map square: 1.0 s.
+   - **Parts built twice.** A part that builds its shapes and then asks drei for a texture
+     "suspends" the first time, and React throws the work away. `WarmAssets.tsx` asks for every
+     texture and model first, so every part builds once. Buildings alone had cost 1.9 s twice.
+   - **Building all of HSR before the ride.** Buildings, shop fronts, fences, road details and the
+     new kerbs, footpaths and asphalt are now built a map square at a time, nearest the rider first,
+     a few milliseconds a frame (`StreamedChunks.tsx`, the way the house kit already worked). The
+     street-edge plan went from 4–5 s to 0.09 s; I checked that all seven layers build exactly the
+     same vertex counts as before.
+   - **Traffic** is built once the ride has begun, behind the fading loading screen.
+   - **Infill** remembers which ground it has tested between placements (40% fewer tests).
+
+   The models are compressed with Meshopt (`scripts/compress_models.mjs`): traffic.glb 4.8 MB to
+   1.6 MB, yamaha.glb 335 KB to 131 KB. City-kit.glb is mostly JPEG textures, so it barely changed
+   (1.63 to 1.60 MB). KTX2 needs the KTX-Software encoder, which isn't on this Mac, so it isn't done.
+2. **People on the traffic bikes.** The figure of cylinders and balls is replaced by the same man
+   as the walkers and the player, posed once on the CPU by the same maths as the rider's shader
+   (`createSeatedRiderGeometry`): hands on the bars, feet on the pegs, a helmet, and a jacket in an
+   everyday colour (only the jacket takes the instance colour). Seated, the thighs swing forward
+   about 80° and the hips tore like the shoulders did, so the jacket shell now has trousers too:
+   a seat, a ball at each hip joint, thighs and knees.
+3. **No overlapping traffic.** After each vehicle moves, if it's deeper into another vehicle's
+   footprint (a capsule along its heading) than before, the move is taken back and it waits. New
+   vehicles also keep a gap based on both lengths, so nothing spawns inside a bus. Over 30 s on
+   Sarjapur Road with 40 vehicles: overlaps in 7 frames, up to 1.7 m deep, before; none after.
+4. **Speckled car paint.** It wasn't texture compression: the cars have no textures. Their colour
+   is baked into the corners, and it came from two flaws in the bake (`prepare_traffic_models.mjs`):
+   shrink-wrapping took some corners' colour from the dark seals under panel gaps, and simplifying
+   merged triangles across the paint's edge. A majority filter now cleans up the paint after
+   wrapping, and the simplifier protects the paint edge. The paint is also satin rather than glossy
+   (roughness 0.5, metalness 0.15). Re-run with the models in ~/Downloads, unzipped.
+5. **Buses and autos** were already on the main roads (Entry 118), in made-up liveries with no
+   BMTC name or logo.
+6. **New title and loading pictures** in `public/title/`: 24th Main in the morning, nitro in the
+   rain on Sarjapur Road, and Sarjapur Road at midday (replacing the handover shot). Taken in the
+   game with `__deliverItPhoto` (holds the camera still) and `__deliverItSky` (sets the hour and
+   weather), both only with `?debug`.
+
+### Frame rate
+The test tab was held to 30 FPS by the browser, so frames are timed by their work: each frame's
+callbacks plus `gl.finish()`. Production builds of the last commit and of this one, run one after
+the other. Both settle at 0.75× on Low and 1× on High:
+
+| Street | Load before | Load now | Low before | Low now | High before | High now |
+| --- | --- | --- | --- | --- | --- | --- |
+| Main road | 29.6 s | 14.6 s | 8.2 ms | 7.1 ms | 12.4 ms | 8.5 ms |
+| Shop street | 31.6 s | 15.4 s | 9.8 ms | 7.5 ms | 13.3 ms | 10.7 ms |
+| Residential | 32.1 s | 13.8 s | 8.6 ms | 8.2 ms | 12.3 ms | 11.6 ms |
+
+Load here is Play until the loading screen has faded; riding starts about 1.5 s before that.
+
+### Lesson 242: find the wait before speeding anything up
+The first guess at a slow load is a big download. The timeline showed the download took 0.4 s and
+the rest was building: one part making 300,000 throwaway shapes, others building twice, and
+everything building the whole map before the first frame. The counters I added to find a hot loop
+misled me too: two million `performance.now()` calls were themselves a big share of what they
+measured. Time whole steps; count calls, don't time them; and check output is unchanged (vertex
+counts) after making something faster.
+
+### Try it
+Open the game with `?debug`, press Play, and run `__deliverItLoad()` in the console once you're
+riding: every planning step and every part, with when it finished.
+
+### Follow-up: KTX2 textures
+KTX-Software isn't in Homebrew, so the official Khronos package (v4.4.2, signed by The Khronos
+Group and notarised by Apple) was unpacked with `pkgutil --expand-full`, not installed, and its
+`ktx` tool used from there. To re-run, unpack it the same way, put `libktx*.dylib` in a `lib`
+folder beside its `bin`, and pass the tool as `KTX=…`.
+
+- `scripts/compress_textures.mjs` encodes 15 tiling textures as Basis ETC1S with mipmaps: 3.0 MB
+  of JPEG became 2.2 MB of KTX2. The originals moved to `art/textures` (not served). Colour is
+  sRGB; normal and alpha maps are tagged linear, or the encoder would convert their values. Each
+  picture is flipped first, as a JPEG texture is flipped on upload and a KTX2 one can't be.
+- The wall colour photos and the shop boards stay JPEG: the game draws them onto canvases.
+- city-kit.glb's eight textures are KTX2 too (`compress_models.mjs` with `KTX` set):
+  1,595 KB to 1,242 KB.
+- In the game, `useCompressedTextures` (`ktx2.ts`) loads them with three.js's own `KTX2Loader`;
+  the transcoder is served from `public/basis`, copied from three.js, so they always match.
+
+Checked in the game: no errors, every street surface and leaf the same, the poster the right way
+up. The 20 compressed textures loaded on 24th Main take 11.1 MB of GPU memory, against 89 MB
+uncompressed. Load was 4.8–5.0 s from Play to riding, but in those runs the planning steps that
+KTX2 doesn't touch also ran about 4× faster than earlier in the day, so most of that is the
+machine, not this change.
+
+The poster (`poster-kills`) shows the real Google Play and App Store badges. It's left as it was,
+for you to decide.
+
+### Follow-up: new lamp-post posters
+The old poster (a "Kills" delivery app with the real Google Play and App Store badges) is gone.
+The lamp posts now carry two made-up ads in the style of what's pasted on every pole in HSR,
+drawn in code (`lampPosters.ts`), side by side in one picture, sun-faded and rain-streaked like
+the hoardings:
+- **tez basket**, a 10-minute grocery app: yellow and green, a basket, "Groceries in 10 minutes"
+  and ಹತ್ತು ನಿಮಿಷದಲ್ಲಿ ದಿನಸಿ.
+- **DRIFT CO.**, a streetwear label: black, an oversized tee, "New drop · Oversized tees",
+  ಹೊಸ ಸಂಗ್ರಹ ಬಂದಿದೆ and "From ₹599".
+
+Alternate lamp posts get each (two draw calls instead of one), and each board's edges take its
+own poster's background colour. No real brand names, logos or store badges, per ART_DIRECTION.md.
+To add a third ad, draw it in `lampPosters.ts` and raise `POSTER_COLUMNS`.
+
+## 2026-11-17: Entry 120, a profile before the performance and variety pass
+
+### What I did
+- **Kills branding gone.** The last of it was the print on the dark-store staff's T-shirts
+  (`shirtPrint.ts`). It now reads DELIVER IT, the game's own name.
+- **Profiled before changing anything.** New debug tools for it, all only with `?debug`:
+  - every part of the world is a named group (`part:buildings` and so on), so a draw call can be
+    traced to its part;
+  - `__deliverItPost({ all, ao, bloom, aa })` switches post effects off one at a time;
+  - `__deliverItLockDpr = 1.5` holds the resolution still (the scaler otherwise changes it
+    mid-measurement).
+
+### The profile (production build, 24th Main, 9 am, dry)
+Draw calls and triangles in one frame:
+
+| | Draw calls | Triangles | Shadow calls | Shadow triangles | Shadow casters in view |
+| --- | --- | --- | --- | --- | --- |
+| Low | 248 | 2.8 M | 44 | 0.56 M | 108 |
+| High | 473 | 3.9 M | 130 | 1.39 M | 308 |
+
+The "player" part (traffic, people, the rider) alone is 1.5 M triangles on Low and 2.0 M on
+High: each car model is 24,000–28,000 triangles.
+
+Frame time with a one-pixel read-back at the end, so the GPU's work is included, and with each
+thing hidden in turn (what the frame saved, in ms). Low at 1×: 16.1 ms in all. High at 1.5×:
+23.1 ms.
+
+| Hidden | Low | High |
+| --- | --- | --- |
+| Traffic and people | 1.1 | 2.2 |
+| Whole player part | 1.3 | 3.6 |
+| Shadows | 1.3 | 2.4 |
+| All post effects | ~0 | 2.5 (AO 1.4, bloom 0.5, SMAA 0.4) |
+| Houses' kit | 0.4 | 1.6 |
+| Shops | 0.2 | 1.0 |
+| Street edges | 0.5 | 1.0 |
+| Buildings | 0.4 | 0.8 |
+
+The game's own JavaScript each frame (traffic, people, culling and the rest) is 3.9 ms on Low and
+5.5 ms on High, before any drawing.
+
+### Lesson 243: measure the thing you'll change
+GPU timer queries were available but wrong on this Mac: every full-screen pass came out at about
+4 ms, more than the whole frame. `gl.finish()` returned at once. The figures that held were the
+plain ones: hide a part, see what the frame saves, and check the first figure again at the end
+to catch the machine drifting.

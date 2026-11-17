@@ -241,7 +241,8 @@ function Part({ name, children }: { name: WorldPart; children: ReactNode }) {
   return (
     <Suspense fallback={null}>
       <RenderMark name={name} />
-      {children}
+      {/* Named, so a profile can tell which part each draw call belongs to. A group draws nothing. */}
+      <group name={`part:${name}`}>{children}</group>
       <Built name={name} />
     </Suspense>
   )

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { isDebug } from '../dev/spawn'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { startingRatio, useResolution } from '../game/resolution'
@@ -54,6 +55,15 @@ export function AdaptiveResolution() {
   }, [quality])
 
   useFrame(({ setDpr }, delta) => {
+    // Debug: a resolution held still for measuring (`__deliverItLockDpr = 1.5`, with ?debug).
+    const locked = isDebug() ? (window as unknown as { __deliverItLockDpr?: number }).__deliverItLockDpr : undefined
+    if (locked) {
+      if (useResolution.getState().pixelRatio !== locked) {
+        setDpr(locked)
+        useResolution.setState({ pixelRatio: locked })
+      }
+      return
+    }
     // Changing the resolution resizes the canvas, which wipes it. Done here, just
     // before this frame is drawn, the wiped canvas is drawn over at once. Done from
     // React, between frames, the browser could show it empty: a black flash, as the
