@@ -159,8 +159,23 @@ function writeTransforms(
  * after another, and draws only that many. A copy shrunk to nothing still costs
  * the GPU all its corners, which for 700 detailed scooters is far too many.
  */
+const nearColor = new THREE.Color()
+/** Things near enough to be drawn are looked for among those within reach plus this, in metres, listed every few frames. */
+const CANDIDATE_SLACK = 15
+const CANDIDATE_FRAMES = 10
+
+/**
+ * Lists the things that could be drawn soon: within `reach` plus a margin. Scanning every parked
+ * scooter on the map each frame was the biggest single piece of the game's JavaScript; this scan
+ * runs every few frames, and each frame only looks through the short list.
+ */
+function listCandidates(items: Moving[], reach: number): Moving[] {
+  const limit = reach + CANDIDATE_SLACK
+  return items.filter((item) => Math.abs(item.x - livePlayer.x) < limit && Math.abs(item.z - livePlayer.z) < limit)
+}
+
 function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: number, palette: string[], from = 0) {
-  const color = new THREE.Color()
+  const color = nearColor
   let drawn = 0
   for (const item of items) {
     const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
@@ -236,11 +251,19 @@ function MovingInstances({
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
+  const candidates = useRef<{ items: Moving[] | null; frames: number }>({ items: null, frames: 0 })
   useInstanceColors(mesh, items, palette)
 
   useFrame(() => {
     if (!mesh.current) return
-    if (nearestOnly && reach !== undefined) writeNearest(mesh.current, items, reach, palette, from)
+    if (nearestOnly && reach !== undefined) {
+      const near = candidates.current
+      if (near.frames-- <= 0 || near.items === null) {
+        near.items = listCandidates(items, reach)
+        near.frames = CANDIDATE_FRAMES
+      }
+      writeNearest(mesh.current, near.items, reach, palette, from)
+    }
     else writeTransforms(mesh.current, items, reach, seatedRider, ROAD_HEIGHT, from)
     if (material.current) updateReflection(material.current)
   })

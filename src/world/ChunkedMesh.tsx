@@ -22,6 +22,10 @@ type ChunkedMeshProps = {
  * its nearest edge is out of range. Three.js also skips any visible square that
  * isn't in front of the camera, which only works now that they're separate.
  */
+/** Squares are shown or hidden again after the rider has moved this far, in metres, or this many frames. */
+export const RECHECK_DISTANCE = 2
+export const RECHECK_FRAMES = 30
+
 export function ChunkedMesh({
   geometries,
   material,
@@ -30,9 +34,17 @@ export function ChunkedMesh({
   maxDistance = Infinity,
 }: ChunkedMeshProps) {
   const group = useRef<THREE.Group>(null)
+  const last = useRef({ x: Infinity, z: Infinity, frames: 0 })
 
   useFrame(() => {
     if (!group.current) return
+    // Which squares show only changes as the rider moves, or the draw distance eases to a new
+    // quality's: worked out again after RECHECK_DISTANCE of riding, or every RECHECK_FRAMES.
+    const seen = last.current
+    if (Math.hypot(livePlayer.x - seen.x, livePlayer.z - seen.z) < RECHECK_DISTANCE && ++seen.frames < RECHECK_FRAMES) return
+    seen.x = livePlayer.x
+    seen.z = livePlayer.z
+    seen.frames = 0
 
     const reach = Math.min(liveView.drawDistance, maxDistance)
     const shadowRange = QUALITY_PRESETS[useGameStore.getState().quality].shadowRange

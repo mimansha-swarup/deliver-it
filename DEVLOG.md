@@ -8385,3 +8385,43 @@ On High at 24th Main: shadow-map draw calls 133 → 57, shadow triangles 1.15 M 
 Low gains about 0.7 ms (1 ms at 4× CPU); High is within its run-to-run noise. Low at 0.75×
 costs the same as at 1×: the frame is limited by CPU work, not pixels, so the next step is the
 JavaScript.
+
+## 2026-11-18: Entry 123, performance step 3: the game's own JavaScript
+
+### What I checked first
+- **HUD and phone re-rendering every frame?** No: no React work appears in a CPU profile of
+  riding. The phone map is a canvas, though, and redrew everything every frame (below).
+- **Allocations causing GC pauses?** Garbage collection was 1% of busy time. One per-frame
+  allocation (a colour in `writeNearest`) is gone anyway.
+- **Per-vehicle raycasts?** There are none in the code.
+- **Traffic routing recomputed?** There's no route planning: a vehicle picks its next lane when
+  its lane ends.
+
+### What the profile did show, and what changed
+(CPU profile of an unminified production build, High, 24th Main)
+- `writeNearest` (6.8% of busy time) looked at every parked scooter on the map, twice a frame.
+  Each instance now keeps a short list of those within reach plus 15 m, refreshed every 10 frames.
+- three.js working out every object's place in the world every frame (`updateMatrixWorld` and the
+  matrix maths under it, about 10%), though nearly everything never moves. Still parts (buildings,
+  streets, shops, fences and the rest: `STILL_PARTS` in World.tsx) are placed once and skipped after.
+- `ChunkedMesh` and `StreamedChunks` (4.4%) re-measured every map square every frame, for about 30
+  parts. They now look again only after the rider has moved 2 m, or every 30 frames (and the
+  streamer every frame while squares are still being built).
+- The phone map redraws at most 30 times a second.
+
+### Measuring, more carefully
+The benchmark now reports, for each case, **synced** time (the frame with the GPU waited for),
+**CPU** time (without waiting: what CPU throttling slows), and an **empty-frame floor** (scene
+hidden, synced). The floor is 4–6 ms: the cost of waiting for the GPU at all, which a real frame
+doesn't pay, as the GPU works on one frame while the next is being prepared. A frame's real cost is
+roughly the larger of its CPU time and its GPU time (synced less the floor).
+
+24th Main, synced / CPU ms, two pairs side by side with step 2:
+
+| | Low | High | Low, 4× CPU | High, 4× CPU | Floor |
+| --- | --- | --- | --- | --- | --- |
+| Step 2 | 11.9 / 4.6–4.7 | 12.0–12.2 / 4.7 | 17.8–18.7 / 11.4–11.6 | 25.1–26.2 / 17.2–17.9 | 5.8–5.9 |
+| Step 3 | 9.9–11.3 / 3.4–4.3 | 12.1–13.1 / 4.1–4.3 | 13–16 / 6.3–8.5 | 19.1–21.3 / 11.2–13.8 | 4.3–4.8 |
+
+Against the targets (High 16.6 ms, Low 10 ms): CPU is within both, unthrottled and at 4×; GPU
+(synced less floor) is about 6 ms on Low and 8 ms on High.

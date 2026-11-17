@@ -108,12 +108,12 @@ const TIMER = `(() => {
   const ctx = window.__deliverIt.gl.getContext()
   const pixel = new Uint8Array(4)
   const raf = window.requestAnimationFrame.bind(window)
-  const bench = (window.__bench = { on: false, frames: new Map() })
+  const bench = (window.__bench = { on: false, sync: true, frames: new Map() })
   window.requestAnimationFrame = (cb) => raf((stamp) => {
     const start = performance.now()
     cb(stamp)
     if (bench.on) {
-      ctx.readPixels(0, 0, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, pixel)
+      if (bench.sync) ctx.readPixels(0, 0, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, pixel)
       bench.frames.set(stamp, (bench.frames.get(stamp) ?? 0) + performance.now() - start)
     }
   })
@@ -124,14 +124,42 @@ const measure = (quality, dpr) => `(async () => {
   ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
   window.__deliverItLockDpr = ${dpr}
   await sleep(4000)
+  const sample = async (sync) => {
+    window.__bench.sync = sync
+    window.__bench.frames.clear()
+    window.__bench.on = true
+    await sleep(${SAMPLE_MS / 2})
+    window.__bench.on = false
+    const times = [...window.__bench.frames.values()].sort((a, b) => a - b)
+    const at = (share) => +times[Math.min(times.length - 1, Math.floor(times.length * share))].toFixed(1)
+    return { mean: +(times.reduce((n, t) => n + t, 0) / times.length).toFixed(1), p95: at(0.95) }
+  }
+  // Synced: the frame's work with the GPU's share waited for (an upper bound, see FLOOR).
+  // CPU: the same frames without waiting, which is what CPU throttling slows.
+  const synced = await sample(true)
+  const cpu = await sample(false)
+  return { meanMs: synced.mean, p95: synced.p95, cpuMs: cpu.mean, cpuP95: cpu.p95 }
+})()`
+
+/**
+ * The cost of waiting for the GPU at all: an empty frame (scene hidden, effects on), synced. A real
+ * frame doesn't pay this, as the GPU works on one frame while the next is prepared, so a frame's
+ * own GPU work is roughly its synced time less this.
+ */
+const FLOOR = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  const { scene } = window.__deliverIt
+  const shown = scene.children.filter((child) => !child.isCamera && child.visible)
+  shown.forEach((child) => (child.visible = false))
+  await sleep(800)
+  window.__bench.sync = true
   window.__bench.frames.clear()
   window.__bench.on = true
-  await sleep(${SAMPLE_MS})
+  await sleep(2000)
   window.__bench.on = false
+  shown.forEach((child) => (child.visible = true))
   const times = [...window.__bench.frames.values()].sort((a, b) => a - b)
-  const at = (share) => +times[Math.min(times.length - 1, Math.floor(times.length * share))].toFixed(1)
-  const mean = times.reduce((n, t) => n + t, 0) / times.length
-  return { meanMs: +mean.toFixed(1), p50: at(0.5), p95: at(0.95), frames: times.length }
+  return +times[Math.floor(times.length / 2)].toFixed(1)
 })()`
 
 /** Self time by function, from a CPU profile: where the JavaScript actually goes. */
@@ -145,11 +173,15 @@ function summarize(profile) {
     self.set(name, (self.get(name) ?? 0) + (deltas[index] ?? 0) / 1000)
   })
   const total = [...self.values()].reduce((n, ms) => n + ms, 0)
-  return [...self.entries()]
-    .filter(([name]) => !name.startsWith('(idle)') && !name.startsWith('(program)'))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 25)
-    .map(([name, ms]) => `${((ms / total) * 100).toFixed(1).padStart(5)}%  ${name}`)
+  // Shares of the time that wasn't idle, so they add up to the JavaScript and the browser's own work.
+  const busy = total - [...self.entries()].filter(([name]) => name.startsWith('(idle)')).reduce((n, [, ms]) => n + ms, 0)
+  return [`busy ${((busy / total) * 100).toFixed(0)}% of ${(total / 1000).toFixed(1)} s`].concat(
+    [...self.entries()]
+      .filter(([name]) => !name.startsWith('(idle)'))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 40)
+      .map(([name, ms]) => `${((ms / busy) * 100).toFixed(1).padStart(5)}%  ${name}`),
+  )
 }
 
 const results = {}
@@ -166,6 +198,7 @@ try {
     const state = await evaluate(`(async () => { let n = 0; const end = performance.now() + 1000; await new Promise((done) => { const tick = () => { n++; if (performance.now() < end) requestAnimationFrame(tick); else done() }; requestAnimationFrame(tick) }); return { hidden: document.hidden, framesPerSecond: n } })()`)
     console.log('page', JSON.stringify(state))
     const row = { load }
+    row.floorMs = await evaluate(FLOOR)
     for (const rate of [1, 4]) {
       await send('Emulation.setCPUThrottlingRate', { rate })
       for (const [quality, dpr] of QUALITIES) row[`${quality}${dpr === 0.75 ? '@0.75' : ''} ${rate}x`] = await evaluate(measure(quality, dpr))

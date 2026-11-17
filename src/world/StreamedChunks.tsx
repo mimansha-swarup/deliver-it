@@ -5,6 +5,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { livePlayer, liveView } from '../game/livePlayer'
 import { CHUNK_SIZE, chunkCentre } from './chunks'
+import { RECHECK_DISTANCE, RECHECK_FRAMES } from './ChunkedMesh'
 
 /*
  * Builds a part of the world one map square at a time, near the rider first, a
@@ -48,10 +49,12 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
   const group = useRef<THREE.Group>(null)
   const built = useRef(new Map<number, (THREE.Mesh | null)[]>())
   const squares = useRef(keys.map((key) => ({ key, ...chunkCentre(key) })))
+  const last = useRef({ x: Infinity, z: Infinity, frames: 0, pending: true })
 
   // New squares or a new way of building them: start again.
   useEffect(() => {
     squares.current = keys.map((key) => ({ key, ...chunkCentre(key) }))
+    last.current.pending = true
     const parent = group.current
     const all = built.current
     return () => {
@@ -69,6 +72,12 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
   useFrame(({ clock }) => {
     const parent = group.current
     if (!parent) return
+    // Nothing changes until the rider moves, unless squares are still waiting to be built.
+    const seen = last.current
+    if (!seen.pending && Math.hypot(livePlayer.x - seen.x, livePlayer.z - seen.z) < RECHECK_DISTANCE && ++seen.frames < RECHECK_FRAMES) return
+    seen.x = livePlayer.x
+    seen.z = livePlayer.z
+    seen.frames = 0
     const all = built.current
     const far = Math.min(liveView.drawDistance, reach)
     const distanceTo = (x: number, z: number) => Math.hypot(x - livePlayer.x, z - livePlayer.z)
@@ -98,11 +107,16 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
       if (distance > far + CHUNK_SIZE) continue
       ;(missing ??= []).push({ ...square, distance })
     }
+    seen.pending = false
     if (missing) {
       missing.sort((a, b) => a.distance - b.distance)
       for (const { key, distance } of missing) {
         const budget = distance < URGENT_REACH ? URGENT_BUDGET : BUILD_BUDGET
-        if (performance.now() - frameClock.started > budget) break
+        if (performance.now() - frameClock.started > budget) {
+          // Out of time this frame: carry on next frame.
+          seen.pending = true
+          break
+        }
         const meshes = build(key).map((geometry, index) => {
           if (!geometry) return null
           const layer = layers[index]

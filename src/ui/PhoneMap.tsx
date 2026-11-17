@@ -313,6 +313,9 @@ function fitCanvas(canvas: HTMLCanvasElement): [number, number] {
 }
 
 /** A map centred on the bike, turned so that ahead is always up. */
+/** The phone map is redrawn at most this often, in milliseconds (about 30 a second). */
+const MAP_FRAME_MS = 32
+
 export function PhoneMap({ raised }: { raised: boolean }) {
   const data = use(loadMapData())
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -347,6 +350,12 @@ export function PhoneMap({ raised }: { raised: boolean }) {
     const blend = ([tucked, up]: number[]) => tucked + (up - tucked) * raisedAmount.current
 
     const draw = (time: number) => {
+      // Redrawn at most MAP_FRAME_MS apart: a small map turning with the rider looks smooth at 30 a
+      // second, and redrawing it, names and all, every frame was a noticeable share of each frame.
+      if (time - previousTime < MAP_FRAME_MS) {
+        frame = requestAnimationFrame(draw)
+        return
+      }
       // A frame's timestamp can be earlier than the last, and a negative step would blow up the maths.
       const delta = Math.max(0, (time - previousTime) / 1000)
       previousTime = time

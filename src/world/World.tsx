@@ -1,4 +1,6 @@
-import { Suspense, use, useEffect, type ReactNode } from 'react'
+import { Suspense, use, useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
+import * as THREE from 'three'
+import { useGameStore } from '../game/gameStore'
 import { markPartBuilt, useLaunch, type WorldPart } from '../game/launch'
 import { Sky } from '../sky/Sky'
 import { createCrashPhysics } from '../physics/crashPhysics'
@@ -236,16 +238,48 @@ function RenderMark({ name }: { name: WorldPart }) {
   return null
 }
 
+/**
+ * Parts whose objects never move once placed. three.js works out every object's place in the
+ * world again every frame (`updateMatrixWorld`), about a tenth of the game's JavaScript; for these
+ * it's worked out once, and the whole branch is skipped after that. Their streamed squares are
+ * added at the origin, where nothing needs working out. Anything that moves an object (the sky,
+ * the sun, grass, street life, the player and traffic) is left out.
+ */
+const STILL_PARTS = new Set<WorldPart>([
+  'ground', 'parks', 'roads', 'kerbs', 'streetEdges', 'restrictedWall', 'sites', 'markings', 'roadFeatures', 'buildings',
+  'houses', 'stilts', 'hoardings', 'cityKit', 'cables', 'shops', 'landmarks', 'fuel', 'temples', 'fences', 'boundary',
+])
+
 /** One part of the world, with its own Suspense boundary. */
 function Part({ name, children }: { name: WorldPart; children: ReactNode }) {
+  const group = useRef<THREE.Group>(null)
   return (
     <Suspense fallback={null}>
       <RenderMark name={name} />
       {/* Named, so a profile can tell which part each draw call belongs to. A group draws nothing. */}
-      <group name={`part:${name}`}>{children}</group>
+      <group ref={group} name={`part:${name}`}>{children}</group>
+      {STILL_PARTS.has(name) && <HoldStill group={group} />}
       <Built name={name} />
     </Suspense>
   )
+}
+
+/**
+ * Works out a still part's place in the world once, then has three.js skip it. It sits inside the
+ * part's Suspense boundary, after it, so it runs when the part's contents are actually on screen,
+ * and again when a change of quality has remounted any of them.
+ */
+function HoldStill({ group }: { group: RefObject<THREE.Group | null> }) {
+  const quality = useGameStore((state) => state.quality)
+  useLayoutEffect(() => placeOnce(group.current), [group, quality])
+  return null
+}
+
+function placeOnce(still: THREE.Group | null) {
+  if (!still) return
+  still.matrixWorldAutoUpdate = true
+  still.updateMatrixWorld(true)
+  still.matrixWorldAutoUpdate = false
 }
 
 export function World() {
