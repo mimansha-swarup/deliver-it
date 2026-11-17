@@ -138,6 +138,7 @@ const NIGHT_ICON_LEVEL = 0.5
 export function Sky() {
   const { skyClouds, rainDrops } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const state = useRef(createSkyState())
+  Object.assign(window, { __sky: state.current }) // TEMP-DEBUG
   const dome = useRef<THREE.Mesh>(null)
   const drift = useRef(0)
 

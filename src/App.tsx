@@ -20,6 +20,7 @@ import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
 import { PostEffects } from './world/PostEffects'
+import { DebugRig } from './dev/DebugRig' // TEMP-DEBUG
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 
@@ -78,6 +79,7 @@ function App() {
           <ViewDistance />
           <AdaptiveResolution />
           <PostEffects />
+          {import.meta.env.DEV && <DebugRig />} {/* TEMP-DEBUG */}
           {buildWorld && (
             <Suspense fallback={null}>
               <World />

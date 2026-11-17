@@ -102,13 +102,28 @@ export const CLEAR_SKY = {
   /** Cloud cover at which clear-sky looks start and stop fading. Clear weather sits at 0.2, cloudy at 0.75. */
   cloudsFrom: 0.25,
   cloudsTo: 0.55,
-  sunBoost: 1.2,
-  sunColor: [1, 0.84, 0.64] as Rgb,
+  sunBoost: 1.25,
+  sunColor: [1, 0.82, 0.6] as Rgb,
   /** How much of `sunColor` goes into the midday sun. */
-  sunWarmth: 0.65,
-  zenith: [0.17, 0.42, 0.86] as Rgb,
+  sunWarmth: 0.7,
+  zenith: [0.12, 0.36, 0.85] as Rgb,
   /** The fill light, as a share of what it would be. */
-  ambient: 0.88,
+  ambient: 0.85,
+  /**
+   * The riding hours the light is tuned for, 8 to 11 and 4 to 6: the sun lower
+   * and raking, so it's warmer and stronger still, and the shadows darker (less
+   * fill and less bounce off the ground). By how much at the peak of each window.
+   */
+  goldenSun: 0.15,
+  goldenWarmth: 0.2,
+  goldenAmbient: 0.82,
+  goldenBounce: 0.75,
+}
+
+/** 1 through the riding windows (8 to 11 and 4 to 6), easing in and out over half an hour. */
+function goldenHours(hours: number): number {
+  const window = (from: number, to: number) => smoothstep(from - 0.5, from, hours) * (1 - smoothstep(to, to + 0.5, hours))
+  return Math.max(window(8, 11), window(16, 18))
 }
 
 const SUN_INTENSITY = 2.8
@@ -216,6 +231,7 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
 
   // A clear sky is a deeper blue overhead (not at the horizon, which stays hazy).
   const clear = 1 - smoothstep(CLEAR_SKY.cloudsFrom, CLEAR_SKY.cloudsTo, clouds)
+  const golden = goldenHours(hours) * clear
   zenith = mixColor(zenith, CLEAR_SKY.zenith, clear * daylight * (1 - dusk))
 
   // Cloud cover greys everything, and dims it after dark too.
@@ -237,14 +253,23 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
     sunDirection,
     lightDirection: [lit[0] / lightLength, lightY / lightLength, lit[2] / lightLength],
     lightColor: isDay
-      ? mixColor(mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])), CLEAR_SKY.sunColor, clear * CLEAR_SKY.sunWarmth)
+      ? mixColor(
+          mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])),
+          CLEAR_SKY.sunColor,
+          Math.min(1, clear * CLEAR_SKY.sunWarmth + golden * CLEAR_SKY.goldenWarmth),
+        )
       : MOONLIGHT,
-    lightIntensity: (isDay ? sunUp * SUN_INTENSITY * mix(1, CLEAR_SKY.sunBoost, clear) : moonUp * MOON_INTENSITY) * (1 - cover * 0.72),
+    lightIntensity:
+      (isDay ? sunUp * SUN_INTENSITY * mix(1, CLEAR_SKY.sunBoost, clear) * (1 + golden * CLEAR_SKY.goldenSun) : moonUp * MOON_INTENSITY) *
+      (1 - cover * 0.72),
     shadowStrength: 1 - cover * 0.85,
     ambientIntensity:
-      mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) * (1 - cover * 0.12) * mix(1, CLEAR_SKY.ambient, clear * daylight),
+      mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) *
+      (1 - cover * 0.12) *
+      mix(1, CLEAR_SKY.ambient, clear * daylight) *
+      mix(1, CLEAR_SKY.goldenAmbient, golden * daylight),
     ambientColor: mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight),
-    groundColor: mixColor(NIGHT_GROUND, DAY_GROUND, daylight),
+    groundColor: mixColor(mixColor(NIGHT_GROUND, DAY_GROUND, daylight), [0, 0, 0], (1 - CLEAR_SKY.goldenBounce) * golden * daylight),
     // Thickest with the sun low, thinner at noon and after dark. Cloud thickens it too.
     haze: Math.min(
       1,

@@ -128,8 +128,11 @@ export function patchAsphalt(material: THREE.MeshStandardMaterial): AsphaltUnifo
         float kerbed = (vAcross > 0.0 ? vKerb.x : vKerb.y) * isStreet;
         float gutter = (1.0 - smoothstep(0.26, 0.42, edge)) * kerbed;
         asphalt = mix(asphalt, asphalt * 0.72, gutter);
-        float dust = (1.0 - smoothstep(0.35, 1.3, edge)) * (0.5 + 0.5 * groundLayers(ground * 0.7)) * kerbed;
-        asphalt = mix(asphalt, uDust * 0.55, dust * 0.2 * (1.0 - gutter * 0.6));
+        // Silt settled in the gutter in patches, as the rain leaves it.
+        float silt = gutter * smoothstep(0.45, 0.75, groundLayers(ground * 1.1 + 3.0));
+        asphalt = mix(asphalt, uDust * 0.5, silt * 0.55);
+        float dust = (1.0 - smoothstep(0.35, 1.5, edge)) * (0.5 + 0.5 * groundLayers(ground * 0.7)) * kerbed;
+        asphalt = mix(asphalt, uDust * 0.55, dust * 0.34 * (1.0 - gutter * 0.4));
 
         diffuseColor.rgb = asphalt * grain * (1.0 - uWet * 0.38);`,
       )

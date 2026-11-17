@@ -1,3 +1,4 @@
+import { drawCardWall } from './productCards'
 import type { ShopType } from './signboards'
 
 /**
@@ -488,7 +489,10 @@ export function drawInteriorTiles(context: Context, type: ShopType, x: number, y
   context.beginPath()
   context.rect(x, y, size, backHeight)
   context.clip()
-  DRAW[type](context, { x, y, w: size, h: backHeight }, seed)
+  // Product cards where the kind of shop has them; its own drawing otherwise.
+  const cards = drawCardWall(context, type, { x, y, w: size, h: backHeight }, seed)
+  if (cards) flatColors = cards
+  else DRAW[type](context, { x, y, w: size, h: backHeight }, seed)
   context.restore()
   flat = false
 

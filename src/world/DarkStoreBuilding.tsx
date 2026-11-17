@@ -230,7 +230,7 @@ function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textu
   const frontZ = WALL_GAP + FRONT_DEPTH / 2
   const faceZ = WALL_GAP + FRONT_DEPTH + 0.01
   // The riders' bay is painted on the footpath, which may be raised.
-  const yardOut = faceZ + YARD_DEPTH
+  const yardOut = store.bayOut ?? faceZ + YARD_DEPTH
   const yardLift = groundLift.at(store.x + Math.sin(store.rotation) * yardOut, store.z + Math.cos(store.rotation) * yardOut)
 
   return (
@@ -265,9 +265,11 @@ function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textu
         </mesh>
 
         {/* The riders' bay, painted on the ground. */}
-        <mesh position={[0, 0.09 + yardLift, faceZ + YARD_DEPTH]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, 0.04 + yardLift, yardOut]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[width, STRIPE_WIDTH]} />
-          <meshBasicMaterial
+          {/* Paint on the ground, lit by the same sun as everything else. */}
+          <meshStandardMaterial
+            roughness={0.85}
             map={textures.yard}
             polygonOffset
             polygonOffsetFactor={YARD_DEPTH_NUDGE}

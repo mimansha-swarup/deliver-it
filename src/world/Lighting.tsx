@@ -50,7 +50,7 @@ function followRider(sun: THREE.DirectionalLight, shadowSize: number, shadowRang
 }
 
 /** Under a clear sky the shadow filter shrinks by up to this share of the preset's softness. */
-const CLEAR_SHADOW_CRISPNESS = 0.5
+const CLEAR_SHADOW_CRISPNESS = 0.6
 
 export function Lighting() {
   const { shadowSize, shadowRange, shadowSoftness } = useGameStore((state) => QUALITY_PRESETS[state.quality])

@@ -27,6 +27,7 @@ export const WORLD_PARTS = {
   cables: 'Cables',
   shops: 'Shops',
   landmarks: 'Shop signs',
+  shopPeople: 'Shopkeepers and customers',
   fuel: 'Petrol bunks',
   temples: 'Temples, mosques and churches',
   fences: 'Walls, fences and railings',

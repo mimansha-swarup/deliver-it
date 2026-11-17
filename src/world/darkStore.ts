@@ -8,6 +8,12 @@ import { isInsideBounds, isInsideOutline, isRingInPlayArea, lonLatToWorld, type 
 export type DarkStore = {
   /** The road it's on, to tell one store from another, if the map names it. */
   road: string | null
+  /**
+   * How far out from the front wall the riders' bay is painted, in metres:
+   * inside the footpath, short of the kerb. Set once the roads are known
+   * (`placeRidersBays`); unset, the default distance.
+   */
+  bayOut?: number
   /** The middle of its front wall, and which way that wall faces. */
   x: number
   z: number
@@ -253,4 +259,17 @@ function findBusiestSpot(graph: RoadGraph, nodes: number[]): GroundPoint {
 /** Parked bikes are solid, so riders go around them. */
 export function addDarkStorePosts(collisions: CollisionWorld, store: DarkStore) {
   for (const { x, z } of store.bikes) addPost(collisions, x, z, BIKE_RADIUS)
+}
+
+/** The bay keeps this far back from the road's edge, so it's on the footpath, not the kerb. */
+const BAY_KERB_CLEARANCE = 0.9
+const BAY_MIN_OUT = 1.2
+const BAY_MAX_OUT = 4.1
+
+/** Sets where each store's riders' bay is painted: on its footpath, short of the kerb, however wide the footpath. */
+export function placeRidersBays(stores: DarkStore[], roadEdgeAt: (x: number, z: number) => number) {
+  for (const store of stores) {
+    const toRoad = roadEdgeAt(store.x, store.z)
+    store.bayOut = Math.min(BAY_MAX_OUT, Math.max(BAY_MIN_OUT, toRoad - BAY_KERB_CLEARANCE))
+  }
 }

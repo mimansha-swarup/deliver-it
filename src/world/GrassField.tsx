@@ -15,6 +15,7 @@ import {
   PLAY_AREA_DEPTH,
   PLAY_AREA_WIDTH,
   type LonLat,
+  type GroundPoint,
 } from './worldUtils'
 import { windUniforms } from './wind'
 
@@ -67,7 +68,7 @@ function traceOutline(context: CanvasRenderingContext2D, points: LonLat[]) {
  * A top-down map of where grass may grow, drawn once. A shader can't look up
  * roads or buildings, but it can read an image, so each tuft checks this.
  */
-function createGrassMask(data: MapData): THREE.CanvasTexture {
+function createGrassMask(data: MapData, paved: GroundPoint[][]): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = PLAY_AREA_WIDTH * MASK_SCALE
   canvas.height = PLAY_AREA_DEPTH * MASK_SCALE
@@ -97,6 +98,20 @@ function createGrassMask(data: MapData): THREE.CanvasTexture {
     context.lineWidth = PATH_WIDTH * MASK_SCALE
     for (const path of data.footways) {
       traceOutline(context, path.geometry.coordinates)
+      context.stroke()
+    }
+
+    // Paved forecourts, with a little to spare round them.
+    context.lineWidth = 0.6 * MASK_SCALE
+    for (const outline of paved) {
+      context.beginPath()
+      outline.forEach(([x, z], index) => {
+        const point: [number, number] = [(x - PLAY_AREA.minX) * MASK_SCALE, (z - PLAY_AREA.minZ) * MASK_SCALE]
+        if (index === 0) context.moveTo(...point)
+        else context.lineTo(...point)
+      })
+      context.closePath()
+      context.fill()
       context.stroke()
     }
 
@@ -227,9 +242,9 @@ function prepareGrassTextures([color]: THREE.Texture[]) {
 }
 
 /** Swaying tufts of grass near the rider. */
-export function GrassField({ data }: { data: MapData }) {
+export function GrassField({ data, paved = [] }: { data: MapData; paved?: GroundPoint[][] }) {
   const { grassTufts } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const mask = useMemo(() => createGrassMask(data), [data])
+  const mask = useMemo(() => createGrassMask(data, paved), [data, paved])
   const geometry = useMemo(() => createTuftGeometry(grassTufts), [grassTufts])
   const [color, alpha] = useTexture(GRASS_TEXTURES, prepareGrassTextures)
 

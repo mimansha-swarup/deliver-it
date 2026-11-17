@@ -14,7 +14,7 @@ import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
 import { addPost, createCollisionWorld, isNearBuilding } from './collision'
 import { DarkStores } from './DarkStoreBuilding'
-import { addDarkStorePosts, findDarkStores } from './darkStore'
+import { addDarkStorePosts, findDarkStores, placeRidersBays } from './darkStore'
 import { GrassField } from './GrassField'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
@@ -24,13 +24,15 @@ import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
-import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, toRoadPieces } from './props'
+import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadEdge, toRoadPieces } from './props'
 import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWalls } from './fencing'
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
 import { teleportSpots } from '../dev/teleportSpots'
 import { findSpawn, requestedSpawn } from '../dev/spawn'
 import { Temples } from './Temples'
+import { ShopPeople } from './ShopPeople'
+import { planShopPeople } from './shopPeoplePlacement'
 import { Fences } from './Fences'
 import { buildStreetEdges } from './streetEdgeGeometry'
 import { StreetEdges } from './StreetEdges'
@@ -101,6 +103,8 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions)
   const roadPieces = toRoadPieces(data.roads)
   const roadIndex = indexRoadPieces(roadPieces)
+  // The riders' bay at each dark store: on its footpath, short of the kerb.
+  placeRidersBays(stores, (x, z) => nearestRoadEdge(roadIndex, x, z, 20))
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
   const templeWalls = planTempleWalls(templeCompounds(data.worship), roadIndex, collisions)
@@ -131,6 +135,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     gates: houses.gates,
     trees: props.trees,
     keepLow: (x, z) => isOnForecourt(fuel, x, z),
+    fronts: shopFronts,
   })
   groundLift.at = edges.liftAt
   // Before traffic takes them over: no parked scooter with one wheel on the footpath and one off it.
@@ -150,12 +155,14 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   const surface = createSurface(data.roads, features, edges.heightAt)
   const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
+  // Shopkeepers and customers at the shops on the new-ground streets.
+  const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
   // Debug: ?spawn=<street> starts the rider on that street (dev server, or with ?debug).
   const spawnSlug = requestedSpawn()
   const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -178,7 +185,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
@@ -193,7 +200,7 @@ export function World() {
       <Part name="lighting"><Lighting /></Part>
       <Part name="ground"><Ground newSoilArea={newSoilArea} /></Part>
       <Part name="parks"><Parks data={data} /></Part>
-      <Part name="grass"><GrassField data={data} /></Part>
+      <Part name="grass"><GrassField data={data} paved={edges.paved} /></Part>
       <Part name="roads"><Roads roads={data.roads} /></Part>
       <Part name="kerbs"><Kerbs roads={data.roads} collisions={collisions} isInCorner={edges.isInCorner} /></Part>
       <Part name="streetEdges"><StreetEdges edges={edges} /></Part>
@@ -210,6 +217,7 @@ export function World() {
       <Part name="streetLife"><StreetLife life={life} kolams={houses.kolams} /></Part>
       <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
       <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
+      <Part name="shopPeople"><ShopPeople people={shopPeople} /></Part>
       <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
       <Part name="fuel"><FuelStations stations={fuel} /></Part>
       <Part name="temples"><Temples sites={worship} /></Part>

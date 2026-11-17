@@ -16,8 +16,8 @@ import * as THREE from 'three'
 /** Tunable amounts. */
 export const WEATHERING = {
   /** The grime band at the foot of a wall: how high it reaches, in metres, and how dark it gets. */
-  grimeHeight: 0.75,
-  grimeStrength: 0.55,
+  grimeHeight: 0.9,
+  grimeStrength: 0.7,
   /** Splashed soil, multiplied into the grime band: the red earth's brown. */
   grimeTint: [0.66, 0.52, 0.42] as const,
   /** Darkening right where the wall meets the ground, over this height, in metres. */

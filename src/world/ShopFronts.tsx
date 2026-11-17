@@ -43,7 +43,9 @@ const INTERIOR_TOP = SHUTTER_BOTTOM
 /** How deep the rooms are, in metres: shallower and deeper ones by `variation`. */
 const ROOM_DEPTH: [number, number] = [2.6, 4.2]
 /** By day the rooms are lit by their tube lights a little; at night more. */
-const INTERIOR_DAY_GLOW = 0.18
+const INTERIOR_DAY_GLOW = 0.06
+/** Rooms read a little darker than the street outside: the street is in sun, the room isn't. */
+const ROOM_SHADE = 0.82
 /** On Low, the shops' 3D fronts are drawn only this near, in metres. */
 const LOW_KIT_DISTANCE = 60
 const SIGN_BOTTOM = 3.0
@@ -55,6 +57,13 @@ const MENU = { width: 0.62, height: 0.95, lean: 0.2 }
 
 const SIGN_GLOW = 0.85
 const INTERIOR_GLOW = 0.6
+/** About this share of boards are backlit boxes: at night they glow this much brighter than a painted board's `PAINTED_GLOW`. */
+const BACKLIT_SHARE = 0.3
+const BACKLIT_GLOW = 2.4
+const PAINTED_GLOW = 0.55
+/** The warm light from an open shop on the ground outside: how far out it reaches, how far past each side, and how bright at its brightest. */
+const SPILL = { reach: 3.4, spread: 1.0, lift: 0.012, strength: 0.75, color: '#ffa652' }
+const UP_NORMAL = new THREE.Vector3(0, 1, 0)
 
 // ---- The board atlas: boards in two columns, then a strip of chalk menu boards ----
 
@@ -203,13 +212,14 @@ function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 // ---- Geometry ----
 
 type Corner = { x: number; y: number; z: number; u: number; v: number }
-type QuadChunk = { positions: number[]; uvs: number[]; normals: number[] }
+type QuadChunk = { positions: number[]; uvs: number[]; normals: number[]; glows: number[] }
 type Chunks = Map<number, QuadChunk>
 
-function pushQuad(chunks: Chunks, key: number, normal: THREE.Vector3, corners: Corner[]) {
+/** `glow` scales how brightly the quad lights up at night: backlit boards more, the rest less. */
+function pushQuad(chunks: Chunks, key: number, normal: THREE.Vector3, corners: Corner[], glow = 1) {
   let chunk = chunks.get(key)
   if (!chunk) {
-    chunk = { positions: [], uvs: [], normals: [] }
+    chunk = { positions: [], uvs: [], normals: [], glows: [] }
     chunks.set(key, chunk)
   }
   const [a, b, c, d] = corners
@@ -217,15 +227,17 @@ function pushQuad(chunks: Chunks, key: number, normal: THREE.Vector3, corners: C
     chunk.positions.push(x, y, z)
     chunk.uvs.push(u, v)
     chunk.normals.push(normal.x, normal.y, normal.z)
+    chunk.glows.push(glow)
   }
 }
 
 function toGeometries(chunks: Chunks): THREE.BufferGeometry[] {
-  return [...chunks.values()].map(({ positions, uvs, normals }) => {
+  return [...chunks.values()].map(({ positions, uvs, normals, glows }) => {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+    geometry.setAttribute('aGlow', new THREE.Float32BufferAttribute(glows, 1))
     geometry.computeBoundingSphere()
     return geometry
   })
@@ -380,7 +392,7 @@ function createRoomMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial 
         // Gradients from the smooth doorway coordinates, so the face edges don't flash the smallest mip.
         vec2 roomScale = roomCellSize * 0.75;
         vec4 roomColor = textureGrad(map, roomUv, dFdx(vRoomUv) * roomScale, dFdy(vRoomUv) * roomScale);
-        roomColor.rgb *= roomLight * mix(1.0, 0.62, roomDepth);
+        roomColor.rgb *= roomLight * mix(1.0, 0.62, roomDepth) * ${ROOM_SHADE.toFixed(2)};
         diffuseColor *= roomColor;`,
       )
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= roomColor.rgb;')
@@ -397,6 +409,7 @@ function createRoomMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial 
 function createStorefrontGeometries(shopFronts: ShopFront[]) {
   const boards: Chunks = new Map()
   const rooms: RoomChunks = new Map()
+  const spills: Chunks = new Map()
 
   for (const { x, z, rotation, width, type, variation, menuBoard } of shopFronts) {
     const key = chunkKey(x, z)
@@ -426,10 +439,20 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
     // The board: a photo board on some of the commonest shops, a drawn one on the rest.
     const choices = slotsFor(type)
     const slot = choices[Math.floor(variation * choices.length * 0.999)]
-    pushQuad(boards, key, out, rectangle(SIGN_DEPTH + WALL_GAP, width / 2, SIGN_BOTTOM, SIGN_TOP, boardRect(slot)))
+    // A few boards are backlit boxes, bright at night; the rest are painted and lit from the street.
+    const backlit = (variation * 13.7) % 1 < BACKLIT_SHARE
+    pushQuad(boards, key, out, rectangle(SIGN_DEPTH + WALL_GAP, width / 2, SIGN_BOTTOM, SIGN_TOP, boardRect(slot)), backlit ? BACKLIT_GLOW : PAINTED_GLOW)
     // On a low roof the board stands clear, so its back needs drawing too.
     const dark = menuRect(DARK_SLOT)
-    pushQuad(boards, key, back, rectangle(WALL_GAP, -width / 2, SIGN_BOTTOM, SIGN_TOP, dark))
+    pushQuad(boards, key, back, rectangle(WALL_GAP, -width / 2, SIGN_BOTTOM, SIGN_TOP, dark), 0)
+    // Warm light from the open shop, spilling onto the ground in front of it at night.
+    const spillLift = groundLift.at(x + out.x * SPILL.reach * 0.5, z + out.z * SPILL.reach * 0.5) + SPILL.lift
+    pushQuad(spills, key, UP_NORMAL, [
+      { x: x + out.x * WALL_GAP - rightX * (width / 2 + SPILL.spread), y: spillLift, z: z + out.z * WALL_GAP - rightZ * (width / 2 + SPILL.spread), u: 0, v: 1 },
+      { x: x + out.x * WALL_GAP + rightX * (width / 2 + SPILL.spread), y: spillLift, z: z + out.z * WALL_GAP + rightZ * (width / 2 + SPILL.spread), u: 1, v: 1 },
+      { x: x + out.x * SPILL.reach + rightX * (width / 2 + SPILL.spread), y: spillLift, z: z + out.z * SPILL.reach + rightZ * (width / 2 + SPILL.spread), u: 1, v: 0 },
+      { x: x + out.x * SPILL.reach - rightX * (width / 2 + SPILL.spread), y: spillLift, z: z + out.z * SPILL.reach - rightZ * (width / 2 + SPILL.spread), u: 0, v: 0 },
+    ])
     // And its top and ends, so it has some thickness from the side.
     const ends = [
       [-1, 1],
@@ -473,7 +496,7 @@ function createStorefrontGeometries(shopFronts: ShopFront[]) {
     }
   }
 
-  return { boards: toGeometries(boards), rooms: toRoomGeometries(rooms) }
+  return { boards: toGeometries(boards), rooms: toRoomGeometries(rooms), spills: toGeometries(spills) }
 }
 
 /** A sloped sheet one metre wide, stretched to fit each shop. Its back edge is at the wall. */
@@ -511,7 +534,34 @@ function createAwningMaterial(): THREE.MeshStandardMaterial {
   return material
 }
 
-function updateGlow(boards: THREE.MeshStandardMaterial, rooms: THREE.MeshStandardMaterial) {
+/** A soft pool of light, brightest at the doorway's middle and fading out and to the sides. Black adds nothing. */
+function createSpillTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 128
+  const context = canvas.getContext('2d')
+  if (context) {
+    context.fillStyle = '#000'
+    context.fillRect(0, 0, 128, 128)
+    context.save()
+    context.scale(1, 1.6)
+    const glow = context.createRadialGradient(64, 0, 4, 64, 0, 78)
+    glow.addColorStop(0, '#ffffff')
+    glow.addColorStop(0.45, '#7a7a7a')
+    glow.addColorStop(1, '#000000')
+    context.fillStyle = glow
+    context.fillRect(0, 0, 128, 80)
+    context.restore()
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
+function updateGlow(boards: THREE.MeshStandardMaterial, rooms: THREE.MeshStandardMaterial, spill: THREE.MeshBasicMaterial) {
+  const { night } = liveSky.look
+  spill.opacity = night * SPILL.strength
+  spill.visible = night > 0.05
   boards.emissiveIntensity = liveSky.look.night * SIGN_GLOW
   rooms.emissiveIntensity = INTERIOR_DAY_GLOW + liveSky.look.night * INTERIOR_GLOW
 }
@@ -550,6 +600,14 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
       // The menu boards and the board ends are seen from both sides.
       side: THREE.DoubleSide,
     })
+    // Each board's own glow at night (aGlow): backlit boxes bright, painted boards dim.
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace('void main() {', 'attribute float aGlow;\nvarying float vGlow;\nvoid main() {\n vGlow = aGlow;')
+      shader.fragmentShader = shader.fragmentShader
+        .replace('void main() {', 'varying float vGlow;\nvoid main() {')
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= vGlow;')
+    }
+    material.customProgramCacheKey = () => 'shop-boards'
     return { boardMaterial: material, boardCanvas: canvas, photos: photoMap }
   }, [])
 
@@ -585,7 +643,23 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
     },
     [awningGeometry, awningMaterial],
   )
-  useFrame(() => updateGlow(boardMaterial, roomMaterial))
+  const spillMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        map: createSpillTexture(),
+        color: SPILL.color,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -6,
+        polygonOffsetUnits: -6,
+      }),
+    [],
+  )
+  useFrame(() => updateGlow(boardMaterial, roomMaterial, spillMaterial))
 
   useLayoutEffect(() => {
     const instances = mesh.current
@@ -617,6 +691,7 @@ export function ShopFronts({ shopFronts }: { shopFronts: ShopFront[] }) {
       <ChunkedMesh geometries={geometries.rooms} material={roomMaterial} />
       <ChunkedMesh geometries={kitGeometries} material={kitMaterial} castShadow maxDistance={kitDistance} />
       <ChunkedMesh geometries={geometries.boards} material={boardMaterial} />
+      <ChunkedMesh geometries={geometries.spills} material={spillMaterial} maxDistance={kitDistance} />
     </>
   )
 }

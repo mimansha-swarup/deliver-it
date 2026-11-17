@@ -311,6 +311,10 @@ const KERB_PAINT = [new THREE.Color('#1f2023'), new THREE.Color('#e3b021')]
 const EDGE_STONE = new THREE.Color('#a29d93')
 const PIT_SOIL = new THREE.Color('#8a4a2c')
 const DUST = new THREE.Color('#c0794a')
+/** Dry leaves in the gutter: a drift every so often along a kerb. */
+const LEAF_SPACING = 1.4
+const LEAF_CHANCE = 0.45
+const LEAF_COLORS = ['#8a5a2a', '#b07a32', '#c99a3a', '#6f6a2a', '#9a4a22', '#7a6a3a'].map((color) => new THREE.Color(color))
 
 /** Each block's paint is worn in its own way, from a hash of where it is. */
 function wornPaint(stripe: number, at: Vec): THREE.Color {
@@ -340,6 +344,8 @@ export type StreetEdges = {
   heightAt: (x: number, z: number) => number | 'road' | null
   /** How far something standing here must be lifted, to stand on a raised footpath. */
   liftAt: (x: number, z: number) => number
+  /** Paved ground away from the road, such as shops' forecourts, as outlines: no grass grows there. */
+  paved: GroundPoint[][]
 }
 
 /** Kerbs, footpaths and the rest are checked along each road edge at points this far apart, in metres. */
@@ -356,9 +362,18 @@ type Input = {
   trees: Prop[]
   /** Places where the footpath isn't raised, such as a petrol bunk's forecourt. */
   keepLow: (x: number, z: number) => boolean
+  /** Shop fronts: where they stand back from the footpath, the ground in front of them is paved. */
+  fronts?: { x: number; z: number; width: number }[]
 }
 
-export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }: Input): StreetEdges {
+/** A shop standing back further than this from the footpath gets no forecourt: it's a yard, not a forecourt. */
+const FORECOURT_MAX = 8
+/** Forecourts of shops this close together, along the street, join into one. */
+const FORECOURT_JOIN = 4
+/** Each end of a forecourt is dusty for this far in. */
+const FORECOURT_DUSTY_END = 0.8
+
+export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, fronts = [] }: Input): StreetEdges {
   const corners = findCorners(pieces, roads, index)
   const cornerIndex = new CornerIndex(corners)
   const gateIndex = new GateIndex(gates)
@@ -466,6 +481,13 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }
           const caps: [boolean, boolean] = [s <= from + 0.01 || previousDropped !== dropped, end >= to - 0.01 || nextDropped !== dropped]
           pushKerbBlock(kerbs.at(middle), at(s, 0), at(end, 0), out, dropped ? STREET.droppedRise : STREET.kerbRise, wornPaint(stripe, middle), caps)
         }
+        // Dry leaves blown into the gutter along the kerb, in drifts.
+        const leafRandom = createRandom(Math.abs(Math.round(piece.start[0] * 37 + piece.start[1] * 53 + sideSign * 11)))
+        for (let s = from + 0.5; s < to - 0.5; s += LEAF_SPACING) {
+          if (leafRandom() > LEAF_CHANCE) continue
+          const centre = at(s + leafRandom(), -0.12 - leafRandom() * 0.22)
+          pushLeaves(dust.at(centre), centre, leafRandom, ROAD_HEIGHT + 0.006, 3 + Math.floor(leafRandom() * 6))
+        }
       }
 
       // The footpath: a band from the kerb's back, out as far as it can reach, level with the kerb top.
@@ -567,6 +589,85 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }
     if (!c.newB) pushSkirt(edgeStones.at(c.tangentB), kerbBack(1), c.outerB)
   }
 
+  // ---- Forecourts: paving from the footpath to the shops, where they stand back from it ----
+  // Shops are grouped by the road piece and side they face, and neighbours along it join up.
+  // Each run is a rectangle in the road's own frame: from the footpath's far edge out to the
+  // deepest shop's wall. Where a wall stands nearer, the paving runs on under the building.
+  type Forecourt = { start: Vec; dir: Vec; out: Vec; from: number; to: number; near: number; far: number }
+  const forecourts: Forecourt[] = []
+  const groups = new Map<string, { piece: RoadPiece; side: number; s0: number; s1: number; gap: number }[]>()
+  for (const front of fronts) {
+    const near = nearestRoadPiece(index, front.x, front.z, STREET.footpath + FORECOURT_MAX + 1)
+    if (!near || !usesNewGround(roads[near.piece.road])) continue
+    const gap = near.edge - STREET.footpath
+    if (gap < 0.3 || gap > FORECOURT_MAX) continue
+    const { piece } = near
+    const along = sub(piece.end, piece.start)
+    const dir: Vec = [along[0] / length(along), along[1] / length(along)]
+    const rel = sub([front.x, front.z], piece.start)
+    const s = rel[0] * dir[0] + rel[1] * dir[1]
+    const side = rel[0] * -dir[1] + rel[1] * dir[0] > 0 ? 1 : -1
+    const key = `${pieces.indexOf(piece)}:${side}`
+    const list = groups.get(key) ?? []
+    groups.set(key, list)
+    list.push({ piece, side, s0: s - front.width / 2, s1: s + front.width / 2, gap })
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => a.s0 - b.s0)
+    let run: (typeof list)[number] | null = null
+    const close = () => {
+      if (!run) return
+      const { piece, side, s0, s1, gap } = run
+      const along = sub(piece.end, piece.start)
+      const dir: Vec = [along[0] / length(along), along[1] / length(along)]
+      const out: Vec = side > 0 ? left(dir) : right(dir)
+      const half = piece.width / 2
+      forecourts.push({ start: piece.start, dir, out, from: s0 - 0.3, to: s1 + 0.3, near: half + STREET.footpath - 0.02, far: half + STREET.footpath + gap + 0.25 })
+    }
+    for (const shop of list) {
+      if (run && shop.s0 - run.s1 < FORECOURT_JOIN) {
+        run.s1 = Math.max(run.s1, shop.s1)
+        run.gap = Math.max(run.gap, shop.gap)
+      } else {
+        close()
+        run = { ...shop }
+      }
+    }
+    close()
+  }
+  const forecourtPoint = (f: Forecourt, s: number, outward: number): Vec => add(add(f.start, f.dir, s), f.out, outward)
+  for (const f of forecourts) {
+    const arrays = footpaths.at(forecourtPoint(f, (f.from + f.to) / 2, f.near))
+    // Three strips along the street: dusty at each end, clean in the middle.
+    const cuts = [f.from, f.from + FORECOURT_DUSTY_END, f.to - FORECOURT_DUSTY_END, f.to]
+    if (cuts[1] >= cuts[2]) cuts.splice(1, 2, (f.from + f.to) / 2)
+    const dustAt = (s: number) => (s <= f.from + 0.01 || s >= f.to - 0.01 ? 1 : 0)
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const a = forecourtPoint(f, cuts[i], f.near)
+      const b = forecourtPoint(f, cuts[i + 1], f.near)
+      const c = forecourtPoint(f, cuts[i + 1], f.far)
+      const d = forecourtPoint(f, cuts[i], f.far)
+      const edge = new Map<Vec, number>([[a, dustAt(cuts[i])], [b, dustAt(cuts[i + 1])], [c, Math.max(0.6, dustAt(cuts[i + 1]))], [d, Math.max(0.6, dustAt(cuts[i]))]])
+      pushFootpathTriangle(arrays, a, b, c, (p) => edge.get(p) ?? 0)
+      pushFootpathTriangle(arrays, a, c, d, (p) => edge.get(p) ?? 0)
+    }
+    // Each end: a face down to the soil, and dust blown out onto it.
+    for (const [s, away] of [[f.from, -1], [f.to, 1]] as const) {
+      const inner = forecourtPoint(f, s, f.near)
+      const outer = forecourtPoint(f, s, f.far)
+      pushSkirt(edgeStones.at(inner), inner, outer)
+      const awayDir: Vec = [f.dir[0] * away, f.dir[1] * away]
+      pushDustStrip(dust.at(inner), inner, outer, awayDir)
+    }
+  }
+  const isOnForecourt = ([x, z]: Vec) =>
+    forecourts.some((f) => {
+      const rel = sub([x, z], f.start)
+      const s = rel[0] * f.dir[0] + rel[1] * f.dir[1]
+      const o = rel[0] * f.out[0] + rel[1] * f.out[1]
+      return s >= f.from && s <= f.to && o >= f.near && o <= f.far
+    })
+
   // ---- Trees: a pit with a frame and damp soil on the footpath, or damp soil round them on the verge ----
   for (const tree of trees) {
     const near = nearestRoadPiece(index, tree.x, tree.z, STREET.footpath + 6)
@@ -580,7 +681,7 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }
     }
   }
 
-  // ---- Marks on the asphalt: tar patches, cracks, manholes and newer patches ----
+  // ---- Marks on the asphalt: tar patches, cracks, manholes and newer patches, every few metres ----
   for (const piece of newPieces) {
     const along = sub(piece.end, piece.start)
     const pieceLength = length(along)
@@ -588,9 +689,9 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }
     const side = left(dir)
     const random = createRandom(Math.abs(Math.round(piece.start[0] * 131 + piece.start[1] * 71)) + 7)
     const half = piece.width / 2
-    for (let s = 3; s < pieceLength - 3; s += 6) {
+    for (let s = 3; s < pieceLength - 3; s += 4) {
       const roll = random()
-      const kind = roll < 0.16 ? DECAL.tar : roll < 0.3 ? DECAL.crack : roll < 0.34 && half > 3 ? DECAL.manhole : roll < 0.38 ? DECAL.patch : null
+      const kind = roll < 0.22 ? DECAL.tar : roll < 0.44 ? DECAL.crack : roll < 0.48 && half > 3 ? DECAL.manhole : roll < 0.55 ? DECAL.patch : null
       if (!kind) continue
       const size = kind.size[0] + random() * (kind.size[1] - kind.size[0])
       const room = Math.max(0, half - size / 2 - 0.4)
@@ -612,13 +713,13 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }
       return fromCentre <= c.radius && fromCentre > c.radius - STREET.kerbWidth ? KERB_TOP : FOOTPATH_TOP
     }
     const near = nearestRoadPiece(index, x, z, STREET.footpath + 0.2)
-    if (!near || !usesNewGround(roads[near.piece.road])) return null
+    if (!near || !usesNewGround(roads[near.piece.road])) return isOnForecourt(point) ? FOOTPATH_TOP : null
     if (near.edge <= 0) return 'road'
     if (keepLow(x, z)) return null
     if (near.edge < STREET.kerbWidth) return KERB_TOP
     if (near.edge < STREET.footpath - STREET.edgeStone) return FOOTPATH_TOP
     if (near.edge < STREET.footpath) return FOOTPATH_TOP + STREET.edgeStoneRise
-    return null
+    return isOnForecourt(point) ? FOOTPATH_TOP : null
   }
 
   const liftAt = (x: number, z: number) => {
@@ -638,6 +739,7 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow }
     isInCorner,
     heightAt,
     liftAt,
+    paved: forecourts.map((f) => [forecourtPoint(f, f.from, f.near), forecourtPoint(f, f.to, f.near), forecourtPoint(f, f.to, f.far), forecourtPoint(f, f.from, f.far)]),
   }
 }
 
@@ -912,5 +1014,26 @@ function pushDecal(arrays: number[][], centre: Vec, dir: Vec, turn: number, kind
   for (const [a, b] of ordered) {
     const [x, z] = p(a, b)
     corner(arrays, [x, y, z], UP, uv(a, b))
+  }
+}
+
+/** A drift of a few dry leaves, each a small diamond, lying flat at `height`. */
+function pushLeaves(arrays: number[][], [x, z]: Vec, random: () => number, height: number, count: number) {
+  for (let i = 0; i < count; i++) {
+    const cx = x + (random() - 0.5) * 0.35
+    const cz = z + (random() - 0.5) * 0.35
+    const angle = random() * Math.PI * 2
+    const long = 0.05 + random() * 0.05
+    const wide = long * 0.45
+    const u: Vec = [Math.cos(angle), Math.sin(angle)]
+    const v = left(u)
+    const color = LEAF_COLORS[Math.floor(random() * LEAF_COLORS.length)]
+    const rgba = [color.r, color.g, color.b, 0.95]
+    const tip = (sign: number): Vec => [cx + u[0] * long * sign, cz + u[1] * long * sign]
+    const side = (sign: number): Vec => [cx + v[0] * wide * sign, cz + v[1] * wide * sign]
+    for (const [a, b, c] of [[tip(1), side(1), tip(-1)], [tip(-1), side(-1), tip(1)]] as [Vec, Vec, Vec][]) {
+      const facesUp = (b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]) > 0
+      for (const [px, pz] of facesUp ? [a, b, c] : [a, c, b]) corner(arrays, [px, height, pz], UP, rgba)
+    }
   }
 }

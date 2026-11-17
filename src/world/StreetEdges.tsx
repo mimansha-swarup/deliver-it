@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { ROAD_HEIGHT } from './surface'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
@@ -24,6 +25,53 @@ const ROAD_TEXTURES = ['/textures/road-color.jpg', '/textures/road-normal.jpg']
 function updateWetness(uniforms: AsphaltUniforms) {
   uniforms.uWet.value = liveSky.rain
 }
+
+/**
+ * Wear on the kerbs' paint: chipped away in patches to the grey concrete
+ * under it, most on the top and the road-facing edge where tyres scuff, and a
+ * band of road grime along the bottom. Worked out from the world position, so
+ * no two blocks wear alike. Added after the concrete photo's shading.
+ */
+function addKerbWear(material: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  const previous = material.onBeforeCompile
+  material.onBeforeCompile = (shader, renderer) => {
+    previous.call(material, shader, renderer)
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        `float kerbHash(vec2 p) {
+          p = fract(p * vec2(234.34, 435.345));
+          p += dot(p, p + 34.23);
+          return fract(p.x * p.y);
+        }
+        float kerbNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(kerbHash(i), kerbHash(i + vec2(1.0, 0.0)), f.x), mix(kerbHash(i + vec2(0.0, 1.0)), kerbHash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
+        void main() {`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        {
+          vec3 at = vPlasterPosition;
+          float chips = kerbNoise(at.xz * 5.0 + at.y * 9.0) * 0.65 + kerbNoise(at.xz * 17.0 + at.y * 23.0) * 0.35;
+          float scuffed = vPlasterNormal.y > 0.5 ? 1.0 : 0.65;
+          float worn = smoothstep(0.5, 0.72, chips) * scuffed;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.49, 0.46), worn * ${KERB_WEAR.toFixed(2)});
+          float grime = 1.0 - smoothstep(${ROAD_HEIGHT.toFixed(3)}, ${(ROAD_HEIGHT + 0.07).toFixed(3)}, at.y);
+          diffuseColor.rgb *= 1.0 - grime * 0.35;
+        }`,
+      )
+  }
+  material.customProgramCacheKey = () => 'plaster-kerb-wear'
+  return material
+}
+
+/** How much of a worn patch's paint is gone, at most. */
+const KERB_WEAR = 0.7
 
 /**
  * The new ground along the roads that have it (streetEdgeConfig.ts): asphalt,
@@ -64,7 +112,7 @@ export function StreetEdges({ edges }: { edges: Edges }) {
     return material
   }, [pavers, surfaces])
 
-  const kerb = useMemo(() => createPlasterMaterial(concrete, { tile: 1.5, strength: 1.8 }, { roughness: 0.9 }), [concrete])
+  const kerb = useMemo(() => addKerbWear(createPlasterMaterial(concrete, { tile: 1.5, strength: 1.8 }, { roughness: 0.9 })), [concrete])
   const stone = useMemo(() => createPlasterMaterial(concrete, { tile: 1.2, strength: 1.4 }, { roughness: 0.95 }), [concrete])
   const pit = useMemo(
     () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
