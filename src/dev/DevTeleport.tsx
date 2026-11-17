@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from 'react'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { teleportSpots } from './teleportSpots'
+import { isDebug } from './spawn'
 
 /*
  * TEMPORARY, for looking around while building the city: press J to jump to
@@ -26,6 +27,10 @@ function jump(scooter: ScooterState) {
 }
 
 export function DevTeleport({ scooter }: { scooter: RefObject<ScooterState> }) {
+  useEffect(() => {
+    // Debug: lets the browser console move the rider (see DevStats.tsx).
+    if (isDebug()) (window as unknown as { __deliverItScooter?: ScooterState }).__deliverItScooter = scooter.current
+  }, [scooter])
   useEffect(() => {
     if (!import.meta.env.DEV) return
     const handleKey = (event: KeyboardEvent) => {

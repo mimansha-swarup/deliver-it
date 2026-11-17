@@ -6,7 +6,7 @@ import { useGameStore } from '../game/gameStore'
 import { HIP, JOG, type Probe } from './riderShape'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { tuning } from './tuning'
-import { createPrintTexture, SHIRT_COLOR } from './shirtPrint'
+import { BRAND_DYE, BRAND_INK, createJacketPrintTexture } from './brandPrint'
 
 const SKIN = '#b98a68'
 const TROUSERS = '#2b3a55'
@@ -293,7 +293,9 @@ export function Rider({
 
   const materials = useMemo(
     () => ({
-      shirt: new THREE.MeshStandardMaterial({ color: SHIRT_COLOR, roughness: 0.85 }),
+      // The Deliver It jacket, in the logo's marigold: a little sheen, as nylon has.
+      shirt: new THREE.MeshStandardMaterial({ color: BRAND_DYE, roughness: 0.68 }),
+      trim: new THREE.MeshStandardMaterial({ color: BRAND_INK, roughness: 0.7 }),
       skin: new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.7 }),
       trousers: new THREE.MeshStandardMaterial({ color: TROUSERS, roughness: 0.8 }),
       shoe: new THREE.MeshStandardMaterial({ color: SHOE, roughness: 0.6 }),
@@ -314,7 +316,7 @@ export function Rider({
     [reflection],
   )
 
-  const printTexture = useMemo(() => createPrintTexture(), [])
+  const printTexture = useMemo(() => createJacketPrintTexture(), [])
 
   useEffect(
     () => () => Object.values(materials).forEach((material) => material.dispose()),
@@ -388,6 +390,10 @@ export function Rider({
         <mesh position={[0, 0.54, 0.05]} scale={[1.08, 0.46, 0.74]} material={materials.shirt}>
           <sphereGeometry args={[0.2, 12, 10]} />
         </mesh>
+        {/* The jacket's dark collar, so it reads as a jacket, not a T-shirt. */}
+        <mesh position={[0, 0.62, 0.06]} material={materials.trim}>
+          <cylinderGeometry args={[0.075, 0.095, 0.07, 12]} />
+        </mesh>
         {/* The print: a curved strip of the torso's own shape, wrapped around the back. */}
         <mesh position={[0, PRINT_Y, 0.05]} scale={[1, 1, 0.72]}>
           <cylinderGeometry
@@ -422,7 +428,7 @@ export function Rider({
             <sphereGeometry args={[0.145, 16, 12]} />
           </mesh>
           {/* A stripe over the top, so the helmet shows which way it faces */}
-          <mesh position={[0, 0.03, -0.01]} scale={[0.2, 1, 1.1]} material={materials.shirt}>
+          <mesh position={[0, 0.03, -0.01]} scale={[0.2, 1, 1.1]} material={materials.trim}>
             <sphereGeometry args={[0.135, 12, 10]} />
           </mesh>
         </group>
@@ -433,7 +439,7 @@ export function Rider({
         topRadius={0.06}
         bottomRadius={0.046}
         material={materials.shirt}
-        lowerMaterial={materials.skin}
+        lowerMaterial={materials.shirt}
         endMaterial={materials.glove}
         endSize={[0.08, 0.07, 0.1]}
       />
@@ -442,7 +448,7 @@ export function Rider({
         topRadius={0.06}
         bottomRadius={0.046}
         material={materials.shirt}
-        lowerMaterial={materials.skin}
+        lowerMaterial={materials.shirt}
         endMaterial={materials.glove}
         endSize={[0.08, 0.07, 0.1]}
       />

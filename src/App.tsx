@@ -19,6 +19,7 @@ import { QualityPicker } from './ui/QualityPicker'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
+import { DevStats } from './dev/DevStats'
 import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
@@ -77,6 +78,7 @@ function App() {
           <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
           <ViewDistance />
           <AdaptiveResolution />
+          <DevStats />
           <PostEffects />
           {buildWorld && (
             <Suspense fallback={null}>

@@ -19,7 +19,7 @@ import { STEERING_Z } from '../vehicle/Rider'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
-import { GAIT, HIP, KNEE } from './gait'
+import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanGeometry } from './peopleShapes'
 import {
   takeHonks,
@@ -371,6 +371,14 @@ const peopleClock = { uTime: { value: 0 } }
 const WAVE = { raise: 2.7, swing: 0.35, speed: 9 }
 /** Standing still: a slow breath, and weight shifting from foot to foot. */
 const IDLE = { breath: 0.006, breathSpeed: 1.7, sway: 0.012, swaySpeed: 0.55, armSway: 0.05 }
+/** The weight shift: how far the hips move, in metres, and how slowly. */
+const WEIGHT = { shift: 0.04, speed: 0.38 }
+/** The elbow sits this far below the shoulder on every body. */
+const ELBOW_DROP = 0.28
+/** Holding a phone: the upper arm forward a little, the forearm up across the body, the head bowed over it. */
+const PHONE = { upper: 0.32, forearm: 1.35, head: 0.32, neck: 1.44 }
+/** Talking: how often a hand comes up, and how far. */
+const CHAT = { speed: 0.55, upper: 0.3, forearm: 0.9, beat: 3.3 }
 
 /** How far a limp person's arms and legs fling out, in radians. Arms go further than legs. */
 const SPRAWL_ARM = 1.5
@@ -447,7 +455,7 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.vertexShader = `
     attribute vec3 _limb;
     attribute vec4 aPerson;
-    attribute float aWave;
+    attribute vec2 aWave;
     uniform float uTime;
     ${WALK_FUNCTIONS}
     ${shader.vertexShader}
@@ -468,6 +476,13 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
       // Standing still isn't standing frozen: each person breathes and shifts their weight, in their own time.
       float still = (1.0 - walking) * (1.0 - aPerson.z);
       float own = aPerson.x * 3.7;
+      // What they're doing while they stand (IDLE_POSE), only while standing.
+      float pose = aWave.y;
+      float weight = still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.weight.toFixed(1)})));
+      float phone = still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.phone.toFixed(1)})));
+      float chat = still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.chat.toFixed(1)})));
+      // Talking comes in bursts: a hand up for a few seconds, then down while the other talks.
+      float burst = pow(max(0.0, sin(uTime * ${glsl(CHAT.speed)} + own)), 2.0);
       // The hips dip as weight passes from foot to foot, and the whole body with them.
       float dip = walkDip(aPerson.x) * walking;
       if (_limb.x != 0.0) {
@@ -482,11 +497,22 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
         if (isArm) {
           float swing = -${glsl(GAIT.armSwing)} * foot.x / REACH * follow;
           swing += still * ${glsl(IDLE.armSway)} * sin(uTime * 1.3 + own + side) * follow;
+          // The phone and the talking hand are the arm that doesn't wave.
+          float other = _limb.x > 0.0 ? follow : 0.0;
+          float bend = 0.0;
+          swing += other * (phone * ${glsl(PHONE.upper)} + chat * burst * ${glsl(CHAT.upper)});
+          bend += other * phone * (${glsl(PHONE.forearm)} + 0.03 * sin(uTime * 2.3 + own));
+          bend += other * chat * burst * ${glsl(CHAT.forearm)} * (0.75 + 0.25 * sin(uTime * ${glsl(CHAT.beat)} + own));
+          bend += follow * still * 0.12;
           // One arm waves: raised forwards and up, swinging to and fro.
-          float waving = _limb.x < 0.0 ? aWave * follow : 0.0;
+          float waving = _limb.x < 0.0 ? aWave.x * follow : 0.0;
           float wave = ${glsl(WAVE.raise)} + ${glsl(WAVE.swing)} * sin(uTime * ${glsl(WAVE.speed)} + own);
           swing = mix(swing, wave, waving);
+          bend *= (1.0 - aPerson.z);
           float angle = mix(swing, -_limb.x * ${glsl(SPRAWL_ARM)}, aPerson.z);
+          // The forearm bends up at the elbow first, as the shin does at the knee, then the whole arm turns.
+          float elbowY = _limb.y - ${glsl(ELBOW_DROP)};
+          if (position.y < elbowY) point = turnForward(point, elbowY, bend);
           point = turnForward(point, _limb.y, angle);
         } else {
           // The leg reaches from the dipped hip down to the foot on the ground. Each model has its
@@ -503,6 +529,16 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
         transformed.z = point.x;
         transformed.y = point.y;
       }
+      // Head bowed over the phone, and leaning in a little to talk.
+      if (_limb.x == 0.0 && position.y > ${glsl(PHONE.neck)}) {
+        vec2 bowed = turnForward(vec2(transformed.z, transformed.y), ${glsl(PHONE.neck)}, phone * ${glsl(PHONE.head)} + chat * 0.08 * burst);
+        transformed.z = bowed.x;
+        transformed.y = bowed.y;
+      }
+      // Weight on one hip, held there a while, then on the other: the feet stay put and the body moves over them.
+      float onHip = sin(uTime * ${glsl(WEIGHT.speed)} + own);
+      float hips = weight * ${glsl(WEIGHT.shift)} * sign(onHip) * pow(abs(onHip), 0.35);
+      transformed.x += hips * clamp(position.y / ${glsl(HIP)}, 0.0, 1.0) - hips * 0.5 * smoothstep(1.1, 1.6, position.y);
       transformed.y += dip;
       transformed.y += still * ${glsl(IDLE.breath)} * sin(uTime * ${glsl(IDLE.breathSpeed)} + own) * smoothstep(0.8, 1.5, position.y);
       transformed.x += still * ${glsl(IDLE.sway)} * sin(uTime * ${glsl(IDLE.swaySpeed)} + own) * position.y;`,
@@ -516,16 +552,17 @@ function withPersonData(body: THREE.BufferGeometry, count: number): THREE.Buffer
     'aPerson',
     new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4),
   )
-  geometry.setAttribute('aWave', new THREE.InstancedBufferAttribute(new Float32Array(count), 1))
+  // How much they're waving, and what they're doing while they stand (IDLE_POSE).
+  geometry.setAttribute('aWave', new THREE.InstancedBufferAttribute(new Float32Array(count * 2), 2))
   return geometry
 }
 
 function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
   const attribute = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
   const wave = geometry.getAttribute('aWave') as THREE.InstancedBufferAttribute
-  people.forEach(({ stride, skin, down, walking = 1, wave: waving = 0 }, index) => {
+  people.forEach(({ stride, skin, down, walking = 1, wave: waving = 0, idle = 0 }, index) => {
     attribute.setXYZW(index, stride, skin, down, walking)
-    wave.setX(index, waving)
+    wave.setXY(index, waving, idle)
   })
   attribute.needsUpdate = true
   wave.needsUpdate = true

@@ -27,7 +27,12 @@ export function MissionMarker() {
 
   return (
     <group position={[stop.x, 0, stop.z]}>
-      <mesh position={[0, BEAM_HEIGHT / 2, 0]}>
+      {/*
+        Drawn after every other see-through thing. See-through things are drawn far to near by
+        their middles, and a map square's road marks (stains, patches, dust) are one big shape
+        whose middle is often nearer than the beam: they were drawn over it, and showed through.
+      */}
+      <mesh position={[0, BEAM_HEIGHT / 2, 0]} renderOrder={10}>
         <cylinderGeometry args={[BEAM_RADIUS, BEAM_RADIUS, BEAM_HEIGHT, 24, 1, true]} />
         <meshBasicMaterial
           color={stop.color}

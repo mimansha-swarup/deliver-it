@@ -3,7 +3,7 @@ import { chunkKey } from './chunks'
 import type { Gate } from './houseKit'
 import type { LineFeature } from './mapData'
 import { createRandom, distanceToPiece, forEachRoadNear, nearestRoadEdge, nearestRoadPiece, type Prop, type RoadIndex, type RoadPiece } from './props'
-import { FOOTPATH_TOP, KERB_TOP, STREET, usesNewGround } from './streetEdgeConfig'
+import { DECAL_COLUMNS, DECAL_ROWS, FOOTPATH_TOP, KERB_TOP, STREET, usesNewGround } from './streetEdgeConfig'
 import { ROAD_HEIGHT } from './surface'
 import type { GroundPoint } from './worldUtils'
 
@@ -691,7 +691,14 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
     const half = piece.width / 2
     for (let s = 3; s < pieceLength - 3; s += 4) {
       const roll = random()
-      const kind = roll < 0.22 ? DECAL.tar : roll < 0.44 ? DECAL.crack : roll < 0.48 && half > 3 ? DECAL.manhole : roll < 0.55 ? DECAL.patch : null
+      const small = [DECAL.drop, DECAL.spot, DECAL.drips]
+      const kind =
+        roll < 0.09 ? DECAL.tar
+        : roll < 0.22 ? small[Math.floor(random() * small.length)]
+        : roll < 0.44 ? DECAL.crack
+        : roll < 0.48 && half > 3 ? DECAL.manhole
+        : roll < 0.55 ? DECAL.patch
+        : null
       if (!kind) continue
       const size = kind.size[0] + random() * (kind.size[1] - kind.size[0])
       const room = Math.max(0, half - size / 2 - 0.4)
@@ -984,12 +991,16 @@ function pushTreePit(arrays: number[][], centre: Vec, dir: Vec) {
 }
 
 // ---------------------------------------------------------------------------
-// Decals: four marks share one picture, two across and two down (see groundTextures.ts).
+// Decals: the marks share one picture, DECAL_COLUMNS across and DECAL_ROWS down (see groundTextures.ts).
 
 type DecalKind = { cell: [number, number]; size: [number, number]; aspect: number; turns: boolean; lift: number }
 
 export const DECAL = {
   tar: { cell: [0, 0], size: [0.8, 2.2], aspect: 1, turns: true, lift: 0.004 },
+  /** Smaller oil stains, and a trail of drips that runs along the lane. */
+  drop: { cell: [2, 0], size: [0.3, 0.75], aspect: 1, turns: true, lift: 0.0042 },
+  spot: { cell: [3, 0], size: [0.35, 0.9], aspect: 1, turns: true, lift: 0.0044 },
+  drips: { cell: [2, 1], size: [1.1, 2], aspect: 0.3, turns: false, lift: 0.0046 },
   crack: { cell: [1, 0], size: [1.2, 3], aspect: 1, turns: true, lift: 0.0035 },
   manhole: { cell: [0, 1], size: [0.75, 0.75], aspect: 1, turns: true, lift: 0.006 },
   patch: { cell: [1, 1], size: [2, 4.5], aspect: 0.55, turns: false, lift: 0.003 },
@@ -1003,7 +1014,7 @@ function pushDecal(arrays: number[][], centre: Vec, dir: Vec, turn: number, kind
   const halfV = (size * kind.aspect) / 2
   const y = ROAD_HEIGHT + kind.lift
   const [cu, cv] = kind.cell
-  const uv = (a: number, b: number) => [(cu + a) / 2, 1 - (cv + 1 - b) / 2]
+  const uv = (a: number, b: number) => [(cu + a) / DECAL_COLUMNS, 1 - (cv + 1 - b) / DECAL_ROWS]
   const p = (a: number, b: number): Vec => add(add(centre, u, (a * 2 - 1) * halfU), v, (b * 2 - 1) * halfV)
   const quad: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]]
   const facesUp = (() => {

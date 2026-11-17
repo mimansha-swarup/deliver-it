@@ -9,6 +9,7 @@ import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { ChunkedMesh } from './ChunkedMesh'
 import { patchAsphalt, patchPavers, type AsphaltUniforms } from './groundShaders'
 import { createDecalAtlas, createPaverTextures } from './groundTextures'
+import { DECAL_COLUMNS, DECAL_ROWS } from './streetEdgeConfig'
 import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
 import type { StreetEdges as Edges } from './streetEdgeGeometry'
 import { prepareSurfaceTextures } from './surfaceMaterial'
@@ -73,6 +74,31 @@ function addKerbWear(material: THREE.MeshStandardMaterial): THREE.MeshStandardMa
 /** How much of a worn patch's paint is gone, at most. */
 const KERB_WEAR = 0.7
 
+/** How glossy oil is where it's densest: wet-looking, catching the sun, against the dry road's 0.85. */
+const OIL_ROUGHNESS = 0.28
+
+/**
+ * Oil stains look a little wet: where the decal picture is one of the stains
+ * (by which cell of the atlas it's in) the surface turns smoother as the stain
+ * gets denser, so it catches the sun and sky. No extra texture or pass.
+ */
+function addOilSheen(material: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <roughnessmap_fragment>',
+      `#include <roughnessmap_fragment>
+      {
+        vec2 decalCell = floor(vec2(vMapUv.x * ${DECAL_COLUMNS.toFixed(1)}, (1.0 - vMapUv.y) * ${DECAL_ROWS.toFixed(1)}));
+        // The stains: the big one, the two small ones, and the trail of drips.
+        bool isOil = (decalCell.y < 0.5 && abs(decalCell.x - 1.0) > 0.5) || (decalCell.y > 0.5 && abs(decalCell.x - 2.0) < 0.5);
+        if (isOil) roughnessFactor = mix(roughnessFactor, ${OIL_ROUGHNESS.toFixed(2)}, smoothstep(0.15, 0.6, diffuseColor.a));
+      }`,
+    )
+  }
+  material.customProgramCacheKey = () => 'oil-sheen'
+  return material
+}
+
 /**
  * The new ground along the roads that have it (streetEdgeConfig.ts): asphalt,
  * kerbs and rounded corners, raised paver footpaths with edge stones, dust on
@@ -131,19 +157,17 @@ export function StreetEdges({ edges }: { edges: Edges }) {
       }),
     [],
   )
-  const decal = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        map: atlas,
-        transparent: true,
-        depthWrite: false,
-        roughness: 0.85,
-        polygonOffset: true,
-        polygonOffsetFactor: -4,
-        polygonOffsetUnits: -4,
-      }),
-    [atlas],
-  )
+  const decal = useMemo(() => addOilSheen(
+    new THREE.MeshStandardMaterial({
+      map: atlas,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.85,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    }),
+  ), [atlas])
 
   useFrame(() => updateWetness(asphaltUniforms))
 

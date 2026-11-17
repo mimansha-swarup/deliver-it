@@ -19,10 +19,6 @@ const WALL_GAP = 0.3
 const OPENING_HEIGHT = 2.5
 const SIGN_HEIGHT = 0.8
 const SIGN_DEPTH = 0.16
-const STRIPE_WIDTH = 0.5
-const YARD_DEPTH = 3.5
-/** Road markings use -3, and the yard needs to sit on top of them. */
-const YARD_DEPTH_NUDGE = -4
 const NIGHT_LIGHT = '#fff3d2'
 
 /** The shop's name in white on black, to match the bikes. */
@@ -92,34 +88,6 @@ function createShelvesTexture(): THREE.CanvasTexture {
   return texture
 }
 
-/** Black and white stripes marking the riders' bay. */
-function createYardTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = 512
-  canvas.height = 64
-
-  const context = canvas.getContext('2d')
-  if (context) {
-    for (let x = -64; x < 512; x += 64) {
-      context.fillStyle = '#16171a'
-      context.fillRect(0, 0, 0, 0)
-      context.beginPath()
-      context.moveTo(x, 64)
-      context.lineTo(x + 32, 64)
-      context.lineTo(x + 96, 0)
-      context.lineTo(x + 64, 0)
-      context.closePath()
-      context.fillStyle = '#e8e6df'
-      context.fill()
-    }
-  }
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  texture.anisotropy = 8
-  return texture
-}
-
 function ParkedBike({
   x,
   z,
@@ -168,7 +136,7 @@ function ParkedBike({
   )
 }
 
-type StoreTextures = { sign: THREE.CanvasTexture; shelves: THREE.CanvasTexture; yard: THREE.CanvasTexture }
+type StoreTextures = { sign: THREE.CanvasTexture; shelves: THREE.CanvasTexture }
 
 /** The light over the riders' bay, from the store's front wall, in metres: up and out. */
 const LIGHT_UP = 2.6
@@ -185,7 +153,6 @@ export function DarkStores({ stores }: { stores: DarkStore[] }) {
     () => ({
       sign: createSignTexture(),
       shelves: createShelvesTexture(),
-      yard: createYardTexture(),
     }),
     [],
   )
@@ -229,9 +196,6 @@ function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textu
   const openingWidth = width - 1.2
   const frontZ = WALL_GAP + FRONT_DEPTH / 2
   const faceZ = WALL_GAP + FRONT_DEPTH + 0.01
-  // The riders' bay is painted on the footpath, which may be raised.
-  const yardOut = store.bayOut ?? faceZ + YARD_DEPTH
-  const yardLift = groundLift.at(store.x + Math.sin(store.rotation) * yardOut, store.z + Math.cos(store.rotation) * yardOut)
 
   return (
     <>
@@ -264,18 +228,6 @@ function DarkStoreBuilding({ store, textures, scene }: { store: DarkStore; textu
           <meshBasicMaterial attach="material-5" color="#0f1012" />
         </mesh>
 
-        {/* The riders' bay, painted on the ground. */}
-        <mesh position={[0, 0.04 + yardLift, yardOut]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[width, STRIPE_WIDTH]} />
-          {/* Paint on the ground, lit by the same sun as everything else. */}
-          <meshStandardMaterial
-            roughness={0.85}
-            map={textures.yard}
-            polygonOffset
-            polygonOffsetFactor={YARD_DEPTH_NUDGE}
-            polygonOffsetUnits={YARD_DEPTH_NUDGE}
-          />
-        </mesh>
 
       </group>
 

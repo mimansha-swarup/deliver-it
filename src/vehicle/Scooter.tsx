@@ -15,6 +15,7 @@ import { findColour, PAINTS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { getStreetReflection } from '../traffic/carModel'
+import { splitDeliveryBox } from '../traffic/vehicleShapes'
 import {
   getModel,
   paintModel,
@@ -23,6 +24,7 @@ import {
 import type { CollisionWorld } from '../world/collision'
 import { water } from '../world/roadFeatures'
 import type { Surface } from '../world/surface'
+import { BRAND_DYE, createBoxLogoTexture } from './brandPrint'
 import { Rider, STEERING_Z } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
@@ -104,6 +106,52 @@ function BlobShadow() {
   )
 }
 
+/** The logo panels sit this far off the box, so the two never flicker, and cover this share of each face. */
+const LOGO_LIFT = 0.004
+const LOGO_COVER = 0.82
+
+/**
+ * The Deliver It logo on the back and both sides of the delivery box: three
+ * see-through quads sharing one picture and one material, three small draws
+ * for the one scooter there is.
+ */
+function BoxLogos({ bounds }: { bounds: THREE.Box3 }) {
+  const texture = useMemo(() => createBoxLogoTexture(), [])
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial({ map: texture, transparent: true, roughness: 0.55, depthWrite: false }),
+    [texture],
+  )
+  useEffect(
+    () => () => {
+      texture.dispose()
+      material.dispose()
+    },
+    [texture, material],
+  )
+  if (bounds.isEmpty()) return null
+  const centre = bounds.getCenter(new Vector3())
+  const size = bounds.getSize(new Vector3())
+  const height = size.y * LOGO_COVER
+  return (
+    <>
+      {/* The back, facing behind the scooter. */}
+      <mesh position={[centre.x, centre.y, bounds.min.z - LOGO_LIFT]} rotation={[0, Math.PI, 0]} material={material}>
+        <planeGeometry args={[size.x * LOGO_COVER, height]} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh
+          key={side}
+          position={[centre.x + side * (size.x / 2 + LOGO_LIFT), centre.y, centre.z]}
+          rotation={[0, (side * Math.PI) / 2, 0]}
+          material={material}
+        >
+          <planeGeometry args={[size.z * LOGO_COVER, height]} />
+        </mesh>
+      ))}
+    </>
+  )
+}
+
 type Materials = ReturnType<typeof createMaterials>
 
 function createMaterials(reflection: THREE.Texture) {
@@ -115,6 +163,8 @@ function createMaterials(reflection: THREE.Texture) {
       envMap: reflection,
     }),
     wheel: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }),
+    // The box's own shading is in its vertex colours (it's white in the model), and the colour dyes it.
+    box: new THREE.MeshStandardMaterial({ vertexColors: true, color: BRAND_DYE, roughness: 0.6 }),
     headlight: new THREE.MeshStandardMaterial({ color: '#fff6d8', emissive: '#ffe9a8', emissiveIntensity: 0.7 }),
     tail: new THREE.MeshStandardMaterial({ color: '#a51d16', emissive: '#ff2a1a', emissiveIntensity: 0 }),
   }
@@ -278,13 +328,19 @@ export function Scooter({
   // The paint bought at the Garage. Changing it repaints a fresh copy of the model.
   const paintId = useGameStore((state) => state.paintId)
   const paint = findColour(PAINTS, paintId).color
-  const parts = useMemo(
-    () => ({
-      body: paintModel(getModel(scene, 'delivery'), paint),
-      front: paintModel(getModel(scene, 'delivery-front'), paint),
-    }),
-    [scene, paint],
-  )
+  // The box is split off the model: it's Deliver It marigold plastic, with the logo on its back and sides.
+  const { parts, boxBounds } = useMemo(() => {
+    const painted = paintModel(getModel(scene, 'delivery'), paint)
+    const { scooter, box, bounds } = splitDeliveryBox(painted)
+    painted.dispose()
+    // The model's box is off-white with its shading baked in. Brightened so its lightest part is pure
+    // white, the material's colour comes through as the logo's marigold rather than a duller tan.
+    const colors = box.getAttribute('color')
+    let lightest = 0
+    for (let i = 0; i < colors.count; i++) lightest = Math.max(lightest, colors.getX(i), colors.getY(i), colors.getZ(i))
+    if (lightest > 0) for (let i = 0; i < colors.count; i++) colors.setXYZ(i, colors.getX(i) / lightest, colors.getY(i) / lightest, colors.getZ(i) / lightest)
+    return { parts: { body: scooter, box, front: paintModel(getModel(scene, 'delivery-front'), paint) }, boxBounds: bounds }
+  }, [scene, paint])
   const wheelGeometry = useMemo(() => getModel(scene, 'delivery-wheel'), [scene])
   const [frontAxle, rearAxle] = useMemo(() => {
     const { wheelPositions } = scene.getObjectByName('delivery')?.userData as WheelData
@@ -390,6 +446,8 @@ export function Scooter({
             {/* Everything the suspension carries, which pitches under braking and power. */}
             <group ref={body}>
               <mesh geometry={parts.body} material={materials.bike} />
+              <mesh geometry={parts.box} material={materials.box} />
+              <BoxLogos bounds={boxBounds} />
               <mesh position={[0, 0.72, -0.9]} material={materials.tail}>
                 <boxGeometry args={[0.16, 0.05, 0.03]} />
               </mesh>

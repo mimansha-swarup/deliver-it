@@ -14,7 +14,7 @@ import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
 import { addPost, createCollisionWorld, isNearBuilding } from './collision'
 import { DarkStores } from './DarkStoreBuilding'
-import { addDarkStorePosts, findDarkStores, placeRidersBays } from './darkStore'
+import { addDarkStorePosts, findDarkStores } from './darkStore'
 import { GrassField } from './GrassField'
 import { Ground } from './Ground'
 import { Lighting } from './Lighting'
@@ -24,7 +24,7 @@ import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
-import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadEdge, toRoadPieces } from './props'
+import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, toRoadPieces } from './props'
 import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWalls } from './fencing'
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
@@ -104,7 +104,6 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const roadPieces = toRoadPieces(data.roads)
   const roadIndex = indexRoadPieces(roadPieces)
   // The riders' bay at each dark store: on its footpath, short of the kerb.
-  placeRidersBays(stores, (x, z) => nearestRoadEdge(roadIndex, x, z, 20))
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
   const templeWalls = planTempleWalls(templeCompounds(data.worship), roadIndex, collisions)

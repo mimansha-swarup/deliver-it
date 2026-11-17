@@ -5,6 +5,7 @@ import { liveSky } from '../game/livePlayer'
 import { ChunkedMesh } from './ChunkedMesh'
 import { chunkKey } from './chunks'
 import type { ShopFront } from './shopFrontPlacement'
+import { BACK_WALL_TILE } from './productCards'
 import { drawInteriorTiles } from './shopInteriors'
 import { createShopFrontKit, SHUTTER_BOTTOM } from './shopFrontKit'
 import { useGameStore } from '../game/gameStore'
@@ -368,8 +369,11 @@ function createRoomMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial 
         vec2 tileOrigin = vec2(0.0, 0.25);
         vec2 tileSize = vec2(1.0, 0.75);
         float roomLight = 1.0;
+        // The back wall repeats every BACK_WALL_TILE metres, so its goods are the same real size in a
+        // narrow shop and a wide one, rather than stretched across whatever the doorway's width is.
+        float wallRepeats = vRoomSize.x / ${BACK_WALL_TILE.toFixed(3)};
         if (t == tz) {
-          tileUv = hit.xy / vRoomSize.xy;
+          tileUv = vec2(fract(hit.x / ${BACK_WALL_TILE.toFixed(3)}), hit.y / vRoomSize.y);
         } else if (t == tx) {
           // The side walls carry on the back wall's shelves, from its edge forwards.
           float along = 0.3 * (1.0 - roomDepth);
@@ -390,7 +394,7 @@ function createRoomMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial 
         vec2 roomCellSize = vec2(${cell}, ${cellHeight});
         vec2 roomUv = vRoomCell + (tileOrigin + tileUv * tileSize) * roomCellSize;
         // Gradients from the smooth doorway coordinates, so the face edges don't flash the smallest mip.
-        vec2 roomScale = roomCellSize * 0.75;
+        vec2 roomScale = roomCellSize * vec2(t == tz ? wallRepeats : 1.0, 0.75);
         vec4 roomColor = textureGrad(map, roomUv, dFdx(vRoomUv) * roomScale, dFdy(vRoomUv) * roomScale);
         roomColor.rgb *= roomLight * mix(1.0, 0.62, roomDepth) * ${ROOM_SHADE.toFixed(2)};
         diffuseColor *= roomColor;`,

@@ -111,6 +111,49 @@ export function createBikeRiderGeometry(): THREE.BufferGeometry {
 
 /** Where the delivery box sits on the model: behind the seat and above it. */
 const BOX_ZONE = { behind: -0.45, above: 0.82 }
+
+/** Whether a triangle, by its corners from `first`, is part of the delivery box. */
+function isBoxTriangle(position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, paint: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, first: number) {
+  const y = (position.getY(first) + position.getY(first + 1) + position.getY(first + 2)) / 3
+  const z = (position.getZ(first) + position.getZ(first + 1) + position.getZ(first + 2)) / 3
+  return paint.getX(first) < 0.5 && y > BOX_ZONE.above && z < BOX_ZONE.behind
+}
+
+/** The triangles of a non-indexed geometry whose first corners are listed, as a new geometry. */
+function pickTriangles(geometry: THREE.BufferGeometry, corners: number[]): THREE.BufferGeometry {
+  const result = new THREE.BufferGeometry()
+  for (const [name, attribute] of Object.entries(geometry.attributes)) {
+    const size = attribute.itemSize
+    const values = new Float32Array(corners.length * size)
+    corners.forEach((corner, index) => {
+      for (let part = 0; part < size; part++) values[index * size + part] = attribute.getComponent(corner, part)
+    })
+    result.setAttribute(name, new THREE.BufferAttribute(values, size))
+  }
+  return result
+}
+
+/**
+ * Splits a scooter model into the scooter and its delivery box, so the box can
+ * have a material of its own: it's painted plastic, not the bike's glossy
+ * metal paint. Also returns where the box is, for putting a logo on it.
+ */
+export function splitDeliveryBox(model: THREE.BufferGeometry): { scooter: THREE.BufferGeometry; box: THREE.BufferGeometry; bounds: THREE.Box3 } {
+  const geometry = model.index ? model.toNonIndexed() : model
+  const position = geometry.getAttribute('position')
+  const paint = geometry.getAttribute('_paint')
+  const keep: number[] = []
+  const box: number[] = []
+  for (let corner = 0; corner < position.count; corner += 3) {
+    const list = isBoxTriangle(position, paint, corner) ? box : keep
+    list.push(corner, corner + 1, corner + 2)
+  }
+  const result = { scooter: pickTriangles(geometry, keep), box: pickTriangles(geometry, box), bounds: new THREE.Box3() }
+  result.box.computeBoundingBox()
+  if (result.box.boundingBox) result.bounds.copy(result.box.boundingBox)
+  if (geometry !== model) geometry.dispose()
+  return result
+}
 /** How far a parked scooter leans onto its side stand, and how far its bars are turned, in radians. */
 const STAND_LEAN = 0.11
 const PARKED_STEER = 0.35
@@ -151,22 +194,9 @@ function withoutBox(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
   const paint = geometry.getAttribute('_paint')
   const keep: number[] = []
   for (let corner = 0; corner < position.count; corner += 3) {
-    const y = (position.getY(corner) + position.getY(corner + 1) + position.getY(corner + 2)) / 3
-    const z = (position.getZ(corner) + position.getZ(corner + 1) + position.getZ(corner + 2)) / 3
-    const isBox = paint.getX(corner) < 0.5 && y > BOX_ZONE.above && z < BOX_ZONE.behind
-    if (!isBox) keep.push(corner, corner + 1, corner + 2)
+    if (!isBoxTriangle(position, paint, corner)) keep.push(corner, corner + 1, corner + 2)
   }
-
-  const result = new THREE.BufferGeometry()
-  for (const [name, attribute] of Object.entries(geometry.attributes)) {
-    const size = attribute.itemSize
-    const values = new Float32Array(keep.length * size)
-    keep.forEach((corner, index) => {
-      for (let part = 0; part < size; part++) values[index * size + part] = attribute.getComponent(corner, part)
-    })
-    result.setAttribute(name, new THREE.BufferAttribute(values, size))
-  }
-  return result
+  return pickTriangles(geometry, keep)
 }
 
 /**

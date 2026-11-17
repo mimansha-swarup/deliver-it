@@ -30,3 +30,11 @@ export const GAIT = {
  * metres each stride. `stride` counts in radians, a whole turn each stride.
  */
 export const STRIDE_PER_METRE = (Math.PI * 2 * GAIT.stance) / (2 * GAIT.reach)
+
+/**
+ * What someone standing about is doing, beyond breathing (`Pedestrian.idle`):
+ * shifting their weight from hip to hip and holding it there, looking down at
+ * a phone held in front of them, or talking, a hand coming up now and then.
+ * The walking shader in Traffic.tsx poses them.
+ */
+export const IDLE_POSE = { still: 0, weight: 1, phone: 2, chat: 3 } as const

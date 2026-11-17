@@ -40,3 +40,7 @@ export const STREET = {
 /** The top of the kerb, and of the footpath, which is level with it. */
 export const KERB_TOP = ROAD_HEIGHT + STREET.kerbRise
 export const FOOTPATH_TOP = KERB_TOP
+
+/** The asphalt's marks share one picture, this many across and down (createDecalAtlas in groundTextures.ts). */
+export const DECAL_COLUMNS = 4
+export const DECAL_ROWS = 2

@@ -16,7 +16,8 @@ import type { ShopType } from './signboards'
  * - what each kind of shop puts out front: strips of snack packets hanging from
  *   the shutter box and rice sacks at a kirana, a steel counter with big vessels
  *   at a darshini, a kettle and glasses at a chai stall, a glass display at a
- *   bakery, glass counters at chemists and phone shops, a rail of clothes, and
+ *   bakery, glass counters with rows of small goods behind the glass at
+ *   jewellers, chemists and phone shops, a rail of clothes, and
  *   buckets and pipes at a hardware shop;
  * - a cool-drinks fridge by the door at some.
  *
@@ -55,6 +56,55 @@ function cylinder(frame: Frame, across: number, out: number, bottom: number, rad
   geometry.rotateY(frame.rotation)
   geometry.translate(frame.x, 0, frame.z)
   return colored(geometry, color)
+}
+
+/** A flat panel facing out of the shop, `out` from the wall: two triangles, for small things seen from the front. */
+function panel(frame: Frame, across: number, out: number, bottom: number, width: number, height: number, color: string): THREE.BufferGeometry {
+  const geometry = new THREE.PlaneGeometry(width, height).toNonIndexed()
+  geometry.translate(across, frame.lift + bottom + height / 2, out)
+  geometry.rotateY(frame.rotation)
+  geometry.translate(frame.x, 0, frame.z)
+  return colored(geometry, color)
+}
+
+/** What a glass counter shows through its front: a backing, and rows of small things at their real size. */
+type CounterGoods = { backing: string; items: string[]; size: [number, number]; rows: number }
+
+const COUNTER_GOODS: Partial<Record<ShopType, CounterGoods>> = {
+  // Gold chains and bangles on dark red velvet.
+  jewellery: { backing: '#4a0d12', items: ['#d9b04a', '#e8c35a', '#c99a2e', '#efe3c0'], size: [0.07, 0.05], rows: 3 },
+  // Phones lying face up, and a few cases.
+  mobiles: { backing: '#e9eef1', items: ['#16171a', '#1f2023', '#2a4f8a', '#16171a', '#b8bcc2'], size: [0.06, 0.11], rows: 2 },
+  // Boxes of medicine.
+  pharmacy: { backing: '#f3f5f4', items: ['#ffffff', '#e8f1f8', '#2a7fc2', '#e8352b', '#2fa34a', '#f6c21c'], size: [0.07, 0.06], rows: 3 },
+}
+
+/**
+ * A glass-fronted counter: a frame, its goods in rows behind the front glass,
+ * and a glass top. The goods are flat panels, two triangles each, as they're
+ * only ever seen from the street.
+ */
+function glassCounter(parts: THREE.BufferGeometry[], frame: Frame, type: ShopType, across: number, width: number, height: number, body: string, random: () => number) {
+  const goods = COUNTER_GOODS[type]
+  counter(parts, frame, across, width, height, body, '#d8e8ec')
+  if (!goods) return
+  const front = 0.3 + 0.25
+  const windowBottom = 0.32
+  const windowTop = height - 0.1
+  parts.push(panel(frame, across, front + 0.004, windowBottom, width - 0.12, windowTop - windowBottom, goods.backing))
+  const [itemWidth, itemHeight] = goods.size
+  const rowGap = (windowTop - windowBottom) / goods.rows
+  for (let row = 0; row < goods.rows; row++) {
+    const columns = Math.floor((width - 0.2) / (itemWidth * 1.6))
+    for (let column = 0; column < columns; column++) {
+      if (random() < 0.12) continue
+      const at = across - (width - 0.2) / 2 + (column + 0.5) * ((width - 0.2) / columns)
+      const color = goods.items[Math.floor(random() * goods.items.length)]
+      parts.push(panel(frame, at, front + 0.008, windowBottom + row * rowGap + (rowGap - itemHeight) / 2, itemWidth, itemHeight, color))
+    }
+  }
+  // The glass: a pale sheen over the front, which the dark frame shows through at the edges.
+  parts.push(panel(frame, across, front + 0.012, windowTop - 0.03, width - 0.12, 0.03, '#eef6f8'))
 }
 
 /** A counter at the front, to one side of the doorway: a body and a lighter top. */
@@ -132,8 +182,8 @@ const FRONTS: Record<ShopType, (parts: THREE.BufferGeometry[], frame: Frame, wid
     }
     parts.push(box(frame, across, 0.3, 1.24, width * 0.45, 0.03, 0.5, '#e4f1f3'))
   },
-  pharmacy: (parts, frame, width, side) => {
-    counter(parts, frame, side * width * 0.2, width * 0.5, 1.0, '#e8eef0', '#2fa34a')
+  pharmacy: (parts, frame, width, side, random) => {
+    glassCounter(parts, frame, 'pharmacy', side * width * 0.2, width * 0.5, 1.0, '#2fa34a', random)
   },
   clothing: (parts, frame, width, side, random) => {
     // A rail of shirts and kurtas outside, on a stand.
@@ -152,16 +202,16 @@ const FRONTS: Record<ShopType, (parts: THREE.BufferGeometry[], frame: Frame, wid
     parts.push(cylinder(frame, side * width * 0.4, 0.3, 0.35, 0.28, 0.5, '#3f7a3a', 0.12))
     parts.push(box(frame, -side * width * 0.3, 0.4, 0.4, 1.0, 0.05, 0.32, '#3a3c40'))
   },
-  jewellery: (parts, frame, width, side) => {
-    counter(parts, frame, side * width * 0.2, width * 0.5, 0.95, '#4a1010', '#f0d78a')
+  jewellery: (parts, frame, width, side, random) => {
+    glassCounter(parts, frame, 'jewellery', side * width * 0.2, width * 0.5, 0.95, '#4a1010', random)
   },
   electronics: (parts, frame, width, side) => {
     // Boxed appliances stacked by the door.
     parts.push(box(frame, side * width * 0.35, 0.35, 0, 0.7, 1.6, 0.6, '#c9a777'))
     parts.push(box(frame, side * width * 0.35 - 0.8, 0.35, 0, 0.6, 0.9, 0.55, '#d4b88a'))
   },
-  mobiles: (parts, frame, width, side) => {
-    counter(parts, frame, side * width * 0.2, width * 0.5, 1.0, '#2b2f33', '#cfe7f0')
+  mobiles: (parts, frame, width, side, random) => {
+    glassCounter(parts, frame, 'mobiles', side * width * 0.2, width * 0.5, 1.0, '#2b2f33', random)
   },
   hardware: (parts, frame, width, side, random) => {
     // Buckets stacked in towers, and pipes leaning on the wall.

@@ -376,6 +376,8 @@ export type Pedestrian = Mover & {
   walking?: number
   /** How much they're waving, from 0 to 1: a customer greeting the rider. Unset is not waving. */
   wave?: number
+  /** What they do while standing about: one of IDLE_POSE in gait.ts. Unset is just breathing. */
+  idle?: number
   /** How dark their skin is, as a number the colour is multiplied by. */
   skin: number
   /** Not drawn. Used for a bike rider who is still on the bike. */

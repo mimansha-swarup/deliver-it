@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { createRandom } from './props'
+import { DECAL_COLUMNS, DECAL_ROWS } from './streetEdgeConfig'
 
 /*
  * Textures for the new ground, drawn in code at load time: interlocking paver
@@ -160,7 +161,7 @@ export function createPaverTextures(): { map: THREE.CanvasTexture; normalMap: TH
 }
 
 // ---------------------------------------------------------------------------
-// The asphalt's marks: tar patch, crack, manhole and a newer patch, two across and two down.
+// The asphalt's marks: oil stains, a crack, a manhole and a newer patch (see createDecalAtlas).
 
 const CELL = SIZE / 2
 
@@ -179,21 +180,66 @@ function blobPath(context: CanvasRenderingContext2D, cx: number, cy: number, rad
   context.closePath()
 }
 
-function drawTar(context: CanvasRenderingContext2D, random: () => number) {
+/**
+ * A stain of oil and tar, soft at the edge (ART_DIRECTION.md: weathering, not
+ * stickers): a faint halo soaked into the asphalt, a denser core, and a few
+ * darker spots where it pooled, all part see-through so the road's grain shows.
+ * The decal material makes it look wet where it's dense (StreetEdges.tsx).
+ */
+function drawOilStain(context: CanvasRenderingContext2D, cx: number, cy: number, radius: number, random: () => number, stretch = 1) {
   context.save()
-  context.shadowColor = 'rgba(16,16,18,0.6)'
-  context.shadowBlur = 10
-  context.fillStyle = 'rgba(20,20,23,0.92)'
-  blobPath(context, CELL / 2, CELL / 2, CELL * 0.36, random, 0.55)
+  context.translate(cx, cy)
+  context.scale(stretch, 1)
+  const soft = (r: number, inner: number, outer: number) => {
+    const gradient = context.createRadialGradient(0, 0, r * 0.1, 0, 0, r)
+    gradient.addColorStop(0, `rgba(20,18,16,${inner})`)
+    gradient.addColorStop(0.65, `rgba(22,20,18,${(inner + outer) / 2})`)
+    gradient.addColorStop(1, `rgba(24,22,20,${outer})`)
+    return gradient
+  }
+  // The halo, where the oil has soaked out into the road.
+  context.fillStyle = soft(radius * 1.25, 0.28, 0)
+  blobPath(context, 0, 0, radius * 1.25, random, 0.5)
   context.fill()
-  // Drips and splashes round the main patch.
-  for (let i = 0; i < 6; i++) {
+  // The core.
+  context.fillStyle = soft(radius, 0.68, 0)
+  blobPath(context, 0, 0, radius, random, 0.55)
+  context.fill()
+  // Spots where it pooled, and drips round the edge.
+  for (let i = 0; i < 4; i++) {
     const angle = random() * Math.PI * 2
-    const distance = CELL * (0.32 + random() * 0.1)
-    blobPath(context, CELL / 2 + Math.cos(angle) * distance, CELL / 2 + Math.sin(angle) * distance, CELL * (0.03 + random() * 0.05), random, 0.4)
+    const distance = radius * random() * 0.5
+    const r = radius * (0.14 + random() * 0.18)
+    context.fillStyle = soft(r, 0.5, 0)
+    blobPath(context, Math.cos(angle) * distance, Math.sin(angle) * distance, r, random, 0.4)
+    context.fill()
+  }
+  for (let i = 0; i < 5; i++) {
+    const angle = random() * Math.PI * 2
+    const distance = radius * (0.95 + random() * 0.25)
+    const r = radius * (0.05 + random() * 0.07)
+    context.fillStyle = soft(r, 0.45, 0)
+    blobPath(context, Math.cos(angle) * distance, Math.sin(angle) * distance, r, random, 0.4)
     context.fill()
   }
   context.restore()
+}
+
+function drawTar(context: CanvasRenderingContext2D, random: () => number) {
+  drawOilStain(context, CELL / 2, CELL / 2, CELL * 0.3, random)
+}
+
+/** Smaller stains, where a parked bike or auto dripped: two round ones, and a trail of drops along the lane. */
+function drawSmallStains(context: CanvasRenderingContext2D, random: () => number) {
+  drawOilStain(context, CELL * 2.5, CELL / 2, CELL * 0.3, random)
+  drawOilStain(context, CELL * 3.5, CELL / 2, CELL * 0.24, random, 1.25)
+  // The trail: drops in a line, bigger where the vehicle stood longest.
+  for (let i = 0; i < 9; i++) {
+    const t = i / 8
+    const x = CELL * 2 + CELL * (0.12 + t * 0.76)
+    const y = CELL * 1.5 + (random() - 0.5) * CELL * 0.08
+    drawOilStain(context, x, y, CELL * (0.03 + 0.07 * Math.sin(t * Math.PI) ** 2 + random() * 0.02), random)
+  }
 }
 
 function drawCrack(context: CanvasRenderingContext2D, random: () => number) {
@@ -308,11 +354,15 @@ function drawNewPatch(context: CanvasRenderingContext2D, random: () => number) {
   context.putImageData(image, CELL, CELL)
 }
 
-/** The four marks on the asphalt, in one picture shared by them all. See DECAL in streetEdgeGeometry.ts. */
+/**
+ * The marks on the asphalt, in one picture shared by them all, four across and
+ * two down: an oil stain, a crack, two small stains; a manhole, a newer patch,
+ * a trail of drips, and a spare. See DECAL in streetEdgeGeometry.ts.
+ */
 export function createDecalAtlas(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
-  canvas.width = SIZE
-  canvas.height = SIZE
+  canvas.width = CELL * DECAL_COLUMNS
+  canvas.height = CELL * DECAL_ROWS
   const context = canvas.getContext('2d')
   if (context) {
     const random = createRandom(1309)
@@ -320,6 +370,7 @@ export function createDecalAtlas(): THREE.CanvasTexture {
     drawCrack(context, random)
     drawManhole(context, random)
     drawNewPatch(context, random)
+    drawSmallStains(context, random)
   }
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
