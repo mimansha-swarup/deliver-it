@@ -142,7 +142,7 @@ type GameState = Telemetry & {
   home: { x: number; z: number } | null
   /** Chat on the HUD while online: customers and Ravi, newest last. Not saved. */
   chat: ChatLine[]
-  /** What rough riding with the current order on board has added to the customer's frustration. */
+  /** How roughly the current order has been carried (customerChat.ts): judged at the door, not felt as mood. */
   rough: number
 
   startGame: () => void
@@ -420,6 +420,7 @@ export const useGameStore = create<GameState>()(
               nightPay,
               period: dayPeriod(liveSky.hours),
               frustration: state.frustration,
+              roughness: state.rough,
             }),
           }
         }),

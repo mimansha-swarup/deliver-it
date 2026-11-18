@@ -14,8 +14,6 @@ export type ChatStage =
   | 'quarter'
   | 'late'
   | 'veryLate'
-  | 'crash'
-  | 'bump'
   | 'fuming'
   | 'cancelled'
 
@@ -27,7 +25,6 @@ const pick = (lines: string[], seed: number) => lines[seed % lines.length]
 /** The customer's line for a stage. `seed` picks among the options, so two orders differ. */
 export function customerLine(stage: ChatStage, story: OrderStory, seed: number): string {
   const event = story.care === 'event'
-  const fragile = story.care === 'fragile'
   switch (stage) {
     case 'accepted':
       return story.note
@@ -47,12 +44,6 @@ export function customerLine(stage: ChatStage, story: OrderStory, seed: number):
         : pick(['It\'s late now. Please hurry.', 'The app said it would be here by now.', 'Still waiting...'], seed)
     case 'veryLate':
       return pick(['This is very late. I\'ll be rating this.', 'Thinking of cancelling, honestly.', 'Ayyo, so long! Not happy.'], seed)
-    case 'crash':
-      return fragile
-        ? pick(['Did you just fall?? Is my order okay?', 'Please tell me nothing broke!'], seed)
-        : pick(['Saw you stopped. All okay?', 'Careful on the road, no rush to fall!'], seed)
-    case 'bump':
-      return pick(['It\'s glass, please go slow on the humps!', 'Gently please, it\'s fragile!'], seed)
     case 'fuming':
       return pick(['Last chance. If it\'s not here soon I\'m cancelling.', 'I\'m about to cancel this order.'], seed)
     case 'cancelled':
@@ -61,11 +52,13 @@ export function customerLine(stage: ChatStage, story: OrderStory, seed: number):
 }
 
 /*
- * How frustrated the customer is, from 0 (happy) to 1. Time decides it: nothing until half the
- * timer shown to the rider is used, climbing to `atLimit` when it runs out, then on to 1 at three
- * times the timer, when the customer cancels. Only time can make them cancel. Riding roughly with
- * their order on board adds to it (a crash a lot, a hard landing a little, more for something
- * fragile), which costs stars and tip, but never takes it past `roughMost` on its own.
+ * How frustrated the customer is, from 0 (happy) to 1: time alone, as that's all they can see (the
+ * app's map and its estimate). Nothing until half the timer shown to the rider is used, `atLimit`
+ * when it runs out, then on to 1 at three times the timer, when they cancel.
+ *
+ * Rough riding with their order on board doesn't touch their mood, as they can't see it. It shows
+ * in the parcel when it arrives: `roughness` adds up (a crash a lot, a hard landing a little, more
+ * for something fragile), and at the door it costs stars and tip (`roughStars`).
  */
 export const FRUSTRATION = {
   /** Frustration when the timer runs out: event orders (a wedding, an interview) mind more. */
@@ -74,11 +67,18 @@ export const FRUSTRATION = {
   /** Shares of the timer: the customer warns at the first and cancels at the second. */
   warnAt: 2.5,
   cancelAt: 3,
+  /** Roughness added by a crash and by a hard landing (more if fragile) with the order on board. */
   crash: 0.15,
   knock: 0.04,
   fragileKnock: 0.08,
-  /** The most frustration can reach before the cancel time, however rough the ride. */
-  roughMost: 0.95,
+  /** Each this much roughness costs a star at the door, up to `roughMostStars`. */
+  roughPerStar: 0.15,
+  roughMostStars: 3,
+}
+
+/** Stars the parcel's condition costs at the door, from the roughness of the ride. */
+export function roughStars(roughness: number): number {
+  return Math.min(FRUSTRATION.roughMostStars, Math.floor(roughness / FRUSTRATION.roughPerStar + 1e-6))
 }
 
 /** The part of frustration that comes from time, given the share of the timer used: 1 at `cancelAt`. */

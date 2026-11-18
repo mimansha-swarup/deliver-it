@@ -134,11 +134,11 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       sinceTelemetry.current = 0
       // The customer's frustration: the clock and rough riding. Held still while the parcel changes hands.
       const riding = game.mission && (game.phase === 'toPickup' || game.phase === 'toCustomer')
-      // Only time makes the customer cancel, at three times the timer; rough riding can't on its own.
+      // The customer's mood is the wait alone: they can't see the ride. They cancel at three times the timer.
       const used = game.mission ? elapsed.current / game.mission.onTimeSeconds : 0
       const cancelNow = used >= FRUSTRATION.cancelAt
       let frustration = riding && game.mission
-        ? cancelNow ? 1 : Math.min(FRUSTRATION.roughMost, timeFrustration(used, game.mission.story.care) + game.rough)
+        ? timeFrustration(used, game.mission.story.care)
         : game.mission ? game.frustration : 0
       if (riding && cancelNow) {
         game.customerCancels()

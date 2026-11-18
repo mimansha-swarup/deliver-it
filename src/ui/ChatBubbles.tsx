@@ -57,9 +57,7 @@ function CustomerChatDirector() {
       if (phase === 'toCustomer' && previous.phase === 'collecting') say('collected')
       if (phase !== 'toPickup' && phase !== 'toCustomer') return
 
-      // Rough riding with their order on board, and a last warning before they cancel.
-      if (state.crashes > previous.crashes && phase === 'toCustomer') say('crash')
-      if (state.knocks > previous.knocks && mission.story.care === 'fragile') say('bump')
+      // Nothing about crashes or bumps: the customer can't see the ride, only the parcel at the door.
 
       const used = state.seconds / mission.onTimeSeconds
       if (used >= FRUSTRATION.warnAt) say('fuming')

@@ -8769,3 +8769,19 @@ Stars by time alone: 5–4★ within the timer, 3★ around 1.5–2×, 2★ by 2
 The customer cancelled at about 1.6× the timer, sooner if the ride was rough, which was too quick
 and too easily triggered by things they couldn't see. Three times the promised time is when a
 real customer gives up.
+
+## 2026-11-18: Entry 135, the customer can't see the ride
+
+### What I did
+- **Mood is the wait alone.** The frustration meter and the cancellation follow the timer only:
+  all a real customer has is the app's map and estimate.
+- **Rough riding shows at the door.** Crashes and hard landings with the order on board add up
+  as the parcel's condition (`roughness`), and at the handover it costs stars and tip: a star
+  per crash, or per two hard landings for something fragile (four otherwise), up to three
+  stars; the tip shrinks by up to half. The customer says what they see ("The box is all
+  dented!"), and the rating card still lists the crashes and bumps.
+- **No live chat about crashes or bumps** ("Did you just fall??" is gone): they couldn't know.
+
+### Why
+A customer reacting the instant you crashed broke the illusion. Now the ride still matters,
+but it comes back to you when you hand the parcel over, as it would.
