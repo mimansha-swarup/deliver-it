@@ -8,10 +8,15 @@ import { getTravelSpeed } from '../vehicle/ScooterController'
 import { tuning } from '../vehicle/tuning'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 
-const DISTANCE_BEHIND = 5.2
-const HEIGHT = 2.5
-const LOOK_AHEAD = 4
-const LOOK_HEIGHT = 1
+/*
+ * Low and close: just over the rider's helmet and a few metres back, so buildings and trees
+ * rise over the frame and the road ahead takes less of it. Any lower and the helmet sits on the
+ * vanishing point and hides the road ahead; at 2 m it's just under the horizon.
+ */
+const DISTANCE_BEHIND = 3.8
+const HEIGHT = 2
+const LOOK_AHEAD = 7
+const LOOK_HEIGHT = 1.5
 
 /** How fast the camera swings round behind the scooter. Higher is tighter. */
 const TURN_RESPONSE = 5
@@ -19,14 +24,21 @@ const TURN_RESPONSE = 5
 /** How long the camera takes to fly in from the title view, in seconds. */
 const INTRO_TIME = 1.6
 
-const BASE_FOV = 60
+/** Wider than it was from higher up, so a close camera still shows the street either side. */
+const BASE_FOV = 64
 /** Extra field of view at top speed, which makes speed feel faster. */
-const SPEED_FOV = 12
+const SPEED_FOV = 10
 const FOV_RESPONSE = 4
 const NITRO_FOV = 6
 
 /** How far the camera swings toward the direction of travel in a slide, from 0 to 1. */
 const SLIDE_FOLLOW = 0.65
+
+/** In a turn the camera rolls with the scooter's lean, this share of it, and at most this far, in radians. */
+const SWAY_SHARE = 0.18
+const SWAY_MAX = 0.06
+/** How quickly the roll follows the lean: slower than the lean, so it sways rather than snaps. */
+const SWAY_RESPONSE = 2.5
 
 /** How close the camera may come to the scooter when backed against a wall. */
 const MIN_DISTANCE = 1.4
@@ -88,6 +100,7 @@ export function FollowCamera({
   const shotAmount = useRef(0)
   /** 0 follows the scooter, 1 follows the rider, while they're off it after a crash. */
   const onRider = useRef(0)
+  const sway = useRef(0)
 
   useFrame(({ camera, clock }, delta) => {
     const state = scooter.current
@@ -157,6 +170,10 @@ export function FollowCamera({
     }
 
     camera.lookAt(lookX, lookY, lookZ)
+    // A gentle roll into turns, with the scooter's lean: none in a set shot or while the rider is off.
+    const swayTarget = Math.max(-SWAY_MAX, Math.min(SWAY_MAX, state.lean * SWAY_SHARE)) * (1 - follow) * (1 - amount)
+    sway.current += (swayTarget - sway.current) * (1 - Math.exp(-SWAY_RESPONSE * delta))
+    camera.rotateZ(sway.current)
     // Debug: a camera held still, for taking pictures (`__deliverItPhoto` with ?debug).
     if (photo.active) {
       camera.position.set(...photo.position)

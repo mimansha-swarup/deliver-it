@@ -9208,3 +9208,25 @@ I first drew the overlay 0.35 m up, to sit over the raised footpaths, and it sho
 across the asphalt of Sarjapur Road. From a rider's eye height, about 1.5 m, a plane 0.35 m up
 lands about 30% further away than the ground it marks. Drawn just over the road, through
 everything, and checked from above, the medians on the map are where the drawn medians are.
+
+## 2026-11-18: Entry 160, a lower, closer camera
+
+### What I did
+The follow camera (`src/camera/FollowCamera.tsx`) sits 2 m up and 3.8 m behind (was 2.5 m and
+5.2 m), looking at a point 7 m ahead at 1.5 m. Buildings and trees now rise over the frame,
+and the road ahead takes less of it. The field of view starts at 64° (was 60°), so a close
+camera still shows both sides of the street, and still widens with speed, by up to 10° (was 12°),
+plus 6° on nitro. In a turn the camera rolls gently with the scooter's lean: 18% of it, at most
+3.4°, and slower than the lean, so it sways rather than snaps. There's no roll in set shots or
+while the rider is off the scooter.
+
+### Lesson: the helmet and the vanishing point
+At 1.8 m, about head height, the helmet sat right on the vanishing point and hid the road
+ahead. At 2 m it's just under the horizon.
+
+### Performance
+Riding Sarjapur Road, measured back to back with a build from before the world pass on the
+same machine: High 60 fps, no frames over 20 ms (before: 60, none). Low 54 fps with 7 frames
+over 20 ms (before: 52 fps, 9). The Low hitches were there before; the machine was busier
+than for the earlier baselines (the dev server and another game tab were open). The ride now
+starts 0.5–0.9 s later than before the world pass, most of it the building setback (entry 157).
