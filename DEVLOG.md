@@ -9444,3 +9444,28 @@ All in the shaders, so it costs no textures and Low has it too.
 High 60 fps, 5.0 ms of work (before: 60 fps, 4.8 ms). Low 60 fps, 4.4 ms (before: 54 fps
 with this machine's hitches, 4.1 ms). One run read High at 32 fps under load and its repeat
 read 60.
+
+## 2026-11-18: Entry 168, a stronger golden hour
+
+### What I did
+At 17:30, a first visit's start, 27th Main looked overcast and 13th Cross already dusky. The real
+sun was only 6° up, so the sunlight had faded to 60% and its colour was a pale amber, and the fill
+from the sky was nearly as strong as the sun. All of it is in `getSkyLook` (skyLogic.ts), as an
+`evening` share (16:15 to 18:25, peaking 16:55 to 18:05, clear skies only):
+- **The sun keeps its strength** until it's nearly down, and is 35% stronger at the peak.
+- **A deep orange light**: 70% of the way to `[1, 0.56, 0.27]`.
+- **Its path swings** (`eveningSwing`): the evening sun crosses HSR's grid of streets at about 30°
+  instead of running straight down the east-west ones, where both sides of the street were in
+  shade. The sky's sun and the light swing together, so the glow in the haze and the shadows
+  agree. Tried the other side first: on 13th Cross the tall block on the left then shaded the whole street.
+- **The light comes from about 15° up** (11.5° before, at the lowest the light was allowed): any lower
+  and the street stays in the shade of the houses, with no sun on the road or the shopfronts.
+  The sun in the sky is still at its real height.
+- **A lower, bluer fill**: 72% as strong, 60% of the way to a sky blue, and less warm bounce off
+  the ground, so the shade reads cool against the orange.
+- **The sky overhead** goes 45% back towards a clear blue, so it doesn't read as overcast.
+
+Screenshots at 17:30 on High and Low, before and after: `world-pass.local/shots/fu1-before`, `fu1-d`.
+
+### Performance
+No new light, pass or texture: the same shader work as before.

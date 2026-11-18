@@ -139,6 +139,39 @@ export const CLEAR_SKY = {
   morningFill: 0.4,
   morningFillColor: [1, 0.88, 0.74] as Rgb,
   morningHorizon: 0.35,
+  /**
+   * The evening's golden hour (about 16:45 to 18:15, the first visit's 17:30): a strong, deep orange
+   * sun low across the streets, so facades facing it glow and long shadows reach over the road, with
+   * a lower, bluer fill so the shade reads cool against it. Without this the real sun, only 6° up at
+   * 17:30, gave a weak light and a flat fill that read as overcast, or as dusk already.
+   */
+  eveningSunColor: [1, 0.56, 0.27] as Rgb,
+  /** How far the light's colour moves to `eveningSunColor` at the peak. */
+  eveningWarmth: 0.7,
+  /** The sun's light, as a share more, at the peak. */
+  eveningSun: 0.35,
+  /** The light comes from this low (a sine of its height: about 15°, against 25° or more the rest of the day), for long shadows. */
+  eveningLightHeight: 0.26,
+  /**
+   * The sun's path swings this far sideways (as `z` in its direction, 0.45 the rest of the day), so the
+   * evening sun crosses HSR's grid of streets at about 40° instead of running straight down the
+   * east-west ones: one side of every street gets the light, and shadows fall across the road.
+   */
+  eveningSwing: -0.6,
+  /** The fill, as a share of what it would be, and moved this far towards `eveningFillColor`. */
+  eveningAmbient: 0.72,
+  eveningFill: 0.6,
+  eveningFillColor: [0.52, 0.66, 1] as Rgb,
+  /** The warm bounce off the ground, as a share of what it would be. */
+  eveningBounce: 0.7,
+  /** The sky overhead moves this far back to a clear blue, so it doesn't read as overcast. */
+  eveningZenith: 0.45,
+  eveningZenithColor: [0.18, 0.33, 0.66] as Rgb,
+}
+
+/** 1 through the evening's golden hour, about 16:45 to 18:15, easing in and out. */
+function eveningHours(hours: number): number {
+  return smoothstep(16.25, 16.9, hours) * (1 - smoothstep(18.05, 18.4, hours))
 }
 
 /** 1 through the morning, 6:30 to 9:30, easing in and out over half an hour. */
@@ -237,11 +270,13 @@ const NIGHT_HAZE = 0.25
 
 /** Works out the colours and lights for a moment of the day. */
 export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
+  const clear = 1 - smoothstep(CLEAR_SKY.cloudsFrom, CLEAR_SKY.cloudsTo, clouds)
+  const evening = eveningHours(hours) * clear
   // The sun rises at 6, is highest at 12 and sets at 18.
   const angle = ((hours - 6) / 12) * Math.PI
   const x = Math.cos(angle)
   const y = Math.sin(angle) * SKY_SUN_CLIMB
-  const z = 0.45
+  const z = mix(0.45, CLEAR_SKY.eveningSwing, evening)
   const length = Math.hypot(x, y, z)
   const sunDirection: [number, number, number] = [x / length, y / length, z / length]
   const sunHeight = sunDirection[1]
@@ -260,10 +295,10 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   horizon = mixColor(horizon, DUSK_HORIZON, dusk)
 
   // A clear sky is a deeper blue overhead (not at the horizon, which stays hazy).
-  const clear = 1 - smoothstep(CLEAR_SKY.cloudsFrom, CLEAR_SKY.cloudsTo, clouds)
   const golden = goldenHours(hours) * clear
   const morning = morningHours(hours) * clear
   zenith = mixColor(zenith, CLEAR_SKY.zenith, clear * daylight * (1 - dusk))
+  zenith = mixColor(zenith, CLEAR_SKY.eveningZenithColor, evening * CLEAR_SKY.eveningZenith)
   horizon = mixColor(horizon, DUSK_HORIZON, morning * CLEAR_SKY.morningHorizon)
 
   // Cloud cover greys everything, and dims it after dark too.
@@ -274,11 +309,12 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   horizon = mixColor(horizon, overcast, cover * 0.9)
 
   // The sun and moon take turns. Both are at zero at the moment they swap.
-  const sunUp = smoothstep(0, 0.18, sunHeight)
+  // In the evening's golden hour the sun keeps its strength until it's nearly down.
+  const sunUp = mix(smoothstep(0, 0.18, sunHeight), smoothstep(0, 0.05, sunHeight), evening)
   const moonUp = smoothstep(0, 0.18, -sunHeight)
   const isDay = sunHeight >= 0
   const lit = isDay ? lightSun : ([-sunDirection[0], -sunDirection[1], sunDirection[2]] as const)
-  const lightY = Math.max(lit[1], SKY_RULES.minLightHeight)
+  const lightY = Math.max(lit[1], mix(SKY_RULES.minLightHeight, CLEAR_SKY.eveningLightHeight, isDay ? evening : 0))
   const lightLength = Math.hypot(lit[0], lightY, lit[2])
 
   return {
@@ -286,22 +322,35 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
     lightDirection: [lit[0] / lightLength, lightY / lightLength, lit[2] / lightLength],
     lightColor: isDay
       ? mixColor(
-          mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])),
-          CLEAR_SKY.sunColor,
-          Math.min(1, clear * CLEAR_SKY.sunWarmth + golden * CLEAR_SKY.goldenWarmth + morning * CLEAR_SKY.morningWarmth),
+          mixColor(
+            mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])),
+            CLEAR_SKY.sunColor,
+            Math.min(1, clear * CLEAR_SKY.sunWarmth + golden * CLEAR_SKY.goldenWarmth + morning * CLEAR_SKY.morningWarmth),
+          ),
+          CLEAR_SKY.eveningSunColor,
+          evening * CLEAR_SKY.eveningWarmth,
         )
       : MOONLIGHT,
     lightIntensity:
-      (isDay ? sunUp * SUN_INTENSITY * mix(1, CLEAR_SKY.sunBoost, clear) * (1 + golden * CLEAR_SKY.goldenSun) : moonUp * MOON_INTENSITY) *
+      (isDay ? sunUp * SUN_INTENSITY * mix(1, CLEAR_SKY.sunBoost, clear) * (1 + golden * CLEAR_SKY.goldenSun) * (1 + evening * CLEAR_SKY.eveningSun) : moonUp * MOON_INTENSITY) *
       (1 - cover * 0.72),
     shadowStrength: 1 - cover * 0.85,
     ambientIntensity:
       mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) *
       (1 - cover * 0.12) *
       mix(1, CLEAR_SKY.ambient, clear * daylight) *
-      mix(1, CLEAR_SKY.goldenAmbient, golden * daylight),
-    ambientColor: mixColor(mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight), CLEAR_SKY.morningFillColor, morning * CLEAR_SKY.morningFill),
-    groundColor: mixColor(mixColor(NIGHT_GROUND, DAY_GROUND, daylight), [0, 0, 0], (1 - CLEAR_SKY.goldenBounce) * golden * daylight),
+      mix(1, CLEAR_SKY.goldenAmbient, golden * daylight) *
+      mix(1, CLEAR_SKY.eveningAmbient, evening),
+    ambientColor: mixColor(
+      mixColor(mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight), CLEAR_SKY.morningFillColor, morning * CLEAR_SKY.morningFill),
+      CLEAR_SKY.eveningFillColor,
+      evening * CLEAR_SKY.eveningFill,
+    ),
+    groundColor: mixColor(
+      mixColor(mixColor(NIGHT_GROUND, DAY_GROUND, mix(daylight, 1, evening)), [0, 0, 0], (1 - CLEAR_SKY.goldenBounce) * golden * daylight),
+      [0, 0, 0],
+      (1 - CLEAR_SKY.eveningBounce) * evening,
+    ),
     // Thickest with the sun low, thinner at noon and after dark. Cloud thickens it too.
     haze: Math.min(
       1,
