@@ -10,7 +10,8 @@ const DEFAULT_ROAD_WIDTH = 5
 const ROAD_WIDTHS: Record<string, number> = {
   secondary: 9,
   tertiary: 7,
-  residential: 5,
+  // Residential lanes are narrow: two cars pass with care. Traffic keeps 1.4 m either side of the middle.
+  residential: 4.6,
   service: 4,
   track: 3,
 }

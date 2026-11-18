@@ -79,7 +79,7 @@ export const STREET_PRESETS: Record<StreetPresetName, StreetPreset> = {
   },
   residential: {
     name: 'residential',
-    footpath: 1.8,
+    footpath: 1.5,
     kerb: { rise: 0.12, width: 0.18, painted: false },
     median: null,
     marks: { every: 6, share: 0.4 },

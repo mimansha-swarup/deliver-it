@@ -9379,3 +9379,21 @@ The tender coconut cart was already there (street life's carts).
 ### Performance (Sarjapur Road, 9:00)
 Low 60 fps, 4.4 ms of work a frame. High 53 fps with the intermittent hitches this busy
 machine has shown since the start (5.2 ms of work).
+
+## 2026-11-18: Entry 165, closer-packed streets
+
+### What I did
+- Residential lanes are 4.6 m wide (were 5): two cars pass with care, and traffic, which
+  keeps 1.4 m either side of the middle, still fits. Their footpaths are 1.5 m (were 1.8).
+- Infill houses stand behind a 2.2 m yard (was 3 m), still room for a car, and neighbours are
+  0.4 to 1.2 m apart (were 0.8 to 2). Shops and showrooms close up too: 0.1 to 0.5 m apart on
+  shop streets, 0.1 to 0.6 m on main roads, set back 0.4 and 0.5 m.
+
+7,690 infill buildings (was 7,425). With the narrower lanes, fewer mapped buildings reached
+over the road and footpath: 504 removed (was 670), 6,419 trimmed (was 6,950).
+
+### Not done: shortening long blocks
+The city is drawn to OSM's real coordinates, and the roads, the delivery addresses, the saves
+and the phone's map all depend on them. Shortening a block would mean bending the map
+under all of them. The long blocks are filled in instead: denser infill, avenue trees, story
+props and pocket parks along them.
