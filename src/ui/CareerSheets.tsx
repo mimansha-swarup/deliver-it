@@ -49,7 +49,7 @@ function formatProgress(kind: keyof typeof DAILY_GOALS, progress: number, target
   return `${Math.floor(progress)}/${target}`
 }
 
-/** Today's shift: three goals with progress bars, the bonus, and the streak. */
+/** Today's daily challenges: three small goals with progress bars, the bonus, and the streak. */
 export function TodaySheet() {
   const daily = useGameStore((state) => state.daily)
   const streak = useGameStore((state) => state.streak)
@@ -57,19 +57,19 @@ export function TodaySheet() {
   if (!daily) {
     return (
       <section className="phone-sheet">
-        <p className="phone-objective">Today's shift starts when you set off.</p>
+        <p className="phone-objective">Today's challenges start when you set off.</p>
       </section>
     )
   }
 
-  // The bonus if today's shift is finished: higher for each day in a row, up to a cap.
+  // The bonus if today's daily challenges is finished: higher for each day in a row, up to a cap.
   const continues = daily.done ? streak.days : streak.days + 1
   const bonus = DAILY_BONUS.credits + Math.min((continues - 1) * DAILY_BONUS.perStreakDay, DAILY_BONUS.maxStreakBonus)
 
   return (
     <section className="phone-sheet phone-today">
       <p className="phone-sheet-top">
-        <span className="phone-objective">Today's shift</span>
+        <span className="phone-objective">Daily challenges</span>
         <span className="today-streak">{streak.days > 0 ? `${streak.days}-day streak` : 'No streak yet'}</span>
       </p>
       <ul className="today-goals">

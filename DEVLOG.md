@@ -8922,3 +8922,14 @@ The full map always fills its panel now. Its furthest zoom is where HSR just cov
 (it was where HSR just fitted inside it, leaving the rest empty), and the view is kept on the
 map: centred on the rider where it can be, never so near an edge that empty ground shows beyond
 it. Scroll to zoom about the pointer and drag to move, both within those limits.
+
+## 2026-11-18: Entry 147, one goal system: the shift goal, plus quiet daily challenges
+
+### What I did
+There were two: the old daily "shift" (three goals for the calendar day, announced by Ravi on
+every new day: "Three goals. All the best!", which could arrive alongside the new shift goal)
+and the optional shift goal set on going online. The shift goal stays as the one Ravi talks
+about. The old three are now **daily challenges**: shown quietly in the phone, never announced,
+and Ravi only speaks when all three are done ("Daily challenges done! +N credits"), with the same
+bonus and streak as before. Old saves' "Three goals" messages are cleared when the game starts.
+Teaching moves to the tutorial (Entry 150).

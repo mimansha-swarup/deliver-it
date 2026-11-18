@@ -199,7 +199,7 @@ export function advanceDaily(shift: DailyShift, event: CareerEvent) {
   return { shift: { ...shift, goals, done }, finished: done }
 }
 
-/** The streak after finishing today's shift, and the bonus it pays. */
+/** The streak after finishing today's daily challenges, and the bonus it pays. */
 export function finishShift(streak: Streak, date: string) {
   const days = streak.lastDate === dayBefore(date) ? streak.days + 1 : 1
   const credits = DAILY_BONUS.credits + Math.min((days - 1) * DAILY_BONUS.perStreakDay, DAILY_BONUS.maxStreakBonus)

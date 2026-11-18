@@ -123,7 +123,7 @@ type GameState = Telemetry & {
   helmetId: string
   ownedPaints: string[]
   ownedHelmets: string[]
-  /** The career chapter, today's shift, the streak of shifts finished, and Ravi's messages, newest first. */
+  /** The career chapter, today's daily challenges, the streak of shifts finished, and Ravi's messages, newest first. */
   career: CareerProgress
   daily: DailyShift | null
   streak: Streak
@@ -240,18 +240,18 @@ function addMessages(messages: Message[], lines: string[]): Message[] {
   return [...added, ...messages].slice(0, MESSAGES_KEPT)
 }
 
-/** A new calendar day brings a new shift, with a message from Ravi. */
+/**
+ * A new calendar day brings new daily challenges: three small goals, shown quietly in the
+ * Deliver It app. Ravi doesn't announce them: the shift goal, set on going online, is the one he talks about.
+ */
 function refreshDaily(state: GameState): Partial<GameState> {
   const today = todayKey()
   if (state.daily?.date === today) return {}
-  return {
-    daily: createDailyShift(today, levelFromXp(state.xp)),
-    messages: addMessages(state.messages, ["Today's shift is on your phone, maga. Three goals. All the best!"]),
-  }
+  return { daily: createDailyShift(today, levelFromXp(state.xp)) }
 }
 
 /**
- * Counts something the rider did towards the career and today's shift, and
+ * Counts something the rider did towards the career and today's daily challenges, and
  * pays out whatever that finishes: a chapter's credits and paint, or the
  * shift's bonus, which grows with the streak.
  */
@@ -280,7 +280,7 @@ function applyEvent(state: GameState, event: CareerEvent): Partial<GameState> {
       credits += shift.credits
       xp += shift.xp
       const days = streak.days > 1 ? ` ${streak.days} days in a row, sakkath!` : ''
-      messages = addMessages(messages, [`Shift done! +${shift.credits} credits sent.${days} Nale sigona!`])
+      messages = addMessages(messages, [`Daily challenges done! +${shift.credits} credits sent.${days} Nale sigona!`])
     }
   }
 
@@ -410,10 +410,13 @@ export const useGameStore = create<GameState>()(
       graceLeft: 0,
       fumingLeft: 0,
 
-      // Starting the career and today's shift happens the first time the rider sets off.
+      // Starting the career and today's daily challenges happens the first time the rider sets off.
       startGame: () =>
         set((state) => {
           const changes: Partial<GameState> = { started: true, ...refreshDaily(state) }
+          // Saves from before the daily challenges went quiet hold Ravi's old daily announcements: drop them.
+          const quiet = state.messages.filter((message) => !message.text.startsWith("Today's shift is on your phone"))
+          if (quiet.length !== state.messages.length) changes.messages = quiet
           if (!state.career.started) {
             changes.career = { ...state.career, started: true }
             changes.messages = addMessages(changes.messages ?? state.messages, [CHAPTER_ONE.intro])
@@ -484,7 +487,7 @@ export const useGameStore = create<GameState>()(
             xp: state.xp + reward.xp,
           }
           const earned = paid.credits - state.credits
-          // The delivery also counts towards the career and today's shift, which may pay more.
+          // The delivery also counts towards the career and today's daily challenges, which may pay more.
           const event: CareerEvent = {
             type: 'delivery',
             reward,

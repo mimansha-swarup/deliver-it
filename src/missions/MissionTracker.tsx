@@ -113,7 +113,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       clearLiveRoute()
     }
 
-    // Riding and drift boosts count towards today's shift.
+    // Riding and drift boosts count towards today's daily challenges.
     if (game.started) {
       ridden.current += travelSpeed * frameTime
       sinceRideReport.current += frameTime
