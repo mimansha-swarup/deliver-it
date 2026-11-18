@@ -2,21 +2,26 @@ import * as THREE from 'three'
 
 /*
  * The paper posters pasted on HSR's compound walls, drawn in code: tuition and
- * yoga classes, to-let notices, a film, a festival greeting, packers and movers.
- * One picture of 8, 4 across and 2 down. Every name, number and title is made
- * up, and there are no political parties or real people (ART_DIRECTION.md, and
- * the project's no-real-brands rule). Phone numbers use the 90000 range, which
- * isn't given out.
+ * yoga classes, to-let notices, a film, a festival greeting, packers and movers,
+ * a tuition centre's toppers with their photos, a lost dog, a ward election
+ * poster and a PG room for rent. One picture of 12, 4 across and 3 down. Every
+ * name, number, title, face and party is made up: the election poster's party
+ * and candidate don't exist, and its symbol isn't any real party's
+ * (ART_DIRECTION.md, and the project's no-real-brands rule). Phone numbers use
+ * the 90000 range, which isn't given out.
  */
 
 export const POSTER_COLUMNS = 4
-export const POSTER_ROWS = 2
+export const POSTER_ROWS = 3
+export const POSTER_COUNT = POSTER_COLUMNS * POSTER_ROWS
 const WIDTH = 256
 const HEIGHT = 360
 
 type Poster = {
   background: [string, string]
   lines: { text: string; size: number; color: string; weight?: number }[]
+  /** Pictures drawn under the text: faces in a row, one face, or a dog, between `top` and `bottom` (0 to 1 down the poster). */
+  picture?: { kind: 'faces' | 'face' | 'dog' | 'symbol'; top: number; bottom: number; count?: number }
 }
 
 const POSTERS: Poster[] = [
@@ -100,7 +105,125 @@ const POSTERS: Poster[] = [
       { text: '90000 66027', size: 24, color: '#6a1b4d' },
     ],
   },
+  {
+    background: ['#fff7e0', '#ffe2a8'],
+    picture: { kind: 'faces', top: 0.36, bottom: 0.62, count: 3 },
+    lines: [
+      { text: 'VIDYA TUTORIALS', size: 28, color: '#0d3c8c', weight: 900 },
+      { text: 'Our SSLC Toppers', size: 22, color: '#b0151b' },
+      { text: '', size: 10, color: '#000' },
+      { text: '', size: 10, color: '#000' },
+      { text: '98% · 97% · 96%', size: 22, color: '#0d3c8c', weight: 900 },
+      { text: 'Admissions open · 90000 24410', size: 16, color: '#222' },
+    ],
+  },
+  {
+    background: ['#ffffff', '#f2f2f2'],
+    picture: { kind: 'dog', top: 0.26, bottom: 0.6 },
+    lines: [
+      { text: 'LOST DOG', size: 46, color: '#c01818', weight: 900 },
+      { text: '', size: 10, color: '#000' },
+      { text: '', size: 10, color: '#000' },
+      { text: '"Bruno" · brown, friendly', size: 20, color: '#111' },
+      { text: 'Reward! 90000 81172', size: 24, color: '#c01818', weight: 900 },
+    ],
+  },
+  {
+    background: ['#f4f9ef', '#cfe8c0'],
+    picture: { kind: 'face', top: 0.2, bottom: 0.52 },
+    lines: [
+      { text: 'Ward 174 · Vote for', size: 20, color: '#1d5c22' },
+      { text: '', size: 10, color: '#000' },
+      { text: '', size: 10, color: '#000' },
+      { text: 'Shri K. Manjunatha', size: 28, color: '#1d5c22', weight: 900 },
+      { text: 'Namma Nagara Paksha', size: 20, color: '#7a4a10' },
+      { text: 'ಮತ ನೀಡಿ · Symbol: Street Lamp', size: 18, color: '#1d5c22' },
+    ],
+  },
+  {
+    background: ['#e9f4ff', '#c4dcf5'],
+    lines: [
+      { text: 'PG FOR GENTS', size: 34, color: '#0d3c8c', weight: 900 },
+      { text: 'Room for rent', size: 26, color: '#c01818' },
+      { text: 'Food · Wi-Fi · Washing', size: 20, color: '#222' },
+      { text: 'Near 27th Main', size: 22, color: '#222' },
+      { text: 'ಬಾಡಿಗೆಗೆ ಕೊಠಡಿ', size: 26, color: '#0d3c8c' },
+      { text: '90000 47705', size: 24, color: '#c01818' },
+    ],
+  },
 ]
+
+const SKIN = ['#8d5a3c', '#a86f4c', '#6e4630', '#b9825d']
+
+/** A passport-style photo: a face with dark hair on shoulders, in a pale frame. */
+function drawFace(context: CanvasRenderingContext2D, cx: number, cy: number, size: number, seed: number) {
+  context.fillStyle = '#f3f3f3'
+  context.fillRect(cx - size * 0.55, cy - size * 0.7, size * 1.1, size * 1.4)
+  context.fillStyle = seed % 2 ? '#2f5d9a' : '#ffffff'
+  context.beginPath()
+  context.ellipse(cx, cy + size * 0.62, size * 0.5, size * 0.3, 0, Math.PI, 0)
+  context.fill()
+  context.fillStyle = SKIN[seed % SKIN.length]
+  context.beginPath()
+  context.ellipse(cx, cy, size * 0.27, size * 0.34, 0, 0, Math.PI * 2)
+  context.fill()
+  context.fillStyle = '#1b1410'
+  context.beginPath()
+  context.ellipse(cx, cy - size * 0.2, size * 0.29, size * 0.18, 0, Math.PI, 0)
+  context.fill()
+}
+
+function drawPicture(context: CanvasRenderingContext2D, picture: NonNullable<Poster['picture']>, x: number, y: number) {
+  const top = y + HEIGHT * picture.top
+  const height = HEIGHT * (picture.bottom - picture.top)
+  const middle = top + height / 2
+  if (picture.kind === 'faces') {
+    const count = picture.count ?? 3
+    for (let i = 0; i < count; i++) drawFace(context, x + (WIDTH * (i + 0.5)) / count, middle, height * 0.62, i + 1)
+  } else if (picture.kind === 'face') {
+    drawFace(context, x + WIDTH * 0.38, middle, height * 0.75, 2)
+    // The made-up party's symbol beside the photo: a street lamp in a circle (no real party's).
+    const sx = x + WIDTH * 0.75
+    context.strokeStyle = '#1d5c22'
+    context.lineWidth = 4
+    context.beginPath()
+    context.arc(sx, middle, 34, 0, Math.PI * 2)
+    context.stroke()
+    context.beginPath()
+    context.moveTo(sx - 6, middle + 24)
+    context.lineTo(sx - 6, middle - 18)
+    context.lineTo(sx + 14, middle - 18)
+    context.stroke()
+    context.fillStyle = '#e8b52a'
+    context.beginPath()
+    context.ellipse(sx + 14, middle - 12, 8, 5, 0, 0, Math.PI * 2)
+    context.fill()
+  } else if (picture.kind === 'dog') {
+    // A friendly brown dog, side on.
+    const cx = x + WIDTH / 2
+    context.fillStyle = '#8a5a2b'
+    context.beginPath()
+    context.ellipse(cx, middle + 6, 62, 28, 0, 0, Math.PI * 2)
+    context.fill()
+    context.beginPath()
+    context.ellipse(cx + 66, middle - 22, 26, 22, 0, 0, Math.PI * 2)
+    context.fill()
+    context.fillRect(cx + 78, middle - 24, 30, 14)
+    for (const dx of [-44, -22, 26, 46]) context.fillRect(cx + dx, middle + 20, 10, 34)
+    context.fillStyle = '#5c3a18'
+    context.beginPath()
+    context.ellipse(cx + 54, middle - 38, 9, 16, -0.4, 0, Math.PI * 2)
+    context.fill()
+    context.strokeStyle = '#8a5a2b'
+    context.lineWidth = 8
+    context.beginPath()
+    context.moveTo(cx - 60, middle)
+    context.quadraticCurveTo(cx - 92, middle - 20, cx - 84, middle - 44)
+    context.stroke()
+    context.fillStyle = '#c01818'
+    context.fillRect(cx + 48, middle - 6, 22, 6)
+  }
+}
 
 function drawPoster(context: CanvasRenderingContext2D, poster: Poster, x: number, y: number) {
   const gradient = context.createLinearGradient(0, y, 0, y + HEIGHT)
@@ -110,6 +233,7 @@ function drawPoster(context: CanvasRenderingContext2D, poster: Poster, x: number
   context.fillRect(x + 4, y + 4, WIDTH - 8, HEIGHT - 8)
   context.textAlign = 'center'
   context.textBaseline = 'middle'
+  if (poster.picture) drawPicture(context, poster.picture, x, y)
   const gap = (HEIGHT - 40) / poster.lines.length
   poster.lines.forEach(({ text, size, color, weight = 700 }, index) => {
     context.fillStyle = color

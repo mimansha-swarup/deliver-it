@@ -9340,3 +9340,42 @@ the GPU's work included, on Sarjapur Road: High 16.1 ms and Low 11.0 ms with eve
 The build from before the world pass measured 18.5 and 11.2 ms. Switching single features off
 moved the numbers more by noise than by their own cost, so none of them is measurably expensive.
 PostEffects' debug toggle (`__deliverItPost`) now switches the sun's haze and shafts too.
+
+## 2026-11-18: Entry 164, the clutter that tells a street's story
+
+### What I did
+- **Posters** (posters.ts): the wall-poster sheet is now 12 posters, 4 by 3. The new ones are
+  a tuition centre's SSLC toppers with their photos, a lost dog ("Bruno", reward), a ward
+  election poster and a PG room for rent. The election poster's candidate ("Shri K. Manjunatha")
+  and party ("Namma Nagara Paksha") are made up, and so is its symbol, a street lamp. I first
+  drew a bicycle and changed it, as that's a real party's symbol. Half of compound walls carry a
+  poster by the gate (was 35%).
+- **Story props** (`storyPlacement.ts`, drawn by `StoryProps.tsx`), seeded and checked on the
+  surface map, each kind one instanced shape of a few vertex-coloured boxes, drawn only near
+  the rider on every quality (35 m for newspapers up to 220 m for transformers):
+
+| | How placed | Count |
+| --- | --- | --- |
+| stray dogs | one or two every ~60 m of street, by the wall, in six coats | 1,298 |
+| cows | at the kerb of residential and main roads, every ~450 m, solid | 58 |
+| plastic chairs | two stacked outside 14% of shops | 888 |
+| flower pots | three by the door of 16% of shops | 1,168 |
+| garbage piles | every ~140 m, on open ground past the footpath or by a wall | 435 |
+| cycles | leaning on the compound wall by 10% of house gates | 301 |
+| newspapers | rolled at 30% of house gates | 3,334 |
+| transformers | on two concrete poles beside 5% of lamp posts, solid | 218 |
+| cable coils | hung on 22% of lamp posts | 965 |
+
+3,486 spots were refused by the surface map, a wall or something already there.
+
+The tender coconut cart was already there (street life's carts).
+
+### Lessons
+- `storyProps.ts` and `StoryProps.tsx` are one file on a Mac's disk. The placement is
+  `storyPlacement.ts`.
+- A shot taken half a second after moving the rider caught balconies and pots floating
+  before the buildings under them had streamed in. Shots that move the rider now wait 3 s.
+
+### Performance (Sarjapur Road, 9:00)
+Low 60 fps, 4.4 ms of work a frame. High 53 fps with the intermittent hitches this busy
+machine has shown since the start (5.2 ms of work).

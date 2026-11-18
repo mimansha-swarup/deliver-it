@@ -25,6 +25,7 @@ export const WORLD_PARTS = {
   darkStore: 'The dark store',
   props: 'Trees and lamps',
   streetLife: 'Street life',
+  story: 'Dogs, chairs and clutter',
   cables: 'Cables',
   shops: 'Shops',
   landmarks: 'Shop signs',

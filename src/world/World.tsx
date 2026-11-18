@@ -45,6 +45,8 @@ import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { createSurfaceMap, worldSurface } from './surfaceMap'
 import { setBuildingsBack } from './buildingSetback'
+import { placeStoryProps } from './storyPlacement'
+import { StoryProps } from './StoryProps'
 import { lonLatToWorld } from './worldUtils'
 import { SurfaceDebug } from '../dev/SurfaceDebug'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
@@ -200,7 +202,12 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   props.trees.push(...plantContextTrees({ gates: houses.gates, temples: worship, junctions, roads: roadIndex, collisions }))
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
-  lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}`)
+  // The small things that tell a street's story: dogs, a cow, chairs, pots, garbage, cycles, papers, transformers.
+  const { story, refused: storyRefused } = placeStoryProps({ roads: data.roads, index: roadIndex, collisions, props, shopFronts, gates: houses.gates })
+    // Debug: where the story props are, to go and look at them from the console.
+  if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
+  worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
+  lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
   const edges = buildStreetEdges({
     roads: data.roads,
@@ -284,7 +291,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls, surfaceMap }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls, surfaceMap, story }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -353,7 +360,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -389,6 +396,7 @@ export function World() {
         <Part name="darkStore"><DarkStores stores={stores} /></Part>
         <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} bushes={props.bushes} /></Part>
         <Part name="streetLife"><StreetLife life={life} kolams={houses.kolams} /></Part>
+        <Part name="story"><StoryProps story={story} /></Part>
         <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
         <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
         <Part name="shopPeople"><ShopPeople people={shopPeople} /></Part>

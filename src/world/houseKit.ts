@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { POSTER_ASPECT, POSTER_COLUMNS, POSTER_ROWS } from './posters'
+import { POSTER_ASPECT, POSTER_COLUMNS, POSTER_COUNT, POSTER_ROWS } from './posters'
 import { FLOOR_HEIGHT, getFloors, getKitColor, hashString, hasStilts } from './buildingData'
 import { addWall, copyCollisionWorld, isNearBuilding, type CollisionWorld } from './collision'
 import { chunkCentre, chunkKey } from './chunks'
@@ -333,7 +333,7 @@ class PosterBuilder {
 
 const POSTER = { height: 0.7, low: 0.55 }
 /** Out of 100: compound walls with a poster beside the gate, and those with pots on the wall either side. */
-const POSTER_CHANCE = 35
+const POSTER_CHANCE = 50
 const POT_CHANCE = 45
 /** Out of 100: balconies with potted plants along them, and houses with pots either side of the door. */
 const BALCONY_POT_CHANCE = 40
@@ -922,7 +922,7 @@ function dressBuildings(
       // A poster on the street side of the wall, beside the gate, now and then.
       const wallFace = yard + COMPOUND.thickness + 0.006
       if ((hash >>> 3) % 100 < POSTER_CHANCE && gateFrom - wallStart > 1.2) {
-        posters.onWall(front, gateFrom - COMPOUND.pillar - 0.55, wallFace, POSTER.low, (hash >>> 11) % 8)
+        posters.onWall(front, gateFrom - COMPOUND.pillar - 0.55, wallFace, POSTER.low, (hash >>> 11) % POSTER_COUNT)
       }
       // Potted plants on the wall top either side of the gate: Medium shows most, High all.
       const potRoll = (hash >>> 5) % 100

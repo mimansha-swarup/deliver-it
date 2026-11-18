@@ -116,7 +116,8 @@ try {
       }
       if (EVAL) {
         await evaluate(`(() => { ${EVAL} })(); 'ok'`)
-        await sleep(500)
+        // Long enough for the map squares round a new spot to stream in, if the script moved the rider.
+        await sleep(3000)
       }
       const { data } = await send('Page.captureScreenshot', { format: 'png' })
       const file = join(OUT, `${spot}-${quality.toLowerCase()}.png`)
