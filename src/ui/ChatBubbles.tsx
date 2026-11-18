@@ -114,7 +114,6 @@ export function ChatBubbles() {
   return (
     <>
       <CustomerChatDirector />
-      {online && <MoodMeter />}
       {shown.length > 0 && (
         <ol className="chat" aria-live="polite" aria-label="Messages">
           {shown.map((line) => (

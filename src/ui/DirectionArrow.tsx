@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveRoute } from '../game/livePlayer'
-import { getCurrentStop } from '../missions/missionLogic'
+import { MoodMeter } from './ChatBubbles'
+import { currentTarget } from './mapDrawing'
 
 /** How quickly the arrow swings to a new direction. Higher is tighter. */
 const TURN_RESPONSE = 9
@@ -11,12 +12,41 @@ function angleBetween(from: number, to: number): number {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from))
 }
 
-/** A large arrow where up means straight ahead, showing which way the route goes next. */
+function formatTime(seconds: number): string {
+  const whole = Math.abs(Math.floor(seconds))
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
+}
+
+/** The order's time left, then how late, in red. */
+function OrderTimer() {
+  const onTime = useGameStore((state) => state.mission?.onTimeSeconds ?? null)
+  const seconds = useGameStore((state) => state.seconds)
+  const riding = useGameStore((state) => state.phase === 'toPickup' || state.phase === 'toCustomer')
+  if (onTime === null || !riding) return null
+  const left = onTime - seconds
+  return (
+    <span className="route-timer" data-late={left < 0} data-hurry={left >= 0 && left <= 20}>
+      {left < 0 ? `+${formatTime(-left)}` : formatTime(left)}
+    </span>
+  )
+}
+
+function formatDistance(metres: number): string {
+  return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${metres} m`
+}
+
+/**
+ * Top centre, and nothing else there: the order's timer with the customer's mood beside it, a large
+ * arrow where up means straight ahead (to the stop, or the rider's waypoint), and the distance by road.
+ */
 export function DirectionArrow() {
-  const phase = useGameStore((state) => state.phase)
-  const mission = useGameStore((state) => state.mission)
+  const hasTarget = useGameStore((state) => {
+    const riding = state.phase === 'toPickup' || state.phase === 'toCustomer'
+    return (state.mission !== null && riding) || (state.mission === null && state.waypoint !== null)
+  })
+  const distance = useGameStore((state) => state.distance)
   const arrow = useRef<HTMLDivElement>(null)
-  const stop = getCurrentStop(mission, phase)
+  const path = useRef<SVGPathElement>(null)
 
   useEffect(() => {
     let frame = 0
@@ -33,6 +63,8 @@ export function DirectionArrow() {
       shownAngle += angleBetween(shownAngle, target) * (1 - Math.exp(-TURN_RESPONSE * delta))
 
       if (arrow.current) arrow.current.style.transform = `rotate(${shownAngle}rad)`
+      const colour = currentTarget()?.color
+      if (path.current && colour && path.current.getAttribute('fill') !== colour) path.current.setAttribute('fill', colour)
       frame = requestAnimationFrame(update)
     }
 
@@ -40,19 +72,29 @@ export function DirectionArrow() {
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  if (!stop) return null
+  if (!hasTarget) return null
 
   return (
-    <div className="direction-arrow" ref={arrow}>
-      <svg viewBox="0 0 100 100" aria-hidden="true">
-        <path
-          d="M50 6 L90 54 L65 54 L65 94 L35 94 L35 54 L10 54 Z"
-          fill={stop.color}
-          stroke="#0f1115"
-          strokeWidth="6"
-          strokeLinejoin="round"
-        />
-      </svg>
+    <div className="route-bar">
+      <div className="route-side route-left">
+        <OrderTimer />
+        <MoodMeter className="route-mood" />
+      </div>
+      <div className="direction-arrow" ref={arrow}>
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <path
+            ref={path}
+            d="M50 6 L90 54 L65 54 L65 94 L35 94 L35 54 L10 54 Z"
+            fill="#3ddc97"
+            stroke="#0f1115"
+            strokeWidth="6"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+      <div className="route-side route-right">
+        {distance > 0 && <span className="route-distance">{formatDistance(distance)}</span>}
+      </div>
     </div>
   )
 }

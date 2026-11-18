@@ -8827,3 +8827,11 @@ length (`routeLength`).
 
 ### Why
 Top right was out of the way of the road, which is where the rider is looking.
+
+## 2026-11-18: Entry 139, top centre: arrow, timer, distance, mood
+
+### What I did
+Top centre holds only the way: the order's timer (amber in the last 20 s, red with "+0:23"
+once late) with the customer's mood bar under it, the direction arrow in the middle (in the
+stop's colour, or the waypoint's), and the distance by road on the right. The mood meter that
+sat top right and the copy on the phone are gone: there's one, beside the timer it follows.

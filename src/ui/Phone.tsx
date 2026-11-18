@@ -9,7 +9,6 @@ import { WEATHERS, type WeatherName } from '../sky/skyLogic'
 import { acceptanceRate, dayPeriod } from '../game/duty'
 import { liveSky } from '../game/livePlayer'
 import { GoalLine } from './DutyUi'
-import { MoodMeter } from './ChatBubbles'
 import { CareerSheet, TodaySheet } from './CareerSheets'
 import { Garage } from './Garage'
 import { useStation } from '../audio/useStation'
@@ -361,7 +360,6 @@ function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: (
       </p>
       <p className="phone-stop">{stop.name}</p>
       <OrderItem mission={mission} raised={raised} />
-      <MoodMeter className="phone-mood" />
       {!handingOff && <p className="phone-distance">{inZone ? stop.arrivalHint : `${distance} m by road`}</p>}
 
       {raised && (
