@@ -49,6 +49,8 @@ type QualityPreset = {
   rainDrops: number
   /** Whether trees use photographed leaves, or the simple solid shapes. */
   leafyTrees: boolean
+  /** With leafy trees, only those this close are leafy; further ones get the solid canopies, in metres. */
+  leafyReach: number
   /** Tufts of grass around the rider. */
   grassTufts: number
   vehicles: number
@@ -81,6 +83,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     skyClouds: false,
     rainDrops: 300,
     leafyTrees: false,
+    leafyReach: 0,
     grassTufts: 0,
     vehicles: 10,
     vehicleDetailDistance: 16,
@@ -106,6 +109,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     skyClouds: true,
     rainDrops: 700,
     leafyTrees: true,
+    leafyReach: 70,
     grassTufts: 1400,
     vehicles: 28,
     vehicleDetailDistance: 20,
@@ -133,6 +137,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     skyClouds: true,
     rainDrops: 1400,
     leafyTrees: true,
+    leafyReach: 90,
     grassTufts: 3200,
     vehicles: 40,
     vehicleDetailDistance: 24,

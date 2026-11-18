@@ -53,13 +53,26 @@ const TREE_SHAPES: Blob[][] = [
     [1.9, 6.2, -1.6, 1.6],
     [-1.6, 6.3, 1.5, 1.6],
   ],
+  // An arch: a big avenue tree's spread reaching out over the road (towards +z, which the
+  // planting turns to face the road), held high enough for a bus to pass under. Two rows of
+  // these, one each side, nearly meet over the middle of a residential or main road.
+  [
+    [0, 5.7, 0.2, 1.9],
+    [1.9, 5.5, 0.9, 1.5],
+    [-1.9, 5.6, 0.8, 1.5],
+    [0.4, 6.1, 2.6, 1.7],
+    [-0.6, 6.0, 4.5, 1.5],
+    [1.2, 6.2, 4.1, 1.3],
+    [0.2, 6.0, -0.9, 1.2],
+  ],
 ]
 
 /** The tree shapes, by name, as the planting in props.ts asks for them. The palm is drawn on its own (`createPalmGeometries`). */
-export const TREE_SHAPE = { round: 0, tall: 1, wide: 2, umbrella: 3, column: 4, dome: 5 } as const
+export const TREE_SHAPE = { round: 0, tall: 1, wide: 2, umbrella: 3, column: 4, dome: 5, arch: 6 } as const
+/** A tree planted without a shape gets one of the first this many (not the arch, which only avenues get). */
 export const TREE_SHAPE_COUNT = 6
 /** A coconut palm: its own trunk and crown, not one of the ball-built canopies. */
-export const PALM = 6
+export const PALM = 7
 
 /** Where each frond sits on the leaf image: [left, top, right, bottom], then its card's width and height. */
 const FRONDS = [

@@ -88,6 +88,32 @@ const TITLE_PROP_REACH = 400
 const REFRESH_DISTANCE = 20
 
 const transform = new THREE.Object3D()
+
+/** Props sorted into squares this wide, in metres, so a refresh only looks at the squares in reach. */
+const GRID_CELL = 48
+type PropGrid = Map<number, Prop[]>
+const gridKey = (cellX: number, cellZ: number) => (cellX + 5000) * 10000 + (cellZ + 5000)
+
+function createPropGrid(props: Prop[]): PropGrid {
+  const grid: PropGrid = new Map()
+  for (const prop of props) {
+    const key = gridKey(Math.floor(prop.x / GRID_CELL), Math.floor(prop.z / GRID_CELL))
+    const cell = grid.get(key)
+    if (cell) cell.push(prop)
+    else grid.set(key, [prop])
+  }
+  return grid
+}
+
+/** Calls `visit` for each prop in the squares within `reach` of a point. */
+function forEachPropNear(grid: PropGrid, x: number, z: number, reach: number, visit: (prop: Prop) => void) {
+  for (let cellX = Math.floor((x - reach) / GRID_CELL); cellX <= Math.floor((x + reach) / GRID_CELL); cellX++) {
+    for (let cellZ = Math.floor((z - reach) / GRID_CELL); cellZ <= Math.floor((z + reach) / GRID_CELL); cellZ++) {
+      const cell = grid.get(gridKey(cellX, cellZ))
+      if (cell) for (const prop of cell) visit(prop)
+    }
+  }
+}
 transform.rotation.order = 'YXZ'
 
 /**
@@ -393,8 +419,13 @@ export function PropInstances({
   leaves,
   flat = false,
   material,
+  from = 0,
+  to,
 }: {
   props: Prop[]
+  /** Only copies at least `from` and less than `to` metres from the rider (`to` defaults to the props' draw distance): one level of detail. */
+  from?: number
+  to?: number
   geometry: THREE.BufferGeometry
   color?: string
   colors?: THREE.Color[]
@@ -418,6 +449,7 @@ export function PropInstances({
   const mesh = useRef<THREE.InstancedMesh>(null)
   const glowMaterial = useRef<THREE.MeshBasicMaterial>(null)
   const lastRefresh = useRef<{ x: number; z: number; reach: number } | null>(null)
+  const grid = useMemo(() => createPropGrid(props), [props])
 
   useFrame(() => {
     const instances = mesh.current
@@ -428,7 +460,8 @@ export function PropInstances({
       instances.visible = liveSky.look.night > 0.01
     }
 
-    const reach = started ? propDistance : TITLE_PROP_REACH
+    const reach = started ? Math.min(to ?? propDistance, propDistance) : TITLE_PROP_REACH
+    const near = started ? from : 0
     const last = lastRefresh.current
     if (
       last &&
@@ -440,9 +473,10 @@ export function PropInstances({
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
 
     let count = 0
-    for (const prop of props) {
+    forEachPropNear(grid, livePlayer.x, livePlayer.z, reach, (prop) => {
       const { x, y, z, rotation, variation, tint, size = 1, lean } = prop
-      if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
+      const distance = Math.hypot(x - livePlayer.x, z - livePlayer.z)
+      if (distance > reach || distance < near) return
 
       // Things on the ground stand on it, raised footpaths included. Roof tanks give their own height.
       transform.position.set(x, y ?? groundUnder(prop), z)
@@ -455,7 +489,7 @@ export function PropInstances({
         instances.setColorAt(count, colors[tint ?? Math.floor(variation * colors.length * 0.999)])
       }
       count++
-    }
+    })
 
     instances.count = count
     instances.instanceMatrix.needsUpdate = true
@@ -526,8 +560,11 @@ export function RoadsideProps({
   /** Bougainvillea on compound walls. */
   creepers: Prop[]
 }) {
-  const { leafyTrees } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { leafyTrees, leafyReach } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
+  // Past `leafyReach`, trees are drawn with the solid canopies, as on Low: a level of detail.
+  const solidCanopies = useMemo(() => (leafyTrees ? createCanopyGeometries() : null), [leafyTrees])
+  useEffect(() => () => solidCanopies?.forEach((canopy) => canopy.dispose()), [solidCanopies])
   const palm = useMemo(() => createPalmGeometries(), [])
   const canopies = useMemo(
     () => (leafyTrees ? createLeafyCanopyGeometries() : createCanopyGeometries()),
@@ -619,7 +656,11 @@ export function RoadsideProps({
           sizeRange={0.5}
           sway
           leaves={leafyTrees ? leaves : undefined}
+          to={leafyTrees ? leafyReach : undefined}
         />
+      ))}
+      {solidCanopies?.map((canopy, kind) => (
+        <PropInstances key={`far-${kind}`} props={treesByKind[kind]} geometry={canopy} colors={CANOPY_COLORS} sizeRange={0.5} sway from={leafyReach} />
       ))}
       {/* Coconut palms: drawn the same on every quality, a vertex-coloured crown and a ringed trunk. */}
       <PropInstances props={palms} geometry={palm.trunk} color={PALM_TRUNK_COLOR} sizeRange={0.3} sway />

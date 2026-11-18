@@ -9273,3 +9273,36 @@ now a first visit and would ride at 17:30.
 
 The shafts cost about half a millisecond on High with the sun low. The haze glow doesn't show
 on Low.
+
+## 2026-11-18: Entry 162, avenues of rain trees arching over the roads
+
+### What I did
+- **Arching avenues.** Residential and main roads are lined on both sides with big rain trees
+  (three roads in four) or gulmohars, one every 13 m a side, the two sides staggered and a
+  little jittered. Each stands in a pit on the footpath just behind the kerb (0.85 m out), turned
+  to face the road with a little play, and leans into it by 3 to 7°. Its canopy is a new shape
+  (`TREE_SHAPE.arch`, foliage.ts): a high spread reaching up to about 6 m out over the road,
+  more on wide roads, so the rows from the two sides nearly meet over the middle. On a dual
+  carriageway the trees on the inside edges stand on the median.
+- **Median trees** on main roads' painted medians: neem, gulmohar and copper pod, every 15 m,
+  none within 11 m of another road (where the median breaks for a junction).
+- **A level of detail for trees.** Only trees within `leafyReach` (70 m on Medium, 90 m on
+  High) get the leafy cards; past that, the solid canopies Low uses, out to the props' draw
+  distance. It's hazy enough there that the change doesn't show.
+- **Props by grid square.** Each instanced prop mesh (trees, lamps, tanks...) now refreshes from
+  the 48 m squares within reach, not by walking every prop in the city.
+
+20,959 avenue trees and 17 median trees: 27,969 trees in all (was 9,542). 17,092 arch spots
+were refused, most for a gate, a lamp or a wall too close.
+
+### Lessons
+- The first arches stood 2 m past the kerb, and almost none were planted: houses and compound
+  walls stand right behind the footpath on these streets. Real avenue trees stand in the
+  footpath, at the kerb.
+- A whole avenue of gulmohars in flower read as a rust-red tunnel. Three in four avenues are
+  rain trees.
+- At 11 m spacing, without the level of detail, High fell to 39 fps.
+
+### Performance (Sarjapur Road, 9:00; the machine's load average was about 3)
+High 60 fps, 4.5 to 5.0 ms of work a frame (5.0 before this entry). Low 60 fps, 4.4 ms (3.7
+before: twice the trees in reach).

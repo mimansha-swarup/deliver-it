@@ -194,7 +194,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   props.trees.push(...plantContextTrees({ gates: houses.gates, temples: worship, junctions, roads: roadIndex, collisions }))
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
-  lap('parks and street life')
+  lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}`)
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
   const edges = buildStreetEdges({
     roads: data.roads,

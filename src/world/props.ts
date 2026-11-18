@@ -6,7 +6,8 @@ import { getRoadWidth } from './roadData'
 import { clipToPlayArea } from './roadGeometry'
 import type { ShopFront } from './shopFrontPlacement'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
-import { AVENUE_SPECIES, plantTree, SPECIES } from './treeSpecies'
+import { AVENUE_SPECIES, plantTree, SPECIES, type SpeciesName } from './treeSpecies'
+import { TREE_SHAPE } from './foliage'
 
 export type Prop = {
   x: number
@@ -38,6 +39,8 @@ export type RoadsideProps = {
   lamps: Prop[]
   postPairs: PostPair[]
   parkedScooters: Prop[]
+  /** How many avenue arches and median trees went in, and arches refused, for the load timeline. */
+  counts?: { archTrees: number; archRefused: number; medianTrees: number }
 }
 
 const PROP_SPACING = 13
@@ -87,6 +90,35 @@ const STRAY_BLOOM = 5
 /** Trees on roads at least this wide grow bigger, in metres. */
 const WIDE_ROAD = 7
 const WIDE_ROAD_SIZE = 1.2
+
+/**
+ * Arching avenues: residential and main roads are lined both sides with big rain trees and
+ * gulmohars, one every `ARCH_SPACING` metres a side, the two sides staggered. Each is turned to
+ * face the road and leans into it, with the arch canopy (foliage.ts) reaching out over it, so the
+ * two rows nearly meet over the middle.
+ */
+const ARCH_SPACING = 13
+const ARCH_SPECIES: SpeciesName[] = ['rainTree', 'rainTree', 'rainTree', 'gulmohar']
+const ARCH_LEAN: [number, number] = [0.06, 0.13]
+/** The two sides' trees aren't quite opposite, nor quite square to the road. */
+const ARCH_JITTER = 2.5
+const ARCH_TURN = 0.3
+/**
+ * An avenue tree stands in a pit on the footpath just behind the kerb, this far out from the
+ * road's edge, and needs only this much room from a wall: its canopy is high, over the road.
+ */
+const ARCH_ROAD_GAP = 0.85
+const ARCH_BUILDING_GAP = 0.7
+/** Trees down a main road's median, this far apart, and none this close to another road (a junction, where the median breaks). */
+const MEDIAN_SPACING = 15
+const MEDIAN_JUNCTION_CLEAR = 11
+const MEDIAN_SPECIES: SpeciesName[] = ['neem', 'gulmohar', 'copperPod', 'gulmohar']
+const MEDIAN_SIZE = 0.85
+
+const isArchRoad = (road: LineFeature) => {
+  const name = streetPresetOf(road)?.name
+  return name === 'residential' || name === 'main'
+}
 
 /** Scrambles a whole number into another, the same way every time. */
 export function scramble(value: number): number {
@@ -300,9 +332,11 @@ export function generateRoadsideProps(
   const roadIndex = indexRoadPieces(pieces)
   const placed = new PointGrid(MIN_PROP_SPACING)
   const props: RoadsideProps = { trees: [], lamps: [], postPairs: [], parkedScooters: [] }
+  props.counts = { archTrees: 0, archRefused: 0, medianTrees: 0 }
   const lastLampOnRoad = new Map<number, Prop>()
   // HSR's roads were planted a species at a time, so a whole road is one kind of tree (treeSpecies.ts).
   const avenues = roads.map((road, index) => SPECIES[AVENUE_SPECIES[roadSeed(road, index) % AVENUE_SPECIES.length]])
+  const arches = roads.map((road, index) => (isArchRoad(road) ? SPECIES[ARCH_SPECIES[roadSeed(road, index) % ARCH_SPECIES.length]] : null))
 
   // The ground must allow it too (surfaceMap.ts): a tree on open ground, a median or in a tree pit, a pole on a footpath.
   const canPlace = (x: number, z: number, buildingGap: number, what: 'tree' | 'pole') =>
@@ -323,7 +357,8 @@ export function generateRoadsideProps(
       slot++
       const side = slot % 2 === 0 ? 1 : -1
       const isLamp = slot % LAMP_EVERY === 0
-      if (!isLamp && random() > TREE_CHANCE) continue
+      // Arching avenues get their trees below; here only their lamps.
+      if (!isLamp && (arches[piece.road] || random() > TREE_CHANCE)) continue
 
       const gap = isLamp ? LAMP_ROAD_GAP : TREE_ROAD_GAP
       const offset = (piece.width / 2 + ROAD_CLEARANCE + gap) * side
@@ -349,6 +384,67 @@ export function generateRoadsideProps(
         props.postPairs.push({ from: previous, to: prop })
       }
       lastLampOnRoad.set(piece.road, prop)
+    }
+  }
+
+  // Arching avenues, both sides, after the lamps so the trees fit round them.
+  let archRefused = 0
+  for (const piece of pieces) {
+    const species = arches[piece.road]
+    if (!species) continue
+    const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1])
+    if (length < 1) continue
+    const directionX = (piece.end[0] - piece.start[0]) / length
+    const directionZ = (piece.end[1] - piece.start[1]) / length
+    const offset = piece.width / 2 + ARCH_ROAD_GAP
+    const size = piece.width >= WIDE_ROAD ? WIDE_ROAD_SIZE : 1
+    for (const side of [1, -1]) {
+      for (let along = (side > 0 ? 0.25 : 0.75) * ARCH_SPACING; along < length; along += ARCH_SPACING) {
+        slot++
+        const at = along + (random() - 0.5) * ARCH_JITTER
+        const x = piece.start[0] + directionX * at + directionZ * offset * side
+        const z = piece.start[1] + directionZ * at - directionX * offset * side
+        if (!canPlace(x, z, ARCH_BUILDING_GAP, 'tree')) {
+          archRefused++
+          continue
+        }
+        placed.add(x, z)
+        addPost(collisions, x, z, TREE_TRUNK_RADIUS)
+        const tree = plantTree(species, { x, z }, slot, size)
+        // Facing the road: the canopy's reach (+z in its own frame) points across it.
+        tree.rotation = Math.atan2(-directionZ * side, directionX * side) + (random() - 0.5) * ARCH_TURN
+        tree.lean = ARCH_LEAN[0] + (ARCH_LEAN[1] - ARCH_LEAN[0]) * random()
+        tree.kind = TREE_SHAPE.arch
+        props.trees.push(tree)
+      }
+    }
+  }
+
+  props.counts.archTrees = props.trees.filter(({ kind }) => kind === TREE_SHAPE.arch).length
+  props.counts.archRefused = archRefused
+
+  // Trees down the median of a main road, where it's drawn: on the median, clear of junctions.
+  for (const piece of pieces) {
+    const road = roads[piece.road]
+    const median = streetPresetOf(road)?.median
+    if (!median || road.properties.oneway === 'yes' || piece.width < median.minRoadWidth) continue
+    const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1])
+    const directionX = (piece.end[0] - piece.start[0]) / (length || 1)
+    const directionZ = (piece.end[1] - piece.start[1]) / (length || 1)
+    for (let along = MEDIAN_SPACING / 2; along < length; along += MEDIAN_SPACING) {
+      slot++
+      const x = piece.start[0] + directionX * along
+      const z = piece.start[1] + directionZ * along
+      if (!surfaceAllows(x, z, 'tree') || placed.hasWithin(x, z, MIN_PROP_SPACING) || keepClear(x, z)) continue
+      let nearJunction = false
+      forEachRoadNear(roadIndex, x, z, MEDIAN_JUNCTION_CLEAR, (other) => {
+        if (other.road !== piece.road && distanceToPiece(x, z, other) < other.width / 2 + MEDIAN_JUNCTION_CLEAR) nearJunction = true
+      })
+      if (nearJunction) continue
+      placed.add(x, z)
+      addPost(collisions, x, z, TREE_TRUNK_RADIUS)
+      props.trees.push(plantTree(SPECIES[MEDIAN_SPECIES[roadSeed(road, piece.road) % MEDIAN_SPECIES.length]], { x, z }, slot, MEDIAN_SIZE))
+      props.counts.medianTrees++
     }
   }
 
