@@ -8876,3 +8876,16 @@ only; game-clock durations are gone.
 
 ### Why
 At full speed a single shift swept through most of a day, lunch rush and all, in a few minutes.
+
+## 2026-11-18: Entry 143, fuming customers cancel, and each has their own patience
+
+### What I did
+- **45 s of fuming, then they cancel.** Once a customer's mood reaches Fuming (frustration 0.7)
+  they warn ("Last chance…"), the mood bar counts down ("cancels in 30s"), and after 45 s of it
+  they cancel. Ravi says so, and the cancel penalty applies: −40 credits and a 1★ rating. This
+  replaces the cancellation at three times the timer.
+- **Patience by personality.** Each made-up customer has a patience: Lakshmi aunty (1.45) and
+  Suresh uncle (1.35) wait the longest, Joseph and Manju are easy-going, Vikram (0.7) and Rahul
+  (0.75) the least patient. Patience stretches the timer as they feel it, so an impatient
+  customer turns Fuming sooner after the timer runs out. For a customer of usual patience, Fuming
+  arrives at about 2.1× the timer; for Vikram about 1.5×; for Lakshmi aunty about 3.1×.

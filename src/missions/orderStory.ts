@@ -17,6 +17,8 @@ export type Care = 'none' | 'fragile' | 'event'
 
 export type OrderStory = {
   customer: string
+  /** How patient they are: 1 is usual, more waits longer before getting annoyed (see CUSTOMERS). */
+  patience: number
   item: string
   care: Care
   /** What the customer wrote when they ordered. */
@@ -49,23 +51,27 @@ const ITEMS: Item[] = [
   { item: 'A leather handbag', care: 'none', note: "Bruno will bark at the gate. He's friendly!" },
 ]
 
-const CUSTOMERS = [
-  'Priya',
-  'Arjun',
-  'Lakshmi aunty',
-  'Rahul',
-  'Divya',
-  'Manju',
-  'Suresh uncle',
-  'Ayesha',
-  'Karthik',
-  'Nandini',
-  'Farhan',
-  'Meera',
-  'Vikram',
-  'Shwetha',
-  'Joseph',
-  'Ananya',
+/**
+ * The customers, made up, each with their patience: the aunties and uncles have seen worse and
+ * wait; the start-up founder and the student on a deadline don't. 1 is usual.
+ */
+const CUSTOMERS: { name: string; patience: number }[] = [
+  { name: 'Priya', patience: 1 },
+  { name: 'Arjun', patience: 0.8 },
+  { name: 'Lakshmi aunty', patience: 1.45 },
+  { name: 'Rahul', patience: 0.75 },
+  { name: 'Divya', patience: 1.1 },
+  { name: 'Manju', patience: 1.2 },
+  { name: 'Suresh uncle', patience: 1.35 },
+  { name: 'Ayesha', patience: 0.9 },
+  { name: 'Karthik', patience: 0.85 },
+  { name: 'Nandini', patience: 1.15 },
+  { name: 'Farhan', patience: 1 },
+  { name: 'Meera', patience: 1.05 },
+  { name: 'Vikram', patience: 0.7 },
+  { name: 'Shwetha', patience: 0.95 },
+  { name: 'Joseph', patience: 1.25 },
+  { name: 'Ananya', patience: 0.9 },
 ]
 
 const pick = <T>(items: T[], random: () => number): T => items[Math.floor(random() * items.length)]
@@ -74,7 +80,8 @@ const pick = <T>(items: T[], random: () => number): T => items[Math.floor(random
 export function createOrderStory(random: () => number, period?: PeriodId): OrderStory {
   const items = period ? ITEMS.filter(({ when }) => !when || when.includes(period)) : ITEMS
   const { item, care, note } = pick(items, random)
-  return { customer: pick(CUSTOMERS, random), item, care, note }
+  const { name, patience } = pick(CUSTOMERS, random)
+  return { customer: name, patience, item, care, note }
 }
 
 /** What carrying an item needs, said on the phone while it's on board. */

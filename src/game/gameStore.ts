@@ -72,6 +72,8 @@ type Telemetry = {
   frustration: number
   /** Seconds left before an accepted order's clock starts. */
   graceLeft: number
+  /** While the customer is fuming, seconds until they cancel; 0 otherwise. */
+  fumingLeft: number
 }
 
 /** An order offered to the rider, waiting for an answer until `expiresAt` (performance.now()). */
@@ -389,6 +391,7 @@ export const useGameStore = create<GameState>()(
       rough: 0,
       frustration: 0,
       graceLeft: 0,
+      fumingLeft: 0,
 
       // Starting the career and today's shift happens the first time the rider sets off.
       startGame: () =>
@@ -631,6 +634,7 @@ export const useGameStore = create<GameState>()(
       if (!hasOrderOn(state) || (state.phase !== 'toPickup' && state.phase !== 'toCustomer')) return state
       const customer = state.mission?.story.customer ?? 'The customer'
       return {
+        credits: Math.max(0, state.credits - CANCEL_PENALTY.credits),
         mission: null,
         phase: 'toPickup',
         pendingReward: null,
@@ -642,8 +646,8 @@ export const useGameStore = create<GameState>()(
         missionNumber: state.missionNumber + 1,
         ratings: [...state.ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT),
         fiveStarStreak: 0,
-        shift: state.shift ? { ...state.shift, cancelled: state.shift.cancelled + 1 } : state.shift,
-        messages: addMessages(state.messages, [`${customer} cancelled, maga. Too late, or too rough a ride. It counts against your rating. Next one, careful!`]),
+        shift: state.shift ? { ...state.shift, cancelled: state.shift.cancelled + 1, earnings: state.shift.earnings - CANCEL_PENALTY.credits } : state.shift,
+        messages: addMessages(state.messages, [`${customer} cancelled, maga: kept waiting too long. −${CANCEL_PENALTY.credits} credits, and it counts as ${CANCEL_PENALTY.stars}★. Next one, bega!`]),
       }
     }),
   postChat: (from, name, text, urgent = false) =>

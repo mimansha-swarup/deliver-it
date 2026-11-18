@@ -34,7 +34,7 @@ function CustomerChatDirector() {
       }
 
       // A customer who cancelled says so (the rider cancelling is Ravi's to tell).
-      if (!state.mission && previous.mission && previous.seconds >= previous.mission.onTimeSeconds * FRUSTRATION.warnAt && state.duty === 'online') {
+      if (!state.mission && previous.mission && previous.frustration >= FRUSTRATION.fumingAt && state.duty === 'online') {
         state.postChat('customer', previous.mission.story.customer, customerLine('cancelled', previous.mission.story, state.missionNumber), true)
       }
 
@@ -58,7 +58,7 @@ function CustomerChatDirector() {
       // Nothing about crashes or bumps: the customer can't see the ride, only the parcel at the door.
 
       const used = state.seconds / mission.onTimeSeconds
-      if (used >= FRUSTRATION.warnAt) say('fuming')
+      if (state.frustration >= FRUSTRATION.fumingAt) say('fuming')
       if (used >= CHAT_TIMES.veryLate) say('veryLate')
       else if (used >= CHAT_TIMES.late) say('late')
       else if (used >= CHAT_TIMES.quarter) say('quarter')

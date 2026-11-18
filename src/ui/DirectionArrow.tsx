@@ -15,6 +15,7 @@ function angleBetween(from: number, to: number): number {
 /** The customer's mood: a word and a bar, green to red, while their order is on its way. */
 function MoodMeter({ className }: { className: string }) {
   const frustration = useGameStore((state) => state.frustration)
+  const fumingLeft = useGameStore((state) => state.fumingLeft)
   const customer = useGameStore((state) => state.mission?.story.customer)
   const riding = useGameStore((state) => state.phase === 'toPickup' || state.phase === 'toCustomer')
   if (!customer || !riding) return null
@@ -23,6 +24,7 @@ function MoodMeter({ className }: { className: string }) {
     <div className={className} data-mood={mood.toLowerCase()} title={`${customer} is ${mood.toLowerCase()}`}>
       <span className="mood-label">
         {customer} · <strong>{mood}</strong>
+        {fumingLeft > 0 && <span className="mood-cancels"> · cancels in {fumingLeft}s</span>}
       </span>
       <span className="mood-bar" aria-hidden="true">
         <span style={{ width: `${Math.round(frustration * 100)}%` }} />

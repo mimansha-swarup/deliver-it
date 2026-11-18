@@ -52,6 +52,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const ridden = useRef(0)
   const sinceRideReport = useRef(0)
   const wasBoosting = useRef(false)
+  /** How long the current customer has been fuming, in seconds. */
+  const fuming = useRef(0)
   /** The grace period left before an accepted order's clock starts, in seconds. */
   const grace = useRef(0)
   /** Seconds until the dispatcher offers the next order, while online and free. */
@@ -64,6 +66,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     if (game.missionNumber !== currentMission.current) {
       currentMission.current = game.missionNumber
       elapsed.current = 0
+      fuming.current = 0
       grace.current = MISSION_RULES.graceSeconds
     }
 
@@ -146,13 +149,15 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       sinceTelemetry.current = 0
       // The customer's frustration: the clock and rough riding. Held still while the parcel changes hands.
       const riding = game.mission && (game.phase === 'toPickup' || game.phase === 'toCustomer')
-      // The customer's mood is the wait alone: they can't see the ride. They cancel at three times the timer.
+      // The customer's mood is the wait alone: they can't see the ride. Fuming for long enough, they cancel.
       const used = game.mission ? elapsed.current / game.mission.onTimeSeconds : 0
-      const cancelNow = used >= FRUSTRATION.cancelAt
       let frustration = riding && game.mission
-        ? timeFrustration(used, game.mission.story.care)
+        ? timeFrustration(used, game.mission.story.care, game.mission.story.patience)
         : game.mission ? game.frustration : 0
+      fuming.current = riding && frustration >= FRUSTRATION.fumingAt ? fuming.current + TELEMETRY_INTERVAL : 0
+      const cancelNow = fuming.current >= FRUSTRATION.fumingSeconds
       if (riding && cancelNow) {
+        fuming.current = 0
         game.customerCancels()
         frustration = 0
       }
@@ -170,6 +175,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         atStore: isAtStore(game.planner, state.x, state.z, travelSpeed),
         frustration: Math.round(frustration * 100) / 100,
         graceLeft: stop ? Math.ceil(grace.current) : 0,
+        fumingLeft: fuming.current > 0 ? Math.ceil(FRUSTRATION.fumingSeconds - fuming.current) : 0,
         atHome: game.home !== null && Math.hypot(game.home.x - state.x, game.home.z - state.z) <= HOME_RANGE && travelSpeed <= HOME_MAX_SPEED,
       })
     }

@@ -54,7 +54,8 @@ export function customerLine(stage: ChatStage, story: OrderStory, seed: number):
 /*
  * How frustrated the customer is, from 0 (happy) to 1: time alone, as that's all they can see (the
  * app's map and its estimate). Nothing until half the timer shown to the rider is used, `atLimit`
- * when it runs out, then on to 1 at three times the timer, when they cancel.
+ * when it runs out, then on towards 1 at three times the timer, faster or slower with the
+ * customer's patience. Once fuming they warn, and after `fumingSeconds` of it they cancel.
  *
  * Rough riding with their order on board doesn't touch their mood, as they can't see it. It shows
  * in the parcel when it arrives: `roughness` adds up (a crash a lot, a hard landing a little, more
@@ -64,9 +65,11 @@ export const FRUSTRATION = {
   /** Frustration when the timer runs out: event orders (a wedding, an interview) mind more. */
   atLimit: 0.3,
   eventAtLimit: 0.45,
-  /** Shares of the timer: the customer warns at the first and cancels at the second. */
-  warnAt: 2.5,
+  /** Frustration reaches 1 at this share of the timer (for a customer of usual patience). */
   cancelAt: 3,
+  /** At this frustration the customer is fuming, warns, and cancels after `fumingSeconds` of it. */
+  fumingAt: 0.7,
+  fumingSeconds: 45,
   /** Roughness added by a crash and by a hard landing (more if fragile) with the order on board. */
   crash: 0.15,
   knock: 0.04,
@@ -81,9 +84,13 @@ export function roughStars(roughness: number): number {
   return Math.min(FRUSTRATION.roughMostStars, Math.floor(roughness / FRUSTRATION.roughPerStar + 1e-6))
 }
 
-/** The part of frustration that comes from time, given the share of the timer used: 1 at `cancelAt`. */
-export function timeFrustration(used: number, care: OrderStory['care']): number {
+/**
+ * The part of frustration that comes from time, given the share of the timer used: 1 at `cancelAt`.
+ * A patient customer's clock runs slower: `patience` stretches the timer they feel.
+ */
+export function timeFrustration(usedShare: number, care: OrderStory['care'], patience = 1): number {
   const { cancelAt } = FRUSTRATION
+  const used = usedShare / patience
   const atLimit = care === 'event' ? FRUSTRATION.eventAtLimit : FRUSTRATION.atLimit
   if (used <= 0.5) return 0
   if (used <= 1) return atLimit * ((used - 0.5) / 0.5)
@@ -99,6 +106,6 @@ export function starsFromFrustration(frustration: number): number {
 export function moodOf(frustration: number): string {
   if (frustration < 0.15) return 'Happy'
   if (frustration < 0.4) return 'Waiting'
-  if (frustration < 0.7) return 'Annoyed'
+  if (frustration < FRUSTRATION.fumingAt) return 'Annoyed'
   return 'Fuming'
 }
