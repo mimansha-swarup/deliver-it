@@ -46,6 +46,8 @@ import { planHouseKit } from './houseKit'
 import { createSurfaceMap, worldSurface } from './surfaceMap'
 import { setBuildingsBack } from './buildingSetback'
 import { placeStoryProps } from './storyPlacement'
+import { placeLandmarks } from './landmarkPlacement'
+import { CityLandmarks } from './CityLandmarks'
 import { StoryProps } from './StoryProps'
 import { lonLatToWorld } from './worldUtils'
 import { SurfaceDebug } from '../dev/SurfaceDebug'
@@ -165,6 +167,11 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // everything placed from here on asks first (surfaceMap.ts).
   const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
   worldSurface.map = surfaceMap
+  // Landmarks to steer by: Agara Lake's water (on the surface map, before anything is planted), the
+  // metro viaduct, bus shelters, the BDA Complex's board (landmarkPlacement.ts).
+  const cityLandmarks = placeLandmarks({ data, surface: surfaceMap, roads: roadIndex, collisions })
+  worldSurface.report.landmarks = cityLandmarks.report
+  if (isDebug()) (window as unknown as { __deliverItLandmarks?: unknown }).__deliverItLandmarks = cityLandmarks
   lap('sites, fuel and worship')
   // TEMPORARY: a spot on the street in front of each Jagannath temple, facing it.
   teleportSpots.length = 0
@@ -291,7 +298,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls, surfaceMap, story }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls, surfaceMap, story, cityLandmarks }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -360,7 +367,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -397,6 +404,7 @@ export function World() {
         <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} bushes={props.bushes} /></Part>
         <Part name="streetLife"><StreetLife life={life} kolams={houses.kolams} /></Part>
         <Part name="story"><StoryProps story={story} /></Part>
+        <Part name="cityLandmarks"><CityLandmarks landmarks={cityLandmarks} /></Part>
         <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
         <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
         <Part name="shopPeople"><ShopPeople people={shopPeople} /></Part>

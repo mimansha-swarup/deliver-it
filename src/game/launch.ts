@@ -26,6 +26,7 @@ export const WORLD_PARTS = {
   props: 'Trees and lamps',
   streetLife: 'Street life',
   story: 'Dogs, chairs and clutter',
+  cityLandmarks: 'The lake, the metro and bus shelters',
   cables: 'Cables',
   shops: 'Shops',
   landmarks: 'Shop signs',

@@ -21,7 +21,7 @@ import { isDebug } from './spawn'
 const KEY = 'F8'
 
 /** One colour per surface, in `Surface` order. */
-const COLORS = ['#d8c8a0', '#3a3f55', '#2bb3a0', '#c9ccd2', '#ff9a3c', '#c0305a', '#3fae4a', '#8a5a2c']
+const COLORS = ['#d8c8a0', '#3a3f55', '#2bb3a0', '#c9ccd2', '#ff9a3c', '#c0305a', '#3fae4a', '#8a5a2c', '#2f7fd6']
 
 type Mode = 'off' | 'rider' | 'above'
 const NEXT: Record<Mode, Mode> = { off: 'rider', rider: 'above', above: 'off' }

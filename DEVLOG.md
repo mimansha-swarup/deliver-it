@@ -9397,3 +9397,31 @@ The city is drawn to OSM's real coordinates, and the roads, the delivery address
 and the phone's map all depend on them. Shortening a block would mean bending the map
 under all of them. The long blocks are filled in instead: denser infill, avenue trees, story
 props and pocket parks along them.
+
+## 2026-11-18: Entry 166, landmarks to steer by
+
+### What I did
+`src/world/landmarkPlacement.ts` places them, `CityLandmarks.tsx` draws them.
+- **Agara Lake.** OSM has "Agara Lake Park", a kilometre across, but the map file has no
+  water, so the game drew it as one huge lawn. Now the lake fills the park more than 30 m in
+  from its edge (a two-pass distance on the surface map's grid), leaving a ring of park round
+  it: 0.29 km² of water. It's a new kind of ground on the surface map, `Water`, where nothing is
+  placed, so no tree, bench or tuft lands in it. The water is one flat mesh under the shared
+  light, a muddy green-grey, and at a low angle it takes the colour of the hazy horizon, broken
+  into streaks by fine ripples and darker in broad patches.
+- **The metro viaduct** along Hosur Road, where the real one runs: 89 pillars, every 32 m in
+  the median between the carriageways (found on the surface map), with caps and a deck with
+  parapets 12 m up, in 91 spans. The pillars are solid and drawn out to 600 m, so the line of
+  them reads from blocks away.
+- **Bus shelters** on main roads' footpaths, about every 520 m: 8 of 6 m and 3 of 12 m. Each
+  has posts, a sloping roof with a blue fascia, a back panel, a bench and an ad panel. Solid
+  front and back, so no tree grows inside one (the first did).
+- **The BDA Complex's board**, in Kannada and English, inside its compound's corner nearest a
+  road, facing it.
+- Roadside shrines on main roads at most every 450 m (was 700), and petrol bunks on long
+  gaps every 750 m (was 900).
+- With `?debug=1`, `__deliverItLandmarks` lists them all, for going to look.
+
+### Performance
+High 60 fps, 4.6 ms of work. Low 53 to 55 fps with this machine's usual hitches, 3.4 ms. The
+load average was 6 to 8 during one run, where High's work read 8.9 ms; the repeat read 4.6.

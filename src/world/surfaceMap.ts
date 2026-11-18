@@ -26,10 +26,12 @@ export const Surface = {
   Building: 5,
   Park: 6,
   Plot: 7,
+  /** A lake: nothing is placed on it. */
+  Water: 8,
 } as const
 export type Surface = (typeof Surface)[keyof typeof Surface]
 
-export const SURFACE_NAMES = ['open ground', 'road', 'median', 'footpath', 'paved', 'building', 'park', 'plot'] as const
+export const SURFACE_NAMES = ['open ground', 'road', 'median', 'footpath', 'paved', 'building', 'park', 'plot', 'water'] as const
 
 /** What may go where. */
 export type Placement = 'grass' | 'tree' | 'bush' | 'pole' | 'prop' | 'bench' | 'pedestrian' | 'parked' | 'footpathBike' | 'fence' | 'building' | 'decal'

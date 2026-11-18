@@ -73,8 +73,8 @@ const CAR_SHARE = 0.35
 const HOARDING_SHARE = 0.08
 /** A petrol pump or a temple needs a gap this long, and one is placed at most this often along a main road, in metres. */
 const PUMP_GAP = 34
-const PUMP_SPACING = 900
-const SHRINE_SPACING = 700
+const PUMP_SPACING = 750
+const SHRINE_SPACING = 450
 /**
  * A pocket park on a residential street: where a gap at least `POCKET_RUN` long is free, at most
  * one within `POCKET_SPACING` of another, and on `POCKET_SHARE` of the chances. `POCKET_DEPTH`
