@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { GROUND_PHOTO } from './assetUrls'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
+import { createCoverMask } from './groundCover'
 import { patchSoil } from './groundShaders'
+import type { SurfaceMap } from './surfaceMap'
 import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from './worldUtils'
 
 /** The ground runs this far past the play area on every side, out to the horizon, in metres. */
@@ -33,11 +35,15 @@ function prepareGroundTextures([texture]: THREE.Texture[]) {
 /**
  * The soil under everything. Inside `newSoilArea` (min x, min z, max x, max z),
  * where the new ground is being tried, it's the art direction's red earth
- * (groundShaders.ts). The photo is now used on every quality, for its grain.
+ * (groundShaders.ts), mostly under grass and weeds where the surface map has open
+ * ground, parks and medians (groundCover.ts). The photo is used on every quality, for its grain.
  */
-export function Ground({ newSoilArea }: { newSoilArea: [number, number, number, number] }) {
+export function Ground({ newSoilArea, surface }: { newSoilArea: [number, number, number, number]; surface: SurfaceMap }) {
   const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const [texture] = useCompressedTextures([GROUND_PHOTO], prepareGroundTextures)
+  // Grass and weeds over the soil, where the surface map says (groundCover.ts): on every quality.
+  const cover = useMemo(() => createCoverMask(surface), [surface])
+  useEffect(() => () => cover.dispose(), [cover])
 
   const material = useMemo(() => {
     const soil = new THREE.MeshStandardMaterial({
@@ -45,9 +51,12 @@ export function Ground({ newSoilArea }: { newSoilArea: [number, number, number, 
       map: texture,
       roughness: 1,
     })
-    patchSoil(soil).uNewSoilArea.value.set(...newSoilArea)
+    const uniforms = patchSoil(soil)
+    uniforms.uNewSoilArea.value.set(...newSoilArea)
+    uniforms.uCover.value = cover
+    uniforms.uCoverArea.value.set(PLAY_AREA.minX, PLAY_AREA.minZ, surface.width, surface.depth)
     return soil
-  }, [surfaces, texture, newSoilArea])
+  }, [surfaces, texture, newSoilArea, cover, surface])
 
   return (
     <mesh position={GROUND_CENTRE} rotation={[-Math.PI / 2, 0, 0]} material={material} receiveShadow>

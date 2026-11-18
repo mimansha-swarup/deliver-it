@@ -39,6 +39,8 @@ export type Infill = {
   /** Spots for the extra petrol pumps, as the fuel station list has them. */
   pumps: { lat: number; lng: number }[]
   shrines: PlaceOfWorship[]
+  /** Pocket parks on residential streets: added to the map's parks, so they get a lawn, trees, benches, a fence and a place on the map. */
+  parks: PolygonFeature[]
 }
 
 type PlotRule = {
@@ -72,6 +74,15 @@ const HOARDING_SHARE = 0.08
 const PUMP_GAP = 34
 const PUMP_SPACING = 900
 const SHRINE_SPACING = 700
+/**
+ * A pocket park on a residential street: where a gap at least `POCKET_RUN` long is free, at most
+ * one within `POCKET_SPACING` of another, and on `POCKET_SHARE` of the chances. `POCKET_DEPTH`
+ * back from the footpath.
+ */
+const POCKET_RUN = 18
+const POCKET_DEPTH = 14
+const POCKET_SPACING = 350
+const POCKET_SHARE = 0.5
 /** Land the map gives these uses is left alone. */
 const BUILDABLE_LAND = new Set(['residential', 'commercial', 'retail', 'industrial', 'construction'])
 const METRES_PER_DEGREE = 111_320
@@ -132,7 +143,7 @@ export function fillEmptyPlots(
     for (const building of done.buildings) addFootprint(collisions, building.geometry.coordinates[0].slice(0, -1).map((p) => { const [x, , z] = lonLatToWorld(p); return [x, z] as GroundPoint }))
     return done
   }
-  const infill: Infill = { buildings: [], sites: [], parkedCars: [], hoardings: [], pumps: [], shrines: [] }
+  const infill: Infill = { buildings: [], sites: [], parkedCars: [], hoardings: [], pumps: [], shrines: [], parks: [] }
   filled.set(buildings, infill)
 
   const out = new OutlineGrid()
@@ -144,6 +155,10 @@ export function fillEmptyPlots(
   const worshipSpots = keepOut.worship.flatMap((place) => (place.point ? [place.point] : []))
   const lastPump: GroundPoint[] = []
   const lastShrine: GroundPoint[] = [...worshipSpots]
+  const lastPocket: GroundPoint[] = keepOut.parks.map((park) => {
+    const outline = toOutline(park)
+    return [outline.reduce((sum, [x]) => sum + x, 0) / outline.length, outline.reduce((sum, [, z]) => sum + z, 0) / outline.length]
+  })
 
   const testGround = (x: number, z: number) =>
     isInsideBounds(x, z, 4) &&
@@ -260,6 +275,24 @@ export function fillEmptyPlots(
             addPost(collisions, x, z, 0.4)
             forget()
             s += width + 1
+            continue
+          }
+        }
+
+        if (preset.name === 'residential' && lastPocket.every(([px, pz]) => Math.hypot(px - middle[0], pz - middle[1]) > POCKET_SPACING)) {
+          const run = freeRun(s, POCKET_DEPTH, POCKET_RUN + 12)
+          if (run >= POCKET_RUN && random() < POCKET_SHARE) {
+            const parkFront = behindFootpath + 0.4
+            const corners = [at(s, parkFront), at(s + run, parkFront), at(s + run, parkFront + POCKET_DEPTH), at(s, parkFront + POCKET_DEPTH)]
+            infill.parks.push({
+              id: `pocket-park/${road.id}/${pieceNumber}/${side}/${Math.round(s)}`,
+              properties: { leisure: 'park' },
+              geometry: { type: 'Polygon', coordinates: [[...corners, corners[0]].map(worldToLonLat)] },
+            })
+            out.add(corners)
+            lastPocket.push(at(s + run / 2, parkFront + POCKET_DEPTH / 2))
+            forget()
+            s += run + 2
             continue
           }
         }

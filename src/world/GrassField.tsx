@@ -26,7 +26,7 @@ const CLUMPS = [
 ]
 /** On that map: full density in parks, thinner on open ground, and none on black. */
 const PARK_DENSITY = 255
-const OPEN_GROUND_DENSITY = 95
+const OPEN_GROUND_DENSITY = 150
 
 // The photo is dark, so these go above 1 to lift it. The roots stay darker than the tips.
 const BASE_COLOR = new THREE.Color(1.1, 1.25, 0.8)

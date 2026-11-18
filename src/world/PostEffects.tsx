@@ -49,7 +49,7 @@ function placeSunDisc(disc: THREE.Mesh, camera: THREE.Camera, sunlight: number) 
 export function PostEffects() {
   const preset = useGameStore((state) => QUALITY_PRESETS[state.quality])
   // Debug: switch effects off from the console, to measure what each costs (`__deliverItPost`, with ?debug).
-  const [debug, setDebug] = useState({ all: true, ao: true, bloom: true, aa: true })
+  const [debug, setDebug] = useState({ all: true, ao: true, bloom: true, aa: true, sun: true })
   useEffect(() => {
     if (isDebug()) (window as unknown as { __deliverItPost?: unknown }).__deliverItPost = setDebug
   }, [])
@@ -61,7 +61,7 @@ export function PostEffects() {
   const clean = useMemo(() => createCleanPicturePass(), [])
   const sunHaze = useMemo(() => new SunHazeEffect(), [])
   const sunDisc = useMemo(() => createSunDisc(), [])
-  const shafts = preset.sunShafts
+  const shafts = preset.sunShafts && debug.sun
 
   // The sun's haze glow, and the disc the shafts shine from, follow the sun in the sky.
   useFrame(({ camera }) => {
@@ -83,7 +83,7 @@ export function PostEffects() {
     // No multisampling: antialiasing is an effect at the end instead (see `antialiasing` in qualitySettings.ts).
     // The sun disc isn't added to the scene: the shafts pass draws it in a scene of its own, so
     // the sky's own sun is what's seen.
-    <EffectComposer key={`${ambientOcclusion} ${bloom} ${antialiasing} ${shafts}`} multisampling={0} autoClear={false}>
+    <EffectComposer key={`${ambientOcclusion} ${bloom} ${antialiasing} ${shafts} ${debug.sun}`} multisampling={0} autoClear={false}>
       <>
         {ambientOcclusion !== 'off' && (
           <N8AO
@@ -108,7 +108,7 @@ export function PostEffects() {
           />
         )}
         {/* The haze glowing towards the sun, then shafts through leaves where the quality has them: before the tone mapping, so the grade covers them too. */}
-        <primitive object={sunHaze} />
+        {debug.sun ? <primitive object={sunHaze} /> : <></>}
         {shafts ? (
           <GodRays sun={sunDisc} samples={SUN.shaftSamples} density={0.94} decay={0.93} weight={SUN.shaftWeight} exposure={0.55} clampMax={1} blur kernelSize={KernelSize.SMALL} resolutionScale={0.5} />
         ) : (

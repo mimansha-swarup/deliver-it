@@ -45,6 +45,7 @@ import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { createSurfaceMap, worldSurface } from './surfaceMap'
 import { setBuildingsBack } from './buildingSetback'
+import { lonLatToWorld } from './worldUtils'
 import { SurfaceDebug } from '../dev/SurfaceDebug'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
@@ -134,8 +135,11 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     worship: data.worship,
   })
   for (const shrine of infill.shrines) if (!data.worship.includes(shrine)) data.worship.push(shrine)
-  lap('infill')
-  if (import.meta.env.DEV) console.info('[streets] infill:', JSON.stringify({ buildings: infill.buildings.length, sites: infill.sites.length, cars: infill.parkedCars.length, hoardings: infill.hoardings.length, pumps: infill.pumps.length, shrines: infill.shrines.length }))
+  for (const park of infill.parks) if (!data.parks.includes(park)) data.parks.push(park)
+  // Debug: the pocket parks' corners, to go and look at them from the console.
+  if (isDebug()) (window as unknown as { __deliverItPocketParks?: unknown }).__deliverItPocketParks = infill.parks.map((park) => park.geometry.coordinates[0].map((p) => { const [x, , z] = lonLatToWorld(p); return [x, z] }))
+  lap(`infill: ${infill.buildings.length} buildings, ${infill.parks.length} pocket parks`)
+  if (import.meta.env.DEV) console.info('[streets] infill:', JSON.stringify({ buildings: infill.buildings.length, sites: infill.sites.length, cars: infill.parkedCars.length, hoardings: infill.hoardings.length, pumps: infill.pumps.length, shrines: infill.shrines.length, parks: infill.parks.length }))
   const mappedShops = generateShopFronts(data.places, collisions)
   const kit = placeCityKit(data.buildings, data.roads, collisions, mappedShops)
   lap('shop fronts and city kit')
@@ -182,6 +186,8 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
   const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
   lap('shop units and roadside props')
+  // Hedges inside the compound walls join the median shrubs, drawn together.
+  props.bushes.push(...houses.hedges)
   const benches = plantParks(data, collisions, props)
   // Trees placed by where they grow: palms and ashokas behind compound gates, a peepal or banyan
   // by each temple, a big tree on some junction corners (treeSpecies.ts).
@@ -362,7 +368,7 @@ export function World() {
       <WarmAssets>
         <Part name="sky"><Sky /></Part>
         <Part name="lighting"><Lighting /></Part>
-        <Part name="ground"><Ground newSoilArea={newSoilArea} /></Part>
+        <Part name="ground"><Ground newSoilArea={newSoilArea} surface={surfaceMap} /></Part>
         <Part name="parks"><Parks data={data} /></Part>
         <Part name="grass"><GrassField surface={surfaceMap} /></Part>
         <Part name="roads"><Roads roads={data.roads} /></Part>
@@ -381,7 +387,7 @@ export function World() {
         <Part name="hoardings"><Hoardings hoardings={infill.hoardings} /></Part>
         <Part name="cityKit"><CityKit placements={kit} /></Part>
         <Part name="darkStore"><DarkStores stores={stores} /></Part>
-        <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} /></Part>
+        <Part name="props"><RoadsideProps props={props} tanks={tanks} benches={benches} creepers={houses.creepers} bushes={props.bushes} /></Part>
         <Part name="streetLife"><StreetLife life={life} kolams={houses.kolams} /></Part>
         <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
         <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>

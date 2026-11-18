@@ -11,6 +11,7 @@ import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { CANOPY_HEX, GREEN_TINTS, type Prop, type RoadsideProps as Props } from './props'
 import { box, merge } from './simpleShapes'
 import {
+  createBushGeometry,
   createCanopyGeometries,
   createCreeperGeometries,
   createLeafyCanopyGeometries,
@@ -26,6 +27,8 @@ import { groundLift } from './groundLift'
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'
 const CANOPY_COLORS = CANOPY_HEX.map((color) => new THREE.Color(color))
+/** Bushes take only the greens. */
+const BUSH_COLORS = CANOPY_COLORS.slice(0, GREEN_TINTS)
 /** Bougainvillea: mostly magenta, with the odd orange or white one. */
 const CREEPER_COLORS = ['#d81e73', '#e0457b', '#c2278f', '#d81e73', '#f08a2c', '#f4f1ea'].map(
   (color) => new THREE.Color(color),
@@ -88,6 +91,10 @@ const TITLE_PROP_REACH = 400
 const REFRESH_DISTANCE = 20
 
 const transform = new THREE.Object3D()
+
+/** Bushes are small: drawn only this close, in metres, and leafy only within this share of the trees' leafy reach. */
+const BUSH_REACH = 110
+const BUSH_LEAFY_SHARE = 0.5
 
 /** Props sorted into squares this wide, in metres, so a refresh only looks at the squares in reach. */
 const GRID_CELL = 48
@@ -553,18 +560,27 @@ export function RoadsideProps({
   tanks,
   benches,
   creepers,
+  bushes,
 }: {
   props: Props
   tanks: Prop[]
   benches: Prop[]
   /** Bougainvillea on compound walls. */
   creepers: Prop[]
+  /** Hedges in compounds and shrubs on medians. */
+  bushes: Prop[]
 }) {
   const { leafyTrees, leafyReach } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
   // Past `leafyReach`, trees are drawn with the solid canopies, as on Low: a level of detail.
   const solidCanopies = useMemo(() => (leafyTrees ? createCanopyGeometries() : null), [leafyTrees])
   useEffect(() => () => solidCanopies?.forEach((canopy) => canopy.dispose()), [solidCanopies])
+  // Bushes: leafy near the rider where trees are, solid beyond and on Low.
+  const bush = useMemo(() => ({ near: createBushGeometry(leafyTrees), far: leafyTrees ? createBushGeometry(false) : null }), [leafyTrees])
+  useEffect(() => () => {
+    bush.near.dispose()
+    bush.far?.dispose()
+  }, [bush])
   const palm = useMemo(() => createPalmGeometries(), [])
   const canopies = useMemo(
     () => (leafyTrees ? createLeafyCanopyGeometries() : createCanopyGeometries()),
@@ -662,6 +678,17 @@ export function RoadsideProps({
       {solidCanopies?.map((canopy, kind) => (
         <PropInstances key={`far-${kind}`} props={treesByKind[kind]} geometry={canopy} colors={CANOPY_COLORS} sizeRange={0.5} sway from={leafyReach} />
       ))}
+      <PropInstances
+        key={`bushes-${leafyTrees}`}
+        props={bushes}
+        geometry={bush.near}
+        colors={BUSH_COLORS}
+        sizeRange={0.3}
+        sway
+        leaves={leafyTrees ? leaves : undefined}
+        to={leafyTrees ? leafyReach * BUSH_LEAFY_SHARE : BUSH_REACH}
+      />
+      {bush.far && <PropInstances key="bushes-far" props={bushes} geometry={bush.far} colors={BUSH_COLORS} sizeRange={0.3} from={leafyReach * BUSH_LEAFY_SHARE} to={BUSH_REACH} />}
       {/* Coconut palms: drawn the same on every quality, a vertex-coloured crown and a ringed trunk. */}
       <PropInstances props={palms} geometry={palm.trunk} color={PALM_TRUNK_COLOR} sizeRange={0.3} sway />
       <PropInstances props={palms} geometry={palm.crown} sizeRange={0.3} sway vertexColors />

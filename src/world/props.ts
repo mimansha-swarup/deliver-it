@@ -39,6 +39,8 @@ export type RoadsideProps = {
   lamps: Prop[]
   postPairs: PostPair[]
   parkedScooters: Prop[]
+  /** Shrubs down the medians. Hedges in compounds come from the house kit. */
+  bushes: Prop[]
   /** How many avenue arches and median trees went in, and arches refused, for the load timeline. */
   counts?: { archTrees: number; archRefused: number; medianTrees: number }
 }
@@ -114,6 +116,8 @@ const MEDIAN_SPACING = 15
 const MEDIAN_JUNCTION_CLEAR = 11
 const MEDIAN_SPECIES: SpeciesName[] = ['neem', 'gulmohar', 'copperPod', 'gulmohar']
 const MEDIAN_SIZE = 0.85
+/** Shrubs between the median trees, this far apart along the median, in metres. */
+const MEDIAN_SHRUB_SPACING = 4.5
 
 const isArchRoad = (road: LineFeature) => {
   const name = streetPresetOf(road)?.name
@@ -331,7 +335,7 @@ export function generateRoadsideProps(
   const pieces = toRoadPieces(roads)
   const roadIndex = indexRoadPieces(pieces)
   const placed = new PointGrid(MIN_PROP_SPACING)
-  const props: RoadsideProps = { trees: [], lamps: [], postPairs: [], parkedScooters: [] }
+  const props: RoadsideProps = { trees: [], lamps: [], postPairs: [], parkedScooters: [], bushes: [] }
   props.counts = { archTrees: 0, archRefused: 0, medianTrees: 0 }
   const lastLampOnRoad = new Map<number, Prop>()
   // HSR's roads were planted a species at a time, so a whole road is one kind of tree (treeSpecies.ts).
@@ -431,6 +435,18 @@ export function generateRoadsideProps(
     const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1])
     const directionX = (piece.end[0] - piece.start[0]) / (length || 1)
     const directionZ = (piece.end[1] - piece.start[1]) / (length || 1)
+    // Shrubs all down the median where it's drawn, round the trees.
+    for (let along = MEDIAN_SHRUB_SPACING / 2; along < length; along += MEDIAN_SHRUB_SPACING) {
+      const x = piece.start[0] + directionX * along
+      const z = piece.start[1] + directionZ * along
+      if (!surfaceAllows(x, z, 'bush') || keepClear(x, z) || placed.hasWithin(x, z, 1.2)) continue
+      let nearJunction = false
+      forEachRoadNear(roadIndex, x, z, MEDIAN_JUNCTION_CLEAR, (other) => {
+        if (other.road !== piece.road && distanceToPiece(x, z, other) < other.width / 2 + MEDIAN_JUNCTION_CLEAR - 2) nearJunction = true
+      })
+      if (nearJunction) continue
+      props.bushes.push({ x, z, rotation: Math.atan2(directionX, directionZ) + Math.PI / 2 + (random() - 0.5) * 0.4, variation: random(), size: 0.7 + random() * 0.3 })
+    }
     for (let along = MEDIAN_SPACING / 2; along < length; along += MEDIAN_SPACING) {
       slot++
       const x = piece.start[0] + directionX * along

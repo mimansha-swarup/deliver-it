@@ -9306,3 +9306,37 @@ were refused, most for a gate, a lamp or a wall too close.
 ### Performance (Sarjapur Road, 9:00; the machine's load average was about 3)
 High 60 fps, 4.5 to 5.0 ms of work a frame (5.0 before this entry). Low 60 fps, 4.4 ms (3.7
 before: twice the trees in reach).
+
+## 2026-11-18: Entry 163, grass over the red earth, hedges, pots, pocket parks
+
+### What I did
+- **Ground cover** (`src/world/groundCover.ts`): a cover map, a byte a metre, from the surface
+  map. Parks are lawn, medians nearly so, open ground mostly covered, empty plots and building
+  sites only a few weeds. Within 3 m of a footpath, forecourt or road, open ground is worn back
+  towards bare earth, as it is where people walk. The soil shader lays sun-dried and green grass
+  over the red earth in patches, as much as the map says, with darker clumps of weeds. It's a
+  shader change, so Low has it too. Grass tufts on open ground are thicker (150 of 255, was 95).
+- **Hedges** inside the front compound wall on 55% of houses with a yard, a bush every 1.5 m
+  either side of the gate. **Shrubs** down main roads' medians every 4.5 m. One bush shape
+  (`createBushGeometry`, foliage.ts): smaller leaf cards than a tree's, leafy within 45 m on
+  Medium and High, solid beyond and on Low, none past 110 m.
+- **Potted plants** on 40% of balconies and either side of the front door on 55% of houses
+  (Medium and High, with the other fine house detail). More **bougainvillea**: on 30% of
+  shop-street walls, 60% on residential streets, 25% on main roads (were 20, 40, 15).
+- **Pocket parks**: on residential streets, where a gap 18 m long and 14 m deep is free, none
+  within 350 m of another park, half the time. They join the map's own parks, so they get a
+  lawn, trees, benches, a fence with a gate, ground on the surface map and a place on the
+  phone's map. 25 in the city.
+
+### Lessons
+- A bush with a tree's leaf cards had fronds three metres long, spilling over the wall onto
+  the footpath. Its cards are 40% of a tree's, and there are more of them.
+- Pocket parks 24 × 18 m found only 10 gaps. Residential streets are filled with houses first.
+
+### Performance
+The ride fps on this machine swung between 39 and 60 from run to run. Another Chrome process
+(the dev-server game tab) had used over four hours of CPU. Timing frames standing still with
+the GPU's work included, on Sarjapur Road: High 16.1 ms and Low 11.0 ms with everything on.
+The build from before the world pass measured 18.5 and 11.2 ms. Switching single features off
+moved the numbers more by noise than by their own cost, so none of them is measurably expensive.
+PostEffects' debug toggle (`__deliverItPost`) now switches the sun's haze and shafts too.

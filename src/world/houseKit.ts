@@ -335,6 +335,12 @@ const POSTER = { height: 0.7, low: 0.55 }
 /** Out of 100: compound walls with a poster beside the gate, and those with pots on the wall either side. */
 const POSTER_CHANCE = 35
 const POT_CHANCE = 45
+/** Out of 100: balconies with potted plants along them, and houses with pots either side of the door. */
+const BALCONY_POT_CHANCE = 40
+const DOORSTEP_POT_CHANCE = 55
+/** Out of 100: compound yards with a hedge along the inside of the front wall; its bushes are this far apart, in metres. */
+const HEDGE_CHANCE = 55
+const HEDGE_SPACING = 1.5
 
 /** An outdoor AC unit, on a bracket under a window sill, and its fan grille. */
 const AC_UNIT = { width: 0.8, height: 0.55, depth: 0.3, low: 0.18, grille: 0.4 }
@@ -506,6 +512,8 @@ export type HouseKit = {
   creepers: Prop[]
   /** Kolams drawn on the pavement outside gates. */
   kolams: Prop[]
+  /** Bushes in a hedge along the inside of front compound walls. */
+  hedges: Prop[]
   /** Each compound gate: its middle and width, in metres, so the kerb in front can be lowered for vehicles. */
   gates: Gate[]
 }
@@ -562,6 +570,7 @@ export function planHouseKit(
     stiltParking: plan.stiltParking,
     creepers: plan.creepers,
     kolams: plan.kolams,
+    hedges: plan.hedges,
     gates: plan.gates,
   }
 }
@@ -585,6 +594,7 @@ function dressBuildings(
   const stiltParking: StiltVehicle[] = []
   const creepers: Prop[] = []
   const kolams: Prop[] = []
+  const hedges: Prop[] = []
   const gates: Gate[] = []
   // Compound walls go into the collision world only after every house is built, so one
   // house's wall can't make its neighbour think its own walls are hidden.
@@ -726,6 +736,17 @@ function dressBuildings(
         // The metal rail along the top of the parapet.
         const railTop = level + BALCONY.parapet
         box(kit, front, span, [BALCONY.depth - 0.12, BALCONY.depth + 0.02], [railTop, railTop + 0.05], RAIL_COLOR)
+
+        // Potted plants along the parapet on some balconies (Medium and High).
+        if ((hash >>> (floor * 2 + 4)) % 100 < BALCONY_POT_CHANCE) {
+          const pots = 2 + ((hash >>> (floor + 13)) % 3)
+          for (let pot = 0; pot < pots; pot++) {
+            const along = balconyFrom + 0.35 + ((pot + 0.5) / pots) * (balconyTo - balconyFrom - 0.7)
+            const middle = BALCONY.depth - 0.25
+            box(shades, front, [along - 0.12, along + 0.12], [middle - 0.12, middle + 0.12], [level, level + 0.22], POT_COLOR, true)
+            box(shades, front, [along - 0.18, along + 0.18], [middle - 0.17, middle + 0.17], [level + 0.22, level + 0.55], PLANT_COLOR, true)
+          }
+        }
 
         // Washing hung over the rail on some balconies: two to four pieces in bright colours.
         if ((hash >>> (floor * 3)) % 100 < streetLook.washing) {
@@ -957,6 +978,26 @@ function dressBuildings(
         creepers.push({ x, y: COMPOUND.height - 0.05, z, rotation, variation: ((hash >>> 3) % 1000) / 1000 })
       }
 
+      // A hedge along the inside of the front wall, on either side of the gate, on about half the houses.
+      if (yard >= MIN_YARD + 0.3 && (hash >>> 15) % 100 < HEDGE_CHANCE) {
+        const inside = yard - 0.45
+        for (const [from, to] of stretches) {
+          const count = Math.floor((to - from - 0.3) / HEDGE_SPACING)
+          for (let bush = 0; bush < count; bush++) {
+            const [x, z] = at(from + 0.15 + (bush + 0.5) * ((to - from - 0.3) / count), inside)
+            hedges.push({ x, z, rotation: rotation + Math.PI / 2, variation: ((hash >>> (bush % 20)) % 1000) / 1000, tint: (hash >>> 7) % 8, size: 0.85 + ((hash >>> (bush % 13)) % 30) / 100 })
+          }
+        }
+      }
+
+      // Pots either side of the front door, in the yard.
+      if (!isApartment && (hash >>> 19) % 100 < DOORSTEP_POT_CHANCE) {
+        for (const along of [doorAlong - DOOR.width / 2 - 0.4, doorAlong + DOOR.width / 2 + 0.15]) {
+          box(shades, front, [along, along + 0.26], [0.2, 0.46], [0, 0.3], POT_COLOR, true)
+          box(shades, front, [along - 0.05, along + 0.31], [0.15, 0.51], [0.3, 0.75], PLANT_COLOR, true)
+        }
+      }
+
       // A kolam on the pavement outside the gate, as is drawn fresh each morning. It's drawn
       // between the wall and the kerb, so it's as wide as the pavement there allows, and
       // left out where the pavement is too narrow, rather than running under the kerb.
@@ -978,7 +1019,7 @@ function dressBuildings(
     }
   }
 
-  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, compoundWalls, gates }
+  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, hedges, compoundWalls, gates }
 }
 
 type HouseStyle = {

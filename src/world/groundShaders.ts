@@ -14,6 +14,9 @@ export const GROUND_PALETTE = {
   soilBase: '#a65a35',
   soilDry: '#c0794a',
   soilDamp: '#8a4a2c',
+  /** Grass and weeds over the soil: sun-dried and green, mixed in broad patches. */
+  grassDry: '#8c8650',
+  grassGreen: '#5d7a3c',
 }
 
 /** Smooth value noise, and noise in layers, from world position in metres. */
@@ -190,7 +193,7 @@ export function patchPavers(material: THREE.MeshStandardMaterial) {
 // ---------------------------------------------------------------------------
 // Soil
 
-export type SoilUniforms = { uNewSoilArea: { value: THREE.Vector4 } }
+export type SoilUniforms = { uNewSoilArea: { value: THREE.Vector4 }; uCover: { value: THREE.Texture | null }; uCoverArea: { value: THREE.Vector4 } }
 
 /**
  * Bengaluru's red earth: base, dry and damp from the palette, mixed by broad
@@ -202,6 +205,10 @@ export type SoilUniforms = { uNewSoilArea: { value: THREE.Vector4 } }
 export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
   const uniforms = {
     uNewSoilArea: { value: new THREE.Vector4(0, 0, 0, 0) },
+    uCover: { value: null as THREE.Texture | null },
+    uCoverArea: { value: new THREE.Vector4(0, 0, 1, 1) },
+    uGrassDry: { value: linear(GROUND_PALETTE.grassDry) },
+    uGrassGreen: { value: linear(GROUND_PALETTE.grassGreen) },
     uSoilBase: { value: linear(GROUND_PALETTE.soilBase) },
     uSoilDry: { value: linear(GROUND_PALETTE.soilDry) },
     uSoilDamp: { value: linear(GROUND_PALETTE.soilDamp) },
@@ -215,6 +222,10 @@ export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
       .replace(
         'void main() {',
         `uniform vec4 uNewSoilArea;
+        uniform sampler2D uCover;
+        uniform vec4 uCoverArea;
+        uniform vec3 uGrassDry;
+        uniform vec3 uGrassGreen;
         uniform vec3 uSoilBase;
         uniform vec3 uSoilDry;
         uniform vec3 uSoilDamp;
@@ -233,6 +244,17 @@ export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
         vec3 soil = mix(uSoilBase, uSoilDry, smoothstep(0.3, 0.75, broad * 0.6 + middle * 0.4));
         soil = mix(soil, uSoilDamp, smoothstep(0.6, 0.85, middle) * 0.55);
         soil *= (0.94 + 0.12 * fine) * detail;
+        // Grass, weeds and low plants over the soil, in patches, as much as the cover map says.
+        // Outside the map, fields: about half covered.
+        vec2 coverUv = (vSoil - uCoverArea.xy) / uCoverArea.zw;
+        float inMap = step(0.0, coverUv.x) * step(coverUv.x, 1.0) * step(0.0, coverUv.y) * step(coverUv.y, 1.0);
+        float cover = mix(0.55, texture2D(uCover, coverUv).r, inMap);
+        float clumps = groundLayers(vSoil * 0.35 + 21.0);
+        float patches = smoothstep(0.42, 0.62, cover * 0.9 + (clumps - 0.5) * 0.7 + (middle - 0.5) * 0.3);
+        vec3 grass = mix(uGrassDry, uGrassGreen, smoothstep(0.3, 0.75, broad * 0.5 + groundLayers(vSoil * 0.09 + 5.0) * 0.5));
+        // Tufts and weeds: darker clumps in the grass, the odd paler dry blade.
+        grass *= (0.82 + 0.3 * groundLayers(vSoil * 1.7 + 2.0)) * mix(1.0, detail, 0.6);
+        soil = mix(soil, grass, patches);
         vec2 outside2 = max(uNewSoilArea.xy - vSoil, vSoil - uNewSoilArea.zw);
         float inArea = 1.0 - smoothstep(0.0, 30.0, max(outside2.x, outside2.y));
         diffuseColor.rgb = mix(oldSoil, soil, inArea);`,

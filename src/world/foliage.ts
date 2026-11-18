@@ -67,6 +67,25 @@ const TREE_SHAPES: Blob[][] = [
   ],
 ]
 
+/**
+ * A bush: a low, rounded clump, a little longer than it is wide (along x), so a row of them
+ * reads as a hedge. Hedges inside compound walls, and shrubs down the medians.
+ */
+const BUSH: Blob[] = [
+  [0, 0.55, 0, 0.6],
+  [0.55, 0.45, 0.08, 0.48],
+  [-0.5, 0.48, -0.06, 0.5],
+  [0.1, 0.8, 0.05, 0.42],
+]
+
+/** A bush's leaf cards, against a tree's. */
+const BUSH_CARD_SCALE = 0.4
+
+/** The bush's shape: leaf cards with a solid core when leafy, otherwise solid. */
+export function createBushGeometry(leafy: boolean): THREE.BufferGeometry {
+  return leafy ? createLeafyCanopy(BUSH, 4242, BUSH_CARD_SCALE) : createBlobs(BUSH)
+}
+
 /** The tree shapes, by name, as the planting in props.ts asks for them. The palm is drawn on its own (`createPalmGeometries`). */
 export const TREE_SHAPE = { round: 0, tall: 1, wide: 2, umbrella: 3, column: 4, dome: 5, arch: 6 } as const
 /** A tree planted without a shape gets one of the first this many (not the arch, which only avenues get). */
@@ -110,7 +129,8 @@ export function createCanopyGeometries(): THREE.BufferGeometry[] {
 }
 
 /** A leafy canopy: many cards around each ball, with a dark solid core inside. */
-function createLeafyCanopy(blobs: Blob[], seed: number): THREE.BufferGeometry {
+/** `cardScale` sizes the leaf cards: smaller for a bush, whose fronds are smaller than a tree's. */
+function createLeafyCanopy(blobs: Blob[], seed: number, cardScale = 1): THREE.BufferGeometry {
   const random = createRandom(seed)
   const positions: number[] = []
   const normals: number[] = []
@@ -123,7 +143,8 @@ function createLeafyCanopy(blobs: Blob[], seed: number): THREE.BufferGeometry {
   const facing = new THREE.Vector3()
 
   for (const [blobX, blobY, blobZ, radius] of blobs) {
-    const cards = Math.round(4 * Math.PI * radius * radius * CARDS_PER_AREA)
+    // Smaller cards need more of them to cover the same ball.
+    const cards = Math.round((4 * Math.PI * radius * radius * CARDS_PER_AREA) / (cardScale * cardScale))
 
     for (let card = 0; card < cards; card++) {
       // A random direction, using a method that doesn't bunch up at the poles.
@@ -143,7 +164,9 @@ function createLeafyCanopy(blobs: Blob[], seed: number): THREE.BufferGeometry {
       along.normalize()
       across.crossVectors(out, along).normalize()
 
-      const [left, top, right, bottom, width, length] = FRONDS[Math.floor(random() * FRONDS.length)]
+      const [left, top, right, bottom, frondWidth, frondLength] = FRONDS[Math.floor(random() * FRONDS.length)]
+      const width = frondWidth * cardScale
+      const length = frondLength * cardScale
 
       // All corners share one direction, which shades the canopy like one soft ball.
       facing.copy(out).setY(out.y + 0.5).normalize()
