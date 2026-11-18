@@ -33,14 +33,17 @@ function batteryAt(hours: number): number {
   return Math.max(8, Math.round(100 - since * 4))
 }
 
-function StatusBar() {
+function StatusBar({ unread = 0 }: { unread?: number }) {
   const skyTime = useGameStore((state) => state.skyTime)
   const weather = useGameStore((state) => state.weather)
   const night = useGameStore((state) => state.night)
   const battery = batteryAt(liveSky.hours)
   return (
     <header className="phone-status">
-      <span className="phone-time">{skyTime}</span>
+      <span className="phone-time">
+        {skyTime}
+        {unread > 0 && <span className="phone-tab-count" aria-label={`${unread} unread`}>{unread}</span>}
+      </span>
       <span className="phone-camera" aria-hidden="true" />
       <span className="phone-status-right">
         <WeatherIcon weather={weather} night={night} />
@@ -258,23 +261,41 @@ export function Phone() {
   const badges: Partial<Record<AppId, number>> = { messages: totalUnread, deliver: offer ? 1 : 0, garage: atStore ? 1 : 0 }
   const station = useStation()
   const videoCard = station.kind === 'video'
-  // A banner in the open phone, unless it's the chat it belongs to, or the lock screen (which lists them).
-  const banner = raised && notification && screen !== 'lock' && !(screen === 'messages' && thread === notification.thread) ? notification : null
-  const peek = !raised ? notification : null
+  // A banner across the top: on the half-open phone always; open, unless it's on the lock screen
+  // (which lists them) or that chat is the one showing.
+  const banner =
+    notification && (!raised || (screen !== 'lock' && !(screen === 'messages' && thread === notification.thread))) ? notification : null
+  const openNote = (note: Peek) => {
+    open('home')
+    if (note.thread) nav.openThread(note.thread)
+    else nav.go('music')
+  }
 
   return (
     <>
-      <aside className={raised ? 'phone phone-raised' : 'phone phone-away'} aria-label="Rider phone" aria-hidden={!raised}>
+      <aside
+        className={raised ? 'phone phone-raised' : 'phone phone-away'}
+        aria-label={raised ? 'Rider phone' : `Rider phone: click or press ${phoneKey} to open`}
+        data-alert={!raised && notification?.kind === 'urgent' ? 'true' : undefined}
+        onClickCapture={(event) => {
+          // Half open, a click anywhere raises it to the lock screen; a banner opens its chat.
+          if (raised) return
+          event.stopPropagation()
+          event.preventDefault()
+          if (banner && (event.target as HTMLElement).closest('.phone-banner')) openNote(banner)
+          else open('lock')
+        }}
+      >
         <div className="phone-screen">
-          <StatusBar />
+          <StatusBar unread={raised ? 0 : totalUnread} />
           {banner && (
-            <button type="button" className="phone-banner" data-kind={banner.kind} onClick={() => (banner.thread ? nav.openThread(banner.thread) : nav.go('music'))}>
+            <button type="button" className="phone-banner" data-kind={banner.kind} onClick={() => openNote(banner)}>
               <strong>{banner.from}</strong>
               <span>{banner.text}</span>
             </button>
           )}
           <div className="phone-lower">
-            {screen === 'lock' ? (
+            {!raised || screen === 'lock' ? (
               <LockScreen
                 notifications={notes}
                 onUnlock={() => {
@@ -305,27 +326,6 @@ export function Phone() {
           />
         </div>
       </aside>
-      {!raised && (
-        <button type="button" className="phone-tab" onClick={() => open('lock')} aria-label="Open the phone (P)">
-          Phone · {phoneKey}{totalUnread > 0 && <span className="phone-tab-count">{totalUnread}</span>}
-        </button>
-      )}
-      {peek && (
-        <button
-          type="button"
-          key={peek.id}
-          className="phone-peek"
-          data-kind={peek.kind}
-          onClick={() => {
-            open('home')
-            if (peek.thread) nav.openThread(peek.thread)
-            else nav.go('music')
-          }}
-        >
-          <span className="phone-peek-from">{peek.from}</span>
-          <span className="phone-peek-text">{peek.text}</span>
-        </button>
-      )}
       {videoCard && (
         <aside className={raised ? 'music-card music-card-raised' : 'music-card'} aria-label="Music video">
           <VideoScreen station={station} className="music-card-player" />

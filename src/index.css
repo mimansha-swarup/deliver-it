@@ -3470,3 +3470,84 @@ body,
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ---- The phone half open on the right (Phone.tsx) ----
+ * Away, it's slid down so only its top shows: the status bar and the lock screen's clock, with
+ * new messages as a banner across it. P or a click raises it. */
+
+.phone {
+  --phone-height: min(640px, calc(100dvh - 24px));
+  /* How much of it shows while it's away. */
+  --phone-peek: 150px;
+
+  right: 12px;
+  left: auto;
+  width: 316px;
+  height: var(--phone-height);
+}
+
+.phone-raised {
+  width: 316px;
+  height: var(--phone-height);
+}
+
+.phone-away {
+  transform: translateY(calc(100% - var(--phone-peek)));
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.phone-away .phone-lock-hint,
+.phone-away .phone-lock-notes,
+.phone-away .phone-home-bar {
+  visibility: hidden;
+}
+
+.phone-away .phone-lock-time {
+  margin-top: 4px !important;
+  font-size: 44px;
+}
+
+.phone-away:hover {
+  transform: translateY(calc(100% - var(--phone-peek) - 10px));
+}
+
+.phone[data-alert='true'] {
+  box-shadow: 0 0 0 3px rgb(224 71 62 / 85%), 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+.phone-time .phone-tab-count {
+  margin-left: 5px;
+  vertical-align: 1px;
+}
+
+/* The speedometer moves left, beside the minimap, to leave the right to the phone. */
+.hud-speed {
+  right: auto;
+  left: 214px;
+  bottom: 12px;
+}
+
+/* A music video sits just above the phone. */
+.music-card {
+  right: 12px;
+  left: auto;
+  width: 316px;
+  bottom: calc(12px + var(--phone-peek, 150px) + var(--card-gap));
+}
+
+.music-card-raised {
+  width: 316px;
+  bottom: calc(12px + min(640px, calc(100dvh - 24px)) + var(--card-gap));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-away:hover {
+    transform: translateY(calc(100% - var(--phone-peek)));
+  }
+}
+
+/* The map credits sit left of the phone, which now takes the bottom-right corner. */
+.attribution {
+  right: 340px;
+}

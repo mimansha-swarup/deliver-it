@@ -9029,3 +9029,14 @@ Riding Sarjapur Road at an emulated 2× screen on High, side by side with `main`
 frames over 20 ms, frame work 3.4–3.9 / 4.1–4.8 ms (mean / p95) against 3.6–3.9 / 4.8 ms, time
 to ride 4.8–4.9 s against 5.3–5.4 s. The phone's apps draw only while open; photo mode costs
 nothing until used; the tutorial checks a few values five times a second.
+
+## 2026-11-18: Entry 152, the phone half open on the right
+
+### What I did
+The phone lives bottom-right now and is never fully hidden. Away, it's slid down so its top
+150 px show: the status bar (with the unread count beside the time) and the lock screen's clock.
+New messages appear as a banner across that strip, with a red glow round the phone when urgent,
+so the separate peek card and the "Phone · P" tab are gone. Hovering lifts it a touch; a click
+(or P) raises it to the lock screen, and a click on a banner opens that chat. To make room, the
+speedometer moved beside the minimap, a music video sits above the phone, and the map credits
+moved left of it.
