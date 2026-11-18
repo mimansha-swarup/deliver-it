@@ -9553,3 +9553,54 @@ a note opens it as before. **P** raises it to the lock screen, and handovers sti
 themselves. A music video drops to the corner while the phone is away.
 
 Screenshots: `world-pass.local/shots/fu4` (riding), `fu4-peek` (a message), `fu4-p` (after P).
+
+## 2026-11-19: Entry 172, performance after the world pass
+
+### What I did
+- **Trees** (RoadsideProps.tsx, foliage.ts, qualitySettings.ts):
+  - Leafy canopies within 45 m on High and 40 m on Medium (were 90 and 70), the solid canopies past that.
+  - **A far level**: past `farTreeReach` (High 120 m, Medium 100, Low 45) each tree is an impostor,
+    one rough ball the size of its canopy on a four-sided post, about 28 triangles against 190,
+    with no shadow. Trunks stop there too; they used to go out to the props' draw distance
+    (260 m on High), shadows and all.
+  - **Fewer trees on Low and Medium** (`treeThin`): past 40 m on Low, 45% of the trees are drawn;
+    past 50 m on Medium, 70%. The same trees in every part (trunk, canopy, impostor), by a roll on
+    their spot. Near the rider every tree is drawn, so none that could be ridden into is missing
+    (props refresh every 20 m, so the nearest a hidden tree gets is 20 m on Low).
+- **Sun shafts**: High only (Medium drops them). On High they cost a whole extra pass over the
+  picture, as they can't share one with SMAA, so they're mounted only while the sun is lower than
+  about 18° (from about 16:20, until about 7:40), and they're cheaper: 32 samples at 0.4 of the
+  picture's size (were 48 at 0.5).
+- **Small shadow casters**: story props (but the cow and the transformer), bougainvillea flowers
+  and far bushes cast no shadows on High: too small to read, and each was another draw in the shadow map.
+- **Load**: the lake's distance pass ran on a scratch map of the whole city; it's on the park's own
+  box now (87 → 15 ms). The surface map's scanline fill writes runs at a time (163 → 129 ms with
+  the places of worship). The cover map's wear pass uses a table of offsets (162 → 80 ms). The
+  crash physics' wall mesh shares corners, built straight into typed arrays.
+- `scripts/bench.mjs --eval <js>` runs a script before measuring, e.g. to hide a part.
+- Tried and dropped: compiling each part's shaders as it mounts (`gl.compile`), so the driver
+  would compile them side by side. Load was the same within noise.
+
+### Performance (Sarjapur Road, back to back with the build from before the world pass, `48bd4b5`)
+This Mac was busy with another Chrome using most of two cores, so runs were interleaved, pre then
+now, and medians taken. The review's numbers came from a slower moment on the same machine, so
+here is each as measured, and scaled to the review's "before" numbers.
+
+| | Before the world pass | The reviewed build | Now | Now, on the review's scale |
+| --- | --- | --- | --- | --- |
+| High, ms | 10.5 | 12.2 (+16%) | 11.5 (+9%) | about 17.9 (target 16.6) |
+| Low with the CPU 4× slower, ms | 12.0 | 12.7 (+6%) | 12.4 (+3%) | about 22.1 (target ~22) |
+| Load (Play to riding), s | 3.7 | 4.6 (+24%) | 4.45 (+20%) | about 8.0 (target 7) |
+
+At 17:30, with the shafts on: High 11.4 ms against 10.5.
+
+### Not met
+- **High** is still about 1 ms over the build from before the world pass. Hiding the world part by
+  part, no single part costs more than about half a millisecond on High; the rest of the world
+  pass's cost is spread over the weathering and ground shaders, the closer camera and the extra
+  props. Bringing it the rest of the way means cheaper wall and ground shaders on High, or a lower
+  top resolution.
+- **Load** is still about 20% over. What's new in planning: setting buildings back from the
+  footpath (250 ms, half of it road-distance queries for 20,000 buildings), the surface map
+  (130 ms), the extra colliders (+70 ms) and the cover map (80 ms). Getting under 7 s needs that
+  planning baked into the map data at build time, or done in a worker.

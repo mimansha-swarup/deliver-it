@@ -1,5 +1,5 @@
 import type RAPIER from '@dimforge/rapier3d'
-import type { CollisionWorld } from '../world/collision'
+import type { CollisionWorld, Footprint } from '../world/collision'
 import { PLAY_AREA } from '../world/worldUtils'
 
 type RapierModule = typeof RAPIER
@@ -119,20 +119,31 @@ export function uprightness(rotation: Quaternion | null): number {
 
 /** Every wall as one fixed mesh of thin sides. No roofs, as nothing gets that high. */
 function createWallMesh(collisions: CollisionWorld) {
-  const footprints = new Set([...collisions.values()].flat())
-  const vertices: number[] = []
-  const indices: number[] = []
-
+  const footprints = new Set<Footprint>()
+  for (const list of collisions.values()) for (const footprint of list) footprints.add(footprint)
+  // Each corner once at the ground and once at the top, shared by the two sides it joins.
+  let corners = 0
+  for (const footprint of footprints) corners += footprint.length
+  const vertices = new Float32Array(corners * 6)
+  const indices = new Uint32Array(corners * 6)
+  let vertex = 0
+  let index = 0
   for (const footprint of footprints) {
-    footprint.forEach(([x, z], index) => {
-      const [nextX, nextZ] = footprint[(index + 1) % footprint.length]
-      const first = vertices.length / 3
-      vertices.push(x, 0, z, nextX, 0, nextZ, nextX, WALL_HEIGHT, nextZ, x, WALL_HEIGHT, z)
-      indices.push(first, first + 1, first + 2, first, first + 2, first + 3)
-    })
+    const first = vertex
+    const count = footprint.length
+    for (const [x, z] of footprint) {
+      vertices.set([x, 0, z, x, WALL_HEIGHT, z], vertex * 3)
+      vertex += 2
+    }
+    for (let corner = 0; corner < count; corner++) {
+      const bottom = first + corner * 2
+      const next = first + ((corner + 1) % count) * 2
+      indices.set([bottom, next, next + 1, bottom, next + 1, bottom + 1], index)
+      index += 6
+    }
   }
 
-  return { vertices: new Float32Array(vertices), indices: new Uint32Array(indices) }
+  return { vertices, indices }
 }
 
 export type CrashPhysics = ReturnType<typeof createCrashPhysics>

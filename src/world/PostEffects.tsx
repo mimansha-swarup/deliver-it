@@ -61,7 +61,10 @@ export function PostEffects() {
   const clean = useMemo(() => createCleanPicturePass(), [])
   const sunHaze = useMemo(() => new SunHazeEffect(), [])
   const sunDisc = useMemo(() => createSunDisc(), [])
-  const shafts = preset.sunShafts && debug.sun
+  // The shafts only show with the sun low, and on High they cost a whole extra pass over the picture
+  // (they can't share one with the antialiasing), so they're mounted only while the sun is low.
+  const [sunLow, setSunLow] = useState(() => liveSky.look.sunDirection[1] < SUN.shaftsBelow)
+  const shafts = preset.sunShafts && debug.sun && sunLow
 
   // The sun's haze glow, and the disc the shafts shine from, follow the sun in the sky.
   useFrame(({ camera }) => {
@@ -70,6 +73,10 @@ export function PostEffects() {
     const sunlight = Math.min(1, look.lightIntensity / SUN.fullLight) * (1 - look.night)
     sunHaze.aim(camera, look.sunDirection, look.lightColor, SUN.hazeGlow * look.haze * sunlight)
     placeSunDisc(sunDisc, camera, shafts ? sunlight : 0)
+    // With a little either way, so the chain isn't rebuilt back and forth at the threshold.
+    const height = look.sunDirection[1]
+    if (sunLow && height > SUN.shaftsBelow + 0.02) setSunLow(false)
+    else if (!sunLow && height < SUN.shaftsBelow - 0.02) setSunLow(true)
   })
 
   useEffect(() => () => lut.dispose(), [lut])
@@ -110,7 +117,7 @@ export function PostEffects() {
         {/* The haze glowing towards the sun, then shafts through leaves where the quality has them: before the tone mapping, so the grade covers them too. */}
         {debug.sun ? <primitive object={sunHaze} /> : <></>}
         {shafts ? (
-          <GodRays sun={sunDisc} samples={SUN.shaftSamples} density={0.94} decay={0.93} weight={SUN.shaftWeight} exposure={0.55} clampMax={1} blur kernelSize={KernelSize.SMALL} resolutionScale={0.5} />
+          <GodRays sun={sunDisc} samples={SUN.shaftSamples} density={0.94} decay={0.93} weight={SUN.shaftWeight} exposure={0.55} clampMax={1} blur kernelSize={KernelSize.SMALL} resolutionScale={SUN.shaftResolution} />
         ) : (
           <></>
         )}

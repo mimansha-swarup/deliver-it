@@ -8,7 +8,8 @@ import type { StoryKind, StoryProps as Story } from './storyPlacement'
  * Draws the story props (storyPlacement.ts): each kind one instanced shape built from a few boxes,
  * coloured in its vertices, some tinted per copy (a dog's coat, a chair's plastic). Small things
  * are drawn only close to the rider, on every quality: they cost little, and at riding speed
- * they only read close up anyway.
+ * they only read close up anyway. Only the cow and the transformer cast shadows: the rest are too
+ * small for theirs to read, and each would be another draw in the shadow map.
  */
 
 const tube = (radius: number, length: number, position: [number, number, number], rotation: [number, number, number], color: string) => {
@@ -181,7 +182,7 @@ export function StoryProps({ story }: { story: Story }) {
   return (
     <>
       {(Object.keys(BUILDERS) as StoryKind[]).map((kind) => (
-        <PropInstances key={kind} props={story[kind]} geometry={shapes[kind]} colors={TINTS[kind]} sizeRange={kind === 'dog' ? 0.3 : 0.1} vertexColors to={REACH[kind]} />
+        <PropInstances key={kind} props={story[kind]} geometry={shapes[kind]} colors={TINTS[kind]} sizeRange={kind === 'dog' ? 0.3 : 0.1} vertexColors to={REACH[kind]} shadow={kind === 'cow' || kind === 'transformer'} />
       ))}
     </>
   )

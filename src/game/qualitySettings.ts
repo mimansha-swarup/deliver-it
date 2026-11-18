@@ -51,6 +51,16 @@ type QualityPreset = {
   leafyTrees: boolean
   /** With leafy trees, only those this close are leafy; further ones get the solid canopies, in metres. */
   leafyReach: number
+  /**
+   * Trees further than this are drawn as impostors: one rough ball on a post, about 28 triangles
+   * against 190, with no shadow, out to the props' draw distance (RoadsideProps.tsx), in metres.
+   */
+  farTreeReach: number
+  /**
+   * Fewer trees past `from` metres: only the share `keep` of them is drawn there. Near the rider
+   * every tree is drawn, so none that could be ridden into is missing. Null draws them all.
+   */
+  treeThin: { from: number; keep: number } | null
   /** Tufts of grass around the rider. */
   grassTufts: number
   vehicles: number
@@ -84,6 +94,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     rainDrops: 300,
     leafyTrees: false,
     leafyReach: 0,
+    farTreeReach: 45,
+    treeThin: { from: 40, keep: 0.45 },
     grassTufts: 0,
     vehicles: 10,
     vehicleDetailDistance: 16,
@@ -98,7 +110,8 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSoftness: 2,
     ambientOcclusion: 'fast',
     bloom: true,
-    sunShafts: true,
+    // Shafts only on High: about half a millisecond with the sun low.
+    sunShafts: false,
     antialiasing: 'smaa',
     windows: true,
     surfaces: 'color',
@@ -109,7 +122,9 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     skyClouds: true,
     rainDrops: 700,
     leafyTrees: true,
-    leafyReach: 70,
+    leafyReach: 40,
+    farTreeReach: 100,
+    treeThin: { from: 50, keep: 0.7 },
     grassTufts: 1400,
     vehicles: 28,
     vehicleDetailDistance: 20,
@@ -137,7 +152,9 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     skyClouds: true,
     rainDrops: 1400,
     leafyTrees: true,
-    leafyReach: 90,
+    leafyReach: 45,
+    farTreeReach: 120,
+    treeThin: null,
     grassTufts: 3200,
     vehicles: 40,
     vehicleDetailDistance: 24,

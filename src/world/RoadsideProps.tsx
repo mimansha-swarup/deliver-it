@@ -13,6 +13,7 @@ import { box, merge } from './simpleShapes'
 import {
   createBushGeometry,
   createCanopyGeometries,
+  createImpostorGeometries,
   createCreeperGeometries,
   createLeafyCanopyGeometries,
   createPalmGeometries,
@@ -406,6 +407,12 @@ function createHaloMaterial(): THREE.ShaderMaterial {
   })
 }
 
+/** A steady 0 to 1 roll for a spot, so a thinned tree is the same tree in each of its parts. */
+function thinRoll(x: number, z: number): number {
+  const mixed = Math.imul(Math.round(x * 10) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(Math.round(z * 10), 0xc2b2ae35)
+  return ((mixed ^ (mixed >>> 15)) >>> 0) / 4294967296
+}
+
 /**
  * Draws many copies of one shape in a single draw call. Each copy only needs a
  * transform matrix: its position, rotation and size packed into 16 numbers.
@@ -428,8 +435,14 @@ export function PropInstances({
   material,
   from = 0,
   to,
+  thin,
+  shadow = true,
 }: {
   props: Prop[]
+  /** Past `from` metres, only the share `keep` of the copies is drawn (the same ones for every part of a tree). */
+  thin?: { from: number; keep: number } | null
+  /** Whether it casts shadows where the quality has tree shadows. Far levels of detail don't. */
+  shadow?: boolean
   /** Only copies at least `from` and less than `to` metres from the rider (`to` defaults to the props' draw distance): one level of detail. */
   from?: number
   to?: number
@@ -484,6 +497,7 @@ export function PropInstances({
       const { x, y, z, rotation, variation, tint, size = 1, lean } = prop
       const distance = Math.hypot(x - livePlayer.x, z - livePlayer.z)
       if (distance > reach || distance < near) return
+      if (thin && started && distance > thin.from && thinRoll(x, z) > thin.keep) return
 
       // Things on the ground stand on it, raised footpaths included. Roof tanks give their own height.
       transform.position.set(x, y ?? groundUnder(prop), z)
@@ -508,7 +522,7 @@ export function PropInstances({
       ref={mesh}
       args={[geometry, undefined, props.length]}
       frustumCulled={false}
-      castShadow={treeShadows && !glow && !flat && !material}
+      castShadow={shadow && treeShadows && !glow && !flat && !material}
       receiveShadow={!glow && !material}
     >
       {material ? (
@@ -570,8 +584,11 @@ export function RoadsideProps({
   /** Hedges in compounds and shrubs on medians. */
   bushes: Prop[]
 }) {
-  const { leafyTrees, leafyReach } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { leafyTrees, leafyReach, farTreeReach, treeThin } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
+  // Past `farTreeReach`, one rough ball on a post, with no shadow: the far level of detail.
+  const impostors = useMemo(() => createImpostorGeometries(), [])
+  useEffect(() => () => impostors.forEach((impostor) => impostor.dispose()), [impostors])
   // Past `leafyReach`, trees are drawn with the solid canopies, as on Low: a level of detail.
   const solidCanopies = useMemo(() => (leafyTrees ? createCanopyGeometries() : null), [leafyTrees])
   useEffect(() => () => solidCanopies?.forEach((canopy) => canopy.dispose()), [solidCanopies])
@@ -662,6 +679,8 @@ export function RoadsideProps({
         sizeRange={0.5}
         sway
         surface={leafyTrees ? bark : undefined}
+        to={farTreeReach}
+        thin={treeThin}
       />
       {canopies.map((canopy, kind) => (
         <PropInstances
@@ -672,11 +691,15 @@ export function RoadsideProps({
           sizeRange={0.5}
           sway
           leaves={leafyTrees ? leaves : undefined}
-          to={leafyTrees ? leafyReach : undefined}
+          to={leafyTrees ? leafyReach : farTreeReach}
+          thin={treeThin}
         />
       ))}
       {solidCanopies?.map((canopy, kind) => (
-        <PropInstances key={`far-${kind}`} props={treesByKind[kind]} geometry={canopy} colors={CANOPY_COLORS} sizeRange={0.5} sway from={leafyReach} />
+        <PropInstances key={`mid-${kind}`} props={treesByKind[kind]} geometry={canopy} colors={CANOPY_COLORS} sizeRange={0.5} sway from={leafyReach} to={farTreeReach} thin={treeThin} />
+      ))}
+      {impostors.map((impostor, kind) => (
+        <PropInstances key={`far-${kind}`} props={treesByKind[kind]} geometry={impostor} colors={CANOPY_COLORS} sizeRange={0.5} vertexColors from={farTreeReach} thin={treeThin} shadow={false} />
       ))}
       <PropInstances
         key={`bushes-${leafyTrees}`}
@@ -688,7 +711,7 @@ export function RoadsideProps({
         leaves={leafyTrees ? leaves : undefined}
         to={leafyTrees ? leafyReach * BUSH_LEAFY_SHARE : BUSH_REACH}
       />
-      {bush.far && <PropInstances key="bushes-far" props={bushes} geometry={bush.far} colors={BUSH_COLORS} sizeRange={0.3} from={leafyReach * BUSH_LEAFY_SHARE} to={BUSH_REACH} />}
+      {bush.far && <PropInstances key="bushes-far" props={bushes} geometry={bush.far} colors={BUSH_COLORS} sizeRange={0.3} from={leafyReach * BUSH_LEAFY_SHARE} to={BUSH_REACH} shadow={false} />}
       {/* Coconut palms: drawn the same on every quality, a vertex-coloured crown and a ringed trunk. */}
       <PropInstances props={palms} geometry={palm.trunk} color={PALM_TRUNK_COLOR} sizeRange={0.3} sway />
       <PropInstances props={palms} geometry={palm.crown} sizeRange={0.3} sway vertexColors />
@@ -709,6 +732,7 @@ export function RoadsideProps({
         colors={CREEPER_COLORS}
         sizeRange={0.4}
         sway
+        shadow={false}
         leaves={leafyTrees ? leaves : undefined}
       />
       <PropInstances props={props.lamps} geometry={lamp} color={LAMP_COLOR} sizeRange={0} />

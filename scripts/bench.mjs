@@ -6,6 +6,7 @@
  *     npm run build && npx vite preview --port 4173 &
  *     node --experimental-websocket scripts/bench.mjs [--streets shop-street,main-road] [--profile]
  *     node --experimental-websocket scripts/bench.mjs --ride [--quality High] [--profile] [--streets main-road]
+ *     node --experimental-websocket scripts/bench.mjs --eval "window.__deliverIt.scene.getObjectByName('part:props').visible = false"
  *
  * --ride rides forward for 6 s with the resolution left to the game, and reports what a player
  * sees: frame intervals (FPS, frames over 20 ms, the worst), each frame's own work, and how many
@@ -31,6 +32,8 @@ const option = (name, fallback) => {
 const BASE = option('url', 'http://localhost:4173')
 const STREETS = option('streets', 'shop-street,main-road').split(',')
 const PROFILE = args.includes('--profile')
+/** JavaScript run in the page once the ride has started, before measuring. */
+const EVAL = option('eval', '')
 /** --ride: ride along the street on one quality at the screen's own resolution, as a player would, and count stutters. */
 const RIDE = args.includes('--ride')
 const RIDE_QUALITY = option('quality', 'High')
@@ -271,6 +274,8 @@ try {
     }
     await sleep(3000)
     await evaluate(TIMER)
+    // --eval <js>: run in the page before measuring, e.g. to hide a part and see what it costs.
+    if (EVAL) await evaluate(`(() => { ${EVAL} })(); 'ok'`)
     if (RIDE) {
       // Rides need the frame timer installed but idle, not the samples below.
     }

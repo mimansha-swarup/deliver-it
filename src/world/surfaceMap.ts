@@ -100,24 +100,33 @@ export class SurfaceMap {
   /** Fills a polygon (scanline, even-odd), only over cells of the given kinds if `over` is given. */
   fillPolygon(points: GroundPoint[], kind: Surface, over?: Surface[]) {
     if (points.length < 3) return
-    const local = points.map(([x, z]) => [x - PLAY_AREA.minX, z - PLAY_AREA.minZ])
-    const zs = local.map(([, z]) => z)
-    const top = Math.max(0, Math.floor(Math.min(...zs)))
-    const bottom = Math.min(this.depth - 1, Math.ceil(Math.max(...zs)))
+    let minZ = Infinity
+    let maxZ = -Infinity
+    for (const [, z] of points) {
+      if (z < minZ) minZ = z
+      if (z > maxZ) maxZ = z
+    }
+    const top = Math.max(0, Math.floor(minZ - PLAY_AREA.minZ))
+    const bottom = Math.min(this.depth - 1, Math.ceil(maxZ - PLAY_AREA.minZ))
     const crossings: number[] = []
     for (let row = top; row <= bottom; row++) {
-      const z = row + 0.5
+      const z = row + 0.5 + PLAY_AREA.minZ
       crossings.length = 0
-      for (let i = 0, j = local.length - 1; i < local.length; j = i++) {
-        const [ax, az] = local[j]
-        const [bx, bz] = local[i]
-        if (az > z !== bz > z) crossings.push(ax + ((z - az) / (bz - az)) * (bx - ax))
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const [ax, az] = points[j]
+        const [bx, bz] = points[i]
+        if (az > z !== bz > z) crossings.push(ax + ((z - az) / (bz - az)) * (bx - ax) - PLAY_AREA.minX)
       }
-      crossings.sort((a, b) => a - b)
+      if (crossings.length > 2) crossings.sort((a, b) => a - b)
+      else if (crossings.length === 2 && crossings[0] > crossings[1]) crossings.reverse()
       for (let k = 0; k + 1 < crossings.length; k += 2) {
         const from = Math.max(0, Math.ceil(crossings[k] - 0.5))
         const to = Math.min(this.width - 1, Math.floor(crossings[k + 1] - 0.5))
-        for (let column = from; column <= to; column++) this.set(row * this.width + column, kind, over)
+        if (to < from) continue
+        const rowStart = row * this.width
+        // Most fills are over anything: a run at a time.
+        if (!over) this.cells.fill(kind, rowStart + from, rowStart + to + 1)
+        else for (let column = from; column <= to; column++) this.set(rowStart + column, kind, over)
       }
     }
   }

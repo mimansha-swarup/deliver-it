@@ -37,6 +37,9 @@ export function skipTransparencyPass(pass: N8AOPostPass | null) {
  * The sun's light in the haze. `hazeGlow` is how bright the air glows looking towards the sun
  * (sunHaze.ts), at full sun and the thickest haze. `fullLight` is the sun's light at which it's
  * at full strength. The shafts shine from a disc `discRadius` across, `discDistance` away, with
- * `shaftSamples` steps from each pixel towards it, each adding `shaftWeight`.
+ * `shaftSamples` steps from each pixel towards it, each adding `shaftWeight`, worked out at
+ * `shaftResolution` of the picture's size (32 samples at 0.4: about 40% of the cost of 48 at 0.5).
+ * They're on only while the sun is lower than `shaftsBelow` (its direction's height: about 18°, so
+ * from about 16:20 in the evening and until about 7:40 in the morning).
  */
-export const SUN = { hazeGlow: 0.55, fullLight: 3, discRadius: 22, discDistance: 900, shaftSamples: 48, shaftWeight: 0.35 }
+export const SUN = { hazeGlow: 0.55, fullLight: 3, discRadius: 22, discDistance: 900, shaftSamples: 32, shaftWeight: 0.4, shaftResolution: 0.4, shaftsBelow: 0.33 }

@@ -36,41 +36,44 @@ function isInside(xs: number[], zs: number[], x: number, z: number): boolean {
   return inside
 }
 
-const isWalked = (kind: number) => kind === Surface.Footpath || kind === Surface.Paved || kind === Surface.Road
-
 export function createCoverMask(surface: SurfaceMap): THREE.DataTexture {
   const { width, depth, cells } = surface
+  // Cover by kind, looked up from a small table rather than an object for each of 11 million cells.
+  const coverOf = new Uint8Array(256)
+  for (const [kind, value] of Object.entries(COVER)) coverOf[Number(kind)] = value
   const cover = new Uint8Array(cells.length)
-  for (let i = 0; i < cells.length; i++) cover[i] = COVER[cells[i] as Surface] ?? 0
+  for (let i = 0; i < cells.length; i++) cover[i] = coverOf[cells[i]]
 
   // Worn earth: from every walked cell that touches open ground, wear the open ground round it.
-  // How much cover is left, out of 255: a byte a cell, as the map is large.
+  // How much cover is left, out of 255: a byte a cell, as the map is large. The wear at each
+  // offset within reach is worked out once.
   const wear = new Uint8Array(cells.length).fill(255)
   const reach = Math.ceil(WORN_REACH)
-  for (let row = 1; row < depth - 1; row++) {
-    for (let column = 1; column < width - 1; column++) {
+  const offsets: number[] = []
+  const lefts: number[] = []
+  for (let dz = -reach; dz <= reach; dz++) {
+    for (let dx = -reach; dx <= reach; dx++) {
+      const distance = Math.hypot(dx, dz)
+      if (distance > WORN_REACH) continue
+      offsets.push(dz * width + dx)
+      lefts.push(Math.round(255 * (WORN_EDGE + (1 - WORN_EDGE) * (distance / WORN_REACH))))
+    }
+  }
+  for (let row = reach; row < depth - reach; row++) {
+    for (let column = reach; column < width - reach; column++) {
       const index = row * width + column
-      if (!isWalked(cells[index])) continue
+      const kind = cells[index]
+      if (kind !== Surface.Footpath && kind !== Surface.Paved && kind !== Surface.Road) continue
       const touchesOpen =
         cells[index - 1] === Surface.Open || cells[index + 1] === Surface.Open || cells[index - width] === Surface.Open || cells[index + width] === Surface.Open
       if (!touchesOpen) continue
-      for (let dz = -reach; dz <= reach; dz++) {
-        const r = row + dz
-        if (r < 0 || r >= depth) continue
-        for (let dx = -reach; dx <= reach; dx++) {
-          const c = column + dx
-          if (c < 0 || c >= width) continue
-          const at = r * width + c
-          if (cells[at] !== Surface.Open) continue
-          const distance = Math.hypot(dx, dz)
-          if (distance > WORN_REACH) continue
-          const left = Math.round(255 * (WORN_EDGE + (1 - WORN_EDGE) * (distance / WORN_REACH)))
-          if (left < wear[at]) wear[at] = left
-        }
+      for (let k = 0; k < offsets.length; k++) {
+        const at = index + offsets[k]
+        if (cells[at] === Surface.Open && lefts[k] < wear[at]) wear[at] = lefts[k]
       }
     }
   }
-  for (let i = 0; i < cover.length; i++) if (wear[i] < 255) cover[i] = Math.round((cover[i] * wear[i]) / 255)
+  for (let i = 0; i < cover.length; i++) if (wear[i] < 255) cover[i] = (cover[i] * wear[i] + 127) / 255
 
   // Maidans: a cricket or football ground is worn to the red earth, with dry grass left at its
   // edges, and bare all round the middle where the game is. Courts are drawn over their own ground.

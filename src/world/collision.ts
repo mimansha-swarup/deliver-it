@@ -2,7 +2,7 @@ import type { PolygonFeature } from './mapData'
 import { isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
 /** A building outline in world coordinates. The last point joins back to the first. */
-type Footprint = GroundPoint[]
+export type Footprint = GroundPoint[]
 
 /** Buildings sorted into grid cells, so a check only looks at those nearby. */
 export type CollisionWorld = Map<number, Footprint[]>

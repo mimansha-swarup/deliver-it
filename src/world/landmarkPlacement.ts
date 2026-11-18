@@ -61,29 +61,54 @@ function planLake(data: MapData, surface: SurfaceMap): [number, number, number][
   const bottom = Math.min(surface.depth - 1, Math.ceil(Math.max(...zs) - PLAY_AREA.minZ) + 2)
   const width = right - left + 1
   const depth = bottom - top + 1
-  // Inside the park outline: a scratch map of just this park.
-  const scratch = new SurfaceMap()
-  scratch.fillPolygon(outline, Surface.Park)
+  // Inside the park outline (scanline, even-odd), on a grid of just the park's box: how far each
+  // cell is from the edge, by a two-pass chamfer distance.
   const distance = new Float32Array(width * depth)
-  const inside = (column: number, row: number) => scratch.cells[(row + top) * surface.width + column + left] === Surface.Park
-  for (let row = 0; row < depth; row++) for (let column = 0; column < width; column++) distance[row * width + column] = inside(column, row) ? 1e6 : 0
-  const pass = (rows: number[], columns: number[], steps: [number, number, number][]) => {
-    for (const row of rows) {
-      for (const column of columns) {
-        const at = row * width + column
-        if (distance[at] === 0) continue
-        for (const [dr, dc, cost] of steps) {
-          const r = row + dr
-          const c = column + dc
-          if (r < 0 || c < 0 || r >= depth || c >= width) continue
-          distance[at] = Math.min(distance[at], distance[r * width + c] + cost)
-        }
-      }
+  const crossings: number[] = []
+  for (let row = 0; row < depth; row++) {
+    const z = row + top + 0.5 + PLAY_AREA.minZ
+    crossings.length = 0
+    for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+      const [ax, az] = outline[j]
+      const [bx, bz] = outline[i]
+      if (az > z !== bz > z) crossings.push(ax + ((z - az) / (bz - az)) * (bx - ax) - PLAY_AREA.minX - left)
+    }
+    crossings.sort((a, b) => a - b)
+    for (let k = 0; k + 1 < crossings.length; k += 2) {
+      const from = Math.max(0, Math.ceil(crossings[k] - 0.5))
+      const to = Math.min(width - 1, Math.floor(crossings[k + 1] - 0.5))
+      for (let column = from; column <= to; column++) distance[row * width + column] = 1e6
     }
   }
-  const range = (n: number) => Array.from({ length: n }, (_, i) => i)
-  pass(range(depth), range(width), [[-1, 0, 1], [0, -1, 1], [-1, -1, 1.414], [-1, 1, 1.414]])
-  pass(range(depth).reverse(), range(width).reverse(), [[1, 0, 1], [0, 1, 1], [1, 1, 1.414], [1, -1, 1.414]])
+  const DIAGONAL = 1.414
+  for (let row = 0; row < depth; row++) {
+    for (let column = 0; column < width; column++) {
+      const at = row * width + column
+      let best = distance[at]
+      if (best === 0) continue
+      if (row > 0) {
+        best = Math.min(best, distance[at - width] + 1)
+        if (column > 0) best = Math.min(best, distance[at - width - 1] + DIAGONAL)
+        if (column < width - 1) best = Math.min(best, distance[at - width + 1] + DIAGONAL)
+      } else best = Math.min(best, 1)
+      best = column > 0 ? Math.min(best, distance[at - 1] + 1) : Math.min(best, 1)
+      distance[at] = best
+    }
+  }
+  for (let row = depth - 1; row >= 0; row--) {
+    for (let column = width - 1; column >= 0; column--) {
+      const at = row * width + column
+      let best = distance[at]
+      if (best === 0) continue
+      if (row < depth - 1) {
+        best = Math.min(best, distance[at + width] + 1)
+        if (column < width - 1) best = Math.min(best, distance[at + width + 1] + DIAGONAL)
+        if (column > 0) best = Math.min(best, distance[at + width - 1] + DIAGONAL)
+      } else best = Math.min(best, 1)
+      best = column < width - 1 ? Math.min(best, distance[at + 1] + 1) : Math.min(best, 1)
+      distance[at] = best
+    }
+  }
 
   // Water where it's deep inside the park and the ground is still park (not a road or a building).
   const rows: [number, number, number][] = []
