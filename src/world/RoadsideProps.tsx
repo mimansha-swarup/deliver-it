@@ -91,6 +91,21 @@ const transform = new THREE.Object3D()
 transform.rotation.order = 'YXZ'
 
 /**
+ * Each prop's ground height, worked out the first time it's drawn. Props never move and the
+ * ground is fixed once the world is built, but finding it means searching the roads nearby, and
+ * every tree, lamp and tank did that again each time the drawn set refreshed, all in one frame.
+ */
+const groundOf = new WeakMap<Prop, number>()
+function groundUnder(prop: Prop): number {
+  let height = groundOf.get(prop)
+  if (height === undefined) {
+    height = groundLift.at(prop.x, prop.z)
+    groundOf.set(prop, height)
+  }
+  return height
+}
+
+/**
  * A plastic rooftop water tank: a seven-sided drum with a narrower top. There
  * are a lot of these, and they're small, so it stays at 28 triangles.
  */
@@ -425,11 +440,12 @@ export function PropInstances({
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
 
     let count = 0
-    for (const { x, y, z, rotation, variation, tint, size = 1, lean } of props) {
+    for (const prop of props) {
+      const { x, y, z, rotation, variation, tint, size = 1, lean } = prop
       if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
 
       // Things on the ground stand on it, raised footpaths included. Roof tanks give their own height.
-      transform.position.set(x, y ?? groundLift.at(x, z), z)
+      transform.position.set(x, y ?? groundUnder(prop), z)
       // A tree's lean tips it over sideways, then the turn points it any way round (order YXZ).
       transform.rotation.set(lean ?? 0, rotation, 0)
       transform.scale.setScalar((1 - sizeRange / 2 + variation * sizeRange) * size)

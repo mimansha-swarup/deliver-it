@@ -24,9 +24,16 @@ function cellKey(cellX: number, cellZ: number): number {
   return (cellX + 5000) * 10000 + (cellZ + 5000)
 }
 
+/**
+ * Each footprint's box: [min x, max x, min z, max z]. A check first asks whether the point is
+ * near the box at all, which rules out nearly every footprint in a cell without measuring it.
+ */
+const boxes = new WeakMap<Footprint, [number, number, number, number]>()
+
 export function addFootprint(world: CollisionWorld, footprint: Footprint) {
   const xs = footprint.map(([x]) => x)
   const zs = footprint.map(([, z]) => z)
+  boxes.set(footprint, [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)])
   const firstX = toCell(Math.min(...xs) - MAX_CHECK_RADIUS)
   const lastX = toCell(Math.max(...xs) + MAX_CHECK_RADIUS)
   const firstZ = toCell(Math.min(...zs) - MAX_CHECK_RADIUS)
@@ -231,10 +238,36 @@ export function isNearBuilding(world: CollisionWorld, x: number, z: number, radi
   const nearby = world.get(cellKey(toCell(x), toCell(z)))
   if (!nearby) return false
 
-  return nearby.some((footprint) => {
-    const { distance, inside } = measureFootprint(footprint, x, z)
-    return inside || distance < radius
-  })
+  for (const footprint of nearby) {
+    const box = boxes.get(footprint)
+    if (box && (x < box[0] - radius || x > box[1] + radius || z < box[2] - radius || z > box[3] + radius)) continue
+    if (isNearFootprint(footprint, x, z, radius)) return true
+  }
+  return false
+}
+
+/**
+ * Whether a point is inside a footprint or within `radius` of its outline: the same answer as
+ * `measureFootprint`, without making an object for every check, and stopping at the first wall
+ * that's close enough. Loading runs this hundreds of thousands of times.
+ */
+function isNearFootprint(footprint: Footprint, x: number, z: number, radius: number): boolean {
+  const limit = radius * radius
+  let inside = false
+  for (let i = 0, previous = footprint.length - 1; i < footprint.length; previous = i++) {
+    const [ax, az] = footprint[previous]
+    const [bx, bz] = footprint[i]
+    const edgeX = bx - ax
+    const edgeZ = bz - az
+    const lengthSquared = edgeX * edgeX + edgeZ * edgeZ
+    const along = lengthSquared === 0 ? 0 : ((x - ax) * edgeX + (z - az) * edgeZ) / lengthSquared
+    const clamped = along < 0 ? 0 : along > 1 ? 1 : along
+    const dx = x - (ax + edgeX * clamped)
+    const dz = z - (az + edgeZ * clamped)
+    if (dx * dx + dz * dz < limit) return true
+    if (az > z !== bz > z && x < ax + ((z - az) / edgeZ) * edgeX) inside = !inside
+  }
+  return inside
 }
 
 /** True when a circle could slide in a straight line from one point to another. */

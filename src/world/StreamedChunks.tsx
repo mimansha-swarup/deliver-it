@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
+import { NEAR_BUDGET, setNearWaiting } from '../game/launch'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { useGameStore } from '../game/gameStore'
 import { useFrame } from '@react-three/fiber'
@@ -23,8 +24,7 @@ import { RECHECK_DISTANCE, RECHECK_FRAMES } from './ChunkedMesh'
 const KEEP_EXTRA = CHUNK_SIZE * 1.5
 /** Milliseconds of each frame that may go on building squares, shared by every streamed part. */
 const BUILD_BUDGET = 4
-/** While squares right around the rider are missing, a frame may spend this long on them. */
-const URGENT_BUDGET = 60
+/** Squares this close to the rider are urgent: see NEAR_BUDGET in launch.ts. */
 const URGENT_REACH = CHUNK_SIZE * 1.5
 
 /** One layer of a streamed part: its material, and how far it's drawn. */
@@ -50,6 +50,12 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
   const built = useRef(new Map<number, (THREE.Mesh | null)[]>())
   const squares = useRef(keys.map((key) => ({ key, ...chunkCentre(key) })))
   const last = useRef({ x: Infinity, z: Infinity, frames: 0, pending: true })
+  // Each streamed part tells the loading screen whether it's still building round the rider.
+  const id = useId()
+  useEffect(() => {
+    setNearWaiting(id, true)
+    return () => setNearWaiting(id, false)
+  }, [id])
 
   // New squares or a new way of building them: start again.
   useEffect(() => {
@@ -108,13 +114,16 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
       ;(missing ??= []).push({ ...square, distance })
     }
     seen.pending = false
+    const urgentBudget = useGameStore.getState().started ? NEAR_BUDGET.riding : NEAR_BUDGET.loading
+    let nearLeft = false
     if (missing) {
       missing.sort((a, b) => a.distance - b.distance)
       for (const { key, distance } of missing) {
-        const budget = distance < URGENT_REACH ? URGENT_BUDGET : BUILD_BUDGET
+        const budget = distance < URGENT_REACH ? urgentBudget : BUILD_BUDGET
         if (performance.now() - frameClock.started > budget) {
           // Out of time this frame: carry on next frame.
           seen.pending = true
+          nearLeft = distance < URGENT_REACH
           break
         }
         const meshes = build(key).map((geometry, index) => {
@@ -131,6 +140,8 @@ export function StreamedChunks({ keys, build, layers, reach = Infinity }: { keys
         all.set(key, meshes)
       }
     }
+
+    setNearWaiting(id, nearLeft)
 
     // Show what's in reach, with each layer's current material. Only squares within the sun's
     // shadow range cast shadows: the rest are outside its shadow map, but would still be drawn into it.

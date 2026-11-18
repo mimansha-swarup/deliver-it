@@ -354,6 +354,8 @@ function box(
   color: THREE.Color,
   back = false,
 ) {
+  // Planning only asks where things go; a builder that isn't enabled draws nothing, so skip the maths.
+  if (!builder.enabled) return
   const point = (along: number, out: number, height: number) =>
     corner
       .set(
@@ -745,7 +747,7 @@ function dressBuildings(
     }
 
     // ---- Elevation tiles up one side of the front, and an outside stair up a side wall ----
-    if (style.cladding && front.exposed) addCladding(kit, front, roof, doorAlong, style.cladding, hash)
+    if (kit.enabled && style.cladding && front.exposed) addCladding(kit, front, roof, doorAlong, style.cladding, hash)
     // Which end of the front the stair is at (-1 its start, 1 its end), so the compound wall takes it in.
     let stairEnd = 0
     if (style.outerStair) {
@@ -757,7 +759,8 @@ function dressBuildings(
     }
 
     // ---- A Mangalore tile roof, on some older one- and two-storey houses ----
-    const tiled = style.tileRoof ? addTileRoof(kit, outline, roof, paint, style.tileRoof) : false
+    const tiled = style.tileRoof !== null
+    if (style.tileRoof && kit.enabled) addTileRoof(kit, outline, roof, paint, style.tileRoof)
 
     // ---- The roof: parapet, and the staircase room with the tanks on top ----
     for (const wall of tiled ? [] : walls) {
@@ -827,7 +830,7 @@ function dressBuildings(
     }
 
     // A sheet-metal shed on some terraces, clear of the staircase room.
-    if (!tiled && style.shed) addRoofShed(kit, outline, front, roof, roomAt, room, style.shed)
+    if (kit.enabled && !tiled && style.shed) addRoofShed(kit, outline, front, roof, roomAt, room, style.shed)
 
     // ---- The compound wall and gate, between the house and the pavement ----
     const yard = Math.min(MAX_YARD, frontGap - COMPOUND.pavement)
@@ -1024,7 +1027,7 @@ function boxAround(outline: GroundPoint[], [ax, az]: [number, number]) {
  * all round, in courses of two tones so the tiles read, with a ridge cap and plain gable ends.
  * Only on near-rectangular houses, as the box round the outline is what it covers.
  */
-function addTileRoof(kit: Builder, outline: GroundPoint[], roof: number, color: THREE.Color, tile: THREE.Color): boolean {
+function addTileRoof(kit: Builder, outline: GroundPoint[], roof: number, color: THREE.Color, tile: THREE.Color) {
   const frame = boxAround(outline, longestEdge(outline))
   const { ax, az, bx, bz, a0, a1, b0, b1 } = frame
   const slope = Math.tan(TILE_ROOF.pitch)
@@ -1056,7 +1059,6 @@ function addTileRoof(kit: Builder, outline: GroundPoint[], roof: number, color: 
   // The ridge cap.
   const capFrame: Wall = { start: [ax * a0 + bx * middle, az * a0 + bz * middle], length: a1 - a0, alongX: ax, alongZ: az, outX: bx, outZ: bz, exposed: true }
   box(kit, capFrame, [-over, a1 - a0 + over], [-TILE_ROOF.ridge, TILE_ROOF.ridge], [ridge - 0.03, ridge + TILE_ROOF.ridge * 0.8], dark)
-  return true
 }
 
 /** A sheet-metal shed on posts on the terrace, wherever it fits clear of the staircase room. */

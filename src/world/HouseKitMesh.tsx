@@ -10,6 +10,7 @@ import type { HouseKit } from './houseKit'
 import { createPlasterMaterial, PLASTER_PHOTO, preparePlasterPhoto } from './plaster'
 import { addWeathering } from './weathering'
 import { createPosterAtlas } from './posters'
+import { NEAR_BUDGET, setNearWaiting } from '../game/launch'
 
 /** Chajjas are small, so past this they can't be told apart from the wall, in metres. */
 const CHAJJA_DISTANCE = 180
@@ -23,8 +24,6 @@ const KIT_REACH = 600
 const KEEP_EXTRA = CHUNK_SIZE * 1.5
 /** Milliseconds of each frame that may go on building squares. */
 const BUILD_BUDGET = 5
-/** While the squares right around the rider are missing, a frame may spend this long. */
-const URGENT_BUDGET = 40
 /**
  * The plaster photo is soft, so its light and shade is boosted a good deal to
  * match the house walls, whose paint is mixed with it more strongly.
@@ -82,6 +81,11 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
   )
   const group = useRef<THREE.Group>(null)
   const built = useRef(new Map<number, BuiltSquare>())
+  // Waiting until the first frame has built the squares round the rider (see `nearWaiting`).
+  useEffect(() => {
+    setNearWaiting('houseKit', true)
+    return () => setNearWaiting('houseKit', false)
+  }, [])
 
   useFrame(() => {
     const parent = group.current
@@ -108,9 +112,15 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
       .filter(({ key, x, z }) => !squares.has(key) && distanceTo(x, z) < reach + CHUNK_SIZE)
       .sort((a, b) => distanceTo(a.x, a.z) - distanceTo(b.x, b.z))
     const started = performance.now()
+    // Squares right round the rider: a big share of the frame behind the loading screen, a small one once riding.
+    const urgentBudget = useGameStore.getState().started ? NEAR_BUDGET.riding : NEAR_BUDGET.loading
+    let nearLeft = false
     for (const { key, x, z } of missing) {
       const urgent = distanceTo(x, z) < CHUNK_SIZE * 1.5
-      if (performance.now() - started > (urgent ? URGENT_BUDGET : BUILD_BUDGET)) break
+      if (performance.now() - started > (urgent ? urgentBudget : BUILD_BUDGET)) {
+        nearLeft = missing.some((square) => !squares.has(square.key) && distanceTo(square.x, square.z) < CHUNK_SIZE * 1.5)
+        break
+      }
       const shapes = kit.buildSquare(key)
       const square: BuiltSquare = {
         main: new THREE.Mesh(shapes.main, material),
@@ -127,6 +137,8 @@ export function HouseKitMesh({ kit }: { kit: HouseKit }) {
       parent.add(square.main, square.chajjas, square.stains, square.posters, square.fine)
       squares.set(key, square)
     }
+
+    setNearWaiting('houseKit', nearLeft)
 
     // Show what's in reach, as ChunkedMesh does for the rest of the world.
     for (const { main, chajjas, stains, posters, fine } of squares.values()) {

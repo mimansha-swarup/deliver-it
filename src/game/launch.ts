@@ -53,10 +53,28 @@ type Launch = {
   planned: boolean
   /** The parts that are on screen, newest last. */
   built: WorldPart[]
+  /**
+   * Streamed parts still building the map squares right around the rider. The ride waits for
+   * them behind the loading screen, so riding doesn't start with a run of long frames.
+   */
+  nearWaiting: string[]
 }
 
 /** How far along getting from the title screen to riding is. Nothing here is saved. */
-export const useLaunch = create<Launch>(() => ({ requested: false, curtainDrawn: false, planned: false, built: [] }))
+export const useLaunch = create<Launch>(() => ({ requested: false, curtainDrawn: false, planned: false, built: [], nearWaiting: [] }))
+
+/** A streamed part says whether it's still building squares around the rider (see `nearWaiting`). */
+export function setNearWaiting(id: string, waiting: boolean) {
+  const { nearWaiting } = useLaunch.getState()
+  if (waiting === nearWaiting.includes(id)) return
+  useLaunch.setState({ nearWaiting: waiting ? [...nearWaiting, id] : nearWaiting.filter((other) => other !== id) })
+}
+
+/**
+ * Milliseconds a frame may spend on squares right around the rider: plenty behind the loading
+ * screen, where nobody sees a slow frame, and a share of one frame once riding.
+ */
+export const NEAR_BUDGET = { loading: 60, riding: 8 }
 
 export function markPartBuilt(part: WorldPart) {
   const { built } = useLaunch.getState()

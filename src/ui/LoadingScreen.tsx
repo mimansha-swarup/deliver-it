@@ -1,7 +1,10 @@
 import { markLoad } from '../dev/loadTimeline'
-import { useEffect, useRef, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch, WORLD_PART_COUNT, WORLD_PARTS } from '../game/launch'
+
+/** The longest the ride waits for the squares round the rider, once every part is on screen, in milliseconds. */
+const NEAR_WAIT_MS = 4000
 
 /**
  * The pictures, laid out as panels. Each scene is a few crops of the game's own
@@ -98,7 +101,16 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
     }
   }, [])
 
-  const allBuilt = built.length >= WORLD_PART_COUNT && missionReady
+  // The squares right round the rider too, but never for longer than NEAR_WAIT_MS.
+  const nearWaiting = useLaunch((state) => state.nearWaiting.length > 0)
+  const partsBuilt = built.length >= WORLD_PART_COUNT && missionReady
+  const [nearGivenUp, setNearGivenUp] = useState(false)
+  useEffect(() => {
+    if (!partsBuilt) return
+    const timer = window.setTimeout(() => setNearGivenUp(true), NEAR_WAIT_MS)
+    return () => window.clearTimeout(timer)
+  }, [partsBuilt])
+  const allBuilt = partsBuilt && (!nearWaiting || nearGivenUp)
 
   // Everything is on screen. A few frames more let the first pictures be drawn
   // (which is when the GPU prepares each material), then the ride starts.

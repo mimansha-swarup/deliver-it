@@ -5,6 +5,11 @@
  *
  *     npm run build && npx vite preview --port 4173 &
  *     node --experimental-websocket scripts/bench.mjs [--streets shop-street,main-road] [--profile]
+ *     node --experimental-websocket scripts/bench.mjs --ride [--quality High] [--profile] [--streets main-road]
+ *
+ * --ride rides forward for 6 s with the resolution left to the game, and reports what a player
+ * sees: frame intervals (FPS, frames over 20 ms, the worst), each frame's own work, and how many
+ * long frames compiled a shader. It also prints the load timeline's steps.
  *
  * It opens its own Chrome (a fresh temporary profile, so your game save is untouched) at a fixed
  * window size, with background throttling off, and drives it over the DevTools protocol. Each
@@ -26,6 +31,11 @@ const option = (name, fallback) => {
 const BASE = option('url', 'http://localhost:4173')
 const STREETS = option('streets', 'shop-street,main-road').split(',')
 const PROFILE = args.includes('--profile')
+/** --ride: ride along the street on one quality at the screen's own resolution, as a player would, and count stutters. */
+const RIDE = args.includes('--ride')
+const RIDE_QUALITY = option('quality', 'High')
+/** --dpr 2: emulate a sharp (Retina) screen, whatever screen Chrome opens on. */
+const SCREEN_DPR = Number(option('dpr', '0'))
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 const PORT = 9333
 /** Each quality is measured at its top resolution: Low's is 1, High's 1.5 (qualitySettings.ts); Low also at its optional 0.75×. */
@@ -162,6 +172,54 @@ const FLOOR = `(async () => {
   return +times[Math.floor(times.length / 2)].toFixed(1)
 })()`
 
+/** Rides forward on the chosen quality and records every frame. */
+const RIDE_RUN = (quality) => `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
+  await sleep(3000)
+  const { gl } = window.__deliverIt
+  const raf = window.requestAnimationFrame
+  const frames = []
+  let last = 0
+  let on = true
+  const programs = () => gl.info.programs?.length ?? 0
+  const tick = (stamp) => {
+    if (!on) return
+    const before = programs()
+    raf((next) => {
+      if (last) frames.push({ interval: next - last, compiled: programs() - before })
+      last = next
+      tick(next)
+    })
+  }
+  tick(0)
+  window.__bench.sync = false
+  window.__bench.frames.clear()
+  window.__bench.on = true
+  const key = (code, down) => window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }))
+  key('KeyW', true)
+  await sleep(6000)
+  key('KeyW', false)
+  on = false
+  window.__bench.on = false
+  const work = [...window.__bench.frames.values()].sort((a, b) => a - b)
+  const intervals = frames.map((f) => f.interval)
+  const long = frames.filter((f) => f.interval > 20)
+  return {
+    dpr: +window.devicePixelRatio.toFixed(2),
+    drawRatio: +gl.getPixelRatio().toFixed(2),
+    fps: +(1000 / (intervals.reduce((n, t) => n + t, 0) / intervals.length)).toFixed(0),
+    over20: long.length,
+    worst: +Math.max(...intervals).toFixed(1),
+    longWithCompile: long.filter((f) => f.compiled > 0).length,
+    programs: programs(),
+    vehicles: window.__deliverItTraffic?.vehicles?.length ?? null,
+    workMean: +(work.reduce((n, t) => n + t, 0) / work.length).toFixed(1),
+    workP95: +work[Math.floor(work.length * 0.95)].toFixed(1),
+    workOver20: work.filter((t) => t > 20).length,
+  }
+})()`
+
 /** Self time by function, from a CPU profile: where the JavaScript actually goes. */
 function summarize(profile) {
   const byId = new Map(profile.nodes.map((node) => [node.id, node]))
@@ -188,16 +246,50 @@ const results = {}
 try {
   await send('Page.enable')
   await send('Runtime.enable')
+  if (SCREEN_DPR) await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 800, deviceScaleFactor: SCREEN_DPR, mobile: false })
   for (const street of STREETS) {
     await send('Emulation.setCPUThrottlingRate', { rate: 1 })
     await send('Page.navigate', { url: `${BASE}/?spawn=${street}&debug=1` })
     await sleep(1500)
+    // --profile-load file.cpuprofile: a CPU profile of loading, Play to riding.
+    const loadProfile = option('profile-load', '')
+    if (loadProfile) {
+      await send('Profiler.enable')
+      await send('Profiler.setSamplingInterval', { interval: 200 })
+      await send('Profiler.start')
+    }
     const load = await evaluate(START)
+    if (loadProfile) {
+      // On through the first seconds of riding, where traffic and nearby squares are built.
+      await evaluate(`(async () => { const key = (code, down) => window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true })); key('KeyW', true); await new Promise((r) => setTimeout(r, 4000)); key('KeyW', false) })()`)
+      ;(await import('node:fs')).writeFileSync(loadProfile, JSON.stringify((await send('Profiler.stop')).profile))
+    }
     await sleep(3000)
     await evaluate(TIMER)
+    if (RIDE) {
+      // Rides need the frame timer installed but idle, not the samples below.
+    }
     const state = await evaluate(`(async () => { let n = 0; const end = performance.now() + 1000; await new Promise((done) => { const tick = () => { n++; if (performance.now() < end) requestAnimationFrame(tick); else done() }; requestAnimationFrame(tick) }); return { hidden: document.hidden, framesPerSecond: n } })()`)
     console.log('page', JSON.stringify(state))
     const row = { load }
+    if (RIDE) {
+      row.timeline = (await evaluate('window.__deliverItLoad?.() ?? []')).map((m) => `${m.at} ${m.label}`)
+      if (PROFILE) {
+        await send('Profiler.enable')
+        await send('Profiler.start')
+      }
+      row.ride = await evaluate(RIDE_RUN(RIDE_QUALITY))
+      if (PROFILE) {
+        const { profile } = await send('Profiler.stop')
+        row.profile = summarize(profile).slice(0, 25)
+        // --save-profile file.cpuprofile: the whole profile, for opening in DevTools or reading callers.
+        const saveTo = option('save-profile', '')
+        if (saveTo) (await import('node:fs')).writeFileSync(saveTo, JSON.stringify(profile))
+      }
+      results[street] = row
+      console.log(street, JSON.stringify(row, null, 2))
+      continue
+    }
     row.floorMs = await evaluate(FLOOR)
     for (const rate of [1, 4]) {
       await send('Emulation.setCPUThrottlingRate', { rate })
