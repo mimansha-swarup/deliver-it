@@ -8503,3 +8503,49 @@ No measurable cost (five more draw calls for the new shapes and palms).
 
 ### Try it
 Ride off 24th Main into the houses: palms behind gates. Find a temple for its peepal.
+
+## 2026-11-18: Entry 127, variety: the building kit, and schools and hospitals
+
+### What I did
+Each house now picks from a kit by a seeded roll of its id (`chooseStyle` in houseKit.ts), with
+a hash of its own, so nothing that was already placed moved:
+
+- **Roofs:** the flat terrace with parapet, stair room and tanks (as before); about a third of
+  terraces also get a **sheet-metal shed** on posts, blue, grey, teal or sand, placed wherever it
+  fits clear of the stair room. Small (≤ 180 m²), near-rectangular houses of one or two floors
+  get a **Mangalore tile roof** about a third of the time: two slopes at 24°, past the walls by
+  45 cm, laid in courses of two tones, with a ridge cap and gable ends in the house's paint.
+- **Outside stair:** two in five houses of two floors or more get a stair up an open side wall
+  to the first floor, with a landing, a door and a stepped parapet. The compound wall widens on
+  that side to take it in, and the stair is solid to the scooter.
+- **Balconies:** two in five have a metal grille on a low kerb instead of a solid parapet (the
+  bars show from Medium up).
+- **Elevation tiles:** about a third of house fronts get a strip of slate, sandstone, brick tile
+  or pale ceramic up one end, in courses, clamped so it never covers a painted window.
+- **Schools and hospitals:** civic buildings now keep what the map says they are (`civicUse`, from
+  their own tags, a school or hospital mapped beside them, or the grounds they stand in). Both get
+  a porch on pillars over the way in and a parapet. A school gets a compound wall painted in
+  yellow, blue and white blocks with a wide open gate; a hospital a red cross on a white board on
+  its roof. No names on either, so nothing real is copied.
+
+Already in the game before this: shop ground floors, stilt parking, gates with gardens and
+kolams, real heights from Overture/OSM, temples, petrol pumps, blocks of flats and glass offices.
+Not done: more painted window styles (the facade textures are one per look).
+
+### Why
+Every house had the same roof, balcony and front. Now one street has tile roofs beside
+terraces, outside stairs and tiled fronts, as HSR's mix of old and new houses does.
+
+### Lesson 245: a new kind of thing needs its own random numbers
+The house kit picks everything from one hash of the building's id, a few bits at a time. Taking
+bits from that same hash for the new choices would have moved every existing kolam, creeper
+and tank. A second hash (`hashString(id + '/roof')` and so on) adds choices without changing
+any old ones.
+
+### Frame time (synced / CPU ms, side by side with step 6a)
+24th Main: High 15.3–15.4 / 6.3–6.4 vs 15.1–15.3 / 6.5–6.6. 13th Cross: High 15.1–15.6 /
+7.1–7.5 vs 15.1–15.8 / 7.2–7.7. No measurable cost: it's all in the existing per-square
+house-kit meshes, so no new draw calls.
+
+### Try it
+`?spawn=residential-street`: tile roofs, outside stairs and grille balconies along 13th Cross.

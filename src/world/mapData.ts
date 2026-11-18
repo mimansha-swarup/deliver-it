@@ -24,7 +24,13 @@ export type LineFeature = Feature<Extract<Geometry, { type: 'LineString' }>>
 export type PolygonFeature = Feature<Extract<Geometry, { type: 'Polygon' }>>
 
 /** A building, with what it's used for worked out from the map. */
-export type BuildingFeature = PolygonFeature & { kind: BuildingKind }
+export type BuildingFeature = PolygonFeature & {
+  kind: BuildingKind
+  /** For a civic building, what it is when the map says: it gets that kind's front (houseKit.ts). */
+  civicUse?: CivicUse
+}
+
+export type CivicUse = 'school' | 'hospital'
 
 export type MapData = {
   buildings: BuildingFeature[]

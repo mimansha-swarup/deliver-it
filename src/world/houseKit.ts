@@ -4,7 +4,7 @@ import { FLOOR_HEIGHT, getFloors, getKitColor, hashString, hasStilts } from './b
 import { addWall, copyCollisionWorld, isNearBuilding, type CollisionWorld } from './collision'
 import { chunkCentre, chunkKey } from './chunks'
 import { FACADE_LOOKS } from './facadeTextures'
-import type { BuildingFeature, LineFeature } from './mapData'
+import type { BuildingFeature, CivicUse, LineFeature } from './mapData'
 import { indexRoadPieces, isClearOfRoads, nearestRoadEdge, nearestRoadPiece, toRoadPieces, type Prop, type RoadIndex } from './props'
 import { streetPresetOf } from './streetPresets'
 import { KERB } from './surface'
@@ -97,6 +97,29 @@ const HIDDEN_CHECK = { distance: 2.5, radius: 1.5 }
 /** How far out from a wall to look for a road, in metres. */
 const ROAD_SEARCH = 22
 const WASHING_CHANCE = 35
+
+/*
+ * The building kit's choices, made per house from its id (see `chooseStyle`): which roof, which
+ * balcony, whether it has an outside stair or tiled panels on its front. HSR mixes them freely.
+ */
+/** A Mangalore tile roof: pitch, overhang past the walls, and how many courses show per slope. */
+const TILE_ROOF = { pitch: 0.42, overhang: 0.45, courses: 6, ridge: 0.12, minRectangular: 0.82, maxFloors: 2, maxArea: 180, chance: 30 }
+const TILE_COLORS = ['#a24a32', '#b0573a', '#954433', '#a85e3f'].map((color) => new THREE.Color(color))
+/** A sheet-metal shed on the terrace, on posts, its roof sloping one way. */
+const SHED = { width: 3.2, depth: 2.6, low: 2.1, high: 2.6, post: 0.08, chance: 30 }
+const SHED_COLORS = ['#3d6fa3', '#8c949b', '#4c8a8a', '#a8a39a'].map((color) => new THREE.Color(color))
+/** An outside stair up a side wall to the first floor, for a separately let upstairs. */
+const OUTER_STAIR = { width: 0.9, rise: 0.2, tread: 0.26, landing: 1.0, rail: 0.85, chance: 40, minFloors: 2 }
+/** Balconies: a solid parapet (the default), or a metal grille on a low kerb. Share with a grille, out of 100. */
+const GRILLE = { chance: 40, kerb: 0.2, bar: 0.035, spacing: 0.32 }
+/** Elevation tiles: a band of stone or ceramic cladding up one side of the front. */
+const CLADDING = { chance: 35, course: 0.6, minWidth: 0.9, maxWidth: 1.5 }
+const CLADDING_COLORS: [string, string][] = [
+  ['#8a8079', '#7a706a'], // grey slate
+  ['#c9a678', '#b8956a'], // sandstone
+  ['#a5553c', '#93492f'], // brick tile
+  ['#d8d2c4', '#c7c0b0'], // pale ceramic
+]
 
 const RAIL_COLOR = new THREE.Color('#2b2d30')
 const GATE_COLOR = new THREE.Color('#33373b')
@@ -540,7 +563,8 @@ function dressBuildings(
     const ring = building.geometry.coordinates[0]
     const isShop = building.kind === 'shop'
     const isApartment = building.kind === 'apartment'
-    if ((building.kind !== 'house' && !isShop && !isApartment) || !isRingInPlayArea(ring)) continue
+    const civicUse = building.kind === 'civic' ? building.civicUse : undefined
+    if ((building.kind !== 'house' && !isShop && !isApartment && !civicUse) || !isRingInPlayArea(ring)) continue
 
     const outline = ring.slice(0, -1).map((position): GroundPoint => {
       const [x, , z] = lonLatToWorld(position)
@@ -562,6 +586,7 @@ function dressBuildings(
     const shade = paint.clone().multiplyScalar(0.92)
     const floors = Math.max(1, Math.floor(getFloors(building)))
     const roof = floors * FLOOR_HEIGHT
+    const style = chooseStyle(building.id, outline, floors, isShop, isApartment)
     const centreX = outline.reduce((sum, [x]) => sum + x, 0) / outline.length
     const centreZ = outline.reduce((sum, [, z]) => sum + z, 0) / outline.length
     const key = chunkKey(centreX, centreZ)
@@ -583,6 +608,12 @@ function dressBuildings(
       }
     }
     front ??= walls.reduce((longest, wall) => (wall.length > longest.length ? wall : longest))
+    // A school or hospital gets its own front, and nothing of a house's.
+    if (civicUse) {
+      compoundWalls.push(...dressCivic(kit, walls, front, frontGap, roof, civicUse, gates))
+      continue
+    }
+
     // How the street it faces dresses its houses (streetPresets.ts): more washing and creepers on a quiet residential street.
     const facing = nearestRoadPiece(roadIndex, front.start[0] + front.alongX * front.length / 2 + front.outX, front.start[1] + front.alongZ * front.length / 2 + front.outZ, ROAD_SEARCH)
     const streetLook = (facing && streetPresetOf(roads[facing.piece.road])?.houses) ?? { washing: WASHING_CHANCE, creeper: CREEPER.chance }
@@ -649,9 +680,18 @@ function dressBuildings(
         const span: [number, number] = [balconyFrom, balconyTo]
         box(kit, front, span, [0, BALCONY.depth], [level - BALCONY.slab, level], shade)
         stains.onWall(front, span, [level - BALCONY.slab - 1.1, level - BALCONY.slab], [0.6, 0])
-        box(kit, front, span, [BALCONY.depth - BALCONY.wall, BALCONY.depth], [level, level + BALCONY.parapet], paint)
-        box(kit, front, [balconyFrom, balconyFrom + BALCONY.wall], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
-        box(kit, front, [balconyTo - BALCONY.wall, balconyTo], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
+        if (style.grille) {
+          // A low kerb, posts at the ends, and metal bars (the bars only from Medium up).
+          box(kit, front, span, [BALCONY.depth - BALCONY.wall, BALCONY.depth], [level, level + GRILLE.kerb], paint)
+          for (const end of [balconyFrom, balconyTo - 0.06]) box(kit, front, [end, end + 0.06], [BALCONY.depth - 0.08, BALCONY.depth], [level, level + BALCONY.parapet], RAIL_COLOR)
+          for (let along = balconyFrom + GRILLE.spacing; along < balconyTo - GRILLE.spacing / 2; along += GRILLE.spacing) {
+            box(shades, front, [along, along + GRILLE.bar], [BALCONY.depth - 0.06, BALCONY.depth - 0.03], [level + GRILLE.kerb, level + BALCONY.parapet], RAIL_COLOR)
+          }
+        } else {
+          box(kit, front, span, [BALCONY.depth - BALCONY.wall, BALCONY.depth], [level, level + BALCONY.parapet], paint)
+          box(kit, front, [balconyFrom, balconyFrom + BALCONY.wall], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
+          box(kit, front, [balconyTo - BALCONY.wall, balconyTo], [0, BALCONY.depth - BALCONY.wall], [level, level + BALCONY.parapet], paint)
+        }
         // The metal rail along the top of the parapet.
         const railTop = level + BALCONY.parapet
         box(kit, front, span, [BALCONY.depth - 0.12, BALCONY.depth + 0.02], [railTop, railTop + 0.05], RAIL_COLOR)
@@ -704,8 +744,23 @@ function dressBuildings(
       }
     }
 
+    // ---- Elevation tiles up one side of the front, and an outside stair up a side wall ----
+    if (style.cladding && front.exposed) addCladding(kit, front, roof, doorAlong, style.cladding, hash)
+    // Which end of the front the stair is at (-1 its start, 1 its end), so the compound wall takes it in.
+    let stairEnd = 0
+    if (style.outerStair) {
+      const stair = addOuterStair(kit, shades, walls, front, outline, lookup, paint, shade)
+      if (stair) {
+        compoundWalls.push(...stair.solid)
+        stairEnd = stair.end
+      }
+    }
+
+    // ---- A Mangalore tile roof, on some older one- and two-storey houses ----
+    const tiled = style.tileRoof ? addTileRoof(kit, outline, roof, paint, style.tileRoof) : false
+
     // ---- The roof: parapet, and the staircase room with the tanks on top ----
-    for (const wall of walls) {
+    for (const wall of tiled ? [] : walls) {
       box(kit, wall, [-PARAPET.thickness, wall.length + PARAPET.thickness], [-PARAPET.thickness, 0], [roof, roof + PARAPET.height], paint, true)
     }
 
@@ -723,7 +778,7 @@ function dressBuildings(
         ),
       )
     let roomAt: GroundPoint | null = null
-    for (let back = 3; back >= 0 && !roomAt; back -= 0.5) {
+    for (let back = 3; back >= 0 && !roomAt && !tiled; back -= 0.5) {
       for (const sideways of [0, -1.5, 1.5, -3, 3]) {
         const x = centreX - front.outX * back + front.alongX * sideways
         const z = centreZ - front.outZ * back + front.alongZ * sideways
@@ -771,12 +826,15 @@ function dressBuildings(
       }
     }
 
+    // A sheet-metal shed on some terraces, clear of the staircase room.
+    if (!tiled && style.shed) addRoofShed(kit, outline, front, roof, roomAt, room, style.shed)
+
     // ---- The compound wall and gate, between the house and the pavement ----
     const yard = Math.min(MAX_YARD, frontGap - COMPOUND.pavement)
     if (!isShop && yard >= MIN_YARD && front.exposed) {
       const out: [number, number] = [yard, yard + COMPOUND.thickness]
-      const wallStart = -0.4
-      const wallEnd = front.length + 0.4
+      const wallStart = -0.4 - (stairEnd === -1 ? OUTER_STAIR.width + 0.1 : 0)
+      const wallEnd = front.length + 0.4 + (stairEnd === 1 ? OUTER_STAIR.width + 0.1 : 0)
       const gate = isApartment ? APARTMENT.gate : COMPOUND.gate
       const gateFrom = Math.max(wallStart + COMPOUND.pillar, doorAlong - gate / 2)
       const gateTo = Math.min(wallEnd - COMPOUND.pillar, gateFrom + gate)
@@ -888,6 +946,297 @@ function dressBuildings(
   }
 
   return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, compoundWalls, gates }
+}
+
+type HouseStyle = {
+  /** A tile roof's colour, or null for a flat terrace. */
+  tileRoof: THREE.Color | null
+  /** A terrace shed's colour, or null for none. */
+  shed: THREE.Color | null
+  grille: boolean
+  outerStair: boolean
+  /** Elevation tiles: [face colour, joint colour], or null for none. */
+  cladding: [THREE.Color, THREE.Color] | null
+}
+
+/**
+ * The house's pick from the kit, from its id, so it's the same on every visit. A separate hash
+ * from the one the rest of the dressing uses, so adding the kit moved nothing that was there.
+ */
+function chooseStyle(id: string, outline: GroundPoint[], floors: number, isShop: boolean, isApartment: boolean): HouseStyle {
+  const roll = (salt: string) => hashString(`${id}/${salt}`)
+  const pick = <T,>(list: T[], salt: string) => list[roll(salt) % list.length]
+  const house = !isShop && !isApartment
+  const tileRoof = house && floors <= TILE_ROOF.maxFloors && roll('roof') % 100 < TILE_ROOF.chance && isSmallBox(outline)
+  const [face, joint] = pick(CLADDING_COLORS, 'cladding colour')
+  return {
+    tileRoof: tileRoof ? pick(TILE_COLORS, 'tile colour') : null,
+    shed: !tileRoof && !isApartment && roll('shed') % 100 < SHED.chance ? pick(SHED_COLORS, 'shed colour') : null,
+    grille: roll('balcony') % 100 < GRILLE.chance,
+    outerStair: house && floors >= OUTER_STAIR.minFloors && roll('stair') % 100 < OUTER_STAIR.chance,
+    cladding: house && roll('cladding') % 100 < CLADDING.chance ? [new THREE.Color(face), new THREE.Color(joint)] : null,
+  }
+}
+
+/** Whether a tile roof suits it: an old house's footprint, small and close to a rectangle. */
+function isSmallBox(outline: GroundPoint[]): boolean {
+  const { area, share } = rectangularity(outline)
+  return area <= TILE_ROOF.maxArea && share >= TILE_ROOF.minRectangular
+}
+
+/** The outline's area, and its share of the smallest box round it, square to its longest wall: 1 for a rectangle. */
+function rectangularity(outline: GroundPoint[]): { area: number; share: number } {
+  const { width, depth } = boxAround(outline, longestEdge(outline))
+  let area = 0
+  outline.forEach(([x, z], i) => {
+    const [nextX, nextZ] = outline[(i + 1) % outline.length]
+    area += x * nextZ - nextX * z
+  })
+  return { area: Math.abs(area) / 2, share: Math.abs(area) / 2 / Math.max(width * depth, 1e-6) }
+}
+
+function longestEdge(outline: GroundPoint[]): [number, number] {
+  let best: [number, number] = [1, 0]
+  let bestLength = 0
+  outline.forEach(([x, z], i) => {
+    const [nextX, nextZ] = outline[(i + 1) % outline.length]
+    const length = Math.hypot(nextX - x, nextZ - z)
+    if (length > bestLength) {
+      bestLength = length
+      best = [(nextX - x) / length, (nextZ - z) / length]
+    }
+  })
+  return best
+}
+
+/** The box round an outline, its sides along `[ax, az]` and square to it: a frame and its extents. */
+function boxAround(outline: GroundPoint[], [ax, az]: [number, number]) {
+  const bx = -az
+  const bz = ax
+  const as = outline.map(([x, z]) => x * ax + z * az)
+  const bs = outline.map(([x, z]) => x * bx + z * bz)
+  const [a0, a1, b0, b1] = [Math.min(...as), Math.max(...as), Math.min(...bs), Math.max(...bs)]
+  return { ax, az, bx, bz, a0, a1, b0, b1, width: a1 - a0, depth: b1 - b0 }
+}
+
+/**
+ * A Mangalore tile roof: two slopes meeting at a ridge along the house's long side, past the walls
+ * all round, in courses of two tones so the tiles read, with a ridge cap and plain gable ends.
+ * Only on near-rectangular houses, as the box round the outline is what it covers.
+ */
+function addTileRoof(kit: Builder, outline: GroundPoint[], roof: number, color: THREE.Color, tile: THREE.Color): boolean {
+  const frame = boxAround(outline, longestEdge(outline))
+  const { ax, az, bx, bz, a0, a1, b0, b1 } = frame
+  const slope = Math.tan(TILE_ROOF.pitch)
+  const half = (b1 - b0) / 2
+  const middle = (b0 + b1) / 2
+  const ridge = roof + half * slope
+  const over = TILE_ROOF.overhang
+  const point = (a: number, b: number, h: number) => new THREE.Vector3(ax * a + bx * b, h, az * a + bz * b)
+  const heightAt = (b: number) => ridge - Math.abs(b - middle) * slope
+  const dark = tile.clone().multiplyScalar(0.82)
+  const under = tile.clone().multiplyScalar(0.45)
+
+  for (const side of [-1, 1]) {
+    const normal = new THREE.Vector3(bx * side * Math.sin(TILE_ROOF.pitch), Math.cos(TILE_ROOF.pitch), bz * side * Math.sin(TILE_ROOF.pitch))
+    const eave = middle + side * (half + over)
+    for (let course = 0; course < TILE_ROOF.courses; course++) {
+      const from = middle + ((eave - middle) * course) / TILE_ROOF.courses
+      const to = middle + ((eave - middle) * (course + 1)) / TILE_ROOF.courses
+      kit.quad([point(a0 - over, from, heightAt(from)), point(a1 + over, from, heightAt(from)), point(a1 + over, to, heightAt(to)), point(a0 - over, to, heightAt(to))], normal, course % 2 ? dark : tile)
+    }
+    // The underside, seen from the street under the eaves.
+    kit.quad([point(a0 - over, middle, ridge - 0.04), point(a1 + over, middle, ridge - 0.04), point(a1 + over, eave, heightAt(eave) - 0.04), point(a0 - over, eave, heightAt(eave) - 0.04)], normal.clone().negate(), under)
+  }
+  // Gable ends, in the house's paint: a triangle from the walls' top to the ridge.
+  for (const [end, sign] of [[a0, -1], [a1, 1]] as const) {
+    const normal = new THREE.Vector3(ax * sign, 0, az * sign)
+    kit.quad([point(end, b0, roof), point(end, b1, roof), point(end, middle, ridge), point(end, middle, ridge)], normal, color)
+  }
+  // The ridge cap.
+  const capFrame: Wall = { start: [ax * a0 + bx * middle, az * a0 + bz * middle], length: a1 - a0, alongX: ax, alongZ: az, outX: bx, outZ: bz, exposed: true }
+  box(kit, capFrame, [-over, a1 - a0 + over], [-TILE_ROOF.ridge, TILE_ROOF.ridge], [ridge - 0.03, ridge + TILE_ROOF.ridge * 0.8], dark)
+  return true
+}
+
+/** A sheet-metal shed on posts on the terrace, wherever it fits clear of the staircase room. */
+function addRoofShed(kit: Builder, outline: GroundPoint[], front: Wall, roof: number, roomAt: GroundPoint | null, room: { width: number; depth: number }, color: THREE.Color) {
+  const fits = (x: number, z: number) =>
+    [-1, 1].every((a) => [-1, 1].every((b) => isInsideOutline(outline, x + front.alongX * a * (SHED.width / 2 + 0.25) + front.outX * b * (SHED.depth / 2 + 0.25), z + front.alongZ * a * (SHED.width / 2 + 0.25) + front.outZ * b * (SHED.depth / 2 + 0.25))))
+  const clearOfRoom = (x: number, z: number) => !roomAt || Math.hypot(x - roomAt[0], z - roomAt[1]) > Math.hypot(room.width, room.depth) / 2 + Math.hypot(SHED.width, SHED.depth) / 2 + 0.2
+  const xs = outline.map(([x]) => x)
+  const zs = outline.map(([, z]) => z)
+  const centreX = (Math.min(...xs) + Math.max(...xs)) / 2
+  const centreZ = (Math.min(...zs) + Math.max(...zs)) / 2
+  for (const forward of [2, 1, 0, -1, 3]) {
+    for (const sideways of [-3, 3, -1.5, 1.5, 0]) {
+      const x = centreX + front.outX * forward + front.alongX * sideways
+      const z = centreZ + front.outZ * forward + front.alongZ * sideways
+      if (!fits(x, z) || !clearOfRoom(x, z)) continue
+      const frame: Wall = { ...front, start: [x - front.alongX * (SHED.width / 2) - front.outX * (SHED.depth / 2), z - front.alongZ * (SHED.width / 2) - front.outZ * (SHED.depth / 2)], length: SHED.width }
+      const p = SHED.post
+      for (const [a, b, top] of [[0, 0, SHED.low], [SHED.width - p, 0, SHED.low], [0, SHED.depth - p, SHED.high], [SHED.width - p, SHED.depth - p, SHED.high]]) {
+        box(kit, frame, [a, a + p], [b, b + p], [roof, roof + top], RAIL_COLOR)
+      }
+      // The sheet, sloping down towards the front, seen from above and below.
+      const at = (a: number, b: number, h: number) => new THREE.Vector3(frame.start[0] + frame.alongX * a + frame.outX * b, roof + h, frame.start[1] + frame.alongZ * a + frame.outZ * b)
+      const corners = [at(-0.15, -0.15, SHED.low - 0.03), at(SHED.width + 0.15, -0.15, SHED.low - 0.03), at(SHED.width + 0.15, SHED.depth + 0.15, SHED.high + 0.03), at(-0.15, SHED.depth + 0.15, SHED.high + 0.03)]
+      const tilt = Math.atan2(SHED.high - SHED.low, SHED.depth)
+      const up = new THREE.Vector3(-front.outX * Math.sin(tilt), Math.cos(tilt), -front.outZ * Math.sin(tilt))
+      kit.quad(corners, up, color)
+      kit.quad(corners, up.clone().negate(), color.clone().multiplyScalar(0.6))
+      return
+    }
+  }
+}
+
+/**
+ * An outside stair up a side wall to the first floor, as on houses whose upstairs is let
+ * separately: solid steps rising from the front end, a landing, and a stepped parapet on the open
+ * side. Only on an open side wall with room for it. Returns the lines to make solid and which end
+ * of the front it's at (-1 the start, 1 the end), or null where there's no room.
+ */
+function addOuterStair(kit: Builder, shades: Builder, walls: Wall[], front: Wall, outline: GroundPoint[], lookup: CollisionWorld, paint: THREE.Color, shade: THREE.Color): { solid: [GroundPoint, GroundPoint][]; end: -1 | 1 } | null {
+  const steps = Math.round(FLOOR_HEIGHT / OUTER_STAIR.rise)
+  const run = steps * OUTER_STAIR.tread + OUTER_STAIR.landing
+  const width = OUTER_STAIR.width
+  for (const wall of walls) {
+    if (wall === front || !wall.exposed || wall.length < run + 0.6) continue
+    // A side wall: square to the front.
+    if (Math.abs(wall.alongX * front.alongX + wall.alongZ * front.alongZ) > 0.3) continue
+    // Which end of it is at the front: the stair starts there and climbs towards the back.
+    const outAt = (along: number) => (wall.start[0] + wall.alongX * along - front.start[0]) * front.outX + (wall.start[1] + wall.alongZ * along - front.start[1]) * front.outZ
+    const fromFront = outAt(0) > outAt(wall.length)
+    const start = 0.3
+    const alongOf = (distance: number) => (fromFront ? distance : wall.length - distance)
+    const at = (along: number, out: number): GroundPoint => [wall.start[0] + wall.alongX * along + wall.outX * out, wall.start[1] + wall.alongZ * along + wall.outZ * out]
+    // Room beside it: nothing within a metre past the stair, and not into the outline.
+    const clear = [0, 0.5, 1].every((share) => {
+      const [x, z] = at(alongOf(start + run * share), width + 0.6)
+      return !isNearBuilding(lookup, x, z, 0.5) && !isInsideOutline(outline, x, z)
+    })
+    if (!clear) continue
+
+    const span = (from: number, to: number): [number, number] => {
+      const [a, b] = [alongOf(start + from), alongOf(start + to)]
+      return [Math.min(a, b), Math.max(a, b)]
+    }
+    for (let step = 0; step < steps; step++) {
+      const top = (step + 1) * OUTER_STAIR.rise
+      const tread = span(step * OUTER_STAIR.tread, (step + 1) * OUTER_STAIR.tread)
+      box(kit, wall, tread, [0, width], [Math.max(0, top - 0.45), top], shade)
+      // The parapet on the open side: from Medium up.
+      box(shades, wall, tread, [width - 0.1, width], [top, top + OUTER_STAIR.rail], paint)
+    }
+    const landing = span(steps * OUTER_STAIR.tread, run)
+    box(kit, wall, landing, [0, width], [FLOOR_HEIGHT - 0.15, FLOOR_HEIGHT], shade)
+    box(kit, wall, landing, [width - 0.1, width], [FLOOR_HEIGHT, FLOOR_HEIGHT + OUTER_STAIR.rail], paint)
+    // A post under the landing, and a door at the top.
+    const [postFrom] = landing
+    box(kit, wall, [postFrom + 0.1, postFrom + 0.35], [width - 0.3, width - 0.05], [0, FLOOR_HEIGHT - 0.15], shade)
+    box(kit, wall, [landing[0] + 0.1, landing[1] - 0.1], [0, 0.03], [FLOOR_HEIGHT, FLOOR_HEIGHT + DOOR.height], DOOR_COLOR)
+    const [lowEnd, highEnd] = span(0, run)
+    const [middleX, middleZ] = at(wall.length / 2, 0)
+    const alongFront = (middleX - front.start[0]) * front.alongX + (middleZ - front.start[1]) * front.alongZ
+    return {
+      solid: [
+        [at(lowEnd, width), at(highEnd, width)],
+        [at(fromFront ? lowEnd : highEnd, 0), at(fromFront ? lowEnd : highEnd, width)],
+      ],
+      end: alongFront < front.length / 2 ? -1 : 1,
+    }
+  }
+  return null
+}
+
+/** Elevation tiles: a band of stone or ceramic up one end of the front, in courses, beside the door. */
+function addCladding(kit: Builder, front: Wall, roof: number, doorAlong: number, [face, joint]: [THREE.Color, THREE.Color], hash: number) {
+  const atEnd = doorAlong < front.length / 2
+  // No wider than the plain wall before the first painted window at that end.
+  const windows = windowCentres(front)
+  const room = windows.length ? (atEnd ? front.length - Math.max(...windows) : Math.min(...windows)) - WINDOW_HALF_WIDTH - 0.15 : front.length / 3
+  const width = Math.min(room, CLADDING.minWidth + (((hash >>> 7) % 100) / 100) * (CLADDING.maxWidth - CLADDING.minWidth))
+  if (width < CLADDING.minWidth * 0.75) return
+  // At whichever end is further from the door.
+  const from = atEnd ? front.length - width - 0.05 : 0.05
+  if (Math.abs(from + width / 2 - doorAlong) < width / 2 + DOOR.width) return
+  for (let low = 0, course = 0; low < roof; low += CLADDING.course, course++) {
+    box(kit, front, [from, from + width], [0, 0.04], [low, Math.min(roof, low + CLADDING.course - 0.02)], course % 2 ? joint : face)
+  }
+}
+
+/** Schools and hospitals: a porch on pillars over the way in, and a parapet round the roof. */
+const CIVIC = { porch: 6.5, porchDepth: 2.6, porchHeight: 3.6, slab: 0.25, pillar: 0.4, wall: 1.7, gate: 4.5 }
+const CIVIC_PAINT = new THREE.Color('#e9e2d0')
+/** A school's compound wall is painted in blocks: yellow, blue and white. */
+const SCHOOL_WALL_COLORS = ['#e5c046', '#2f5d9e', '#f1ede2'].map((color) => new THREE.Color(color))
+const SCHOOL_BLOCK = 1.4
+const CROSS_RED = new THREE.Color('#c8262c')
+const SIGN_WHITE = new THREE.Color('#f4f2ec')
+
+/**
+ * A school or hospital, told apart from the street: both get a porch on pillars over the way in
+ * and a parapet. A school gets a compound wall painted in blocks, with a wide gate; a hospital a
+ * red cross on a white board standing on its roof over the porch. Returns lines to make solid.
+ */
+function dressCivic(kit: Builder, walls: Wall[], front: Wall, frontGap: number, roof: number, use: CivicUse, gates: Gate[]): [GroundPoint, GroundPoint][] {
+  const solid: [GroundPoint, GroundPoint][] = []
+  const at = (along: number, out: number): GroundPoint => [front.start[0] + front.alongX * along + front.outX * out, front.start[1] + front.alongZ * along + front.outZ * out]
+  for (const wall of walls) box(kit, wall, [-PARAPET.thickness, wall.length + PARAPET.thickness], [-PARAPET.thickness, 0], [roof, roof + PARAPET.height], CIVIC_PAINT, true)
+
+  const middle = front.length / 2
+  // The porch, if the pavement leaves room in front.
+  const depth = Math.min(CIVIC.porchDepth, frontGap - 1.6)
+  const width = Math.min(CIVIC.porch, front.length - 1)
+  if (front.exposed && depth >= 1.6 && width >= 3) {
+    const span: [number, number] = [middle - width / 2, middle + width / 2]
+    box(kit, front, span, [0, depth], [CIVIC.porchHeight, CIVIC.porchHeight + CIVIC.slab], CIVIC_PAINT, true)
+    for (const along of [span[0] + 0.1, span[1] - 0.1 - CIVIC.pillar]) {
+      box(kit, front, [along, along + CIVIC.pillar], [depth - CIVIC.pillar - 0.1, depth - 0.1], [0, CIVIC.porchHeight], CIVIC_PAINT)
+      solid.push([at(along + CIVIC.pillar / 2, depth - CIVIC.pillar), at(along + CIVIC.pillar / 2, depth - 0.15)])
+    }
+  }
+
+  if (use === 'hospital' && front.exposed) {
+    // The red cross, standing on the roof's front edge over the porch.
+    const size = 1.9
+    const low = roof + PARAPET.height
+    box(kit, front, [middle - size / 2, middle + size / 2], [-0.35, -0.15], [low, low + size], SIGN_WHITE, true)
+    const arm = size * 0.62
+    const thick = size * 0.2
+    const centre = low + size / 2
+    box(kit, front, [middle - arm / 2, middle + arm / 2], [-0.15, -0.12], [centre - thick / 2, centre + thick / 2], CROSS_RED)
+    box(kit, front, [middle - thick / 2, middle + thick / 2], [-0.15, -0.12], [centre - arm / 2, centre + arm / 2], CROSS_RED)
+  }
+
+  const yard = Math.min(MAX_YARD + 2, frontGap - COMPOUND.pavement)
+  if (use === 'school' && front.exposed && yard >= MIN_YARD + 1) {
+    // The compound wall, in painted blocks, with a wide gate in the middle.
+    const out: [number, number] = [yard, yard + COMPOUND.thickness]
+    const [from, to] = [-0.4, front.length + 0.4]
+    const gateFrom = middle - CIVIC.gate / 2
+    const gateTo = middle + CIVIC.gate / 2
+    for (const [start, end] of [[from, gateFrom], [gateTo, to]] as [number, number][]) {
+      for (let along = start, block = 0; along < end - 0.05; along += SCHOOL_BLOCK, block++) {
+        box(kit, front, [along, Math.min(end, along + SCHOOL_BLOCK)], out, [0, CIVIC.wall], SCHOOL_WALL_COLORS[block % SCHOOL_WALL_COLORS.length], true)
+      }
+      solid.push([at(start, yard + COMPOUND.thickness / 2), at(end, yard + COMPOUND.thickness / 2)])
+    }
+    for (const end of [from, to - COMPOUND.thickness]) {
+      box(kit, front, [end, end + COMPOUND.thickness], [0, yard], [0, CIVIC.wall], SCHOOL_WALL_COLORS[2], true)
+      solid.push([at(end + COMPOUND.thickness / 2, 0), at(end + COMPOUND.thickness / 2, yard)])
+    }
+    for (const pillar of [gateFrom - COMPOUND.pillar, gateTo]) {
+      box(kit, front, [pillar, pillar + COMPOUND.pillar], [yard - 0.12, yard + COMPOUND.thickness + 0.12], [0, CIVIC.wall + 0.3], SCHOOL_WALL_COLORS[2], true)
+    }
+    // The gate stands open: two leaves folded back against the wall inside.
+    for (const [hinge, sign] of [[gateFrom, 1], [gateTo, -1]] as const) {
+      box(kit, front, sign > 0 ? [hinge, hinge + 0.06] : [hinge - 0.06, hinge], [yard - CIVIC.gate / 2, yard], [0.08, CIVIC.wall - 0.1], GATE_COLOR, true)
+    }
+    const [x, z] = at(middle, yard)
+    gates.push({ x, z, width: CIVIC.gate })
+  }
+  return solid
 }
 
 /** A square post standing at a point, its sides square to `facing`. */

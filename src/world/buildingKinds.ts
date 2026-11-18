@@ -1,5 +1,5 @@
 import { getFootprintArea, hashString } from './buildingData'
-import type { BuildingFeature, PointFeature, PolygonFeature } from './mapData'
+import type { BuildingFeature, CivicUse, PointFeature, PolygonFeature } from './mapData'
 import { isInsideOutline, lonLatToWorld, type GroundPoint, type LonLat } from './worldUtils'
 
 /** `temple` covers every place of worship, drawn by Temples.tsx rather than as a plain building (see worship.ts). */
@@ -143,7 +143,15 @@ function findKindsFromPlaces(
   return kinds
 }
 
-type Zone = { outline: GroundPoint[]; use?: BuildingKind; commercial: boolean }
+type Zone = { outline: GroundPoint[]; use?: BuildingKind; civicUse?: CivicUse; commercial: boolean }
+
+const SCHOOLS = new Set(['school', 'kindergarten', 'college', 'university'])
+/** What a civic place is, from its tags, if the game draws that kind differently. */
+function civicUseOf({ amenity, healthcare, building }: Properties): CivicUse | undefined {
+  if (SCHOOLS.has(amenity ?? '') || SCHOOLS.has(building ?? '')) return 'school'
+  if (amenity === 'hospital' || healthcare === 'hospital' || building === 'hospital') return 'hospital'
+  return undefined
+}
 
 /** Areas that say something about the buildings on them, like a school's grounds. */
 function findZones(areas: PolygonFeature[]): Zone[] {
@@ -151,6 +159,7 @@ function findZones(areas: PolygonFeature[]): Zone[] {
     (area): Zone => ({
       outline: toOutline(area.geometry.coordinates[0]),
       use: kindFromUse(area.properties),
+      civicUse: civicUseOf(area.properties),
       commercial: area.properties.landuse === 'commercial',
     }),
   )
@@ -185,6 +194,12 @@ export function classifyBuildings(
   const outlines = buildings.map((building) => toOutline(building.geometry.coordinates[0]))
   const kindsFromPlaces = findKindsFromPlaces(buildings, outlines, places)
   const zones = findZones(areas)
+  const civicPlaces = places.flatMap((place) => {
+    const use = civicUseOf(place.properties)
+    if (!use) return []
+    const [x, , z] = lonLatToWorld(place.geometry.coordinates)
+    return [{ use, at: [x, z] as GroundPoint }]
+  })
 
   return buildings.map((building, index) => {
     const { properties, id } = building
@@ -196,6 +211,17 @@ export function classifyBuildings(
       kindFromZone(zones, getCentre(outlines[index]), area) ??
       kindFromSize(building, area)
 
-    return { ...building, kind }
+    if (kind !== 'civic') return { ...building, kind }
+    // Which civic building: its own tags, a school or hospital mapped beside it, or the grounds it stands in.
+    const outline = outlines[index]
+    const centre = getCentre(outline)
+    const civicUse =
+      civicUseOf(properties) ??
+      civicPlaces
+        .map(({ use, at }) => ({ use, distance: distanceToOutline(outline, at) }))
+        .filter(({ distance }) => distance < PLACE_REACH)
+        .sort((a, b) => a.distance - b.distance)[0]?.use ??
+      zones.find((zone) => zone.civicUse && isInsideOutline(zone.outline, centre[0], centre[1]))?.civicUse
+    return { ...building, kind, civicUse }
   })
 }
