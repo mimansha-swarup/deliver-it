@@ -208,8 +208,9 @@ function ShiftSummaryCard({ summary }: { summary: ShiftSummary }) {
             <dd>{summary.goal.state === 'met' ? `Met · +${summary.goal.bonus}` : 'Not met'}</dd>
           </>
         )}
+        <dt>Best moment</dt>
+        <dd className="duty-best">{summary.bestMoment}</dd>
       </dl>
-      {summary.best && <p className="duty-best">Best moment: {summary.best.text}</p>}
       <button type="button" autoFocus onClick={dismiss}>
         Done
       </button>

@@ -163,9 +163,18 @@ export function bestMomentOf(reward: Reward, onTimeSeconds: number): { score: nu
   return options.reduce((best, option) => (option.score > best.score ? option : best))
 }
 
-export type ShiftSummary = ShiftStats & { averageRating: number | null }
+export type ShiftSummary = ShiftStats & { averageRating: number | null; bestMoment: string }
 
 export function summarize(shift: ShiftStats): ShiftSummary {
   const averageRating = shift.ratings.length ? shift.ratings.reduce((sum, stars) => sum + stars, 0) / shift.ratings.length : null
-  return { ...shift, averageRating }
+  return { ...shift, averageRating, bestMoment: bestMomentOfShift(shift) }
+}
+
+/** The shift's best moment, always something: the goal met beats a delivery's, then the ride itself. */
+function bestMomentOfShift(shift: ShiftStats): string {
+  if (shift.goal?.state === 'met') return `Shift goal met: ${shift.goal.text}`
+  if (shift.best) return shift.best.text
+  if (shift.deliveries > 0) return `${shift.deliveries} ${shift.deliveries === 1 ? 'delivery' : 'deliveries'} done`
+  if (shift.distance >= 500) return `${(shift.distance / 1000).toFixed(1)} km of HSR ridden`
+  return 'A quiet shift: the next one will be busier'
 }

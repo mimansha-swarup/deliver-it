@@ -8900,3 +8900,11 @@ instead of adding to them (old saves' untagged copies are tidied up by their wor
 picks out new messages by id, so a replaced one can't make it re-post older lines.
 
 Checked: online, offline, online again leaves one welcome and one goal.
+
+## 2026-11-18: Entry 145, the shift's best moment, always
+
+### What I did
+The shift summary always has a "Best moment" row now. Meeting the shift goal counts first, then
+the best delivery (the biggest tip, the earliest arrival, or a spotless 5★ ride); with nothing
+outstanding, the deliveries done, the distance ridden, or a word that it was a quiet one. Before,
+it only appeared when a delivery scored one, so most short shifts showed nothing.

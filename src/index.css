@@ -2243,9 +2243,9 @@ body,
   font-weight: 400;
 }
 
-.duty-best {
-  margin: 0 0 14px;
+.hud-results .duty-best {
   color: #ffb02e;
+  white-space: normal;
 }
 
 .duty-home {
@@ -2734,4 +2734,8 @@ body,
 .mood-cancels {
   color: #ff6b5e;
   font-weight: 700;
+}
+
+.duty-summary dt {
+  white-space: nowrap;
 }
