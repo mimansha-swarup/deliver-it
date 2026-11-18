@@ -318,18 +318,17 @@ export function Rider({
         ))}
         {/* Twin stripes, front to back over the top, either side of the middle. */}
         {[-1, 1].map((side) => (
-          // A part ring in the front-to-back plane: from above the decal at the back, over the top, to the visor.
-          <mesh key={side} position={[side * 0.034, 0, 0]} rotation={[0, Math.PI / 2, 0.22]} scale={[1.08, 1, 1]} material={materials.trim}>
-            <torusGeometry args={[0.1475, 0.006, 4, 24, Math.PI * 0.6]} />
+          // A part ring in the front-to-back plane: from the rim at the back, under the decal, over the
+          // top to the visor. Stopped short of the decal, the two stripes over it read as eyes.
+          <mesh key={side} position={[side * 0.034, 0, 0]} rotation={[0, Math.PI / 2, -0.5]} scale={[1.08, 1, 1]} material={materials.trim}>
+            <torusGeometry args={[0.1475, 0.006, 4, 24, Math.PI * 0.82]} />
           </mesh>
         ))}
-        {/* Two exhaust vents at the back, outside the stripes, and the Deliver It decal low on the back
-            (no separate reflector: with one under the decal, the back read as a face). */}
-        {[-1, 1].map((side) => (
-          <mesh key={side} position={[side * 0.07, 0.07, -0.142]} rotation={[-0.75, side * 0.42, 0]} material={materials.rubber}>
-            <boxGeometry args={[0.03, 0.012, 0.03]} />
-          </mesh>
-        ))}
+        {/* An exhaust vent high on the crown between the stripes, and the Deliver It decal low on the back.
+            One vent, not two either side: a pair of dark marks over the decal read as a face. */}
+        <mesh position={[0, 0.128, -0.082]} rotation={[-0.58, 0, 0]} material={materials.rubber}>
+          <boxGeometry args={[0.04, 0.01, 0.034]} />
+        </mesh>
         <mesh scale={[0.96, 1, 1.08]} material={materials.decal}>
           <sphereGeometry args={[0.1508, 12, 3, (Math.PI * 3) / 2 - 0.52, 1.04, Math.PI * 0.5, Math.PI * 0.15]} />
         </mesh>
