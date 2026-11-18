@@ -329,8 +329,11 @@ export function planMappedBarriers(barriers: LineFeature[], roads: RoadIndex, co
 /** A temple compound's wall leaves a gateway this wide, facing the nearest road. */
 const TEMPLE_GATE = 3
 
-/** The striped wall round each temple compound, open in a gateway on the side nearest the road. */
-export function planTempleWalls(compounds: GroundPoint[][], roads: RoadIndex, collisions: CollisionWorld): FenceRun[] {
+/**
+ * The striped wall round each temple compound, open in a gateway on the side nearest the road.
+ * With `kind: 'wall'`, a plain compound wall round a plot, the same way.
+ */
+export function planTempleWalls(compounds: GroundPoint[][], roads: RoadIndex, collisions: CollisionWorld, kind: 'templeWall' | 'wall' = 'templeWall'): FenceRun[] {
   const runs: FenceRun[] = []
   for (const compound of compounds) {
     const closed = [...compound, compound[0]]
@@ -348,10 +351,10 @@ export function planTempleWalls(compounds: GroundPoint[][], roads: RoadIndex, co
       isInsideBounds(x, z, 2) && isClearOfRoads(roads, x, z, 0.3) && !isNearBuilding(collisions, x, z, 0.2)
     const panels = cutIntoPanels(
       closed,
-      PANEL.templeWall,
+      PANEL[kind],
       (from, to, middle) => Math.hypot(middle[0] - gate[0], middle[1] - gate[1]) > TEMPLE_GATE / 2 && fits(from) && fits(to),
     )
-    runs.push(...joinPanels(panels, 'templeWall', 0, collisions))
+    runs.push(...joinPanels(panels, kind, kind === 'templeWall' ? 0 : (compound.length % 7) / 7, collisions))
   }
   return runs
 }

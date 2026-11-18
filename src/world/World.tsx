@@ -44,6 +44,7 @@ import { addGroundFloorShops, assignStreetPresets, listStreets, streetPresetOf }
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { createSurfaceMap, worldSurface } from './surfaceMap'
+import { setBuildingsBack } from './buildingSetback'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
@@ -113,6 +114,10 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const roadPieces = toRoadPieces(data.roads)
   const roadIndex = indexRoadPieces(roadPieces)
   lap('presets and road index')
+  // No building stands on a road or its footpath: trimmed back, made smaller, or replaced by a walled plot.
+  const setback = setBuildingsBack(data, roadIndex)
+  worldSurface.report.buildings = setback.report
+  lap(`building setback: ${JSON.stringify(setback.report)}`)
   // Shops on the ground floor of nearly every building along shop streets and main roads, as on 27th Main.
   const groundFloorShops = addGroundFloorShops(data.buildings, data.roads, roadIndex)
   if (import.meta.env.DEV) console.info('[streets] ground-floor shops added:', groundFloorShops)
@@ -150,6 +155,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
   const templeWalls = planTempleWalls(templeCompounds(data.worship), roadIndex, collisions)
+  const plotWalls = planTempleWalls(setback.plots, roadIndex, collisions, 'wall')
   // The ground map: what every spot is (road, footpath, paved, building, park, plot...), which
   // everything placed from here on asks first (surfaceMap.ts).
   const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
@@ -251,7 +257,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   for (const { start, end, width } of edges.medians) addWall(collisions, start, end, width)
   // Railings on the way into the junctions, after the lanes for the same reason.
   const railings = planJunctionRailings(traffic.signals.posts, roadIndex, houses.gates, collisions, (x, z) => isOnForecourt(fuel, x, z))
-  const fences = [...templeWalls, ...mappedBarriers, ...parkFences, ...railings]
+  const fences = [...templeWalls, ...plotWalls, ...mappedBarriers, ...parkFences, ...railings]
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   lap('railings and tanks')
   const surface = createSurface(data.roads, features, edges.heightAt)

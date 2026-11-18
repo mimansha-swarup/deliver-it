@@ -9126,3 +9126,32 @@ My first count refused 7,541 spots as "off the road". A car's outer side sits 0.
 kerb, and on a 1 m grid that edge is in a cell whose centre is on the footpath. Checking a
 footprint against a grid needs it inset by most of a cell (`CELL_SLACK = 0.75`). After the inset,
 113 spots were refused for that reason.
+
+## 2026-11-18: Entry 157, no building on a road or footpath
+
+### What I did
+`src/world/buildingSetback.ts` runs before anything looks at the buildings. Each footprint is
+measured against every road near it, the road plus its street's footpath each side. A small
+overlap (up to 30% of the footprint) is trimmed back to just behind the footpath, cut parallel
+to the road piece, so it doesn't walk into its neighbour the way a shift would. A large overlap
+leaves a smaller building on what's behind the footpath, if that piece is still house-sized (28
+m², not a sliver). Otherwise the building goes, and a plot of 20 m² or more is walled in with a
+gate facing the nearest road (`planTempleWalls` with `kind: 'wall'`).
+
+Of 20,204 buildings: 11,421 were clear, 6,950 trimmed, 1,163 made smaller, 670 removed (238
+plots walled). Most of the removals are small houses on 5 m residential lanes.
+
+Each trimming round tries a cut against each of the three road pieces it overlaps most, on
+either side, and keeps the one that leaves the most building. With only the most-overlapped
+piece and the centroid's side, 29 large buildings were removed over a 7–30% overlap, among them
+a block of flats on Sarjapur Road. With the best cut, 17 were removed, and 7 of those were
+buildings the trim couldn't clear.
+
+### Load time
+2.56 s at first, measuring every footprint on a 1 m grid. Now 0.53 s: a footprint is first
+checked only round its edge (a road can only reach in across the edge), road clearances are
+looked up once, and only overlapping footprints get the full count.
+
+Also: `scripts/shots.mjs` runs Chrome headless (`--windowed` to watch), because typing in
+another window while it ran reached the game and rode the bike off, and it prints the load
+timeline's report lines.

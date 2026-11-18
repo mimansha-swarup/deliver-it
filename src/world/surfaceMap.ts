@@ -238,8 +238,12 @@ export function createSurfaceMap(data: MapData, extra: { paved?: GroundPoint[][]
   return map
 }
 
-/** The world's surface map, once planned (World.tsx); placement code reads it from here. `rejected` counts refusals, for the report. */
-export const worldSurface = { map: null as SurfaceMap | null, rejected: {} as Partial<Record<Placement, number>> }
+/**
+ * The world's surface map, once planned (World.tsx); placement code reads it from here.
+ * `rejected` counts refusals and `report` what the placement fixes moved or removed, for the
+ * debug view.
+ */
+export const worldSurface = { map: null as SurfaceMap | null, rejected: {} as Partial<Record<Placement, number>>, report: {} as Record<string, Record<string, number>> }
 
 /** Whether the ground at a point allows something. Before the map exists, anything goes. */
 export function surfaceAllows(x: number, z: number, what: Placement): boolean {

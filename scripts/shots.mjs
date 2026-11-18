@@ -5,7 +5,7 @@
  *     npx vite preview --port 4173 &
  *     node --experimental-websocket scripts/shots.mjs --out <folder> [--spots 27th-main,residential-street,main-road,petrol-pump] [--hour 10]
  *
- * A fresh Chrome profile (your save is untouched) with the tutorial marked done, a 1440 × 810
+ * A fresh headless Chrome (your save is untouched, and keys typed elsewhere can't reach it; `--windowed` to watch) with the tutorial marked done, a 1440 × 810
  * window, the clock set to `--hour` and the weather clear, then each spot on High and on Low.
  * Files are <spot>-<quality>.png.
  */
@@ -30,7 +30,7 @@ const PORT = 9334
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 mkdirSync(OUT, { recursive: true })
 const profileDir = mkdtempSync(join(tmpdir(), 'deliver-it-shots-'))
-const chrome = spawn(CHROME, [`--remote-debugging-port=${PORT}`, `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', '--window-size=1440,900', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', 'about:blank'], { stdio: 'ignore' })
+const chrome = spawn(CHROME, [`--remote-debugging-port=${PORT}`, `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', ...(args.includes('--windowed') ? [] : ['--headless=new']), '--window-size=1440,900', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', 'about:blank'], { stdio: 'ignore' })
 
 async function connect() {
   for (let attempt = 0; attempt < 50; attempt++) {
@@ -96,6 +96,11 @@ try {
     await send('Page.navigate', { url: `${BASE}/?spawn=${spot}&debug=1` })
     await sleep(1500)
     await evaluate(START)
+    if (spot === SPOTS[0]) {
+      // The placement fixes' counts, from the load timeline (lines with a report after a colon).
+      const timeline = await evaluate('window.__deliverItLoad?.() ?? []')
+      for (const { at, label } of timeline) if (label.includes(':')) console.log('load', at, label)
+    }
     for (const quality of QUALITIES) {
       await evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click(); 'ok'`)
       await sleep(3500)

@@ -36,6 +36,11 @@ export function lonLatToLocal([lon, lat]: LonLat): LocalPoint {
   ]
 }
 
+/** The other way: a ground point in the world back to longitude/latitude. */
+export function worldToLonLat(x: number, z: number): LonLat {
+  return [WORLD_ORIGIN.lon + x / (METRES_PER_DEGREE * LON_SCALE), WORLD_ORIGIN.lat - z / METRES_PER_DEGREE]
+}
+
 /**
  * Converts to a Three.js position on the ground.
  * East is +X, up is +Y and north is -Z.
