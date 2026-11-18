@@ -40,6 +40,25 @@ export const REVIEW_STREETS: Record<string, string> = {
   'main-road': 'sarjapur-road',
 }
 
+/**
+ * The time of day asked for in the address with ?debug, as hours from 0 to 24 (`?hour=17.5` is
+ * 17:30), or null. Read with ?spawn, so a review spot can be seen at golden hour straight away.
+ */
+export function requestedHour(): number | null {
+  if (!isDebug() || typeof location === 'undefined') return null
+  const value = new URLSearchParams(location.search).get('hour')
+  if (value === null || value.trim() === '') return null
+  const hours = Number(value)
+  return Number.isFinite(hours) && hours >= 0 && hours < 24 ? hours : null
+}
+
+/** The weather asked for in the address with ?debug (`?weather=clear`, `cloudy` or `rain`), or null. */
+export function requestedWeather(): 'clear' | 'cloudy' | 'rain' | null {
+  if (!isDebug() || typeof location === 'undefined') return null
+  const value = new URLSearchParams(location.search).get('weather')
+  return value === 'clear' || value === 'cloudy' || value === 'rain' ? value : null
+}
+
 /** The street asked for in the address, or null. */
 export function requestedSpawn(): string | null {
   if (!isDebug() || typeof location === 'undefined') return null

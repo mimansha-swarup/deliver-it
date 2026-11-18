@@ -9621,3 +9621,14 @@ Tried: one centre stripe with a spoiler across the back read as a cross, and wit
 reflector under twin stripes, as a face.
 
 Screenshots: `world-pass.local/shots/fu6d` (`zoom.png` against `fu6/zoom-before.png`).
+
+## 2026-11-19: Entry 174, ?hour and ?weather in the address
+
+### What I did
+With ?debug, `?hour=17.5` starts the clock at 17:30 and `?weather=clear` (or `cloudy`, `rain`)
+holds that weather for an hour, alongside ?spawn: `/?spawn=27th-main&debug=1&hour=17.5&weather=clear`
+(dev/spawn.ts, Sky.tsx). The world loads at that time, shadows and all, rather than being set
+after. `scripts/shots.mjs` puts its `--hour` in the address too.
+
+Screenshots at 17:30 of 27th Main, 13th Cross and Sarjapur Road, High and Low:
+`world-pass.local/shots/p1-1730`.

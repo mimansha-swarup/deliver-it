@@ -6,7 +6,8 @@
  *     node --experimental-websocket scripts/shots.mjs --out <folder> [--spots 27th-main,residential-street,main-road,petrol-pump] [--hour 10]
  *
  * A fresh headless Chrome (your save is untouched, and keys typed elsewhere can't reach it; `--windowed` to watch) with the tutorial marked done, a 1440 × 810
- * window, the clock set to `--hour` and the weather clear, then each spot on High and on Low.
+ * window, the clock set to `--hour` and the weather clear (in the address, `?hour=` and `?weather=`,
+ * so the world loads at that time), then each spot on High and on Low.
  * Files are <spot>-<quality>.png. `--press F8` (or `F8,F8`) presses keys before each shot, and
  * `--eval <js>` runs a script in the page after them.
  */
@@ -98,7 +99,7 @@ try {
   await sleep(1500)
   await evaluate(`localStorage.setItem('deliver-it-tutorial', JSON.stringify({ state: { done: true }, version: 0 })); 'ok'`)
   for (const spot of SPOTS) {
-    await send('Page.navigate', { url: `${BASE}/?spawn=${spot}&debug=1` })
+    await send('Page.navigate', { url: `${BASE}/?spawn=${spot}&debug=1&hour=${HOUR}&weather=clear` })
     await sleep(1500)
     await evaluate(START)
     if (spot === SPOTS[0]) {

@@ -1,6 +1,6 @@
 import { isKey } from '../game/keyBindings'
 import { ONLINE_CLOCK_SCALE } from '../game/duty'
-import { isDebug } from '../dev/spawn'
+import { isDebug, requestedHour, requestedWeather } from '../dev/spawn'
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -15,6 +15,7 @@ import {
   getSkyLook,
   stepSky,
   SKY_RULES,
+  WEATHERS,
   type Rgb,
 } from './skyLogic'
 
@@ -143,10 +144,26 @@ const HAZE_WARMTH = 0.35
 /** Past this much darkness, the phone shows a moon instead of a sun. */
 const NIGHT_ICON_LEVEL = 0.5
 
+/** The sky asked for in the address (?hour, ?weather with ?debug), or null. A weather asked for holds for an hour. */
+function createDebugSkyState() {
+  const hours = requestedHour()
+  const weather = requestedWeather()
+  if (hours === null && weather === null) return null
+  const state = createSkyState(hours ?? (isFirstVisit ? SKY_RULES.firstStartHour : SKY_RULES.startHour))
+  if (weather) {
+    state.weather = weather
+    state.weatherLeft = 3600
+    const { clouds, rain, wind } = WEATHERS[weather]
+    Object.assign(state, { clouds, rain, wind })
+  }
+  return state
+}
+
 /** Runs the clock and the weather, and paints the sky. Everything else reads `liveSky`. */
 export function Sky() {
   const { skyClouds, rainDrops } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const state = useRef(createSkyState(isFirstVisit ? SKY_RULES.firstStartHour : SKY_RULES.startHour))
+  // With ?debug, ?hour=17.5 starts the clock there and ?weather=clear holds that weather.
+  const state = useRef(createDebugSkyState() ?? createSkyState(isFirstVisit ? SKY_RULES.firstStartHour : SKY_RULES.startHour))
   // Debug: the clock and the weather, to set from the console (`__deliverItSky` with ?debug).
   useEffect(() => {
     if (isDebug()) (window as unknown as { __deliverItSky?: unknown }).__deliverItSky = state.current
