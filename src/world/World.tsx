@@ -26,7 +26,7 @@ import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
-import { forEachRoadNear, generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadPiece, toRoadPieces } from './props'
+import { createRandom, forEachRoadNear, generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadPiece, toRoadPieces } from './props'
 import { planBoundaries, planJunctionRailings } from './fencing'
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
@@ -45,7 +45,7 @@ import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { createSurfaceMap, Surface, worldSurface } from './surfaceMap'
 import { setBuildingsBack } from './buildingSetback'
-import { placeStoryProps } from './storyPlacement'
+import { addPotPlants, placeStoryProps } from './storyPlacement'
 import { placeLandmarks } from './landmarkPlacement'
 import { CityLandmarks } from './CityLandmarks'
 import { StoryProps } from './StoryProps'
@@ -217,8 +217,17 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The small things that tell a street's story: dogs, a cow, chairs, pots, garbage, cycles, papers, transformers.
   const { story, refused: storyRefused } = placeStoryProps({ roads: data.roads, index: roadIndex, collisions, props, shopFronts, gates: houses.gates })
     // Debug: where the story props are, to go and look at them from the console.
+  // The city kit's planters beside doors were faceted cones: they're pots with leafy plants now, like the shops'.
+  const potRandom = createRandom(20261119)
+  for (const piece of kit.filter(({ piece }) => piece === 'Prop_Planter_Single')) {
+    story.pots.push({ x: piece.x, z: piece.z, rotation: piece.rotation, variation: potRandom() })
+    addPotPlants(story, piece.x, piece.z, piece.rotation, potRandom)
+  }
+  kit.splice(0, kit.length, ...kit.filter(({ piece }) => piece !== 'Prop_Planter_Single'))
+  // The plants in the pots are small leafy bushes, drawn with the hedges in the tree style.
+  props.bushes.push(...story.potPlants)
   if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
-  if (isDebug()) Object.assign(window, { __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
+  if (isDebug()) Object.assign(window, { __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.

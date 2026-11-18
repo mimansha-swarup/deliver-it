@@ -67,36 +67,23 @@ function createChairs() {
   return merge([...chair(0), ...chair(0.1)])
 }
 
-/** A leafy mound: a squashed, lumpy low-poly ball, vertex coloured. */
-const leaves = (radius: number, height: number, position: [number, number, number], color: string) => {
-  const geometry = new THREE.IcosahedronGeometry(radius, 0).toNonIndexed()
-  geometry.scale(1, height / radius / 2, 1)
-  geometry.translate(...position)
-  return colored(geometry, color)
-}
-
 /**
- * Pots outside a shop: a tall areca palm in a big terracotta pot, a rounder plant in a weathered
- * cement pot and a small one, so the cluster has some height without reaching the signboard.
+ * Pots outside a shop: a big terracotta pot, a weathered cement one and a small one, with their
+ * soil. The plants in them are leafy bushes, drawn with the hedges in the tree style
+ * (`potPlants` and `POT_SPOTS` in storyPlacement.ts, RoadsideProps.tsx), so they're not faceted shapes.
  */
 function createPots() {
   const terracotta = '#9c5232'
   const cement = '#8e8a82'
+  const soil = '#4a3324'
   return merge([
-    // The palm: a big pot, a few stems and a tuft of fronds up to about 1.5 m.
     tube(0.21, 0.42, [0, 0.21, 0], [0, 0, 0], terracotta),
-    box([0.46, 0.05, 0.46], [0, 0.43, 0], '#5b3a28'),
-    ...[[-0.06, 0.12], [0.07, -0.18], [0.02, 0.2]].map(([z, tilt]) => tube(0.018, 0.85, [0, 0.85, z], [0, 0, tilt], '#6f7a3a')),
-    leaves(0.38, 0.5, [0.03, 1.3, 0], '#4a7a36'),
-    leaves(0.26, 0.36, [-0.12, 1.12, 0.12], '#5b8a3e'),
-    // A rounder plant in a cement pot.
+    tube(0.23, 0.05, [0, 0.42, 0], [0, 0, 0], '#8a4a2d'),
+    tube(0.19, 0.02, [0, 0.43, 0], [0, 0, 0], soil),
     tube(0.17, 0.32, [0.48, 0.16, 0.12], [0, 0, 0], cement),
-    leaves(0.3, 0.42, [0.48, 0.5, 0.12], '#3f6f35'),
-    // A small one in front, with a few flowers.
+    tube(0.15, 0.02, [0.48, 0.32, 0.12], [0, 0, 0], soil),
     tube(0.11, 0.22, [0.22, 0.11, 0.38], [0, 0, 0], terracotta),
-    leaves(0.17, 0.24, [0.22, 0.32, 0.38], '#5e8f40'),
-    box([0.08, 0.06, 0.08], [0.26, 0.42, 0.4], '#d0483a'),
-    box([0.07, 0.06, 0.07], [0.16, 0.4, 0.34], '#e6b43a'),
+    tube(0.09, 0.02, [0.22, 0.22, 0.38], [0, 0, 0], soil),
   ])
 }
 

@@ -9691,3 +9691,16 @@ on 27th Main fits a cold first visit, then a warm one.
   (src/game/packedData.ts). If the host unpacked it on the way, or there's no copy (the dev
   server answers with the page), it uses the file as it is. Map data downloaded: 15.7 MB → 1.2 MB.
 - The loading bar counts the map as 1 MB.
+
+## 2026-11-19: Entry 177, leafy plants in the pots
+
+### What I did
+The pots' plants were faceted low-poly balls and cones. They're leafy now, in the trees' style:
+each plant is one or two small clumps of the bush shape the hedges use (leaf cards on Medium and
+High near the rider, the solid shape further off and on Low), standing on the pot's soil
+(`rise`, a height above whatever ground the prop stands on, a raised footpath included). The pots
+themselves keep their terracotta and cement, with a rim and soil now.
+- Shops' pot clusters: a tall plant of two clumps in the big pot, one in each smaller pot.
+- The city kit's planters beside doors were faceted cones; they're pot clusters now.
+- The salon's pot by its door had a green cone; it gets a leafy plant too.
+Screenshots: `world-pass.local/shots/p4e`.

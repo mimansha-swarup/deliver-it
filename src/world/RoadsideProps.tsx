@@ -500,13 +500,13 @@ export function PropInstances({
 
     let count = 0
     forEachPropNear(grid, livePlayer.x, livePlayer.z, reach, (prop) => {
-      const { x, y, z, rotation, variation, tint, size = 1, lean } = prop
+      const { x, y, z, rotation, variation, tint, size = 1, lean, rise = 0 } = prop
       const distance = Math.hypot(x - livePlayer.x, z - livePlayer.z)
       if (distance > reach || distance < near) return
       if (thin && started && distance > thin.from && thinRoll(x, z) > thin.keep) return
 
       // Things on the ground stand on it, raised footpaths included. Roof tanks give their own height.
-      transform.position.set(x, y ?? groundUnder(prop), z)
+      transform.position.set(x, (y ?? groundUnder(prop)) + rise, z)
       // A tree's lean tips it over sideways, then the turn points it any way round (order YXZ).
       transform.rotation.set(lean ?? 0, rotation, 0)
       transform.scale.setScalar((1 - sizeRange / 2 + variation * sizeRange) * size)

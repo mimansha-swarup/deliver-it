@@ -14,6 +14,8 @@ export type Prop = {
   z: number
   /** Height above the ground, for things that sit on a roof. */
   y?: number
+  /** Height above whatever ground it stands on (a raised footpath included), for things that sit on something, as a plant in a pot. */
+  rise?: number
   /** Which way it faces, in radians around Y. */
   rotation: number
   /** A 0 to 1 value used for size and colour differences. */

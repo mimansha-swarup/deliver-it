@@ -19,7 +19,30 @@ import { isInsideBounds } from './worldUtils'
 
 export type StoryKind = 'dog' | 'cow' | 'chairs' | 'pots' | 'garbage' | 'cycle' | 'newspapers' | 'transformer' | 'cable'
 export const STORY_KINDS: StoryKind[] = ['dog', 'cow', 'chairs', 'pots', 'garbage', 'cycle', 'newspapers', 'transformer', 'cable']
-export type StoryProps = Record<StoryKind, Prop[]>
+export type StoryProps = Record<StoryKind, Prop[]> & {
+  /** The plants in the pots, as small leafy bushes standing on the pots' soil (drawn with the hedges). */
+  potPlants: Prop[]
+}
+
+/** Where each pot of a cluster stands in its frame (StoryProps.tsx draws them), its soil's height, and its plant: one or two leafy clumps. */
+export const POT_SPOTS: { at: [number, number]; top: number; plants: { rise: number; size: number }[] }[] = [
+  // A tall plant in the big pot: two clumps, one above the other.
+  { at: [0, 0], top: 0.43, plants: [{ rise: 0.38, size: 0.34 }, { rise: 0.78, size: 0.27 }] },
+  { at: [0.48, 0.12], top: 0.32, plants: [{ rise: 0.26, size: 0.3 }] },
+  { at: [0.22, 0.38], top: 0.22, plants: [{ rise: 0.17, size: 0.2 }] },
+]
+
+/** The plants for a cluster of pots at (x, z) turned by `rotation`, turned with it (as PropInstances turns it about y). */
+export function addPotPlants(story: StoryProps, x: number, z: number, rotation: number, random: () => number) {
+  for (const { at: [px, pz], plants } of POT_SPOTS) {
+    const plantX = x + px * Math.cos(rotation) + pz * Math.sin(rotation)
+    const plantZ = z - px * Math.sin(rotation) + pz * Math.cos(rotation)
+    for (const { rise, size } of plants) story.potPlants.push({ x: plantX, z: plantZ, rise, size, rotation: random() * Math.PI * 2, variation: random() })
+  }
+}
+
+/** The salon's pot by its door (shopFrontKit.ts): across the front as a share of its width, out from it, and its plant. */
+const SALON_POT = { across: 0.4, out: 0.3, plants: [{ rise: 0.3, size: 0.3 }, { rise: 0.62, size: 0.24 }] }
 
 /** Shares and spacings. */
 const STORY = {
@@ -65,7 +88,7 @@ export function placeStoryProps({
   gates: Gate[]
 }): { story: StoryProps; refused: number } {
   const random = createRandom(20261118)
-  const story: StoryProps = { dog: [], cow: [], chairs: [], pots: [], garbage: [], cycle: [], newspapers: [], transformer: [], cable: [] }
+  const story: StoryProps = { dog: [], cow: [], chairs: [], pots: [], garbage: [], cycle: [], newspapers: [], transformer: [], cable: [], potPlants: [] }
   const taken = new PointGrid(4)
   for (const { x, z } of [...props.trees, ...props.lamps, ...props.parkedScooters]) taken.add(x, z)
   let refused = 0
@@ -139,6 +162,14 @@ export function placeStoryProps({
   for (const front of shopFronts) {
     const outX = Math.sin(front.rotation)
     const outZ = Math.cos(front.rotation)
+    if (front.type === 'salon') {
+      // The salon's pot by the door (shopFrontKit.ts): its plant.
+      const side = front.variation < 0.5 ? 1 : -1
+      const across = side * front.width * SALON_POT.across
+      const x = front.x + Math.cos(front.rotation) * across + outX * SALON_POT.out
+      const z = front.z - Math.sin(front.rotation) * across + outZ * SALON_POT.out
+      for (const { rise, size } of SALON_POT.plants) story.potPlants.push({ x, z, rise, size, rotation: random() * Math.PI * 2, variation: random() })
+    }
     const near = nearestRoadPiece(index, front.x, front.z, 12)
     const onShopStreet = near ? streetPresetOf(roads[near.piece.road])?.name === 'shop' : false
     const potShare = onShopStreet ? STORY.shopStreetPots : STORY.pots
@@ -157,7 +188,10 @@ export function placeStoryProps({
         const x = front.x + outX * 0.55 + outZ * across
         const z = front.z + outZ * 0.55 - outX * across
         // Mirrored at the other end, so the palm stands at the outside.
-        if (fits(x, z, 0.4, 'prop')) put('pots', { x, z, rotation: front.rotation + (end > 0 ? Math.PI : 0), variation: random() })
+        const rotation = front.rotation + (end > 0 ? Math.PI : 0)
+        if (!fits(x, z, 0.4, 'prop')) continue
+        put('pots', { x, z, rotation, variation: random() })
+        addPotPlants(story, x, z, rotation, random)
       }
     }
   }

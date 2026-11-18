@@ -214,9 +214,9 @@ const FRONTS: Record<ShopType, (parts: Parts, frame: Frame, width: number, side:
     parts.push(box(frame, side * width * 0.2, 0.3, 0.85, 0.35, 0.12, 0.18, '#1b1b1b'))
   },
   salon: (parts, frame, width, side) => {
-    // A potted plant and a bench by the door for those waiting.
+    // A pot and a bench by the door for those waiting. The pot's plant is a leafy bush, in the tree
+    // style, placed with the other pot plants (`SALON_POT` in storyPlacement.ts).
     parts.push(cylinder(frame, side * width * 0.4, 0.3, 0, 0.18, 0.35, '#a8562e', 0.22))
-    parts.push(cylinder(frame, side * width * 0.4, 0.3, 0.35, 0.28, 0.5, '#3f7a3a', 0.12))
     parts.push(box(frame, -side * width * 0.3, 0.4, 0.4, 1.0, 0.05, 0.32, '#3a3c40'))
   },
   jewellery: (parts, frame, width, side, random) => {
