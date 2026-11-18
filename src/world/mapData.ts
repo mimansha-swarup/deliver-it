@@ -1,4 +1,5 @@
 import { markLoad } from '../dev/loadTimeline'
+import { fetchPackedData, fetchPackedJson } from '../game/packedData'
 import { waitForPreloadedMap } from '../game/preload'
 import { classifyBuildings, type BuildingKind } from './buildingKinds'
 import { findPlacesOfWorship, type PlaceOfWorship } from './worship'
@@ -88,9 +89,7 @@ const EXTRA_WORSHIP_URL = `${import.meta.env.BASE_URL}data/hsr-extra-worship.geo
 /** A small extra file. Without it the game still runs, with OSM's buildings only. */
 async function fetchExtra(url: string): Promise<Feature[]> {
   try {
-    const response = await fetch(url)
-    if (!response.ok) return []
-    return ((await response.json()) as { features: Feature[] }).features
+    return (await fetchPackedJson<{ features: Feature[] }>(url)).features
   } catch {
     return []
   }
@@ -99,9 +98,7 @@ async function fetchExtra(url: string): Promise<Feature[]> {
 /** The mapped barriers. Without them the game still runs, only without those fences. */
 async function fetchBarriers(): Promise<LineFeature[]> {
   try {
-    const response = await fetch(BARRIERS_URL)
-    if (!response.ok) return []
-    const { features } = (await response.json()) as { features: LineFeature[] }
+    const { features } = await fetchPackedJson<{ features: LineFeature[] }>(BARRIERS_URL)
     return features.filter((feature) => feature.geometry.type === 'LineString')
   } catch {
     return []
@@ -157,11 +154,7 @@ async function fetchMapData(): Promise<MapData> {
   if (preloaded) {
     text = new TextDecoder().decode(preloaded)
   } else {
-    const response = await fetch(MAP_URL)
-    if (!response.ok) {
-      throw new Error(`Could not load ${MAP_URL}: HTTP ${response.status}`)
-    }
-    text = await response.text()
+    text = new TextDecoder().decode(await fetchPackedData(MAP_URL))
   }
 
   const { features } = JSON.parse(text) as { features: Feature[] }

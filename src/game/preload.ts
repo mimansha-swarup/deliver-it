@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { loadRapier } from '../physics/rapier'
+import { fetchPackedData } from './packedData'
 
 /**
  * Downloads everything the game needs, from the moment the title screen opens,
@@ -16,7 +17,8 @@ const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
 type GameFile = { url: string; kb: number; kind: 'data' | 'model' | 'image' }
 
 const GAME_FILES: GameFile[] = [
-  { url: MAP_URL, kb: 14342, kind: 'data' },
+  // Gzipped: 1 MB (packedData.ts). A host without the gzipped copy sends 14.3 MB, and the bar stops at this.
+  { url: MAP_URL, kb: 1010, kind: 'data' },
   { url: '/models/traffic.glb', kb: 1599, kind: 'model' },
   { url: '/models/city-kit.glb', kb: 1242, kind: 'model' },
   { url: '/models/yamaha.glb', kb: 120, kind: 'model' },
@@ -164,7 +166,7 @@ export function preloadGame(report: (progress: LoadProgress) => void): Promise<v
     }
 
     if (kind === 'data') {
-      mapFile = download(url, count)
+      mapFile = fetchPackedData(url, (address) => download(address, count))
       await mapFile
       mapIn = true
     } else if (kind === 'model') {

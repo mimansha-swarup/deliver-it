@@ -9670,3 +9670,24 @@ isn't found yet.
 | Riding, 6 s | 120 | 0 | 16.6 ms |
 | Riding, CPU 4× slower | 68 to 82 | 1 to 49 | 24.5 to 50 ms (the same build, run to run, with another Chrome busy) |
 | Two forced resolution changes (before) | 75 | 18 | 100 ms |
+
+## 2026-11-19: Entry 176, load time by spawn, and the map gzipped
+
+### What I found
+Every spawn loads the same here: Play to riding in 4.4 to 4.8 s, in a visible window and
+headless, for 27th Main, Sarjapur Road (`main-road`), 13th Cross, 24th Main, the petrol pump
+and home, run twice in turn. A spawn only changes which squares stream in last (0.27 to 0.39 s).
+All the planning and building is for the whole city, wherever you start.
+
+What differs between a first and a second visit is the download: the map is 14.7 MB as
+it is (with 1.4 MB more of extra buildings), and gzipped it's 1 MB. A host that doesn't compress
+`.geojson` files on the way (it's `application/geo+json`, which many don't) sends all 16 MB,
+about 6 s more at 20 Mbit/s and 12 s at 10. The reported 15 s on `?spawn=main-road` against 7 s
+on 27th Main fits a cold first visit, then a warm one.
+
+### What I did
+- The build writes a gzipped copy of each map file beside it (`.geojson.gz`, vite.config.ts).
+  The game asks for that and unpacks it itself with the browser's `DecompressionStream`
+  (src/game/packedData.ts). If the host unpacked it on the way, or there's no copy (the dev
+  server answers with the page), it uses the file as it is. Map data downloaded: 15.7 MB → 1.2 MB.
+- The loading bar counts the map as 1 MB.
