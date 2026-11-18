@@ -8801,3 +8801,16 @@ The phone now sits right of the minimap.
 
 ### Try it
 Go online and accept: the route and pickup marker appear on the minimap.
+
+## 2026-11-18: Entry 137, the full map
+
+### What I did
+**Tab**, or clicking the minimap, opens the full map over the game (`src/ui/FullMap.tsx`): all of
+HSR north up, with street names, the rider's arrow, the route, the stop, home and every dark
+store. Scroll to zoom about the pointer, drag to move. With no order on, **a click sets a
+waypoint** at the nearest road point: the route and minimap lead there, and it clears on
+arrival, or with "Clear waypoint". Tab, Esc or the Close button shuts it. The game keeps running
+underneath. M is still the weather.
+
+### Try it
+Off duty, press Tab, click somewhere across town, close the map and follow the blue route.
