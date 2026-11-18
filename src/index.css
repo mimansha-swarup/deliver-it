@@ -2739,3 +2739,516 @@ body,
 .duty-summary dt {
   white-space: nowrap;
 }
+
+/* ---- Photo mode (PhotoMode.tsx) ---- */
+
+.photo-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  cursor: grab;
+  touch-action: none;
+}
+
+.photo-mode:active {
+  cursor: grabbing;
+}
+
+.photo-mode-hint,
+.photo-mode-buttons {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.photo-mode-hint {
+  top: 14px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 65%);
+  font-size: 13px;
+}
+
+.photo-mode-buttons {
+  bottom: 18px;
+}
+
+.photo-mode-buttons button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 75%);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.photo-mode-buttons button:first-child {
+  color: #10231a;
+  background: #3ddc97;
+}
+
+/* ---- The phone as a phone: lock screen, home screen, apps (Phone.tsx, phoneApps.tsx) ---- */
+
+.phone-raised .phone-lower {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.phone-status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+}
+
+.phone-status-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.phone-status-right .phone-weather-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.phone-signal {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 10px;
+}
+
+.phone-signal i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--phone-ink);
+}
+
+.phone-signal i:nth-child(1) { height: 3px; }
+.phone-signal i:nth-child(2) { height: 5px; }
+.phone-signal i:nth-child(3) { height: 7px; }
+.phone-signal i:nth-child(4) { height: 10px; }
+
+.phone-net {
+  font-size: 10px;
+}
+
+.phone-battery {
+  position: relative;
+  width: 20px;
+  height: 10px;
+  box-sizing: border-box;
+  padding: 1px;
+  border: 1px solid rgb(244 241 232 / 70%);
+  border-radius: 3px;
+}
+
+.phone-battery span {
+  display: block;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--phone-ink);
+}
+
+.phone-battery[data-low='true'] span {
+  background: #ff6b5e;
+}
+
+.phone-battery-text {
+  font-size: 10px;
+}
+
+/* The wallpaper: dusk over a low skyline, in the game's warm palette. */
+.phone-wallpaper {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 120' preserveAspectRatio='none'%3E%3Cpath d='M0 120V78h18V60h14v18h10V48h20v30h8V66h16v12h12V40h22v38h10V58h14v20h12V70h18V52h16v26h10V62h20v16h12V46h18v32h16V64h20v56z' fill='%2315161a' fill-opacity='.85'/%3E%3C/svg%3E") bottom / 100% 34% no-repeat,
+    radial-gradient(circle at 70% 58%, rgb(255 190 110 / 55%), transparent 38%),
+    linear-gradient(180deg, #2b3550 0%, #8a5a6e 48%, #e39b6a 78%, #f2c58a 100%);
+}
+
+.phone-lock,
+.phone-home {
+  position: absolute;
+  inset: 0;
+  padding: 52px 14px 30px;
+  box-sizing: border-box;
+}
+
+.phone-lock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 35%);
+}
+
+.phone-lock-time {
+  margin-top: 18px !important;
+  font-size: 54px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+
+.phone-lock-date {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.phone-lock-date .phone-weather-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.phone-lock-notes {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: 22px !important;
+  list-style: none;
+}
+
+.phone-lock-notes button,
+.phone-banner {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 14px;
+  color: #1c1d21;
+  background: rgb(244 241 232 / 88%);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-shadow: none;
+  cursor: pointer;
+}
+
+.phone-lock-notes strong,
+.phone-banner strong {
+  font-size: 11px;
+}
+
+.phone-lock-notes span,
+.phone-banner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-lock-hint {
+  margin-top: auto !important;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.phone-banner {
+  position: absolute;
+  top: 40px;
+  left: 10px;
+  z-index: 4;
+  width: calc(100% - 20px);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+  animation: banner-in 0.25s ease-out;
+}
+
+.phone-banner[data-kind='urgent'] {
+  box-shadow: inset 4px 0 0 #e0473e, 0 6px 18px rgb(0 0 0 / 35%);
+}
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.phone-icons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px 6px;
+  margin-top: 18px !important;
+  list-style: none;
+}
+
+.phone-icons button {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--phone-ink);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.phone-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  color: #fff;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 30%);
+}
+
+.phone-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.phone-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  color: #fff;
+  background: #e0473e;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.phone-icon-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 50%);
+}
+
+.phone-home-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  z-index: 3;
+  width: 110px;
+  height: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: rgb(244 241 232 / 70%);
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.app {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 38px;
+  box-sizing: border-box;
+  background: #1a1c21;
+}
+
+.app-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 8px;
+}
+
+.app-bar button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--phone-ink);
+  background: rgb(255 255 255 / 10%);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.app-bar h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 0 10px 26px !important;
+  overflow-y: auto;
+}
+
+.app-body .phone-sheet {
+  border-radius: 14px;
+  padding-bottom: 12px;
+}
+
+.app-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #24272e;
+  font-size: 13px;
+}
+
+.app-card-title {
+  color: var(--phone-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.app-big {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.app-big small,
+.app-list small {
+  display: block;
+  color: var(--phone-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.app-line {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.app-muted {
+  color: var(--phone-muted);
+}
+
+.app-note {
+  padding: 6px 10px;
+  border-radius: 10px;
+  color: #2a1a00;
+  background: #ffb02e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-list {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+}
+
+.app-list li,
+.app-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 2px;
+  font-size: 13px;
+}
+
+.app-list button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  color: var(--phone-ink);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-list button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 6%);
+}
+
+.app-list button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.app-list-right {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.app-list-right[data-negative='true'] {
+  color: #ff6b5e;
+}
+
+.app-threads li {
+  padding: 0;
+}
+
+.app-thread-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: #10231a;
+  background: #3ddc97;
+  font-weight: 800;
+}
+
+.app-thread-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.app-thread-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-thread {
+  list-style: none;
+}
+
+.app-wide-button {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 12px;
+  color: #10231a;
+  background: #3ddc97;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-totals dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 10px;
+}
+
+.app-totals dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}

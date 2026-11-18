@@ -252,9 +252,17 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     (best, gate) => (!best || Math.hypot(gate.x - start[0], gate.z - start[1]) < Math.hypot(best.x - start[0], best.z - start[1]) ? { x: gate.x, z: gate.z } : best),
     null,
   )
+  // Chai stalls, by their street, for the phone's Maps app to offer as places to go.
+  const chaiStalls = shopFronts
+    .filter(({ type }) => type === 'chai')
+    .map(({ x, z }) => {
+      const near = nearestRoadPiece(roadIndex, x, z, 25)
+      const street = near ? data.roads[near.piece.road].properties.name : undefined
+      return { x, z, name: street ? `Chai stall · ${street}` : 'Chai stall' }
+    })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes] }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -323,9 +331,10 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
+  useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
 
   // Each part has its own Suspense boundary, the player and traffic included.
   // While a part's textures or models load, it "suspends". Without a boundary of

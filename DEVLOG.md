@@ -8933,3 +8933,35 @@ about. The old three are now **daily challenges**: shown quietly in the phone, n
 and Ravi only speaks when all three are done ("Daily challenges done! +N credits"), with the same
 bonus and streak as before. Old saves' "Three goals" messages are cleared when the game starts.
 Teaching moves to the tutorial (Entry 150).
+
+## 2026-11-18: Entry 148, the phone as a phone
+
+### What I did
+The phone's tabs are gone. It works like a phone now (`src/ui/Phone.tsx` for the phone itself,
+`src/ui/phoneApps.tsx` for its apps):
+
+- **Lock screen** when it comes up (P): a big clock, the day and weather, and the notifications
+  since it was last unlocked; click one to open its chat, or click anywhere (or Enter) to unlock.
+- **Home screen** on a dusk-over-HSR wallpaper: eight app icons, with **badges** for unread
+  messages, an order offer, and being at the dark store.
+- **Status bar**: time, weather, signal, 4G, and a battery that drains about 4% a game hour from
+  7 am and is full again after sleeping.
+- **Banners** at the top of the open phone for new messages (not for the chat that's open).
+- **Back**: Esc goes from a chat to Messages, from an app to the home screen, and from there
+  puts the phone away; the bar at the bottom goes home. A handover still raises it straight
+  into Deliver It.
+- **Apps:**
+  - Deliver It: going online, the order or offer, rating, shift pay, daily challenges, career,
+    and the last twelve deliveries.
+  - Messages: a thread for Ravi and one per customer, with unread counts.
+  - Maps: the full map, and saved places (home, the nearest dark stores, the five nearest chai
+    stalls by street) that set a waypoint when no order is on.
+  - Radio.
+  - Wallet: the balance, today's earnings, tips and expenses, and recent lines. A new ledger
+    records deliveries, tips, bonuses, cancellations and purchases.
+  - Garage: look anywhere; buying works only stopped at the dark store.
+  - Camera: photo mode. The game pauses (R3F's clock stops, so every frame's delta is 0), the
+    HUD hides, W A S D, Q/E and drag fly the camera, scroll zooms, and Space saves a PNG. Esc
+    returns, and an order offer gets back the time it was paused.
+  - Settings: controls, picture quality, sound, language (English; Kannada is listed as coming
+    later), and the tutorial.

@@ -1,497 +1,89 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
-import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
-import { levelFromXp, levelProgress, UNLOCK_LEVELS } from '../game/progression'
-import { MISSION_RULES } from '../game/missionConfig'
-import { getCurrentStop } from '../missions/missionLogic'
-import { averageRating, CARE_HINTS, TOP_TIP, type Care } from '../missions/orderStory'
-import { WEATHERS, type WeatherName } from '../sky/skyLogic'
-import { acceptanceRate, dayPeriod } from '../game/duty'
-import { liveSky } from '../game/livePlayer'
-import { GoalLine } from './DutyUi'
-import { CareerSheet, TodaySheet } from './CareerSheets'
-import { Garage } from './Garage'
-import { useStation } from '../audio/useStation'
-import { RadioControls, VideoScreen } from './Radio'
-import { QualityPicker } from './QualityPicker'
+import { WEATHERS } from '../sky/skyLogic'
 import { DISPATCHER } from '../game/career'
+import { liveSky } from '../game/livePlayer'
 import { STATIONS } from '../audio/stations'
 import { playPing } from '../audio/uiSounds'
+import { useStation } from '../audio/useStation'
+import { VideoScreen } from './Radio'
+import { useUi } from './uiState'
+import { AppGlyph, PhoneApp, WeatherIcon } from './phoneApps'
+import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
+
+/*
+ * The rider's phone, as a phone: a lock screen with the time, weather and notifications when it
+ * comes up; a home screen of app icons on a wallpaper, with unread badges; a status bar with the
+ * time, signal and battery; banners for new messages while it's in use; back (Esc) from an app to
+ * home and from home to put it away. Away, it hides below the screen but for its tab, and peeks up
+ * for new messages. The apps are in phoneApps.tsx.
+ */
 
 const PHONE_KEY = 'KeyP'
-/** The last stretch of the on-time limit, when the timer turns red. */
-const HURRY_SECONDS = 20
 
-/** What the order sheet says when there's nowhere to ride to. */
-const SHEET_MESSAGES: Partial<Record<MissionPhase, string>> = {
-  collecting: 'Collecting the order',
-  handingOver: 'Handing over the order',
-  delivered: 'Order delivered',
-}
+/** How long a message peeks the phone up (or shows as a banner on it), in milliseconds. */
+const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500 }
 
-function formatTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
-}
+type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' }
 
-/** The weather as a small drawing, so it reads at a glance while riding. */
-function WeatherIcon({ weather, night }: { weather: WeatherName; night: boolean }) {
-  const cloud = 'M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.6 4.2 4.2 0 0 1 17 18Z'
-
-  return (
-    <svg className="phone-weather-icon" viewBox="0 0 24 24" aria-hidden="true">
-      {weather === 'clear' &&
-        (night ? (
-          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="#dfe6f5" />
-        ) : (
-          <>
-            <circle cx="12" cy="12" r="4.6" fill="#ffc53d" />
-            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-              <rect
-                key={angle}
-                x="11.2"
-                y="2"
-                width="1.6"
-                height="3.4"
-                rx="0.8"
-                fill="#ffc53d"
-                transform={`rotate(${angle} 12 12)`}
-              />
-            ))}
-          </>
-        ))}
-      {weather === 'cloudy' && <path d={cloud} fill="#c6ccd6" />}
-      {weather === 'rain' && (
-        <>
-          <path d={cloud} transform="translate(0 -3)" fill="#9aa5b5" />
-          {[8, 12, 16].map((x) => (
-            <path
-              key={x}
-              d={`M${x} 17.5l-1.2 3.5`}
-              stroke="#63b3ff"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          ))}
-        </>
-      )}
-    </svg>
-  )
+/** The battery: full at 7 am, about 4% an hour after, charged again by sleeping. */
+function batteryAt(hours: number): number {
+  const since = (hours - 7 + 24) % 24
+  return Math.max(8, Math.round(100 - since * 4))
 }
 
 function StatusBar() {
   const skyTime = useGameStore((state) => state.skyTime)
   const weather = useGameStore((state) => state.weather)
   const night = useGameStore((state) => state.night)
-
+  const battery = batteryAt(liveSky.hours)
   return (
     <header className="phone-status">
       <span className="phone-time">{skyTime}</span>
       <span className="phone-camera" aria-hidden="true" />
-      <span className="phone-weather">
+      <span className="phone-status-right">
         <WeatherIcon weather={weather} night={night} />
-        {WEATHERS[weather].label}
+        <span className="phone-signal" aria-label="Signal: 4 bars">
+          <i /> <i /> <i /> <i />
+        </span>
+        <span className="phone-net">4G</span>
+        <span className="phone-battery" aria-label={`Battery ${battery}%`} data-low={battery < 20}>
+          <span style={{ width: `${battery}%` }} />
+        </span>
+        <span className="phone-battery-text">{battery}%</span>
       </span>
     </header>
   )
 }
 
-function Timer() {
-  const mission = useGameStore((state) => state.mission)
-  const seconds = useGameStore((state) => state.seconds)
-  if (!mission) return null
-
-  const timeLeft = mission.onTimeSeconds - seconds
-  if (timeLeft < 0) return <span className="phone-timer phone-timer-missed">Bonus missed</span>
-
-  return (
-    <span className={timeLeft <= HURRY_SECONDS ? 'phone-timer phone-timer-hurry' : 'phone-timer'}>
-      {formatTime(timeLeft)}
-    </span>
-  )
-}
-
-function Route({ mission, phase }: { mission: Mission; phase: MissionPhase }) {
-  const collected = phase !== 'toPickup'
-
-  return (
-    <ol className="phone-route">
-      <li data-state={collected ? 'done' : 'current'}>
-        <span className="phone-route-dot" style={{ background: mission.pickup.color }} />
-        <span className="phone-route-role">Pick up</span>
-        {mission.pickup.name}
-      </li>
-      <li data-state={collected ? 'current' : 'next'}>
-        <span className="phone-route-dot" style={{ background: mission.customer.color }} />
-        <span className="phone-route-role">Drop off</span>
-        {mission.customer.name}
-      </li>
-      {mission.nextDrops.map(({ customer }) => (
-        <li key={customer.node} data-state="next">
-          <span className="phone-route-dot" style={{ background: customer.color }} />
-          <span className="phone-route-role">Then</span>
-          {customer.name}
-        </li>
-      ))}
-    </ol>
-  )
-}
-
-const CARE_LABELS: Record<Care, string> = { none: '', fragile: 'Fragile', event: 'Event' }
-
-/** What's in the order and who it's for. Raised, it adds the customer's note and how to carry it. */
-function OrderItem({ mission, raised }: { mission: Mission; raised: boolean }) {
-  const knocks = useGameStore((state) => state.knocks)
-  const phase = useGameStore((state) => state.phase)
-  const { item, customer, care, note } = mission.story
-  const onBoard = phase === 'toCustomer'
-
-  return (
-    <>
-      <p className="phone-item">
-        {item} for {customer}
-        {care !== 'none' && <span className={`phone-care phone-care-${care}`}>{CARE_LABELS[care]}</span>}
-        {care === 'fragile' && onBoard && knocks > 0 && (
-          <span className="phone-knocks">
-            {knocks} bump{knocks > 1 ? 's' : ''}
-          </span>
-        )}
-      </p>
-      {raised && (
-        <>
-          <p className="phone-note">“{note}”</p>
-          {care !== 'none' && <p className="phone-care-hint">{CARE_HINTS[care]}</p>}
-        </>
-      )}
-    </>
-  )
-}
-
-const KIND_LABELS: Record<OrderKind, string> = { standard: '', rush: 'Rush', double: 'Double drop' }
-
-/** Your level, and how far through it you are. */
-function LevelBar() {
-  const xp = useGameStore((state) => state.xp)
-  const { level, into, needed, share } = levelProgress(xp)
-
-  return (
-    <div className="phone-level" title={needed ? `${into} of ${needed} XP to level ${level + 1}` : 'Top level'}>
-      <span>Lv {level}</span>
-      <span className="phone-level-bar">
-        <span style={{ width: `${Math.round(share * 100)}%` }} />
-      </span>
-      <span>{xp} XP</span>
-    </div>
-  )
-}
-
-/** What the order pays. The base is guaranteed, so bonuses are only ever shown as extras. */
-function Earnings({ mission }: { mission: Mission }) {
-  const credits = useGameStore((state) => state.credits)
-  const xp = useGameStore((state) => state.xp)
-  const crashes = useGameStore((state) => state.crashes)
-  const night = useGameStore((state) => state.night)
-  const rules = MISSION_RULES
-  const guaranteed = rules.baseCredits * mission.dropCount + mission.tier.extraCredits
-  const onTimeBonus = rules.onTimeCredits + (mission.kind === 'rush' ? rules.rushExtraCredits : 0)
-  const nightUnlocked = levelFromXp(xp) >= UNLOCK_LEVELS.nightPay
-  const ratings = useGameStore((state) => state.ratings)
-  const rating = averageRating(ratings)
-
-  return (
-    <>
-      <dl className="phone-pay">
-        <dt>This order</dt>
-        <dd>{guaranteed} credits</dd>
-        <dt>{mission.kind === 'rush' ? 'Rush bonus' : 'On-time bonus'}</dt>
-        <dd>+{onTimeBonus}</dd>
-        <dt>Clean ride bonus</dt>
-        <dd>{crashes === 0 ? `+${rules.cleanRideCredits}` : 'Missed'}</dd>
-        <dt>Customer's tip</dt>
-        <dd>Up to +{TOP_TIP} for 5★</dd>
-        {nightUnlocked && (
-          <>
-            <dt>Night shift</dt>
-            <dd>{night ? `+${Math.round(rules.nightPayShare * 100)}%` : 'After dark'}</dd>
-          </>
-        )}
-      </dl>
-      <p className="phone-wallet">
-        <span>{credits} credits</span>
-        {rating !== null && <span className="phone-rating">★ {rating.toFixed(1)}</span>}
-      </p>
-      <LevelBar />
-    </>
-  )
-}
-
-type PhoneTab = 'order' | 'chats' | 'music' | 'career' | 'settings'
-
-const PHONE_TABS: { id: PhoneTab; label: string }[] = [
-  { id: 'order', label: 'Order' },
-  { id: 'chats', label: 'Chats' },
-  { id: 'music', label: 'Music' },
-  { id: 'career', label: 'Career' },
-  { id: 'settings', label: 'Settings' },
-]
-
-/** The raised phone's screens. Dots mark unread chats and an unfinished day's shift. */
-function PhoneTabs({ tab, setTab, unread }: { tab: PhoneTab; setTab: (tab: PhoneTab) => void; unread: number }) {
-  const dailyOpen = useGameStore((state) => state.daily !== null && !state.daily.done)
-  return (
-    <div className="phone-tabs" role="tablist">
-      {PHONE_TABS.map(({ id, label }) => (
-        <button
-          key={id}
-          type="button"
-          role="tab"
-          aria-selected={tab === id}
-          onClick={(event) => {
-            setTab(id)
-            event.currentTarget.blur()
-          }}
-        >
-          {label}
-          {id === 'career' && dailyOpen && <span className="phone-tab-dot" aria-label="Goals left today" />}
-          {id === 'chats' && unread > 0 && <span className="phone-tab-count">{unread}</span>}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/** The conversation: the current customer's, then Ravi's, newest at the bottom of each. */
-function ChatsSheet() {
-  const chat = useGameStore((state) => state.chat)
-  const messages = useGameStore((state) => state.messages)
-  const customer = useGameStore((state) => state.mission?.story.customer ?? null)
-  const customerLines = customer ? chat.filter((line) => line.from === 'customer' && line.name === customer) : []
-  const ravi = [...messages].slice(0, 8).reverse()
-  return (
-    <section className="phone-sheet phone-chats">
-      {customer && (
-        <>
-          <p className="phone-chat-head">{customer}</p>
-          <ol className="phone-chat-thread">
-            {customerLines.length === 0 && <li className="phone-chat-empty">No messages yet</li>}
-            {customerLines.map((line) => (
-              <li key={line.id} data-from="customer" data-urgent={line.urgent ? 'true' : undefined}>
-                {line.text}
-              </li>
-            ))}
-          </ol>
-        </>
-      )}
-      <p className="phone-chat-head">{DISPATCHER}</p>
-      <ol className="phone-chat-thread">
-        {ravi.length === 0 && <li className="phone-chat-empty">No messages yet</li>}
-        {ravi.map((message) => (
-          <li key={message.id} data-from="dispatch">
-            {message.text}
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
-/** Music, and the sound switches. */
-function MusicSheet() {
-  return (
-    <section className="phone-sheet phone-music">
-      <RadioControls />
-    </section>
-  )
-}
-
-/** Picture quality and sound. */
-function SettingsSheet() {
-  const musicOn = useGameStore((state) => state.musicOn)
-  const hornsOn = useGameStore((state) => state.hornsOn)
-  const setMusic = useGameStore((state) => state.setMusicOn)
-  const setHorns = useGameStore((state) => state.setHornsOn)
-  return (
-    <section className="phone-sheet phone-settings">
-      <p className="phone-chat-head">Picture</p>
-      <QualityPicker className="phone-quality" />
-      <p className="phone-chat-head">Sound</p>
-      <label className="phone-switch">
-        <input type="checkbox" checked={musicOn} onChange={(event) => { setMusic(event.target.checked); event.currentTarget.blur() }} />
-        Music
-      </label>
-      <label className="phone-switch">
-        <input type="checkbox" checked={hornsOn} onChange={(event) => { setHorns(event.target.checked); event.currentTarget.blur() }} />
-        Sound effects
-      </label>
-      <p className="phone-chat-head">Keys</p>
-      <p className="phone-keys">O online · Y/X answer an offer · Tab map · P phone · H horn · R radio · Z sleep at home</p>
-    </section>
-  )
-}
-
-/** Opens the Garage, which only works while stopped at the dark store. */
-function GarageButton({ onOpen }: { onOpen: () => void }) {
-  const atStore = useGameStore((state) => state.atStore)
-  return (
-    <button
-      type="button"
-      className="phone-garage-button"
-      disabled={!atStore}
-      onClick={(event) => {
-        onOpen()
-        event.currentTarget.blur()
-      }}
-    >
-      {atStore ? 'Open the Garage' : 'Garage · stop at the dark store'}
-    </button>
-  )
-}
-
-/** No order on: off duty (go online), or online and waiting for the next offer. */
-function DutySheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: () => void }) {
-  const duty = useGameStore((state) => state.duty)
-  const offer = useGameStore((state) => state.offer)
-  const goal = useGameStore((state) => state.shift?.goal ?? null)
-  const answers = useGameStore((state) => state.answers)
-  const day = useGameStore((state) => state.day)
-  const toggleDuty = useGameStore((state) => state.toggleDuty)
-  const skyTime = useGameStore((state) => state.skyTime)
-  const rate = acceptanceRate(answers)
-  void skyTime
-  const period = dayPeriod(liveSky.hours)
-
-  return (
-    <section className="phone-sheet">
-      <p className="phone-sheet-top">
-        <span className="phone-objective">
-          {duty === 'off' ? 'Off duty' : offer ? 'New order offered' : 'Waiting for orders'}
-        </span>
-        <span className="phone-period">Day {day} · {period.label}</span>
-      </p>
-      <p className="phone-stop">
-        {duty === 'off' ? 'Ride anywhere. Go online for orders.' : offer ? 'Y to accept · X to decline' : `${period.label}: ${period.payShare > 0 ? `+${Math.round(period.payShare * 100)}% pay` : 'normal pay'}`}
-      </p>
-      {duty === 'online' && goal && (
-        <p className="phone-goal">
-          <GoalLine goal={goal} />
-        </p>
-      )}
-      <button
-        type="button"
-        className={duty === 'off' ? 'phone-duty-button phone-duty-online' : 'phone-duty-button'}
-        onClick={(event) => {
-          toggleDuty()
-          event.currentTarget.blur()
-        }}
-      >
-        {duty === 'off' ? 'Go online · O' : 'Go offline · O'}
-      </button>
-      {raised && (
-        <>
-          <p className="phone-order-line">
-            Acceptance {rate === null ? '—' : `${Math.round(rate * 100)}%`}
-            {duty === 'off' && ' · Sleep at home (Z) to end the day'}
-          </p>
-          <GarageButton onOpen={onOpenGarage} />
-        </>
-      )}
-    </section>
-  )
-}
-
-function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: () => void }) {
-  const phase = useGameStore((state) => state.phase)
-  const mission = useGameStore((state) => state.mission)
-  const missionNumber = useGameStore((state) => state.missionNumber)
-  const distance = useGameStore((state) => state.distance)
-  const inZone = useGameStore((state) => state.inZone)
-
-  // While a parcel changes hands, the sheet shows the order and the customer it's going to.
-  const handingOff = phase === 'collecting' || phase === 'handingOver'
-  const stop = getCurrentStop(mission, phase) ?? (handingOff && mission ? mission.customer : null)
-
-  if (!mission || !stop) {
-    if (phase === 'delivered') {
-      return (
-        <section className="phone-sheet">
-          <p className="phone-objective">{SHEET_MESSAGES[phase]}</p>
-          {raised && <GarageButton onOpen={onOpenGarage} />}
-        </section>
-      )
-    }
-    return <DutySheet raised={raised} onOpenGarage={onOpenGarage} />
-  }
-
-  return (
-    <section className="phone-sheet">
-      <p className="phone-sheet-top">
-        <span className="phone-objective" style={{ color: stop.color }}>
-          {handingOff ? SHEET_MESSAGES[phase] : phase === 'toPickup' ? 'Pick up' : 'Drop off'}
-          {phase !== 'toPickup' &&
-            mission.dropCount > 1 &&
-            ` ${mission.dropCount - mission.nextDrops.length}/${mission.dropCount}`}
-          {mission.kind === 'rush' && <span className="phone-rush">Rush</span>}
-        </span>
-        <Timer />
-      </p>
-      <p className="phone-stop">{stop.name}</p>
-      <OrderItem mission={mission} raised={raised} />
-      {!handingOff && <p className="phone-distance">{inZone ? stop.arrivalHint : `${distance} m by road`}</p>}
-
-      {raised && (
-        <>
-          <p className="phone-order-line">
-            Order #{missionNumber} · {mission.tier.label}
-            {mission.kind !== 'standard' && ` · ${KIND_LABELS[mission.kind]}`}
-          </p>
-          <Route mission={mission} phase={phase} />
-          <Earnings mission={mission} />
-          <GarageButton onOpen={onOpenGarage} />
-        </>
-      )}
-    </section>
-  )
-}
-
-/** How long a message peeks the phone up, in milliseconds: longer when it's urgent. */
-const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500 }
-
-type Peek = { id: number; from: string; text: string; kind: 'normal' | 'urgent' | 'music' }
-
 /**
- * While the phone is away, new messages peek it up bottom-left for a moment: who from and the
- * first line, with a soft ping. An urgent one (the customer's late, about to cancel, or has)
- * stays longer, with a red edge and a sharper sound. A new station shows what's playing.
+ * New messages: away, they peek the phone up; in use, they show as a banner at its top (unless
+ * that chat is open). A new station shows what's playing. Each also counts as unread in its thread.
  */
-function usePeeks(raised: boolean, onMessage: () => void): Peek | null {
+function useNotifications(onMessage: (note: Peek) => void): Peek | null {
   const [peek, setPeek] = useState<Peek | null>(null)
-  const raisedNow = useRef(raised)
-  useEffect(() => {
-    raisedNow.current = raised
-  }, [raised])
-
   useEffect(() => {
     const show = (next: Peek) => {
-      onMessage()
-      if (raisedNow.current) return
+      onMessage(next)
       setPeek(next)
       playPing(next.kind === 'urgent' ? 'urgent' : next.kind === 'music' ? 'nowPlaying' : 'message')
     }
     return useGameStore.subscribe((state, previous) => {
-      // Online, the chat carries both the customer and Ravi; off duty, Ravi's messages come on their own.
+      // Online, the chat carries the customer and Ravi; off duty, Ravi's messages come on their own.
       if (state.chat !== previous.chat && state.chat.length > 0) {
         const line = state.chat[state.chat.length - 1]
         if (!previous.chat.some((old) => old.id === line.id)) {
-          show({ id: line.id, from: line.from === 'dispatch' ? DISPATCHER : line.name, text: line.text, kind: line.urgent ? 'urgent' : 'normal' })
+          const thread = line.from === 'dispatch' ? RAVI_THREAD : line.name
+          show({ id: line.id, from: line.from === 'dispatch' ? DISPATCHER : line.name, thread, text: line.text, kind: line.urgent ? 'urgent' : 'normal' })
         }
       }
       const newest = state.messages[0]
       if (state.duty === 'off' && newest && newest.id !== previous.messages[0]?.id) {
-        show({ id: newest.id, from: DISPATCHER, text: newest.text, kind: 'normal' })
+        show({ id: newest.id, from: DISPATCHER, thread: RAVI_THREAD, text: newest.text, kind: 'normal' })
       }
       if (state.stationId !== previous.stationId && state.musicOn) {
         const station = STATIONS.find(({ id }) => id === state.stationId)
-        if (station) show({ id: Date.now(), from: 'Now playing', text: station.name, kind: 'music' })
+        if (station) show({ id: Date.now(), from: 'Now playing', thread: null, text: station.name, kind: 'music' })
       }
     })
   }, [onMessage])
@@ -501,52 +93,127 @@ function usePeeks(raised: boolean, onMessage: () => void): Peek | null {
     const timer = window.setTimeout(() => setPeek(null), PEEK_MS[peek.kind])
     return () => window.clearTimeout(timer)
   }, [peek])
-
-  // Nothing peeks while the phone is up.
-  return raised ? null : peek
+  return peek
 }
 
-/**
- * The rider's phone: the order, chats with the customer and Ravi, music, career and settings.
- * P brings it up; away, it's hidden below the screen but for its tab, and peeks up for messages.
- * The game keeps running, so looking at it has a cost.
- */
+function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]; onUnlock: () => void; onOpen: (thread: string | null) => void }) {
+  const skyTime = useGameStore((state) => state.skyTime)
+  const weather = useGameStore((state) => state.weather)
+  const night = useGameStore((state) => state.night)
+  const day = useGameStore((state) => state.day)
+  return (
+    <div className="phone-lock phone-wallpaper" onClick={onUnlock} role="button" tabIndex={-1} aria-label="Unlock: click or Enter">
+      <p className="phone-lock-time">{skyTime}</p>
+      <p className="phone-lock-date">
+        Day {day} · <WeatherIcon weather={weather} night={night} /> {WEATHERS[weather].label}
+      </p>
+      <ul className="phone-lock-notes">
+        {notifications.slice(0, 4).map((note) => (
+          <li key={note.id}>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpen(note.thread)
+                event.currentTarget.blur()
+              }}
+            >
+              <strong>{note.from}</strong>
+              <span>{note.text}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="phone-lock-hint">Click or press Enter to unlock</p>
+    </div>
+  )
+}
+
+function HomeScreen({ nav, badges }: { nav: PhoneNav; badges: Partial<Record<AppId, number>> }) {
+  return (
+    <div className="phone-home phone-wallpaper">
+      <ul className="phone-icons">
+        {APPS.map(({ id, name, color, glyph }) => (
+          <li key={id}>
+            <button type="button" onClick={(event) => { nav.go(id); event.currentTarget.blur() }}>
+              <span className="phone-icon" style={{ background: color }}>
+                <AppGlyph path={glyph} />
+                {(badges[id] ?? 0) > 0 && <span className="phone-badge">{badges[id]}</span>}
+              </span>
+              <span className="phone-icon-name">{name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+type Screen = 'lock' | 'home' | AppId
+
 export function Phone() {
   const [raised, setRaised] = useState(false)
-  const [garageWanted, setGarageWanted] = useState(false)
-  const [tab, setTab] = useState<PhoneTab>('order')
-  const [unread, setUnread] = useState(0)
+  const [screen, setScreen] = useState<Screen>('lock')
+  const [thread, setThread] = useState<string | null>(null)
+  /** Unread counts per thread. */
+  const [unread, setUnread] = useState<Record<string, number>>({})
+  /** Notifications since the phone was last unlocked, for the lock screen. */
+  const [notes, setNotes] = useState<Peek[]>([])
+  const offer = useGameStore((state) => state.offer !== null)
   const atStore = useGameStore((state) => state.atStore)
-  // The Garage shows only on the raised phone at the dark store, so riding off or putting the phone away closes it.
-  const garageOpen = garageWanted && raised && atStore
+  const mapOpen = useUi((state) => state.mapOpen)
   /** Whether the phone is up because a handover raised it, rather than the rider. */
   const autoRaised = useRef(false)
-  // Messages count as unread unless the chats are open on screen; opening them clears the count.
-  const readingChats = useRef(false)
+  /** Which chat is open on screen right now, so its messages don't count as unread. */
+  const reading = useRef<string | null>(null)
   useEffect(() => {
-    readingChats.current = raised && tab === 'chats'
-  }, [raised, tab])
-  const [countUnread] = useState(() => () => {
-    if (!readingChats.current) setUnread((count) => count + 1)
+    reading.current = raised && screen === 'messages' ? thread : null
+  }, [raised, screen, thread])
+
+  // Each message as it arrives: unread in its thread (unless that chat is open), and on the lock screen.
+  const [countMessage] = useState(() => (note: Peek) => {
+    if (note.thread === null) return
+    const from = note.thread
+    setNotes((list) => [note, ...list].slice(0, 6))
+    if (reading.current === from) return
+    setUnread((counts) => ({ ...counts, [from]: (counts[from] ?? 0) + 1 }))
   })
-  const peek = usePeeks(raised, countUnread)
-  const openTab = (next: PhoneTab) => {
-    if (next === 'chats') setUnread(0)
-    setTab(next)
+  const notification = useNotifications(countMessage)
+
+  const open = (next: Screen) => {
+    setRaised(true)
+    setScreen(next)
+    if (next === 'lock' || next === 'home') setThread(null)
+  }
+  const close = () => {
+    autoRaised.current = false
+    setRaised(false)
+  }
+  const nav: PhoneNav = {
+    go: (app) => {
+      setThread(null)
+      setScreen(app)
+    },
+    openThread: (name) => {
+      setScreen('messages')
+      setThread(name)
+      setUnread((counts) => ({ ...counts, [name]: 0 }))
+    },
+    close,
+    thread,
+    unread: (name) => unread[name] ?? 0,
   }
 
-  // The phone comes up by itself while a parcel changes hands, showing the order, and goes down
-  // as soon as it's done. Raising or lowering it by hand leaves it to the rider.
+  // The phone comes up by itself while a parcel changes hands, on the order, and goes down after.
   useEffect(
     () =>
       useGameStore.subscribe((state, previous) => {
         if (state.phase === previous.phase) return
-        const handingOff = (phase: MissionPhase) => phase === 'collecting' || phase === 'handingOver'
+        const handingOff = (phase: string) => phase === 'collecting' || phase === 'handingOver'
         if (handingOff(state.phase)) {
           autoRaised.current = true
           setRaised(true)
-          setTab('order')
-          setGarageWanted(false)
+          setScreen('deliver')
         } else if (handingOff(previous.phase) && autoRaised.current) {
           autoRaised.current = false
           setRaised(false)
@@ -555,63 +222,104 @@ export function Phone() {
     [],
   )
 
+  // P brings it up on the lock screen (or puts it away). Enter unlocks. Esc goes back: app, home, away.
+  const state = useRef({ raised, screen, thread, mapOpen })
+  useEffect(() => {
+    state.current = { raised, screen, thread, mapOpen }
+  }, [raised, screen, thread, mapOpen])
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
-      if (event.code !== PHONE_KEY || event.repeat) return
-      autoRaised.current = false
-      setRaised((value) => !value)
-      setGarageWanted(false)
+      if (event.repeat) return
+      const now = state.current
+      if (event.code === PHONE_KEY) {
+        autoRaised.current = false
+        if (now.raised) setRaised(false)
+        else {
+          setRaised(true)
+          setScreen('lock')
+          setThread(null)
+        }
+      } else if (event.code === 'Enter' && now.raised && now.screen === 'lock') {
+        setScreen('home')
+        setNotes([])
+      } else if (event.code === 'Escape' && now.raised && !now.mapOpen) {
+        if (now.screen === 'messages' && now.thread) setThread(null)
+        else if (now.screen !== 'home' && now.screen !== 'lock') setScreen('home')
+        else setRaised(false)
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
 
+  const totalUnread = Object.values(unread).reduce((sum, count) => sum + count, 0)
+  const badges: Partial<Record<AppId, number>> = { messages: totalUnread, deliver: offer ? 1 : 0, garage: atStore ? 1 : 0 }
   const station = useStation()
   const videoCard = station.kind === 'video'
-  const toggle = (event: { currentTarget: HTMLElement }) => {
-    autoRaised.current = false
-    setRaised((value) => !value)
-    setGarageWanted(false)
-    // Gives the keyboard back to the game, so Space doesn't press this button.
-    event.currentTarget.blur()
-  }
+  // A banner in the open phone, unless it's the chat it belongs to, or the lock screen (which lists them).
+  const banner = raised && notification && screen !== 'lock' && !(screen === 'messages' && thread === notification.thread) ? notification : null
+  const peek = !raised ? notification : null
 
   return (
     <>
       <aside className={raised ? 'phone phone-raised' : 'phone phone-away'} aria-label="Rider phone" aria-hidden={!raised}>
         <div className="phone-screen">
           <StatusBar />
-          <PhoneTabs tab={tab} setTab={openTab} unread={unread} />
+          {banner && (
+            <button type="button" className="phone-banner" data-kind={banner.kind} onClick={() => (banner.thread ? nav.openThread(banner.thread) : nav.go('music'))}>
+              <strong>{banner.from}</strong>
+              <span>{banner.text}</span>
+            </button>
+          )}
           <div className="phone-lower">
-            {garageOpen ? (
-              <Garage onClose={() => setGarageWanted(false)} />
-            ) : tab === 'chats' ? (
-              <ChatsSheet />
-            ) : tab === 'music' ? (
-              <MusicSheet />
-            ) : tab === 'career' ? (
-              <>
-                <CareerSheet />
-                <TodaySheet />
-              </>
-            ) : tab === 'settings' ? (
-              <SettingsSheet />
+            {screen === 'lock' ? (
+              <LockScreen
+                notifications={notes}
+                onUnlock={() => {
+                  setScreen('home')
+                  setNotes([])
+                }}
+                onOpen={(name) => {
+                  setNotes([])
+                  if (name) nav.openThread(name)
+                  else nav.go('music')
+                }}
+              />
+            ) : screen === 'home' ? (
+              <HomeScreen nav={nav} badges={badges} />
             ) : (
-              <OrderSheet raised onOpenGarage={() => setGarageWanted(true)} />
+              <PhoneApp app={screen} nav={nav} />
             )}
           </div>
-          <button type="button" className="phone-toggle" aria-expanded={raised} onClick={toggle}>
-            Put away · P
-          </button>
+          <button
+            type="button"
+            className="phone-home-bar"
+            aria-label="Home"
+            onClick={(event) => {
+              if (screen === 'home') close()
+              else open('home')
+              event.currentTarget.blur()
+            }}
+          />
         </div>
       </aside>
       {!raised && (
-        <button type="button" className="phone-tab" onClick={toggle} aria-label="Open the phone (P)">
-          Phone · P{unread > 0 && <span className="phone-tab-count">{unread}</span>}
+        <button type="button" className="phone-tab" onClick={() => open('lock')} aria-label="Open the phone (P)">
+          Phone · P{totalUnread > 0 && <span className="phone-tab-count">{totalUnread}</span>}
         </button>
       )}
-      {peek && !raised && (
-        <button type="button" key={peek.id} className="phone-peek" data-kind={peek.kind} onClick={(event) => { openTab(peek.kind === 'music' ? 'music' : 'chats'); toggle(event) }}>
+      {peek && (
+        <button
+          type="button"
+          key={peek.id}
+          className="phone-peek"
+          data-kind={peek.kind}
+          onClick={() => {
+            open('home')
+            if (peek.thread) nav.openThread(peek.thread)
+            else nav.go('music')
+          }}
+        >
           <span className="phone-peek-from">{peek.from}</span>
           <span className="phone-peek-text">{peek.text}</span>
         </button>

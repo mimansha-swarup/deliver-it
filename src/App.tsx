@@ -26,6 +26,7 @@ import { World } from './world/World'
 import { DutyUi } from './ui/DutyUi'
 import { Minimap } from './ui/Minimap'
 import { FullMap } from './ui/FullMap'
+import { PhotoModeUi } from './ui/PhotoMode'
 import { setMapOpen } from './ui/uiState'
 import { ChatBubbles } from './ui/ChatBubbles'
 
@@ -48,8 +49,11 @@ function GameUi() {
 }
 
 function RidingUi() {
+  // Photo mode hides all of it but the sounds and its own overlay.
+  const photoMode = useGameStore((state) => state.photoMode)
   return (
     <>
+      <div className="riding-ui" hidden={photoMode}>
       <Hud />
       <DutyUi />
       <ChatBubbles />
@@ -64,6 +68,8 @@ function RidingUi() {
       <Phone />
 
       <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · Shift nitro · O online/offline · Tab map · H honk · R radio · P phone · N skips time · M changes weather</p>
+      </div>
+      <PhotoModeUi />
     </>
   )
 }

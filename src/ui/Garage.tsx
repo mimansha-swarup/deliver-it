@@ -25,7 +25,7 @@ function blurAfter(action: () => void) {
   }
 }
 
-function Upgrades() {
+function Upgrades({ canBuy }: { canBuy: boolean }) {
   const credits = useGameStore((state) => state.credits)
   const upgrades = useGameStore((state) => state.upgrades)
   const buyUpgrade = useGameStore((state) => state.buyUpgrade)
@@ -53,7 +53,7 @@ function Upgrades() {
             </div>
             <button
               type="button"
-              disabled={maxed || credits < price}
+              disabled={maxed || credits < price || !canBuy}
               onClick={blurAfter(() => buyUpgrade(kind))}
             >
               {maxed ? 'Maxed' : `${price}`}
@@ -70,11 +70,13 @@ function Colours({
   owned,
   chosen,
   choose,
+  canBuy,
 }: {
   list: Colour[]
   owned: string[]
   chosen: string
   choose: (id: string) => void
+  canBuy: boolean
 }) {
   const credits = useGameStore((state) => state.credits)
 
@@ -89,7 +91,7 @@ function Colours({
             <button
               type="button"
               aria-pressed={inUse}
-              disabled={locked || (!isOwned && credits < price)}
+              disabled={locked || (!isOwned && (credits < price || !canBuy))}
               onClick={blurAfter(() => choose(id))}
             >
               <span className="garage-swatch" style={{ background: color }} />
@@ -109,7 +111,11 @@ function Colours({
  * The Garage, on the raised phone at the dark store. Upgrades change how the
  * scooter rides, and paint and helmet colours change only how it looks.
  */
-export function Garage({ onClose }: { onClose: () => void }) {
+/**
+ * The Garage: upgrades, paints and helmets. Anywhere it shows what you have and what's for sale;
+ * buying (and switching to something not yet owned) only works stopped at the dark store.
+ */
+export function Garage({ onClose, canBuy = true }: { onClose: () => void; canBuy?: boolean }) {
   const [tab, setTab] = useState<Tab>('upgrades')
   const credits = useGameStore((state) => state.credits)
   const paintId = useGameStore((state) => state.paintId)
@@ -143,12 +149,12 @@ export function Garage({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
-      {tab === 'upgrades' && <Upgrades />}
+      {tab === 'upgrades' && <Upgrades canBuy={canBuy} />}
       {tab === 'paint' && (
-        <Colours list={PAINTS} owned={ownedPaints} chosen={paintId} choose={choosePaint} />
+        <Colours list={PAINTS} owned={ownedPaints} chosen={paintId} choose={choosePaint} canBuy={canBuy} />
       )}
       {tab === 'helmet' && (
-        <Colours list={HELMETS} owned={ownedHelmets} chosen={helmetId} choose={chooseHelmet} />
+        <Colours list={HELMETS} owned={ownedHelmets} chosen={helmetId} choose={chooseHelmet} canBuy={canBuy} />
       )}
     </section>
   )

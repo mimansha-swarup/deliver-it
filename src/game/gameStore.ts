@@ -148,6 +148,14 @@ type GameState = Telemetry & {
   waypoint: { x: number; z: number; node: number } | null
   /** Chat on the HUD while online: customers and Ravi, newest last. Not saved. */
   chat: ChatLine[]
+  /** Recent deliveries, newest first, for the Deliver It app. Saved. */
+  history: DeliveryRecord[]
+  /** Money in and out, newest first, for the Wallet app. Saved. */
+  ledger: LedgerEntry[]
+  /** Places to save on the map: chai stalls (with their street). Not saved; set once the world is planned. */
+  places: { chai: { x: number; z: number; name: string }[] }
+  /** Photo mode: the game paused, a free camera, no HUD (PhotoMode.tsx). */
+  photoMode: boolean
   /** How roughly the current order has been carried (customerChat.ts): judged at the door, not felt as mood. */
   rough: number
 
@@ -198,12 +206,31 @@ type GameState = Telemetry & {
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
   postChat: (from: ChatLine['from'], name: string, text: string, urgent?: boolean) => void
+  setPlaces: (places: GameState['places']) => void
+  setPhotoMode: (on: boolean) => void
+  /** Moves an offer's deadline on, as photo mode does for the time it was paused. */
+  extendOffer: (ms: number) => void
   setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
   /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
   customerCancels: () => void
 }
 
 /** `at`: when it was posted (performance.now()). `urgent`: late, about to cancel, or cancelled. */
+/** A finished delivery, for the history. `day` is the game's day counter. */
+export type DeliveryRecord = { id: number; day: number; customer: string; item: string; stars: number; earned: number; tip: number }
+
+/** Money in (positive) or out (negative). `kind` sorts it for the wallet's totals. */
+export type LedgerEntry = { id: number; day: number; label: string; amount: number; kind: 'earning' | 'tip' | 'bonus' | 'expense' }
+
+/** How many deliveries and ledger lines are kept. */
+const HISTORY_KEPT = 12
+const LEDGER_KEPT = 40
+
+function addLedger(ledger: LedgerEntry[], day: number, entries: Omit<LedgerEntry, 'id' | 'day'>[]): LedgerEntry[] {
+  const added = entries.filter(({ amount }) => amount !== 0).map((entry) => ({ ...entry, id: nextMessageId++, day }))
+  return [...added.reverse(), ...ledger].slice(0, LEDGER_KEPT)
+}
+
 export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string; at: number; urgent?: boolean }
 
 /** How many chat lines are kept; the HUD shows the last few. */
@@ -404,6 +431,10 @@ export const useGameStore = create<GameState>()(
       day: 1,
       home: null,
       chat: [],
+      history: [],
+      ledger: [],
+      places: { chai: [] },
+      photoMode: false,
       waypoint: null,
       rough: 0,
       frustration: 0,
@@ -505,8 +536,18 @@ export const useGameStore = create<GameState>()(
             after.credits += shiftStep.bonus
             if (shiftStep.goalMessage) progress.messages = addMessages(progress.messages ?? state.messages, [shiftStep.goalMessage])
           }
+          const customer = reward.customer
+          const ledger = addLedger(state.ledger, state.day, [
+            { label: `Delivery · ${customer}`, amount: earned - reward.tipCredits, kind: 'earning' },
+            { label: `Tip · ${customer}`, amount: reward.tipCredits, kind: 'tip' },
+            { label: 'Shift goal bonus', amount: shiftStep?.bonus ?? 0, kind: 'bonus' },
+            { label: 'Daily challenges / career', amount: progress.credits !== undefined ? progress.credits - paid.credits : 0, kind: 'bonus' },
+          ])
+          const record: DeliveryRecord = { id: nextMessageId++, day: state.day, customer, item: state.mission?.story.item ?? '', stars: reward.stars, earned, tip: reward.tipCredits }
           return {
             ...progress,
+            ledger,
+            history: [record, ...state.history].slice(0, HISTORY_KEPT),
             shift: shiftStep?.shift ?? state.shift,
             phase: 'delivered',
             lastReward: reward,
@@ -589,6 +630,7 @@ export const useGameStore = create<GameState>()(
         ...changes,
         credits,
         ratings,
+        ledger: choice === 'cancel' && hasOrderOn(state) ? addLedger(state.ledger, state.day, [{ label: 'Cancelled an order', amount: -CANCEL_PENALTY.credits, kind: 'expense' }]) : state.ledger,
         duty: 'off',
         offer: null,
         shift: null,
@@ -653,12 +695,16 @@ export const useGameStore = create<GameState>()(
 
   setHome: (home) => set({ home }),
   setWaypoint: (waypoint) => set({ waypoint }),
+  setPlaces: (places) => set({ places }),
+  setPhotoMode: (photoMode) => set({ photoMode }),
+  extendOffer: (ms) => set((state) => (state.offer ? { offer: { ...state.offer, expiresAt: state.offer.expiresAt + ms } } : state)),
   customerCancels: () =>
     set((state) => {
       if (!hasOrderOn(state) || (state.phase !== 'toPickup' && state.phase !== 'toCustomer')) return state
       const customer = state.mission?.story.customer ?? 'The customer'
       return {
         credits: Math.max(0, state.credits - CANCEL_PENALTY.credits),
+        ledger: addLedger(state.ledger, state.day, [{ label: `${customer} cancelled`, amount: -CANCEL_PENALTY.credits, kind: 'expense' }]),
         mission: null,
         phase: 'toPickup',
         pendingReward: null,
@@ -702,13 +748,18 @@ export const useGameStore = create<GameState>()(
       const level = state.upgrades[kind]
       const price = UPGRADES[kind].prices[level]
       if (level >= MAX_UPGRADE_LEVEL || price === undefined || state.credits < price) return state
-      return { credits: state.credits - price, upgrades: { ...state.upgrades, [kind]: level + 1 } }
+      return {
+        credits: state.credits - price,
+        upgrades: { ...state.upgrades, [kind]: level + 1 },
+        ledger: addLedger(state.ledger, state.day, [{ label: `${UPGRADES[kind].name} upgrade`, amount: -price, kind: 'expense' }]),
+      }
     }),
   choosePaint: (id) =>
     set((state) => chooseColour(state.credits, PAINTS, state.ownedPaints, id, (owned, credits) => ({
       ownedPaints: owned,
       paintId: id,
       credits,
+      ledger: credits < state.credits ? addLedger(state.ledger, state.day, [{ label: 'Paint', amount: credits - state.credits, kind: 'expense' }]) : state.ledger,
     }))),
   recordRide: (metres) =>
     set((state) => ({
@@ -722,6 +773,7 @@ export const useGameStore = create<GameState>()(
       ownedHelmets: owned,
       helmetId: id,
       credits,
+      ledger: credits < state.credits ? addLedger(state.ledger, state.day, [{ label: 'Helmet', amount: credits - state.credits, kind: 'expense' }]) : state.ledger,
     }))),
     }),
     {
@@ -750,6 +802,8 @@ export const useGameStore = create<GameState>()(
         fiveStarStreak: state.fiveStarStreak,
         answers: state.answers,
         day: state.day,
+        history: state.history,
+        ledger: state.ledger,
       }),
     },
   ),
