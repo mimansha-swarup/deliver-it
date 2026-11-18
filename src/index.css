@@ -3551,3 +3551,89 @@ body,
 .attribution {
   right: 340px;
 }
+
+/* ---- Notifications floating above the half-open phone (Phone.tsx) ---- */
+
+.phone-float {
+  position: fixed;
+  right: 16px;
+  bottom: calc(12px + var(--phone-peek, 150px) + 12px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* With a music video above the phone, they float above that. */
+.phone-float[data-above-video='true'] {
+  bottom: calc(12px + var(--phone-peek, 150px) + 10px + 200px + 12px);
+}
+
+.phone-float-note {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 16px;
+  color: #1c1d21;
+  background: rgb(244 241 232 / 94%);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 35%);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  animation: float-life 3s ease both;
+}
+
+.phone-float-note[data-kind='urgent'] {
+  box-shadow: inset 4px 0 0 #e0473e, 0 0 0 2px rgb(224 71 62 / 55%), 0 10px 26px rgb(0 0 0 / 35%);
+  animation-duration: 6s;
+}
+
+.phone-float-note[data-kind='music'] {
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 88%);
+  animation-duration: 2.5s;
+}
+
+.phone-float-note strong {
+  font-size: 11px;
+}
+
+.phone-float-note[data-kind='urgent'] strong {
+  color: #b8433a;
+}
+
+.phone-float-note span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Rises out of the phone, hangs in the air, then drifts up and fades. */
+@keyframes float-life {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  10%,
+  85% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-float-note {
+    animation: none;
+  }
+}

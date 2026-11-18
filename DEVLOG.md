@@ -9040,3 +9040,17 @@ so the separate peek card and the "Phone · P" tab are gone. Hovering lifts it a
 (or P) raises it to the lock screen, and a click on a banner opens that chat. To make room, the
 speedometer moved beside the minimap, a music video sits above the phone, and the map credits
 moved left of it.
+
+## 2026-11-18: Entry 153, notifications in the air above the phone
+
+### What I did
+With the phone half open, new messages float above it, outside its frame: up to three cards,
+newest nearest the phone. Each rises out of it, hangs for 3 s (6 s with a red edge for urgent
+ones, 2.5 s for "Now playing") and drifts up as it fades; a click opens its chat. They sit above
+a music video if one is showing. The strip of phone below stays a clean clock with the unread
+count; the open phone still shows a banner inside, as there's no room above it.
+
+Also fixed: one message could notify twice. A chat line added from inside another store
+update was seen again when that outer update's listeners ran with the latest state, so
+comparing with `previous` wasn't enough. The phone now keeps the highest chat and message id it
+has shown, and shows only what's above it.

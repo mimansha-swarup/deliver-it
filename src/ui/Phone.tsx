@@ -24,6 +24,8 @@ import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 
 /** How long a message peeks the phone up (or shows as a banner on it), in milliseconds. */
 const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500 }
+/** How many notifications float above the half-open phone at once. */
+const FLOATING_SHOWN = 3
 
 type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' }
 
@@ -72,19 +74,23 @@ function useNotifications(onMessage: (note: Peek) => void): Peek | null {
       setPeek(next)
       playPing(next.kind === 'urgent' ? 'urgent' : next.kind === 'music' ? 'nowPlaying' : 'message')
     }
+    // The highest chat line and message shown so far. Ids only grow, so anything above is new.
+    // (Comparing with `previous` isn't enough: a line added from inside another update is seen
+    // again when the outer update's listeners run, with the latest state.)
+    const initial = useGameStore.getState()
+    let shownChat = initial.chat.reduce((most, line) => Math.max(most, line.id), -Infinity)
+    let shownMessage = initial.messages[0]?.id ?? -Infinity
     return useGameStore.subscribe((state, previous) => {
       // Online, the chat carries the customer and Ravi; off duty, Ravi's messages come on their own.
-      if (state.chat !== previous.chat && state.chat.length > 0) {
-        const line = state.chat[state.chat.length - 1]
-        if (!previous.chat.some((old) => old.id === line.id)) {
-          const thread = line.from === 'dispatch' ? RAVI_THREAD : line.name
-          show({ id: line.id, from: line.from === 'dispatch' ? DISPATCHER : line.name, thread, text: line.text, kind: line.urgent ? 'urgent' : 'normal' })
-        }
+      for (const line of state.chat) {
+        if (line.id <= shownChat) continue
+        shownChat = line.id
+        const thread = line.from === 'dispatch' ? RAVI_THREAD : line.name
+        show({ id: line.id, from: line.from === 'dispatch' ? DISPATCHER : line.name, thread, text: line.text, kind: line.urgent ? 'urgent' : 'normal' })
       }
-      const newest = state.messages[0]
-      if (state.duty === 'off' && newest && newest.id !== previous.messages[0]?.id) {
-        show({ id: newest.id, from: DISPATCHER, thread: RAVI_THREAD, text: newest.text, kind: 'normal' })
-      }
+      const fresh = state.messages.filter((message) => message.id > shownMessage)
+      if (fresh.length > 0) shownMessage = fresh[0].id
+      if (state.duty === 'off') for (const message of [...fresh].reverse()) show({ id: message.id, from: DISPATCHER, thread: RAVI_THREAD, text: message.text, kind: 'normal' })
       if (state.stationId !== previous.stationId && state.musicOn) {
         const station = STATIONS.find(({ id }) => id === state.stationId)
         if (station) show({ id: Date.now(), from: 'Now playing', thread: null, text: station.name, kind: 'music' })
@@ -174,8 +180,13 @@ export function Phone() {
     reading.current = raised && screen === 'messages' ? thread : null
   }, [raised, screen, thread])
 
-  // Each message as it arrives: unread in its thread (unless that chat is open), and on the lock screen.
+  /** Notifications floating above the half-open phone, newest last; each leaves after its time. */
+  const [floating, setFloating] = useState<Peek[]>([])
+  // Each message as it arrives: floating above the phone, unread in its thread (unless that chat
+  // is open), and on the lock screen.
   const [countMessage] = useState(() => (note: Peek) => {
+    setFloating((list) => [...list, note].slice(-FLOATING_SHOWN))
+    window.setTimeout(() => setFloating((list) => list.filter((other) => other.id !== note.id)), PEEK_MS[note.kind])
     if (note.thread === null) return
     const from = note.thread
     setNotes((list) => [note, ...list].slice(0, 6))
@@ -261,10 +272,9 @@ export function Phone() {
   const badges: Partial<Record<AppId, number>> = { messages: totalUnread, deliver: offer ? 1 : 0, garage: atStore ? 1 : 0 }
   const station = useStation()
   const videoCard = station.kind === 'video'
-  // A banner across the top: on the half-open phone always; open, unless it's on the lock screen
-  // (which lists them) or that chat is the one showing.
-  const banner =
-    notification && (!raised || (screen !== 'lock' && !(screen === 'messages' && thread === notification.thread))) ? notification : null
+  // A banner across the top of the open phone, unless it's on the lock screen (which lists them)
+  // or that chat is the one showing. Half open, they float above it instead (below).
+  const banner = notification && raised && screen !== 'lock' && !(screen === 'messages' && thread === notification.thread) ? notification : null
   const openNote = (note: Peek) => {
     open('home')
     if (note.thread) nav.openThread(note.thread)
@@ -282,8 +292,7 @@ export function Phone() {
           if (raised) return
           event.stopPropagation()
           event.preventDefault()
-          if (banner && (event.target as HTMLElement).closest('.phone-banner')) openNote(banner)
-          else open('lock')
+          open('lock')
         }}
       >
         <div className="phone-screen">
@@ -326,6 +335,18 @@ export function Phone() {
           />
         </div>
       </aside>
+      {!raised && floating.length > 0 && (
+        <ol className="phone-float" data-above-video={videoCard ? 'true' : undefined} aria-live="polite">
+          {floating.map((note) => (
+            <li key={note.id}>
+              <button type="button" className="phone-float-note" data-kind={note.kind} onClick={() => openNote(note)}>
+                <strong>{note.from}</strong>
+                <span>{note.text}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
       {videoCard && (
         <aside className={raised ? 'music-card music-card-raised' : 'music-card'} aria-label="Music video">
           <VideoScreen station={station} className="music-card-player" />
