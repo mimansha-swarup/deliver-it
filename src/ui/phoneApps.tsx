@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { keyFor } from '../game/keyBindings'
 import { useGameStore } from '../game/gameStore'
 import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
@@ -353,8 +354,8 @@ export function AppGlyph({ path }: { path: string }) {
 function AppBar({ title, nav }: { title: string; nav: PhoneNav }) {
   return (
     <header className="app-bar">
-      <button type="button" onClick={(event) => { nav.go('home'); event.currentTarget.blur() }} aria-label="Back to the home screen">
-        ‹
+      <button type="button" className="app-back" onClick={(event) => { nav.go('home'); event.currentTarget.blur() }} aria-label="Back to the home screen">
+        ‹ Home
       </button>
       <h2>{title}</h2>
     </header>
@@ -409,6 +410,11 @@ function DeliverItApp({ nav }: { nav: PhoneNav }) {
 function MessagesApp({ nav }: { nav: PhoneNav }) {
   const chat = useGameStore((state) => state.chat)
   const messages = useGameStore((state) => state.messages)
+  // A thread opens at its newest message, at the bottom, and stays there as new ones come.
+  const thread = useRef<HTMLOListElement>(null)
+  useEffect(() => {
+    if (thread.current) thread.current.scrollTop = thread.current.scrollHeight
+  }, [nav.thread, chat, messages])
   const customers = [...new Set(chat.filter((line) => line.from === 'customer').map((line) => line.name))].reverse()
   const threads = [RAVI_THREAD, ...customers]
 
@@ -419,13 +425,13 @@ function MessagesApp({ nav }: { nav: PhoneNav }) {
         : chat.filter((line) => line.from === 'customer' && line.name === nav.thread).map((line) => ({ id: line.id, text: line.text, urgent: !!line.urgent, mine: false }))
     return (
       <div className="app">
-        <header className="app-bar">
-          <button type="button" onClick={(event) => { nav.go('messages'); event.currentTarget.blur() }} aria-label="Back to the threads">
-            ‹
+        <header className="app-bar app-bar-chat">
+          <button type="button" className="app-back" onClick={(event) => { nav.go('messages'); event.currentTarget.blur() }} aria-label="Back to the threads">
+            ‹ Messages
           </button>
           <h2>{nav.thread === RAVI_THREAD ? DISPATCHER : nav.thread}</h2>
         </header>
-        <ol className="app-body phone-chat-thread app-thread">
+        <ol ref={thread} className="app-body phone-chat-thread app-thread">
           {lines.length === 0 && <li className="phone-chat-empty">No messages yet</li>}
           {lines.map((line) => (
             <li key={line.id} data-from={nav.thread === RAVI_THREAD ? 'dispatch' : 'customer'} data-urgent={line.urgent ? 'true' : undefined}>

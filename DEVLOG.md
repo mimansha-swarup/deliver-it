@@ -9054,3 +9054,24 @@ Also fixed: one message could notify twice. A chat line added from inside anothe
 update was seen again when that outer update's listeners ran with the latest state, so
 comparing with `previous` wasn't enough. The phone now keeps the highest chat and message id it
 has shown, and shows only what's above it.
+
+## 2026-11-18: Entry 154, a phone that looks like a phone
+
+### What was breaking
+- In the apps, cards sat in a grid whose items couldn't shrink below their longest unbroken
+  line, so the order card ran off the right of the screen (the timer, "85 credits", the bonuses
+  cut off). Grid columns are `minmax(0, 1fr)` now and long words wrap.
+- Lists in the phone kept the browser's 40 px indent (`ul` wasn't reset, only `ol` and `dl`),
+  pushing the lock-screen notifications and the home-screen icons off the right edge.
+- Half open, the screen's content wasn't stretched to its height, so the wallpaper covered only
+  a strip and the clock sat on black.
+- The home bar covered the last line of an app; apps now leave room above it.
+
+### What it looks like now
+A modern handset of about 19.5:9 (300 × 650 px, less on short windows): a thin even bezel, a
+brushed-metal edge with power and volume buttons, a "dynamic island", and a status bar with the
+time on the left and signal, 4G and battery on the right. The lock screen has the day and
+weather over a large thin clock, frosted notification cards, and torch and camera buttons. The
+home screen has an icon grid, page dots and a frosted dock with Deliver It, Messages, Maps and
+Radio. Apps have a "‹ Home" link over a large title and grouped cards, and chat threads open at
+the newest message.

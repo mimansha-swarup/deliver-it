@@ -37,8 +37,6 @@ function batteryAt(hours: number): number {
 
 function StatusBar({ unread = 0 }: { unread?: number }) {
   const skyTime = useGameStore((state) => state.skyTime)
-  const weather = useGameStore((state) => state.weather)
-  const night = useGameStore((state) => state.night)
   const battery = batteryAt(liveSky.hours)
   return (
     <header className="phone-status">
@@ -46,9 +44,8 @@ function StatusBar({ unread = 0 }: { unread?: number }) {
         {skyTime}
         {unread > 0 && <span className="phone-tab-count" aria-label={`${unread} unread`}>{unread}</span>}
       </span>
-      <span className="phone-camera" aria-hidden="true" />
+      <span className="phone-island" aria-hidden="true" />
       <span className="phone-status-right">
-        <WeatherIcon weather={weather} night={night} />
         <span className="phone-signal" aria-label="Signal: 4 bars">
           <i /> <i /> <i /> <i />
         </span>
@@ -113,10 +110,10 @@ function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]
   const day = useGameStore((state) => state.day)
   return (
     <div className="phone-lock phone-wallpaper" onClick={onUnlock} role="button" tabIndex={-1} aria-label="Unlock: click or Enter">
-      <p className="phone-lock-time">{skyTime}</p>
       <p className="phone-lock-date">
         Day {day} · <WeatherIcon weather={weather} night={night} /> {WEATHERS[weather].label}
       </p>
+      <p className="phone-lock-time">{skyTime}</p>
       <ul className="phone-lock-notes">
         {notifications.slice(0, 4).map((note) => (
           <li key={note.id}>
@@ -134,8 +131,31 @@ function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]
           </li>
         ))}
       </ul>
-      <p className="phone-lock-hint">Click or press Enter to unlock</p>
+      <div className="phone-lock-bottom" aria-hidden="true">
+        <span className="phone-lock-round">
+          <AppGlyph path="M9 2h6l-1 6h-4zM10 8h4v12a2 2 0 0 1-4 0z" />
+        </span>
+        <p className="phone-lock-hint">Click or press Enter to open</p>
+        <span className="phone-lock-round">
+          <AppGlyph path="M4 8h4l2-2h4l2 2h4v11H4zM12 11a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+        </span>
+      </div>
     </div>
+  )
+}
+
+/** The apps kept in the dock at the bottom of the home screen. */
+const DOCK: AppId[] = ['deliver', 'messages', 'maps', 'music']
+
+function AppIcon({ app, nav, badge, label = true }: { app: (typeof APPS)[number]; nav: PhoneNav; badge: number; label?: boolean }) {
+  return (
+    <button type="button" aria-label={app.name} onClick={(event) => { nav.go(app.id); event.currentTarget.blur() }}>
+      <span className="phone-icon" style={{ background: `linear-gradient(160deg, ${app.color}, color-mix(in srgb, ${app.color} 70%, #000))` }}>
+        <AppGlyph path={app.glyph} />
+        {badge > 0 && <span className="phone-badge">{badge}</span>}
+      </span>
+      {label && <span className="phone-icon-name">{app.name}</span>}
+    </button>
   )
 }
 
@@ -143,15 +163,19 @@ function HomeScreen({ nav, badges }: { nav: PhoneNav; badges: Partial<Record<App
   return (
     <div className="phone-home phone-wallpaper">
       <ul className="phone-icons">
-        {APPS.map(({ id, name, color, glyph }) => (
-          <li key={id}>
-            <button type="button" onClick={(event) => { nav.go(id); event.currentTarget.blur() }}>
-              <span className="phone-icon" style={{ background: color }}>
-                <AppGlyph path={glyph} />
-                {(badges[id] ?? 0) > 0 && <span className="phone-badge">{badges[id]}</span>}
-              </span>
-              <span className="phone-icon-name">{name}</span>
-            </button>
+        {APPS.filter(({ id }) => !DOCK.includes(id)).map((app) => (
+          <li key={app.id}>
+            <AppIcon app={app} nav={nav} badge={badges[app.id] ?? 0} />
+          </li>
+        ))}
+      </ul>
+      <p className="phone-page-dots" aria-hidden="true">
+        <i data-on="true" /> <i />
+      </p>
+      <ul className="phone-dock">
+        {APPS.filter(({ id }) => DOCK.includes(id)).map((app) => (
+          <li key={app.id}>
+            <AppIcon app={app} nav={nav} badge={badges[app.id] ?? 0} label={false} />
           </li>
         ))}
       </ul>
