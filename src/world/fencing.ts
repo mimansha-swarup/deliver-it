@@ -8,7 +8,7 @@ import {
   nearestRoadEdge,
   type RoadIndex,
 } from './props'
-import { isRingInPlayArea, lonLatToWorld, type GroundPoint, type LonLat } from './worldUtils'
+import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint, type LonLat } from './worldUtils'
 
 /*
  * Fences, walls and barriers along HSR's streets (ART_DIRECTION.md), of the
@@ -185,6 +185,25 @@ const ring = (coordinates: LonLat[]): GroundPoint[] =>
     return [x, z]
   })
 
+/** A line cut into the runs of it whose pieces lie outside all the outlines. */
+function outsideAll(line: GroundPoint[], outlines: GroundPoint[][]): GroundPoint[][] {
+  if (outlines.length === 0) return [line]
+  const runs: GroundPoint[][] = []
+  let run: GroundPoint[] = []
+  for (let i = 0; i < line.length - 1; i++) {
+    const middle: GroundPoint = [(line[i][0] + line[i + 1][0]) / 2, (line[i][1] + line[i + 1][1]) / 2]
+    if (outlines.some((outline) => isInsideOutline(outline, middle[0], middle[1]))) {
+      if (run.length > 1) runs.push(run)
+      run = []
+      continue
+    }
+    if (run.length === 0) run.push(line[i])
+    run.push(line[i + 1])
+  }
+  if (run.length > 1) runs.push(run)
+  return runs
+}
+
 /**
  * Every boundary as a closed loop that stops at the footpath (boundaries.ts): temple compounds,
  * plots left walled where a building was taken off the road, school grounds, parks and the
@@ -222,7 +241,8 @@ export function planBoundaries(
     const kind = kindOfBarrier(barrier)
     if (!kind) continue
     const lines = byKind.get(kind) ?? []
-    lines.push(barrierLine(barrier))
+    // Not across a petrol bunk's forecourt, which is open ground to ride over (its own loop walls it).
+    lines.push(...outsideAll(barrierLine(barrier), bunks))
     byKind.set(kind, lines)
   }
   const mappedRandom = createRandom(4471)

@@ -1,6 +1,7 @@
-import { addPost, isNearBuilding, type CollisionWorld } from './collision'
+import { addPost, addWall, isNearBuilding, type CollisionWorld } from './collision'
+import type { StiltVehicle } from './houseKit'
 import type { LineFeature, PolygonFeature } from './mapData'
-import { toRoadPieces, type RoadPiece } from './props'
+import { indexRoadPieces, isClearOfRoads, toRoadPieces, type RoadIndex, type RoadPiece } from './props'
 import { isInsideBounds, lonLatToWorld, type GroundPoint } from './worldUtils'
 
 /**
@@ -52,6 +53,13 @@ export type FuelStation = {
   depth: number
   /** How far the road's edge is in front of the canopy's middle, in metres: the forecourt runs up to it. */
   front: number
+  /**
+   * How much further the forecourt runs past the canopy's end away from the price sign, in metres:
+   * a paved yard with the bunk's office and the air stand, where there's room. 0 where there isn't.
+   */
+  yard: number
+  /** Which end the yard is at: -1 away from the price sign, 1 past it. */
+  yardSide: number
 }
 
 /** A canopy with no roof on the map, in metres: along the road, and back from it. */
@@ -176,7 +184,7 @@ export function placeFuelStations(
       const outs = roof.map(([px, pz]) => (px - spotX) * outX + (pz - spotZ) * outZ)
       const roofLength = clamp(Math.max(...alongs) - Math.min(...alongs), CANOPY_LIMITS.length)
       const roofDepth = clamp(Math.max(...outs) - Math.min(...outs), CANOPY_LIMITS.depth)
-      stations.push({ brand, x: spotX, z: spotZ, alongX, alongZ, outX, outZ, length: roofLength, depth: roofDepth, front: distance - piece.width / 2 })
+      stations.push({ brand, x: spotX, z: spotZ, alongX, alongZ, outX, outZ, length: roofLength, depth: roofDepth, front: distance - piece.width / 2, yard: 0, yardSide: -1 })
       continue
     }
 
@@ -197,6 +205,8 @@ export function placeFuelStations(
         length: canopyLength,
         depth,
         front: toMiddle - piece.width / 2,
+        yard: 0,
+        yardSide: -1,
       }
       if (!isClear(collisions, station)) continue
       stations.push(station)
@@ -204,15 +214,112 @@ export function placeFuelStations(
     }
   }
 
+  // A bunk's own driveways are mapped as narrow roads; the yard may pave over them, not over a street.
+  const roadIndex = indexRoadPieces(pieces.filter(({ width }) => width >= YARD_STREET_WIDTH))
   for (const station of stations) {
+    // The yard: as long as fits clear of buildings and other roads, if at least the office fits.
+    // At whichever end has room for the longer one, so an empty plot beside the bunk becomes its yard.
+    for (const side of [-1, 1]) {
+      const yard = YARD_TRIES.find((tried) => isYardClear(station, tried, side, collisions, roadIndex)) ?? 0
+      if (yard > station.yard) {
+        station.yard = yard
+        station.yardSide = side
+      }
+    }
     for (const [along, out] of pillarSpots(station)) addPost(collisions, ...spotOf(station, along, out), PILLAR_RADIUS + 0.1)
     for (const along of islandSpots(station)) {
       // Each island as two posts, end to end.
       for (const end of [-1, 1]) addPost(collisions, ...spotOf(station, along + end * (ISLAND.length / 4), 0), ISLAND.width / 2 + 0.1)
     }
     addPost(collisions, ...spotOf(station, ...pylonSpot(station)), 0.25)
+    for (const vehicle of pumpVisitors(station).vehicles) {
+      const along = vehicle.car ? 1.7 : 0.7
+      addWall(
+        collisions,
+        [vehicle.x - Math.sin(vehicle.rotation) * along, vehicle.z - Math.cos(vehicle.rotation) * along],
+        [vehicle.x + Math.sin(vehicle.rotation) * along, vehicle.z + Math.cos(vehicle.rotation) * along],
+        vehicle.car ? 1.7 : 0.7,
+      )
+    }
+    const office = officeOf(station)
+    if (office) addWall(collisions, spotOf(station, office.along - office.length / 2, office.out), spotOf(station, office.along + office.length / 2, office.out), office.depth)
   }
   return stations
+}
+
+/** Roads at least this wide are streets, which a yard keeps off; narrower ones are driveways, in metres. */
+const YARD_STREET_WIDTH = 4.5
+/** Yard lengths tried, longest first. */
+const YARD_TRIES = [18, 14, 10, 7]
+/** The bunk's office in the yard: along the road, back from it and high, in metres. */
+export const OFFICE = { length: 5, depth: 3.4, height: 3.1 }
+
+/** Where the forecourt ends along the road: [the yard's end, the sign's end], from the canopy's middle. */
+export function forecourtEnds(station: FuelStation): [number, number] {
+  const end = station.length / 2 + FORECOURT_SIDES
+  return station.yardSide < 0 ? [-(end + station.yard), end] : [-end, end + station.yard]
+}
+
+/** The far end of the yard, along the road from the canopy's middle. */
+export function yardEnd(station: FuelStation): number {
+  const [start, end] = forecourtEnds(station)
+  return station.yardSide < 0 ? start : end
+}
+
+/** Whether a yard this long beside the canopy is clear of buildings and of other roads. */
+function isYardClear(station: FuelStation, yard: number, side: number, collisions: CollisionWorld, roads: RoadIndex): boolean {
+  const from = station.length / 2 + FORECOURT_SIDES
+  const back = station.depth / 2 + FORECOURT_BACK
+  for (let along = from; along <= from + yard; along += 1.5) {
+    // From behind the footpath (up to 3.2 m wide): the forecourt in front of that is open to the road anyway.
+    for (let out = -station.front + 3.5; out <= back; out += 1.5) {
+      const [x, z] = spotOf(station, along * side, out)
+      if (isNearBuilding(collisions, x, z, 0.4) || !isClearOfRoads(roads, x, z, 0.5)) return false
+    }
+  }
+  return true
+}
+
+/** The office, at the back of the yard, or null with no yard. Its middle, along and out from the canopy's middle. */
+export function officeOf(station: FuelStation): { along: number; out: number; length: number; depth: number } | null {
+  if (station.yard < OFFICE.length + 1) return null
+  const back = station.depth / 2 + FORECOURT_BACK
+  return { along: yardEnd(station) - station.yardSide * (OFFICE.length / 2 + 0.6), out: back - OFFICE.depth / 2 - 0.3, length: OFFICE.length, depth: OFFICE.depth }
+}
+
+/**
+ * Who's at the pumps: a car filling up beside the first island and a scooter at the last (both
+ * still: they stand as parked vehicles do), and the attendant at the car's tank.
+ */
+export function pumpVisitors(station: FuelStation): { vehicles: StiltVehicle[]; attendants: { x: number; z: number; heading: number }[] } {
+  const islands = islandSpots(station)
+  const facing = Math.atan2(station.alongX, station.alongZ)
+  const seed = Math.abs(Math.round(station.x * 13 + station.z * 7))
+  const carAt = spotOf(station, islands[0], ISLAND.width / 2 + 1.35)
+  const bikeAt = spotOf(station, islands[islands.length - 1] + 0.4, -(ISLAND.width / 2 + 0.75))
+  const attendant = spotOf(station, islands[0] + 0.9, ISLAND.width / 2 + 0.2)
+  // The staff's vehicles in the yard, in front of the office: a car and two bikes.
+  const staff: StiltVehicle[] = []
+  const office = officeOf(station)
+  if (office) {
+    const toYard = -station.yardSide
+    const outward = Math.atan2(-station.outX, -station.outZ)
+    const [cx, cz] = spotOf(station, office.along + toYard * 0.4, office.out - office.depth / 2 - 2.6)
+    staff.push({ x: cx, z: cz, rotation: outward + Math.PI / 2, variation: (seed % 71) / 71, car: true, model: (seed + 1) % 3 })
+    for (const step of [0, 1]) {
+      const [bx, bz] = spotOf(station, office.along - toYard * (office.length / 2 - 0.5 - step * 0.9), office.out - office.depth / 2 - 1)
+      staff.push({ x: bx, z: bz, rotation: outward, variation: ((seed + step * 13) % 83) / 83, car: false })
+    }
+  }
+  return {
+    vehicles: [
+      { x: carAt[0], z: carAt[1], rotation: facing, variation: (seed % 97) / 97, car: true, model: seed % 3 },
+      { x: bikeAt[0], z: bikeAt[1], rotation: facing + Math.PI, variation: (seed % 89) / 89, car: false },
+      ...staff,
+    ],
+    // Facing the car, to the island's side.
+    attendants: [{ x: attendant[0], z: attendant[1], heading: Math.atan2(station.outX, station.outZ) }],
+  }
 }
 
 /** A point on a bunk's forecourt, `along` the road and `out` from the canopy's middle, as world x and z. */
@@ -276,8 +383,10 @@ export function isOnForecourt(stations: FuelStation[], x: number, z: number): bo
     const dz = z - station.z
     const along = dx * station.alongX + dz * station.alongZ
     const out = dx * station.outX + dz * station.outZ
+    const [start, end] = forecourtEnds(station)
     return (
-      Math.abs(along) <= station.length / 2 + FORECOURT_SIDES &&
+      along >= start &&
+      along <= end &&
       out >= -station.front &&
       out <= station.depth / 2 + FORECOURT_BACK
     )
@@ -290,7 +399,73 @@ export function forecourtOutline(station: FuelStation): [number, number][] {
     station.x + station.alongX * along + station.outX * out,
     station.z + station.alongZ * along + station.outZ * out,
   ]
-  const half = station.length / 2 + FORECOURT_SIDES
+  const [start, end] = forecourtEnds(station)
   const back = station.depth / 2 + FORECOURT_BACK
-  return [at(-half, -station.front), at(half, -station.front), at(half, back), at(-half, back)]
+  return [at(start, -station.front), at(end, -station.front), at(end, back), at(start, back)]
+}
+
+/**
+ * A tyre puncture shop on open ground beside a bunk, as there so often is: a tin shed, tyres
+ * stacked out front, a few vehicles waiting and the mechanic. `along` and `out` are its middle
+ * from the canopy's middle; it faces the road.
+ */
+export type TyreShop = { station: FuelStation; along: number; out: number }
+
+/** The shop's lot, along the road and back from it, in metres. */
+export const TYRE_LOT = { length: 11, depth: 8 }
+
+/**
+ * Finds open ground for a tyre shop beside each bunk: the nearest spot, along the road either way
+ * past the forecourt, where the whole lot is open ground on the surface map and clear of buildings.
+ */
+export function findTyreShops(stations: FuelStation[], isOpen: (x: number, z: number) => boolean, collisions: CollisionWorld): TyreShop[] {
+  const shops: TyreShop[] = []
+  for (const station of stations) {
+    const [start, end] = forecourtEnds(station)
+    // Behind the footpath, which can be 4.5 m wide where a bunk's apron meets it.
+    const out = -station.front + 5.5 + TYRE_LOT.depth / 2
+    found: for (let gap = 2; gap <= 40; gap += 2) {
+      for (const side of [-1, 1]) {
+        const along = side < 0 ? start - gap - TYRE_LOT.length / 2 : end + gap + TYRE_LOT.length / 2
+        let clear = true
+        for (let a = -TYRE_LOT.length / 2; a <= TYRE_LOT.length / 2 && clear; a += 1) {
+          for (let o = -TYRE_LOT.depth / 2; o <= TYRE_LOT.depth / 2 && clear; o += 1) {
+            const [x, z] = spotOf(station, along + a, out + o)
+            if (!isOpen(x, z) || isNearBuilding(collisions, x, z, 0.3)) clear = false
+          }
+        }
+        if (!clear) continue
+        shops.push({ station, along, out })
+        break found
+      }
+    }
+  }
+  for (const shop of shops) {
+    const back = shop.out + TYRE_LOT.depth / 2 - 1.8
+    addWall(collisions, spotOf(shop.station, shop.along - 2.2, back), spotOf(shop.station, shop.along + 2.2, back), 3.2)
+    for (const vehicle of tyreShopVisitors(shop).vehicles) addPost(collisions, vehicle.x, vehicle.z, vehicle.car ? 1.1 : 0.4)
+  }
+  return shops
+}
+
+/** Who's at a tyre shop: two cars and a few bikes waiting in front, and the mechanic. */
+export function tyreShopVisitors(shop: TyreShop): { vehicles: StiltVehicle[]; mechanic: { x: number; z: number; heading: number } } {
+  const { station } = shop
+  const facing = Math.atan2(station.alongX, station.alongZ)
+  const front = shop.out - TYRE_LOT.depth / 2 + 1.4
+  const seed = Math.abs(Math.round(station.x * 5 + station.z * 11))
+  const at = (along: number, out: number) => spotOf(station, shop.along + along, out)
+  const car = (along: number, model: number): StiltVehicle => {
+    const [x, z] = at(along, front)
+    return { x, z, rotation: facing + (seed % 2 ? Math.PI : 0), variation: ((seed + model) % 50) / 50, car: true, model }
+  }
+  const bike = (along: number, turn: number): StiltVehicle => {
+    const [x, z] = at(along, front + 2.6)
+    return { x, z, rotation: Math.atan2(station.outX, station.outZ) + turn, variation: ((seed * 3 + along * 10) % 50) / 50, car: false }
+  }
+  const [mx, mz] = at(-1.2, front + 3.3)
+  return {
+    vehicles: [car(-3.2, seed % 3), bike(1.2, 0.2), bike(2.3, -0.15), bike(3.4, 0.3)],
+    mechanic: { x: mx, z: mz, heading: Math.atan2(-station.outX, -station.outZ) },
+  }
 }

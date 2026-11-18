@@ -1,6 +1,7 @@
 import type { LineFeature, MapData, PolygonFeature } from './mapData'
 import { getRoadWidth } from './roadData'
 import { streetPresetOf } from './streetPresets'
+import { findPitches, type Pitch } from './pitches'
 import { PAVEMENT_WIDTH } from './surface'
 import { lonLatToWorld, PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH, type GroundPoint, type LonLat } from './worldUtils'
 
@@ -69,6 +70,10 @@ export class SurfaceMap {
   readonly width = Math.ceil(PLAY_AREA_WIDTH)
   readonly depth = Math.ceil(PLAY_AREA_DEPTH)
   readonly cells = new Uint8Array(this.width * this.depth)
+  /** Car parks on the map, with the way their bays run (their longest side's direction, in radians), for the ground's markings (groundCover.ts). */
+  readonly parkingAreas: { outline: GroundPoint[]; angle: number }[] = []
+  /** Sports pitches (pitches.ts): maidans are worn down to the earth (groundCover.ts). */
+  pitches: Pitch[] = []
 
   /** The ground at a point. Outside the play area, open ground. */
   at(x: number, z: number): Surface {
@@ -174,6 +179,22 @@ function medianWidth(road: LineFeature): number {
 /** On a dual carriageway (two one-way roads), the gap between them is a median if it's at most this wide, in metres. */
 const DUAL_GAP = 12
 
+/** The direction of an outline's longest side, in radians. */
+function longestSideAngle(outline: GroundPoint[]): number {
+  let best = 0
+  let angle = 0
+  for (let i = 0; i < outline.length - 1; i++) {
+    const dx = outline[i + 1][0] - outline[i][0]
+    const dz = outline[i + 1][1] - outline[i][1]
+    const length = Math.hypot(dx, dz)
+    if (length > best) {
+      best = length
+      angle = Math.atan2(dz, dx)
+    }
+  }
+  return angle
+}
+
 /**
  * Draws the city's ground. `paved` adds outlines that are paved though the map doesn't say so
  * (shop forecourts, petrol bunk forecourts); `plots` adds building sites and empty plots.
@@ -182,9 +203,14 @@ export function createSurfaceMap(data: MapData, extra: { paved?: GroundPoint[][]
   const map = new SurfaceMap()
   for (const area of data.areas) {
     const kind = tagSurface(area)
-    if (kind !== null) map.fillPolygon(area.geometry.coordinates[0].map(toGround), kind)
+    if (kind === null) continue
+    const outline = area.geometry.coordinates[0].map(toGround)
+    map.fillPolygon(outline, kind)
+    const { amenity, parking } = area.properties as { amenity?: string; parking?: string }
+    if (kind === Surface.Paved && (amenity === 'parking' || parking === 'surface')) map.parkingAreas.push({ outline, angle: longestSideAngle(outline) })
   }
   for (const park of data.parks) map.fillPolygon(park.geometry.coordinates[0].map(toGround), Surface.Park)
+  map.pitches = findPitches(data)
   for (const plot of extra.plots ?? []) map.fillPolygon(plot, Surface.Plot)
   for (const outline of extra.paved ?? []) map.fillPolygon(outline, Surface.Paved)
 

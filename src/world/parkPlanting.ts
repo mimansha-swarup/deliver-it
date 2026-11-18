@@ -18,6 +18,7 @@ import {
   type GroundPoint,
 } from './worldUtils'
 import { PARK_SPECIES, plantTree, SPECIES } from './treeSpecies'
+import { isPitch } from './pitches'
 
 /** Trees are tried on a grid this wide, in metres, then nudged so they don't look planted. */
 const TREE_GRID = 9
@@ -61,6 +62,8 @@ export function plantParks(
     if (!isRingInPlayArea(ring)) continue
 
     const outline = toOutline(ring)
+    // A sports pitch is kept clear for the game (pitches.ts); the draws still happen, so every park after stays as it was.
+    const pitch = isPitch(park)
     const xs = outline.map(([x]) => x)
     const zs = outline.map(([, z]) => z)
 
@@ -72,7 +75,7 @@ export function plantParks(
         random()
         const variation = random()
 
-        if (random() > TREE_CHANCE) continue
+        if (random() > TREE_CHANCE || pitch) continue
         if (!isInsideOutline(outline, x, z) || !isInsideBounds(x, z, 3)) continue
         if (isNearBuilding(collisions, x, z, TREE_CLEARANCE) || !surfaceAllows(x, z, 'tree')) continue
         if (!isClearOfRoads(roads, x, z, TREE_CLEARANCE) || !isClearOfRoads(paths, x, z, TREE_CLEARANCE)) continue

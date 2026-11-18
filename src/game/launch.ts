@@ -32,6 +32,7 @@ export const WORLD_PARTS = {
   landmarks: 'Shop signs',
   shopPeople: 'Shopkeepers and customers',
   fuel: 'Petrol bunks',
+  pitches: 'Sports pitches',
   temples: 'Temples, mosques and churches',
   fences: 'Walls, fences and railings',
   boundary: 'The edge of the map',

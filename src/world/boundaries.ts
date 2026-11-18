@@ -100,11 +100,23 @@ function signedArea(outline: GroundPoint[]): number {
 }
 
 /** Joins panels that follow on from each other into runs, and makes them solid. */
+/** Whether a run carried on to `to` stays straight: within about 3° of its own direction. */
+function isStraightOn(run: FenceRun, to: GroundPoint): boolean {
+  const ax = run.to[0] - run.from[0]
+  const az = run.to[1] - run.from[1]
+  const bx = to[0] - run.to[0]
+  const bz = to[1] - run.to[1]
+  const lengths = Math.hypot(ax, az) * Math.hypot(bx, bz)
+  return lengths > 0 && (ax * bx + az * bz) / lengths > 0.9986
+}
+
 function joinPanels(panels: Panel[], kind: FenceKind, variation: number, collisions: CollisionWorld): FenceRun[] {
   const runs: FenceRun[] = []
   let current: FenceRun | null = null
   for (const [from, to] of panels) {
-    if (current && current.to[0] === from[0] && current.to[1] === from[1]) {
+    // Joined only where the panels run on in the same direction: joined round a corner, the run
+    // would be drawn (and made solid) straight from its start to its end, across the corner.
+    if (current && current.to[0] === from[0] && current.to[1] === from[1] && isStraightOn(current, to)) {
       current.to = to
       continue
     }

@@ -9491,3 +9491,52 @@ Screenshots: `world-pass.local/shots/fu2b` (27th Main and 24th Main, High and Lo
 
 ### Performance
 On Low the shop trees are solid canopies like all the others; item 5's tree thinning covers them too.
+
+## 2026-11-18: Entry 170, concrete, petrol bunks and sports pitches
+
+### What I did
+- **A concrete material** (`concreteColor` in groundShaders.ts): poured slabs 3 m square with
+  dark sawn joints, each slab its own shade, broad blotches, grit, tyre grime, oil drips (more
+  where vehicles stand, and a little shinier) and the odd cracked slab. All in the shader, no
+  texture, so Low has it too.
+- **Paved ground on the map** (parking, school and college yards, markets, bus stands) was
+  drawn as worn soil. The cover map (groundCover.ts) now has a second byte a metre for paving,
+  and the soil shader lays the concrete there. Car parks get faded white bays, 2.5 m by 5 m in
+  pairs of rows either side of a 6 m aisle, turned along the car park's longest side (the angle
+  is in that byte).
+- **Petrol bunk forecourts** (FuelStations.tsx): the forecourt is the concrete, with most oil
+  in the lanes by the pumps; a yellow lane painted round each island, white arrows in and out.
+  The islands have a kerb painted yellow and black, a raised top, a bollard past each end and a
+  hose on each pump. **A car filling up and a scooter** at the pumps, and **the attendant** at
+  the car (fuelStationData.ts, `pumpVisitors`).
+- **The empty field beside the pump is the bunk's yard now.** Where there's open ground at one
+  end (7 to 18 m, clear of buildings and streets, the bunk's own driveways allowed), the
+  forecourt runs on into a paved yard with the office (plaster, the company's colours along the
+  top, a black water tank), the air and water stand, drums, and the staff's car and bikes. The
+  compound wall goes round it. 6 of the 10 bunks have one. Beside 2 others, on open ground past
+  the forecourt, **a tyre puncture shop**: a tin shed, tyres stacked out front, a compressor, a
+  board in Kannada and English, two vehicles waiting and the mechanic.
+- **Sports pitches** (pitches.ts, SportsPitches.tsx): the map's 17 pitches were plain lawn and
+  read as empty fields. Cricket grounds are worn to the red earth round the middle, with a
+  rolled clay strip, creases and stumps, and kids playing (batter, keeper, bowler, four
+  fielders); basketball courts are red oxide with their lines and two hoops; tennis, badminton
+  and volleyball courts are green with a net; football grounds get goals; kabaddi an earth court.
+  Parks no longer plant trees on a pitch.
+
+### Two bugs found on the way
+- **Walls cut across corners.** `joinPanels` (boundaries.ts) joined any two wall panels that
+  touched into one straight run, even round a corner, so a loop could be drawn, and made solid, as
+  a diagonal from one corner to another. Panels now join only when they run on within 3°. It
+  showed as a wall across a petrol bunk's new yard; it could have happened on any walled loop.
+- **Half the bunks were drawn mirrored.** The drawing frame (`stationMatrix`) runs along the road
+  whichever way keeps faces the right way out, but the placement (`spotOf`) doesn't. Anything not
+  the same at both ends (the price sign, now the yard, office and tyre shop) was drawn at the
+  other end from where it's solid on four of the ten bunks. Mirrored to match now.
+
+Screenshots: `world-pass.local/shots/fu3-before` (before), `fu3k` (the pump), `fu3j` (the yard),
+`fu3-cricket`, `fu3-court`.
+
+### Performance
+Paving is one branch in the soil shader, taken only on paved ground. The cover map is two
+bytes a metre now, 23 MB on the GPU (11 MB before). The bunks are still three meshes for all of
+them, plus one for the paint and one for the pads; the pitches one mesh; the tyre shops two.

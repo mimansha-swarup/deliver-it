@@ -17,6 +17,9 @@ export const GROUND_PALETTE = {
   /** Grass and weeds over the soil: sun-dried and green, mixed in broad patches. */
   grassDry: '#8c8650',
   grassGreen: '#5d7a3c',
+  /** Poured concrete: forecourts, parking, school yards. A warm grey, weathered. */
+  concrete: '#8d8981',
+  oil: '#2c2925',
 }
 
 /** Smooth value noise, and noise in layers, from world position in metres. */
@@ -53,6 +56,40 @@ const NOISE_GLSL = /* glsl */ `
     float texel = groundLuma(texture2D(photo, uv).rgb);
     float average = groundLuma(textureLod(photo, uv, 16.0).rgb);
     return mix(1.0, texel / max(average, 0.02), amount);
+  }
+`
+
+/**
+ * Poured concrete in slabs (needs NOISE_GLSL): `p` in metres, laid in slabs `slab` metres square
+ * with dark sawn joints, each slab a shade of its own, broad blotches, fine grit, tyre grime and
+ * oil stains, `stains` as how many (0 to 1, more where vehicles stand). Returns the colour; `wear`
+ * comes back 1 on the darkest stains, for less roughness there (oil shines a little).
+ */
+const CONCRETE_GLSL = /* glsl */ `
+  vec3 concreteColor(vec2 p, vec3 base, vec3 oil, float slab, float stains, out float wear) {
+    vec2 cell = floor(p / slab);
+    vec2 inSlab = fract(p / slab) * slab;
+    float toJoint = min(min(inSlab.x, slab - inSlab.x), min(inSlab.y, slab - inSlab.y));
+    // A joint: 1 cm sawn, softened a little so it doesn't shimmer far off.
+    float joint = 1.0 - smoothstep(0.012, 0.05, toJoint);
+    float tone = 0.93 + 0.12 * groundHash(cell + 3.7);
+    float blotch = groundLayers(p * 0.14 + 11.0);
+    float grit = groundLayers(p * 2.3 + 5.0);
+    vec3 color = base * tone * (0.9 + 0.18 * blotch) * (0.94 + 0.1 * grit);
+    // Grime along the joints and in broad patches where tyres run.
+    float grime = smoothstep(0.5, 0.85, groundLayers(p * 0.32 + 31.0));
+    color *= 1.0 - 0.12 * grime - 0.06 * (1.0 - smoothstep(0.0, 0.18, toJoint));
+    color *= 1.0 - 0.45 * joint;
+    // Oil: dark round drips, more and bigger where vehicles stand.
+    float drip = groundLayers(p * 0.85 + 71.0);
+    float spot = smoothstep(0.78 - 0.16 * stains, 0.84 - 0.16 * stains, drip) * (0.55 + 0.45 * groundNoise(p * 3.1));
+    color = mix(color, oil, spot * (0.35 + 0.4 * stains));
+    // An odd cracked or patched slab: darker, and a hairline across it.
+    float cracked = step(0.9, groundHash(cell + 19.1));
+    float hairline = 1.0 - smoothstep(0.0, 0.025, abs(inSlab.x - inSlab.y * 0.6 - slab * 0.2 + 0.25 * (groundNoise(p * 1.7) - 0.5)));
+    color *= 1.0 - cracked * (0.06 + 0.35 * hairline);
+    wear = spot;
+    return color;
   }
 `
 
@@ -224,6 +261,8 @@ export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
     uSoilBase: { value: linear(GROUND_PALETTE.soilBase) },
     uSoilDry: { value: linear(GROUND_PALETTE.soilDry) },
     uSoilDamp: { value: linear(GROUND_PALETTE.soilDamp) },
+    uConcrete: { value: linear(GROUND_PALETTE.concrete) },
+    uOil: { value: linear(GROUND_PALETTE.oil) },
   }
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms)
@@ -241,8 +280,11 @@ export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
         uniform vec3 uSoilBase;
         uniform vec3 uSoilDry;
         uniform vec3 uSoilDamp;
+        uniform vec3 uConcrete;
+        uniform vec3 uOil;
         varying vec2 vSoil;
         ${NOISE_GLSL}
+        ${CONCRETE_GLSL}
         void main() {`,
       )
       .replace(
@@ -260,7 +302,8 @@ export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
         // Outside the map, fields: about half covered.
         vec2 coverUv = (vSoil - uCoverArea.xy) / uCoverArea.zw;
         float inMap = step(0.0, coverUv.x) * step(coverUv.x, 1.0) * step(0.0, coverUv.y) * step(coverUv.y, 1.0);
-        float cover = mix(0.55, texture2D(uCover, coverUv).r, inMap);
+        vec2 coverTexel = texture2D(uCover, coverUv).rg;
+        float cover = mix(0.55, coverTexel.r, inMap);
         float clumps = groundLayers(vSoil * 0.35 + 21.0);
         float patches = smoothstep(0.42, 0.62, cover * 0.9 + (clumps - 0.5) * 0.7 + (middle - 0.5) * 0.3);
         vec3 grass = mix(uGrassDry, uGrassGreen, smoothstep(0.3, 0.75, broad * 0.5 + groundLayers(vSoil * 0.09 + 5.0) * 0.5));
@@ -269,8 +312,64 @@ export function patchSoil(material: THREE.MeshStandardMaterial): SoilUniforms {
         soil = mix(soil, grass, patches);
         vec2 outside2 = max(uNewSoilArea.xy - vSoil, vSoil - uNewSoilArea.zw);
         float inArea = 1.0 - smoothstep(0.0, 30.0, max(outside2.x, outside2.y));
+        // Paved ground on the map (groundCover.ts): parking, school yards, markets. Its green
+        // channel: 0 none, 0.25 paved, 0.4 to 1 parking, its bays turned by that much of half a turn.
+        float pavedCode = coverTexel.g * inMap;
+        if (pavedCode > 0.08) {
+          float paved = smoothstep(0.1, 0.22, pavedCode);
+          float parking = step(0.37, pavedCode);
+          float turn = (pavedCode - 0.4) / 0.6 * 3.14159265;
+          vec2 slabs = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * vSoil;
+          float concreteWear;
+          vec3 concrete = concreteColor(slabs, uConcrete, uOil, 3.0, 0.35 + 0.4 * parking, concreteWear) * mix(1.0, detail, 0.5);
+          // Parking bays: faded white lines every 2.5 m, 5 m long, in pairs of rows either side of a 6 m aisle.
+          float row = mod(slabs.y, 16.0);
+          float inBay = step(0.4, row) * step(row, 5.4) + step(10.6, row) * step(row, 15.6);
+          float bayLine = 1.0 - smoothstep(0.05, 0.08, abs(mod(slabs.x, 2.5) - 1.25));
+          float rowEnd = (1.0 - smoothstep(0.05, 0.08, abs(row - 5.4))) + (1.0 - smoothstep(0.05, 0.08, abs(row - 10.6)));
+          float paint = parking * clamp(bayLine * inBay + rowEnd, 0.0, 1.0) * (0.45 + 0.4 * groundLayers(slabs * 0.9 + 9.0));
+          concrete = mix(concrete, vec3(0.78, 0.77, 0.72), paint * 0.7);
+          soil = mix(soil, concrete, paved);
+        }
         diffuseColor.rgb = mix(oldSoil, soil, inArea);`,
       )
   }
   return uniforms
+}
+
+// ---------------------------------------------------------------------------
+// Concrete
+
+/**
+ * A concrete forecourt (FuelStations.tsx): needs the geometry's uv in metres, along its slabs,
+ * and `aStain`, 0 to 1, how many oil stains (most at the pumps).
+ */
+export function patchConcrete(material: THREE.MeshStandardMaterial) {
+  const uniforms = { uConcrete: { value: linear(GROUND_PALETTE.concrete) }, uOil: { value: linear(GROUND_PALETTE.oil) } }
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms)
+    shader.vertexShader = shader.vertexShader.replace(
+      'void main() {',
+      `attribute float aStain;
+      varying vec2 vSlab;
+      varying float vStain;
+      void main() {
+        vSlab = uv;
+        vStain = aStain;`,
+    )
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        `uniform vec3 uConcrete;
+        uniform vec3 uOil;
+        varying vec2 vSlab;
+        varying float vStain;
+        float concreteWear;
+        ${NOISE_GLSL}
+        ${CONCRETE_GLSL}
+        void main() {`,
+      )
+      .replace('#include <color_fragment>', `diffuseColor.rgb = concreteColor(vSlab, uConcrete, uOil, 3.0, vStain, concreteWear);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n        roughnessFactor *= 1.0 - 0.35 * concreteWear;`)
+  }
 }
