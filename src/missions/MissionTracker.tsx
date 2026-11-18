@@ -88,6 +88,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     livePlayer.x = state.x
     livePlayer.z = state.z
     livePlayer.heading = state.heading
+    livePlayer.bumps = state.bumpCount
+    livePlayer.gentle = state.gentleCount
 
     const travelSpeed = getTravelSpeed(state)
     const stop = getCurrentStop(game.mission, game.phase)

@@ -31,7 +31,7 @@ const delivered = (event: CareerEvent, test: (reward: Reward, event: CareerEvent
 export const CHAPTER_ONE = {
   title: 'First week in HSR',
   intro:
-    "Namaskara! Ravi here, from dispatch. Welcome to HSR, maga. Your first order is waiting at the dark store. Bega banni!",
+    "Namaskara! Ravi here, from dispatch. Welcome to HSR, maga. Ride around, and go online from your phone whenever you want orders.",
   rewardCredits: 300,
   rewardPaint: 'dark-store-green',
   goals: [

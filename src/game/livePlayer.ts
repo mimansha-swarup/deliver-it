@@ -5,7 +5,8 @@ import { createSkyState, getSkyLook } from '../sky/skyLogic'
  * direction arrow. They're plain objects rather than store state, so that
  * writing to them 60 times a second doesn't re-render anything.
  */
-export const livePlayer = { x: 0, z: 0, heading: 0 }
+/** `bumps` and `gentle`: hard and gentle landings so far (ScooterController), for the tutorial. */
+export const livePlayer = { x: 0, z: 0, heading: 0, bumps: 0, gentle: 0 }
 
 /** The sky as it looks right now, worked out each frame by the Sky component. */
 export const liveSky = {

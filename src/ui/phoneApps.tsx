@@ -17,6 +17,7 @@ import { QualityPicker } from './QualityPicker'
 import { DISPATCHER } from '../game/career'
 import { setMapOpen } from './uiState'
 import { KeyList } from './HelpOverlay'
+import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 
 /*
@@ -690,7 +691,15 @@ function ControlsList() {
   return <KeyList editable />
 }
 
-/** More settings: the tutorial (Entry 150). */
+/** The tutorial, to play again. */
 function SettingsExtras() {
-  return null
+  const running = useTutorial((state) => state.step !== null)
+  return (
+    <section className="app-card">
+      <p className="app-card-title">Tutorial</p>
+      <button type="button" className="app-wide-button" disabled={running} onClick={(event) => { useTutorial.getState().start(); event.currentTarget.blur() }}>
+        {running ? 'Tutorial running' : 'Replay the tutorial'}
+      </button>
+    </section>
+  )
 }

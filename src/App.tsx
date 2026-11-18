@@ -24,6 +24,7 @@ import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 import { DutyUi } from './ui/DutyUi'
+import { Tutorial } from './ui/Tutorial'
 import { Minimap } from './ui/Minimap'
 import { FullMap } from './ui/FullMap'
 import { PhotoModeUi } from './ui/PhotoMode'
@@ -57,6 +58,7 @@ function RidingUi() {
       <div className="riding-ui" hidden={photoMode}>
       <Hud />
       <DutyUi />
+      <Tutorial />
       <ChatBubbles />
       <PlayerHorn />
       <RadioPlayer />

@@ -8998,3 +8998,28 @@ The phone's tabs are gone. It works like a phone now (`src/ui/Phone.tsx` for the
   current binding.
 
 Checked: phone moved to K opens and closes the phone and P does nothing; reset brings P back.
+
+## 2026-11-18: Entry 151, the tutorial
+
+### What I did
+- **When it runs** (`src/game/tutorial.ts`): on first play when no `tutorialDone` flag is saved.
+  Returning players skip it: a save from before the tutorial existed, with progress in it,
+  counts as done. `?tutorial=1` forces it, and Settings → Replay the tutorial runs it again.
+  For a new rider it replaces the career's welcome, so there's one greeting, not two.
+- **How it teaches** (`src/ui/Tutorial.tsx`): Ravi introduces each step in chat (peeking the
+  phone), and a card top-left says what to do in the keys as currently set, with **Skip step**
+  and **Skip tutorial** at every step. Each step finishes when the rider has done it:
+  1. ride and steer;
+  2. take a speed breaker slowly (the scooter now counts gentle landings; a hard one gets "Too
+     fast, maga!"; with no breaker in a minute, a firm stop from speed will do);
+  3. open the phone and go online in Deliver It (O works too);
+  4. accept the first order, which comes at once and waits for an answer;
+  5. follow the arrow and minimap to the dark store on 27th Main, a short ride from home;
+  6. open the full map;
+  7. deliver, and see the rating and tip;
+  8. optionally, two of drift, nitro, horn and radio;
+  9. go offline and see the shift summary.
+- The career's welcome no longer says an order is waiting, as in free roam it isn't.
+
+Checked end to end with `?tutorial=1`: every step advances, Skip works, and `tutorialDone` is
+saved at the end. A speed breaker sits just ahead of the start, so step 2 is right there.

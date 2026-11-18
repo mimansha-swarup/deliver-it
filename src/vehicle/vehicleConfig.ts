@@ -106,6 +106,8 @@ export const SCOOTER = {
    * jolt, and a fragile order doesn't mind. Riding over one slowly is what a careful rider does.
    */
   bumpSpeedShare: 0.5,
+  /** A landing at least this hard (metres a second) counts as going over a breaker or into a pothole, however slowly. */
+  gentleLanding: 0.25,
   landingSpeedLoss: 0.12,
   /** How wet the ground must be to splash, from 0 to 1, and how fast the scooter must go, in m/s. */
   splashWetness: 0.25,

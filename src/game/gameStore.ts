@@ -18,6 +18,7 @@ import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
 import type { WeatherName } from '../sky/skyLogic'
 import { livePlayer, liveSky } from './livePlayer'
+import { shouldStartTutorial, useTutorial } from './tutorial'
 import {
   acceptanceRate,
   ANSWERS_KEPT,
@@ -214,6 +215,8 @@ type GameState = Telemetry & {
   /** Moves an offer's deadline on, as photo mode does for the time it was paused. */
   extendOffer: (ms: number) => void
   setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
+  /** A line from Ravi: a message, a chat line while online, a peek on the phone. */
+  raviSays: (text: string) => void
   /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
   customerCancels: () => void
 }
@@ -452,9 +455,12 @@ export const useGameStore = create<GameState>()(
           // Saves from before the daily challenges went quiet hold Ravi's old daily announcements: drop them.
           const quiet = state.messages.filter((message) => !message.text.startsWith("Today's shift is on your phone"))
           if (quiet.length !== state.messages.length) changes.messages = quiet
+          // A new rider gets the tutorial, which greets them itself; a returning one skips it.
+          const tutorial = shouldStartTutorial(state.career.started || state.xp > 0 || state.credits > 0)
+          if (tutorial) useTutorial.getState().start()
           if (!state.career.started) {
             changes.career = { ...state.career, started: true }
-            changes.messages = addMessages(changes.messages ?? state.messages, [CHAPTER_ONE.intro])
+            if (!tutorial) changes.messages = addMessages(changes.messages ?? state.messages, [CHAPTER_ONE.intro])
           }
           return changes
         }),
@@ -702,6 +708,7 @@ export const useGameStore = create<GameState>()(
   setHome: (home) => set({ home }),
   setLastPosition: (lastPosition) => set({ lastPosition }),
   setWaypoint: (waypoint) => set({ waypoint }),
+  raviSays: (text) => set((state) => ({ messages: addMessages(state.messages, [text]) })),
   setPlaces: (places) => set({ places }),
   setPhotoMode: (photoMode) => set({ photoMode }),
   extendOffer: (ms) => set((state) => (state.offer ? { offer: { ...state.offer, expiresAt: state.offer.expiresAt + ms } } : state)),

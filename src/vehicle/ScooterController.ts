@@ -62,6 +62,8 @@ export type ScooterState = {
   /** Hard landings so far, and how hard the last was, from 0 to 1. `PlayerSounds` thuds for each. */
   bumpCount: number
   bump: number
+  /** Breakers and potholes taken slowly enough not to be a bump (the tutorial counts these). */
+  gentleCount: number
   /** How much water the tyres are in, eased so the grip comes back over a moment. */
   puddle: number
   /** Splashes so far, and how fast the scooter was going through the last, in m/s. `Splashes` throws water for each. */
@@ -161,6 +163,7 @@ export function createScooterState(): ScooterState {
     rearWheel: { height: ROAD_HEIGHT, fall: 0, wet: 0 },
     bumpCount: 0,
     bump: 0,
+    gentleCount: 0,
     puddle: 0,
     splashCount: 0,
     splashSpeed: 0,
@@ -721,6 +724,8 @@ function updateWheelContacts(state: ScooterState, surface: Surface, wetness: num
 
   // A hard landing jolts the camera, thuds, and costs a little speed. Taken slowly, it's no bump at all.
   const slow = speed < tuning.maxSpeed * SCOOTER.bumpSpeedShare
+  // A breaker or pothole taken slowly: no bump, but worth knowing about.
+  if (slow && landing > SCOOTER.gentleLanding && state.crashLeft === 0 && speed > 0.5) state.gentleCount++
   if (landing > SCOOTER.joltSpeed && state.crashLeft === 0 && !slow) {
     const strength = Math.min(1, (landing - SCOOTER.joltSpeed) / 2)
     state.bump = strength
