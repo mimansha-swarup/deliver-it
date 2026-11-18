@@ -8549,3 +8549,60 @@ house-kit meshes, so no new draw calls.
 
 ### Try it
 `?spawn=residential-street`: tile roofs, outside stairs and grille balconies along 13th Cross.
+
+## 2026-11-18: Entry 128, the reviewer's regression: stutters at the start of riding, and load
+
+### What the reviewer saw
+On Sarjapur Road, 2× Retina, High: 55–68 FPS (about 120 the night before), 35 frames over 20 ms in
+6 s, worst about 40 ms; 13–16 s to ride (about 7 s before).
+
+### What I measured first
+`scripts/bench.mjs --ride` (new): rides forward and records what a player sees, frame intervals,
+frames over 20 ms, the worst, and whether a shader compiled in a long frame. `--dpr 2` emulates a
+sharp screen, `--profile-load` profiles loading and the first seconds of riding. Last night's
+`main` (c3d2d71) against this pass, side by side, and in my own Chrome on the Retina screen:
+
+- **No shader compiles while riding**, in either build: the count of GPU programs doesn't
+  change after loading, traffic's first appearance included (WarmAssets already prepares them).
+- **Pixel ratio:** High already tops out at 1.5 in total, under the cap of 2 asked for.
+- **Traffic:** High still has 40 vehicles; Low went from 16 to 10 in step 2. Both are per preset.
+- **The production build was already faster** than last night's (88–89 FPS against 60–73),
+  and loading the same. The dev server had the regression the reviewer saw, and its first load
+  after the pull also re-optimises dependencies (Vite: "vite config has changed").
+- **Run-to-run noise on this Mac was bigger than any difference between builds.** Last night's
+  build gave 84 FPS once and 55 FPS with 25.5 s to ride another time.
+
+### What was actually wrong, and the fixes
+1. **The first seconds of riding were a run of long frames:** squares of the world round the
+   rider were still being built, and a missing square nearby could take 40–60 ms of a frame.
+   The ride now waits behind the loading screen until they're built (each streamed part reports
+   it, `nearWaiting` in launch.ts, with a 4 s limit), and once riding, nearby squares get 8 ms a
+   frame (`NEAR_BUDGET`).
+2. **A house kit square was slow to build**, more so with step 6's kit: `Int8Array.from(list,
+   fn)` (a callback per number through the iterator protocol) and 24 new vectors per `box`. Both
+   are now plain loops into reused memory.
+3. **Ground heights were looked up again on every refresh** for every tree, lamp and tank, all in
+   one frame. They're worked out once per prop now.
+4. **Load:** `isNearBuilding` checks each footprint's box before measuring its outline (the
+   same answers, without measuring nearly every building in the cell), and the house kit's
+   planning pass skips the drawing maths it never used.
+
+### Before and after (my Chrome, Retina, High, Sarjapur Road, 8 s ride from the moment the screen clears)
+
+| | Ride starts | Planning | FPS | Frames over 20 ms | Worst |
+| --- | --- | --- | --- | --- | --- |
+| Last night's build | 9.4–10.6 s | 6.1–6.9 s | 60 | 33–49 | 83–100 ms |
+| Before these fixes | 10.0 s | 5.4 s | 65 | 36 | 83 ms |
+| After | 8.3 s | 5.1 s | 68 | 21 | 26 ms |
+
+The frames still over 20 ms after the fixes are single missed refreshes on the 120 Hz screen
+(25 ms), not hitches. Planning in the benchmark Chrome: 5.1 s → 3.9 s (house kit 1.42 → 0.82 s,
+traffic lanes 0.55 → 0.27 s).
+
+### Lesson 246: measure the way the player plays
+My benchmark stood still at a locked resolution on a 1×, 60 Hz window, so it never saw the
+squares built as you ride, or the first seconds after the loading screen. The reviewer rode off
+at once. A benchmark has to ride, from the first frame, on the player's screen.
+
+### Try it
+`node --experimental-websocket scripts/bench.mjs --ride --dpr 2 --streets main-road`

@@ -135,6 +135,26 @@ const WASHING_COLORS = ['#c62f5c', '#f2b705', '#2a7fc2', '#ffffff', '#e86a1c', '
 const edgeB = new THREE.Vector3()
 const edgeC = new THREE.Vector3()
 
+/*
+ * Byte versions of normals and colours, written in a plain loop. `Int8Array.from(list, fn)` goes
+ * through the iterator protocol and a callback per number, and building a square of the house
+ * kit while riding spent most of its time there.
+ */
+function toNormalBytes(values: number[]): Int8Array {
+  const bytes = new Int8Array(values.length)
+  for (let i = 0; i < values.length; i++) bytes[i] = Math.round(values[i] * 127)
+  return bytes
+}
+
+function toColorBytes(values: number[]): Uint8Array {
+  const bytes = new Uint8Array(values.length)
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]
+    bytes[i] = Math.round((value < 0 ? 0 : value > 1 ? 1 : value) * 255)
+  }
+  return bytes
+}
+
 /** Collects triangles for one map square: positions, normals and colours, three per corner. */
 class Builder {
   positions: number[] = []
@@ -157,9 +177,13 @@ class Builder {
     if (!this.enabled) return
     const [a, b, c, d] = points
     const facing = edgeB.subVectors(b, a).cross(edgeC.subVectors(c, a)).dot(normal)
-    const order = facing >= 0 ? [a, b, c, a, c, d] : [a, d, c, a, c, b]
-    for (const point of order) {
-      this.positions.push(point.x, point.y, point.z)
+    if (facing >= 0) this.corners(a, b, c, a, c, d, normal, color)
+    else this.corners(a, d, c, a, c, b, normal, color)
+  }
+
+  private corners(p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3, p3: THREE.Vector3, p4: THREE.Vector3, p5: THREE.Vector3, normal: THREE.Vector3, color: THREE.Color) {
+    this.positions.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z, p3.x, p3.y, p3.z, p4.x, p4.y, p4.z, p5.x, p5.y, p5.z)
+    for (let i = 0; i < 6; i++) {
       this.normals.push(normal.x, normal.y, normal.z)
       this.colors.push(color.r, color.g, color.b)
     }
@@ -189,10 +213,10 @@ class Builder {
   toGeometry(): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3))
-    geometry.setAttribute('normal', new THREE.BufferAttribute(Int8Array.from(this.normals, (value) => Math.round(value * 127)), 3, true))
+    geometry.setAttribute('normal', new THREE.BufferAttribute(toNormalBytes(this.normals), 3, true))
     geometry.setAttribute(
       'color',
-      new THREE.BufferAttribute(Uint8Array.from(this.colors, (value) => Math.round(Math.min(1, Math.max(0, value)) * 255)), 3, true),
+      new THREE.BufferAttribute(toColorBytes(this.colors), 3, true),
     )
     geometry.computeBoundingSphere()
     return geometry
@@ -250,8 +274,8 @@ class StainBuilder {
   toGeometry(): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3))
-    geometry.setAttribute('normal', new THREE.BufferAttribute(Int8Array.from(this.normals, (value) => Math.round(value * 127)), 3, true))
-    geometry.setAttribute('color', new THREE.BufferAttribute(Uint8Array.from(this.colors, (value) => Math.round(Math.min(1, Math.max(0, value)) * 255)), 4, true))
+    geometry.setAttribute('normal', new THREE.BufferAttribute(toNormalBytes(this.normals), 3, true))
+    geometry.setAttribute('color', new THREE.BufferAttribute(toColorBytes(this.colors), 4, true))
     geometry.computeBoundingSphere()
     return geometry
   }
@@ -339,7 +363,13 @@ type Wall = {
   exposed: boolean
 }
 
-const corner = new THREE.Vector3()
+/** Reused by `box`, so building a square doesn't make dozens of vectors for every box. */
+const BOX_CORNERS = Array.from({ length: 8 }, () => new THREE.Vector3())
+const BOX_OUT = new THREE.Vector3()
+const BOX_SIDE = new THREE.Vector3()
+const BOX_BACK = new THREE.Vector3()
+const BOX_UP = new THREE.Vector3(0, 1, 0)
+const BOX_DOWN = new THREE.Vector3(0, -1, 0)
 
 /**
  * A box against a wall, from `along` to `along + width`, from `out` to `out + depth`,
@@ -356,28 +386,25 @@ function box(
 ) {
   // Planning only asks where things go; a builder that isn't enabled draws nothing, so skip the maths.
   if (!builder.enabled) return
-  const point = (along: number, out: number, height: number) =>
-    corner
-      .set(
-        wall.start[0] + wall.alongX * along + wall.outX * out,
-        height,
-        wall.start[1] + wall.alongZ * along + wall.outZ * out,
-      )
-      .clone()
-  const outward = new THREE.Vector3(wall.outX, 0, wall.outZ)
-  const sideways = new THREE.Vector3(wall.alongX, 0, wall.alongZ)
-  const up = new THREE.Vector3(0, 1, 0)
+  // The eight corners, worked out once into reused vectors (quad copies them straight away).
+  for (let i = 0; i < 8; i++) {
+    const along = i & 4 ? alongTo : alongFrom
+    const out = i & 2 ? outTo : outFrom
+    BOX_CORNERS[i].set(wall.start[0] + wall.alongX * along + wall.outX * out, i & 1 ? high : low, wall.start[1] + wall.alongZ * along + wall.outZ * out)
+  }
+  const outward = BOX_OUT.set(wall.outX, 0, wall.outZ)
+  const sideways = BOX_SIDE.set(wall.alongX, 0, wall.alongZ)
+  const up = BOX_UP
 
   // Corners named by (along, out, height): 0 is the low end, 1 the high end.
-  const p = (a: 0 | 1, o: 0 | 1, h: 0 | 1) =>
-    point(a ? alongTo : alongFrom, o ? outTo : outFrom, h ? high : low)
+  const p = (a: 0 | 1, o: 0 | 1, h: 0 | 1) => BOX_CORNERS[a * 4 + o * 2 + h]
 
   builder.quad([p(0, 1, 0), p(1, 1, 0), p(1, 1, 1), p(0, 1, 1)], outward, color)
   builder.quad([p(1, 0, 0), p(1, 1, 0), p(1, 1, 1), p(1, 0, 1)], sideways, color)
-  builder.quad([p(0, 1, 0), p(0, 0, 0), p(0, 0, 1), p(0, 1, 1)], sideways.clone().negate(), color)
+  builder.quad([p(0, 1, 0), p(0, 0, 0), p(0, 0, 1), p(0, 1, 1)], BOX_BACK.copy(sideways).negate(), color)
   builder.quad([p(0, 0, 1), p(0, 1, 1), p(1, 1, 1), p(1, 0, 1)], up, color)
-  builder.quad([p(0, 0, 0), p(1, 0, 0), p(1, 1, 0), p(0, 1, 0)], up.clone().negate(), color)
-  if (back) builder.quad([p(1, 0, 0), p(0, 0, 0), p(0, 0, 1), p(1, 0, 1)], outward.clone().negate(), color)
+  builder.quad([p(0, 0, 0), p(1, 0, 0), p(1, 1, 0), p(0, 1, 0)], BOX_DOWN, color)
+  if (back) builder.quad([p(1, 0, 0), p(0, 0, 0), p(0, 0, 1), p(1, 0, 1)], BOX_BACK.copy(outward).negate(), color)
 }
 
 function toWalls(outline: GroundPoint[], collisions: CollisionWorld): Wall[] {
