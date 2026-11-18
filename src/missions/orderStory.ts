@@ -80,7 +80,7 @@ export function createOrderStory(random: () => number, period?: PeriodId): Order
 /** What carrying an item needs, said on the phone while it's on board. */
 export const CARE_HINTS: Record<Care, string> = {
   none: '',
-  fragile: 'Fragile: take breakers and potholes slowly',
+  fragile: 'Fragile: take breakers and potholes below half speed',
   event: 'For an event: arrive on time',
 }
 

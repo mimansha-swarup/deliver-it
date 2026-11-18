@@ -101,6 +101,11 @@ export const SCOOTER = {
   maxLaunch: 1.2,
   /** Landing faster than this, in m/s, is a jolt. Each jolt takes up to this share of the speed. */
   joltSpeed: 0.9,
+  /**
+   * Below this share of the top speed, a breaker or pothole is taken gently: no bump, no thud, no
+   * jolt, and a fragile order doesn't mind. Riding over one slowly is what a careful rider does.
+   */
+  bumpSpeedShare: 0.5,
   landingSpeedLoss: 0.12,
   /** How wet the ground must be to splash, from 0 to 1, and how fast the scooter must go, in m/s. */
   splashWetness: 0.25,

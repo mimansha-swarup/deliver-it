@@ -8736,3 +8736,20 @@ timeline (`street parking: N cars, N bikes`) showed it at once; the fix was in t
 ### Try it
 `?spawn=residential-street`: cars along one kerb, bikes along the other, traffic pulling out
 round them.
+
+## 2026-11-18: Entry 133, breakers taken slowly aren't bumps
+
+### What I did
+A hard landing (off a speed breaker or into a pothole) only counts as a bump above half the
+scooter's top speed (`bumpSpeedShare` in vehicleConfig.ts): 28 km/h on the stock engine, more
+with engine upgrades. Below that there's no bump: no thud, no camera jolt, no lost speed, no
+"Bump!" notice, and a fragile order's customer doesn't mind. The fragile hint now says "below
+half speed".
+
+### Why
+It counted by how far the wheel dropped, not how fast the scooter was going, so easing over a
+breaker at walking pace still upset the customer. Slowing for breakers is what a careful rider
+does, and the game now rewards it.
+
+### Try it
+Accept a fragile order and roll over a breaker slowly: nothing. Take it fast: "Bump!".

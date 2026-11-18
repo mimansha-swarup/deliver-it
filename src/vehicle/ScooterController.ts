@@ -719,8 +719,9 @@ function updateWheelContacts(state: ScooterState, surface: Surface, wetness: num
     wheel.wet = wet
   }
 
-  // A hard landing jolts the camera, thuds, and costs a little speed.
-  if (landing > SCOOTER.joltSpeed && state.crashLeft === 0) {
+  // A hard landing jolts the camera, thuds, and costs a little speed. Taken slowly, it's no bump at all.
+  const slow = speed < tuning.maxSpeed * SCOOTER.bumpSpeedShare
+  if (landing > SCOOTER.joltSpeed && state.crashLeft === 0 && !slow) {
     const strength = Math.min(1, (landing - SCOOTER.joltSpeed) / 2)
     state.bump = strength
     state.bumpCount++
