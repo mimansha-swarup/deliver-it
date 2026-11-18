@@ -8908,3 +8908,9 @@ The shift summary always has a "Best moment" row now. Meeting the shift goal cou
 the best delivery (the biggest tip, the earliest arrival, or a spotless 5★ ride); with nothing
 outstanding, the deliveries done, the distance ridden, or a word that it was a quiet one. Before,
 it only appeared when a delivery scored one, so most short shifts showed nothing.
+
+### Performance, this pass (Entries 136–145)
+Riding Sarjapur Road at an emulated 2× screen on High, side by side with the build before the
+HUD rework: 60 FPS both, frame work 3.6–3.8 / 4.5–4.9 ms (mean / p95) against 3.3–3.5 /
+4.3–4.8 ms, time to ride 4.7–5.2 s against 4.8–5.5 s. The minimap redraws at most 30 times a
+second, as the phone's map did; the full map draws only while open.
