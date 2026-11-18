@@ -9188,3 +9188,23 @@ the barrier file is). No mapped line was near enough to closed to close. 59 ms a
 The bunk's forecourt runs right up to the road, so moving its front corners in put two gate
 pillars in the middle of the forecourt. A loop with an open front keeps its corners where they
 are and counts the front as its way in.
+
+## 2026-11-18: Entry 159, a debug view of the surface map
+
+### What I did
+With `?debug=1`, F8 colours the ground by the surface map (`src/dev/SurfaceDebug.tsx`): road,
+median, footpath, paved, building, park, plot and open ground, each its own colour, with a faint
+metre grid. Press once for the rider's view, twice for the view from 120 m straight above the
+rider (north up), a third time to hide it. A panel lists the colours with each one's area, and
+what the placement fixes did: buildings set back (entry 157), boundaries (158), parked vehicles
+placed and refused (156), and every refusal by the surface map (trees, poles, footpath bikes,
+benches, props).
+
+`scripts/shots.mjs` takes `--press F8,F8` for keys before each shot and `--eval <js>` for a
+script, so the same spots can be shot from above, with and without the overlay.
+
+### Lesson: an overlay belongs on the ground
+I first drew the overlay 0.35 m up, to sit over the raised footpaths, and it showed a median
+across the asphalt of Sarjapur Road. From a rider's eye height, about 1.5 m, a plane 0.35 m up
+lands about 30% further away than the ground it marks. Drawn just over the road, through
+everything, and checked from above, the medians on the map are where the drawn medians are.

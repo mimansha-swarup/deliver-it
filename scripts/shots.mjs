@@ -7,7 +7,8 @@
  *
  * A fresh headless Chrome (your save is untouched, and keys typed elsewhere can't reach it; `--windowed` to watch) with the tutorial marked done, a 1440 × 810
  * window, the clock set to `--hour` and the weather clear, then each spot on High and on Low.
- * Files are <spot>-<quality>.png.
+ * Files are <spot>-<quality>.png. `--press F8` (or `F8,F8`) presses keys before each shot, and
+ * `--eval <js>` runs a script in the page after them.
  */
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -24,6 +25,10 @@ const OUT = option('out', 'shots')
 const SPOTS = option('spots', '27th-main,residential-street,main-road,petrol-pump').split(',')
 const HOUR = Number(option('hour', '10'))
 const QUALITIES = option('qualities', 'High,Low').split(',')
+/** Keys pressed before each shot, by DevTools key code, e.g. `--press F8` for the surface map. */
+const PRESS = option('press', '').split(',').filter(Boolean)
+/** JavaScript run in the page before each shot, after the key presses. */
+const EVAL = option('eval', '')
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 const PORT = 9334
 
@@ -105,6 +110,14 @@ try {
       await evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click(); 'ok'`)
       await sleep(3500)
       await evaluate(SET_SKY)
+      for (const code of PRESS) {
+        await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown', { code: '${code}', key: '${code}' })); 'ok'`)
+        await sleep(800)
+      }
+      if (EVAL) {
+        await evaluate(`(() => { ${EVAL} })(); 'ok'`)
+        await sleep(500)
+      }
       const { data } = await send('Page.captureScreenshot', { format: 'png' })
       const file = join(OUT, `${spot}-${quality.toLowerCase()}.png`)
       writeFileSync(file, Buffer.from(data, 'base64'))

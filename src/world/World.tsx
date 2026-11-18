@@ -45,6 +45,7 @@ import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
 import { createSurfaceMap, worldSurface } from './surfaceMap'
 import { setBuildingsBack } from './buildingSetback'
+import { SurfaceDebug } from '../dev/SurfaceDebug'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
@@ -116,7 +117,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   lap('presets and road index')
   // No building stands on a road or its footpath: trimmed back, made smaller, or replaced by a walled plot.
   const setback = setBuildingsBack(data, roadIndex)
-  worldSurface.report.buildings = setback.report
+  worldSurface.report['buildings set back'] = setback.report
   lap(`building setback: ${JSON.stringify(setback.report)}`)
   // Shops on the ground floor of nearly every building along shop streets and main roads, as on 27th Main.
   const groundFloorShops = addGroundFloorShops(data.buildings, data.roads, roadIndex)
@@ -236,6 +237,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     roadIndex,
   })
   lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes; refused ${JSON.stringify(parking.rejected)}`)
+  worldSurface.report['parked vehicles'] = { cars: parking.cars.length, bikes: parking.bikes.length, ...Object.fromEntries(Object.entries(parking.rejected).map(([why, count]) => [`refused, ${why}`, count])) }
   const physics = createCrashPhysics(rapier, collisions)
   lap('parked scooters and physics')
   const features = placeRoadFeatures(graph)
@@ -389,6 +391,7 @@ export function World() {
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>
+        {isDebug() && <SurfaceDebug surface={surfaceMap} />}
         <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} home={home} /></Part>
       </WarmAssets>
     </Suspense>
