@@ -70,6 +70,8 @@ export type Mission = {
   dropCount: number
   /** Finish within this time for the bonus. It depends on the route's length. */
   onTimeSeconds: number
+  /** The whole trip by road, from the rider to the store and on to the last customer, in metres. */
+  routeLength: number
 }
 
 export type Reward = {

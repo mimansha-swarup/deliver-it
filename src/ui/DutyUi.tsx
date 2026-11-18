@@ -3,7 +3,7 @@ import { useGameStore } from '../game/gameStore'
 import { CANCEL_PENALTY, dayPeriod, formatHour, OFFER_SECONDS, type ShiftGoal, type ShiftSummary } from '../game/duty'
 import { liveSky } from '../game/livePlayer'
 import { MISSION_RULES } from '../game/missionConfig'
-import { CARE_HINTS } from '../missions/orderStory'
+import { playPing } from '../audio/uiSounds'
 
 /*
  * Being on or off duty, on screen: a badge saying which, an order offer to accept or decline, the
@@ -75,7 +75,20 @@ function DutyBadge() {
   )
 }
 
-/** A new order: where, what, roughly what it pays, and a bar running down to the answer. */
+/** Seconds left on an offer when a second ping reminds the rider. */
+const OFFER_REMINDER_AT = 5
+/** The countdown ring's size, in SVG units. */
+const RING_RADIUS = 18
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS
+
+function formatDistance(metres: number): string {
+  return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres / 10) * 10} m`
+}
+
+/**
+ * A new order, bottom centre above the rider: what, for whom, how far, roughly what it pays, and a
+ * ring running down to the answer. It pings and pulses as it arrives, and pings again near the end.
+ */
 function OfferCard() {
   const offer = useGameStore((state) => state.offer)
   const accept = useGameStore((state) => state.acceptOffer)
@@ -84,41 +97,59 @@ function OfferCard() {
 
   useEffect(() => {
     if (!offer) return
-    const timer = window.setInterval(() => setNow(performance.now()), 200)
+    playPing('offer')
+    let reminded = false
+    const timer = window.setInterval(() => {
+      const time = performance.now()
+      setNow(time)
+      if (!reminded && offer.expiresAt - time <= OFFER_REMINDER_AT * 1000) {
+        reminded = true
+        playPing('reminder')
+      }
+    }, 100)
     return () => window.clearInterval(timer)
   }, [offer])
 
   if (!offer) return null
   const { mission } = offer
-  const left = Math.max(0, (offer.expiresAt - now) / 1000)
+  const left = Math.max(0, Math.min(OFFER_SECONDS, (offer.expiresAt - now) / 1000))
   const period = dayPeriod(liveSky.hours)
   const base = MISSION_RULES.baseCredits * mission.dropCount + mission.tier.extraCredits
   const pay = base + Math.round(base * period.payShare)
-  const kind = mission.kind === 'rush' ? 'Rush' : mission.kind === 'double' ? 'Double drop' : null
+  const kind = mission.kind === 'rush' ? 'Rush' : mission.kind === 'double' ? 'Double' : null
 
   return (
-    <section className="hud-card duty-offer" role="alertdialog" aria-label="New order">
-      <p className="duty-offer-top">
-        <strong>New order</strong>
-        {kind && <span className="duty-offer-kind">{kind}</span>}
-        <span className="duty-offer-pay">{pay}+ credits</span>
-      </p>
-      <p>{mission.story.item} for {mission.story.customer}</p>
-      <p className="hud-detail">
-        {mission.pickup.name} → {mission.customer.name} · {mission.tier.label}
-      </p>
-      {mission.story.care !== 'none' && <p className="duty-offer-care">{CARE_HINTS[mission.story.care]}</p>}
-      <span className="duty-offer-timer" aria-hidden="true">
-        <span style={{ width: `${(left / OFFER_SECONDS) * 100}%` }} />
-      </span>
-      <p className="duty-offer-buttons">
+    <section className="duty-offer" role="alertdialog" aria-label="New order" data-hurry={left <= OFFER_REMINDER_AT}>
+      <svg className="duty-offer-ring" viewBox="0 0 44 44" aria-hidden="true">
+        <circle cx="22" cy="22" r={RING_RADIUS} className="duty-offer-ring-track" />
+        <circle
+          cx="22"
+          cy="22"
+          r={RING_RADIUS}
+          className="duty-offer-ring-left"
+          strokeDasharray={RING_LENGTH}
+          strokeDashoffset={RING_LENGTH * (1 - left / OFFER_SECONDS)}
+        />
+        <text x="22" y="22">{Math.ceil(left)}</text>
+      </svg>
+      <div className="duty-offer-body">
+        <p className="duty-offer-top">
+          <strong>{mission.story.item}</strong>
+          {kind && <span className="duty-offer-kind">{kind}</span>}
+          {mission.story.care !== 'none' && <span className="duty-offer-care">{mission.story.care === 'fragile' ? 'Fragile' : 'Event'}</span>}
+        </p>
+        <p className="hud-detail">
+          for {mission.story.customer} · {formatDistance(mission.routeLength)} · <span className="duty-offer-pay">{pay}+ credits</span>
+        </p>
+      </div>
+      <div className="duty-offer-buttons">
         <button type="button" className="duty-accept" onClick={(event) => { accept(); event.currentTarget.blur() }}>
-          Accept <kbd>Y</kbd>
+          <kbd>Y</kbd> Accept
         </button>
         <button type="button" className="duty-decline" onClick={(event) => { decline(); event.currentTarget.blur() }}>
-          Decline <kbd>X</kbd>
+          <kbd>X</kbd>
         </button>
-      </p>
+      </div>
     </section>
   )
 }

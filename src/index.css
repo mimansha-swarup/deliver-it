@@ -2076,63 +2076,122 @@ body,
 }
 
 .duty-offer {
-  top: 60px;
-  right: 12px;
-  width: min(300px, calc(100vw - 32px));
+  position: fixed;
+  left: 50%;
+  bottom: 150px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(440px, calc(100vw - 32px));
   box-sizing: border-box;
-  display: grid;
-  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  color: #f4f1e8;
   background: rgb(15 17 21 / 90%);
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
-  animation: message-in 0.25s ease-out;
+  transform: translateX(-50%);
+  font-size: 13px;
+  line-height: 1.3;
+  animation: offer-arrive 0.6s ease-out;
+}
+
+.duty-offer p {
+  margin: 0;
+}
+
+.duty-offer-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .duty-offer-top {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
-.duty-offer-kind {
+.duty-offer-top strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.duty-offer-kind,
+.duty-offer-care {
+  flex: none;
   padding: 0 6px;
   border-radius: 4px;
   color: #10231a;
   background: #ffb02e;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.duty-offer-pay {
-  margin-left: auto;
-  color: #3ddc97;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .duty-offer-care {
-  color: #ffb02e;
-  font-size: 12px;
+  background: #ea8fb6;
 }
 
-.duty-offer-timer {
-  display: block;
-  height: 4px;
-  margin: 4px 0 2px;
-  border-radius: 2px;
-  background: rgb(244 241 232 / 15%);
-  overflow: hidden;
+.duty-offer-pay {
+  color: #3ddc97;
+  font-weight: 700;
 }
 
-.duty-offer-timer span {
-  display: block;
-  height: 100%;
-  background: #3ddc97;
-  transition: width 0.2s linear;
+.duty-offer-ring {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  transform: rotate(-90deg);
+}
+
+.duty-offer-ring circle {
+  fill: none;
+  stroke-width: 4;
+}
+
+.duty-offer-ring-track {
+  stroke: rgb(244 241 232 / 15%);
+}
+
+.duty-offer-ring-left {
+  stroke: #3ddc97;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+.duty-offer[data-hurry='true'] .duty-offer-ring-left {
+  stroke: #ff6b5e;
+}
+
+.duty-offer-ring text {
+  fill: #f4f1e8;
+  font-size: 14px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+  transform: rotate(90deg);
+  transform-origin: 22px 22px;
+}
+
+@keyframes offer-arrive {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px) scale(0.96);
+  }
+  45% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.04);
+    box-shadow: 0 0 0 6px rgb(61 220 151 / 35%), 0 8px 24px rgb(0 0 0 / 35%);
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+  }
 }
 
 .duty-offer-buttons,
 .duty-question-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .duty-question-buttons {
@@ -2143,7 +2202,8 @@ body,
 .duty-offer button,
 .duty-question button {
   flex: 1;
-  padding: 8px;
+  padding: 8px 10px;
+  white-space: nowrap;
   border: 0;
   border-radius: 6px;
   font: inherit;

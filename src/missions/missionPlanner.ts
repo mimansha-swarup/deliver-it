@@ -199,6 +199,7 @@ export function createMissionPlanner(
       waiting: findWaitingSpot(customer),
       story,
       onTimeSeconds: kind === 'rush' ? Math.ceil(normalTime * MISSION_RULES.rushTimeShare) : normalTime,
+      routeLength: Math.round(routeLength),
     }
   }
 

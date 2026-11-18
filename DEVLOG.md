@@ -8814,3 +8814,16 @@ underneath. M is still the weather.
 
 ### Try it
 Off duty, press Tab, click somewhere across town, close the map and follow the blue route.
+
+## 2026-11-18: Entry 138, order offers at the bottom centre
+
+### What I did
+The order offer is a compact card bottom centre, just above the rider: the item, the customer,
+the whole trip by road (store and drop-off), the pay, Y to accept and X to decline, with a ring
+counting down the 15 s (it turns red in the last five). It arrives with a soft rising ping and a
+short green pulse, and pings again at 5 s left. Pings are synthesized tones on the effects bus
+(`src/audio/uiSounds.ts`), so there are no sound files to load. Missions now carry their trip
+length (`routeLength`).
+
+### Why
+Top right was out of the way of the road, which is where the rider is looking.
