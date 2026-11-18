@@ -4045,3 +4045,284 @@ body,
   min-height: 0;
   overflow: hidden;
 }
+
+/* ==== The riding HUD's layout (Entry 180) ====
+ * One place for where everything sits, over the rules above:
+ *   top-left      duty status and the objective        (.duty-badge, the tutorial card under it)
+ *   top centre    timer, arrow, distance, mood         (.route-bar, only on an order)
+ *   top-right     speed and the nitro bar              (.hud-speed), chat bubbles under it
+ *   bottom-left   the round minimap, street name in it (.minimap), OpenStreetMap's credit beside it
+ *   bottom centre order offers and prompts             (.duty-offer, .duty-home, .hud-handoff)
+ *   bottom-right  the mini phone, notifications above  (.mini-phone, .phone-float)
+ * Sizes follow the window between a small laptop and a wide screen, and nothing touches an edge. */
+
+:root {
+  /* The gap kept from every edge of the screen. */
+  --edge: clamp(10px, 1.25vw, 24px);
+  /* The minimap's size, off duty and online: about 1.4 times what it was, less on a short window. */
+  --minimap-off: clamp(150px, 25vh, 196px);
+  --minimap-online: clamp(180px, 31vh, 266px);
+  --mini-phone-height: clamp(116px, 16vh, 140px);
+}
+
+.duty-badge {
+  top: var(--edge);
+  left: var(--edge);
+  max-width: min(440px, calc(50vw - 160px));
+  font-size: clamp(12px, 0.95vw, 15px);
+}
+
+.tutorial-card {
+  top: calc(var(--edge) + 64px);
+  left: var(--edge);
+}
+
+.route-bar {
+  top: var(--edge);
+}
+
+/* The speedometer: top-right, a compact card with the speed over the nitro bar. */
+.hud-speed {
+  top: var(--edge);
+  right: var(--edge);
+  bottom: auto;
+  left: auto;
+  min-width: clamp(118px, 9vw, 150px);
+  box-sizing: border-box;
+  text-align: right;
+  font-size: clamp(12px, 0.9vw, 14px);
+}
+
+.hud-speed .hud-speed-value {
+  font-size: clamp(28px, 2.4vw, 40px);
+}
+
+.hud-speed .hud-nitro-gauge {
+  justify-content: flex-end;
+}
+
+.chat {
+  top: calc(var(--edge) + 112px);
+  right: var(--edge);
+}
+
+.minimap {
+  left: var(--edge);
+  bottom: var(--edge);
+  width: var(--minimap-online);
+  height: var(--minimap-online);
+}
+
+.minimap[data-size='off'] {
+  width: var(--minimap-off);
+  height: var(--minimap-off);
+}
+
+/* Bottom centre: the order offer, and the prompts of the moment, just off the bottom edge. */
+.duty-offer {
+  bottom: var(--edge);
+}
+
+.duty-home,
+.hud-handoff {
+  top: auto;
+  bottom: calc(var(--edge) + 4px);
+}
+
+/* Only OpenStreetMap's credit while riding (the rest is in Settings and the help, F1): small,
+   just right of the minimap. */
+.attribution[data-riding='true'] {
+  right: auto;
+  left: calc(var(--edge) + var(--minimap-online) + 10px);
+  bottom: var(--edge);
+  padding: 1px 6px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.help-credits,
+.app-credits p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.help-credits a,
+.app-credits a {
+  color: inherit;
+}
+
+/* The full phone: hidden while away (the mini phone stands in), up in the corner when raised. */
+.phone {
+  right: var(--edge);
+  bottom: var(--edge);
+}
+
+.phone-away,
+.phone-away:hover {
+  transform: translateY(calc(100% + 40px));
+  pointer-events: none;
+}
+
+/* ---- The mini phone (Phone.tsx) ---- */
+
+.mini-phone {
+  position: fixed;
+  right: var(--edge);
+  bottom: var(--edge);
+  z-index: 4;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  transform: rotate(-8deg);
+  transform-origin: 70% 100%;
+  transition: transform 0.2s ease;
+}
+
+.mini-phone:hover,
+.mini-phone:focus-visible {
+  transform: rotate(-4deg) translateY(-4px);
+}
+
+.mini-phone-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: calc(var(--mini-phone-height) * 0.5);
+  height: var(--mini-phone-height);
+  padding: 10px 6px 8px;
+  border-radius: 16px;
+  color: #f4f1e8;
+  background:
+    linear-gradient(170deg, rgb(255 255 255 / 10%), transparent 40%),
+    linear-gradient(160deg, #3f3a66, #24244a 55%, #e0864a 140%);
+  box-shadow:
+    0 0 0 3px #1c1d21,
+    0 0 0 4px rgb(255 255 255 / 14%),
+    0 10px 22px rgb(0 0 0 / 45%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+}
+
+.mini-phone-status {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.mini-phone-status .phone-signal {
+  transform: scale(0.75);
+  transform-origin: left center;
+}
+
+.mini-phone-time {
+  margin-top: auto;
+  font-size: calc(var(--mini-phone-height) * 0.17);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.mini-phone-weather {
+  margin-top: 4px;
+  margin-bottom: auto;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.mini-phone-weather svg {
+  width: 10px;
+  height: 10px;
+  vertical-align: -1px;
+}
+
+.mini-phone-unread {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  color: #fff;
+  background: #e0473e;
+  box-shadow: 0 0 0 2px #1c1d21;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.mini-phone-key {
+  padding: 0 5px;
+  border: 1px solid rgb(244 241 232 / 35%);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+/* A new message: a jump, and a glow while it shows (red for urgent). */
+.mini-phone-body[data-bounce='true'] {
+  animation: mini-phone-jump 0.6s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.mini-phone[data-alert] .mini-phone-body {
+  box-shadow:
+    0 0 0 3px #1c1d21,
+    0 0 0 5px #3ddc97,
+    0 0 22px rgb(61 220 151 / 70%),
+    0 10px 22px rgb(0 0 0 / 45%);
+}
+
+.mini-phone[data-alert='urgent'] .mini-phone-body {
+  box-shadow:
+    0 0 0 3px #1c1d21,
+    0 0 0 5px #e0473e,
+    0 0 24px rgb(224 71 62 / 80%),
+    0 10px 22px rgb(0 0 0 / 45%);
+}
+
+@keyframes mini-phone-jump {
+  0% { transform: translateY(0); }
+  30% { transform: translateY(-14px) rotate(3deg); }
+  55% { transform: translateY(0) rotate(-2deg); }
+  75% { transform: translateY(-5px); }
+  100% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-phone-body[data-bounce='true'] {
+    animation: none;
+  }
+}
+
+/* Notifications float above the mini phone; a music video sits above it too. */
+.phone-float,
+.phone-float[data-above-video='true'] {
+  right: var(--edge);
+  bottom: calc(var(--edge) + var(--mini-phone-height) + 18px);
+  width: min(300px, calc(100vw - 2 * var(--edge)));
+}
+
+.phone-float[data-above-video='true'] {
+  bottom: calc(var(--edge) + var(--mini-phone-height) + 18px + 200px + 10px);
+}
+
+.music-card[data-phone='hidden'] {
+  right: var(--edge);
+  bottom: calc(var(--edge) + var(--mini-phone-height) + 18px);
+}
+
+/* A short window: the offer and the prompts keep clear of the minimap and the phone. */
+@media (max-width: 900px) {
+  .duty-offer {
+    width: min(440px, calc(100vw - 2 * var(--edge) - var(--minimap-online) - 90px));
+    left: calc(var(--edge) + var(--minimap-online) + 10px);
+    transform: none;
+  }
+}

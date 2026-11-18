@@ -9744,3 +9744,22 @@ Screenshot: `world-pass.local/shots/p6b/zoom.png`.
   credits") and in the help overlay.
 - With ?debug, `__deliverItQuality('high')` sets the quality and `__deliverItStore` is the game's
   store, for scripts; `scripts/bench.mjs` and `scripts/shots.mjs` set the quality that way.
+
+## 2026-11-19: Entry 181, a new HUD layout, and a mini phone
+
+### What I did
+One block at the end of index.css says where everything sits, with a gutter that follows the
+window (`--edge`, 10 to 24 px), so nothing touches an edge on a small laptop or a wide screen:
+- **Top-left**: duty status and the objective line (and the tutorial card under them).
+- **Top centre**: the order's timer, the arrow, the distance and the customer's mood, only on an order.
+- **Top-right**: the speedometer, speed over the nitro bar (was bottom-left). Chat bubbles under it.
+- **Bottom-left**: the round minimap, about 1.4 times as big (196 px off duty, 266 online, less on a
+  short window), with the street name in it.
+- **Bottom centre**: order offers and the prompts of the moment (collecting, handing over, home).
+- **Bottom-right**: **a mini phone** (Phone.tsx), a small handset tilted 8°, 116 to 140 px tall,
+  showing the time, the weather, the signal and the unread count. A click or P raises the real
+  phone. A new message makes it jump and glow (green, red if urgent), with the notification
+  floating above it. The half-hidden full phone is gone.
+
+Checked at 1280 × 720, 1440 × 810, 1920 × 1080 and 2560 × 1080 (`scripts/shots.mjs --size`).
+Screenshots: `world-pass.local/shots/p7` (sizes), `p7-offer`, `p7-order`.

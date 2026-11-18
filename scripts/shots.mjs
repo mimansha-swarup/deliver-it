@@ -31,6 +31,8 @@ const PRESS = option('press', '').split(',').filter(Boolean)
 /** JavaScript run in the page before each shot, after the key presses. */
 const EVAL = option('eval', '')
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+/** --size 1280x720: the window's size, for checking the HUD on small and wide screens. */
+const [WIDTH, HEIGHT] = option('size', '1440x810').split('x').map(Number)
 const PORT = 9334
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -94,7 +96,7 @@ const SET_SKY = `(async () => {
 try {
   await send('Page.enable')
   await send('Runtime.enable')
-  await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 810, deviceScaleFactor: 1, mobile: false })
+  await send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false })
   await send('Page.navigate', { url: `${BASE}/?debug=1` })
   await sleep(1500)
   await evaluate(`localStorage.setItem('deliver-it-tutorial', JSON.stringify({ state: { done: true }, version: 0 })); 'ok'`)
@@ -108,7 +110,7 @@ try {
       for (const { at, label } of timeline) if (label.includes(':')) console.log('load', at, label)
     }
     for (const quality of QUALITIES) {
-      await evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click(); 'ok'`)
+      await evaluate(`(window.__deliverItQuality ? window.__deliverItQuality('${quality}'.toLowerCase()) : [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()); 'ok'`)
       await sleep(3500)
       await evaluate(SET_SKY)
       for (const code of PRESS) {
@@ -121,7 +123,7 @@ try {
         await sleep(3000)
       }
       const { data } = await send('Page.captureScreenshot', { format: 'png' })
-      const file = join(OUT, `${spot}-${quality.toLowerCase()}.png`)
+      const file = join(OUT, `${spot}-${quality.toLowerCase()}${WIDTH === 1440 && HEIGHT === 810 ? '' : `-${WIDTH}x${HEIGHT}`}.png`)
       writeFileSync(file, Buffer.from(data, 'base64'))
       console.log('saved', file)
     }

@@ -17,9 +17,9 @@ import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
  * The rider's phone, as a phone: a lock screen with the time, weather and notifications when it
  * comes up; a home screen of app icons on a wallpaper, with unread badges; a status bar with the
  * time, signal and battery; banners for new messages while it's in use; back (Esc) from an app to
- * home and from home to put it away. Away, it's hidden below the screen: nothing of it stays on
- * screen while riding. A new message peeks it up for a few seconds (its top strip, with the
- * notification floating above), then it slides away again. P raises it. The apps are in phoneApps.tsx.
+ * home and from home to put it away. Away, it's a small tilted mini phone in the corner (time,
+ * weather, signal, unread), which jumps and lights up for a new message, with the notification
+ * floating above it. P or a click raises the real phone. The apps are in phoneApps.tsx.
  */
 
 
@@ -102,6 +102,45 @@ function useNotifications(onMessage: (note: Peek) => void): Peek | null {
     return () => window.clearTimeout(timer)
   }, [peek])
   return peek
+}
+
+/**
+ * The phone while riding: a small tilted handset in the bottom-right corner (about 130 px tall)
+ * with the time, the weather, the signal and the unread count. P or a click raises the real
+ * phone. A new message makes it jump and light up (red for an urgent one).
+ */
+function MiniPhone({ unread, alert, bounce, onOpen, phoneKey }: { unread: number; alert: Peek['kind'] | null; bounce: number; onOpen: () => void; phoneKey: string }) {
+  const skyTime = useGameStore((state) => state.skyTime)
+  const weather = useGameStore((state) => state.weather)
+  const night = useGameStore((state) => state.night)
+  return (
+    <button
+      type="button"
+      className="mini-phone"
+      data-alert={alert ?? undefined}
+      aria-label={`Phone: ${skyTime}, ${WEATHERS[weather].label}${unread > 0 ? `, ${unread} unread` : ''}. Click or press ${phoneKey} to open`}
+      onClick={(event) => {
+        onOpen()
+        event.currentTarget.blur()
+      }}
+    >
+      {/* The key restarts the jump for each new message. */}
+      <span key={bounce} className="mini-phone-body" data-bounce={bounce > 0 ? 'true' : undefined}>
+        <span className="mini-phone-status" aria-hidden="true">
+          <span className="phone-signal">
+            <i /> <i /> <i /> <i />
+          </span>
+          <span className="mini-phone-net">4G</span>
+        </span>
+        <span className="mini-phone-time">{skyTime}</span>
+        <span className="mini-phone-weather">
+          <WeatherIcon weather={weather} night={night} /> {WEATHERS[weather].label}
+        </span>
+        {unread > 0 && <span className="mini-phone-unread">{unread}</span>}
+        <span className="mini-phone-key">{phoneKey}</span>
+      </span>
+    </button>
+  )
 }
 
 function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]; onUnlock: () => void; onOpen: (thread: string | null) => void }) {
@@ -209,7 +248,9 @@ export function Phone() {
   const [floating, setFloating] = useState<Peek[]>([])
   // Each message as it arrives: floating above the phone, unread in its thread (unless that chat
   // is open), and on the lock screen.
+  const [bounce, setBounce] = useState(0)
   const [countMessage] = useState(() => (note: Peek) => {
+    setBounce((count) => count + 1)
     setFloating((list) => [...list, note].slice(-FLOATING_SHOWN))
     window.setTimeout(() => setFloating((list) => list.filter((other) => other.id !== note.id)), PEEK_MS[note.kind])
     if (note.thread === null) return
@@ -300,8 +341,8 @@ export function Phone() {
   // A banner across the top of the open phone, unless it's on the lock screen (which lists them)
   // or that chat is the one showing. Half open, they float above it instead (below).
   const banner = notification && raised && screen !== 'lock' && !(screen === 'messages' && thread === notification.thread) ? notification : null
-  // Away, it peeks up only while a notification is showing.
-  const peeking = !raised && floating.length > 0
+  // Away, it's the mini phone in the corner; it lights up while a notification is showing.
+  const alertKind = floating.some((note) => note.kind === 'urgent') ? 'urgent' : floating.length > 0 ? 'normal' : null
   const openNote = (note: Peek) => {
     open('home')
     if (note.thread) nav.openThread(note.thread)
@@ -311,8 +352,8 @@ export function Phone() {
   return (
     <>
       <aside
-        className={raised ? 'phone phone-raised' : peeking ? 'phone phone-away phone-peeking' : 'phone phone-away'}
-        aria-hidden={!raised && !peeking ? true : undefined}
+        className={raised ? 'phone phone-raised' : 'phone phone-away'}
+        aria-hidden={!raised ? true : undefined}
         aria-label={raised ? 'Rider phone' : `Rider phone: click or press ${phoneKey} to open`}
         data-alert={!raised && notification?.kind === 'urgent' ? 'true' : undefined}
         onClickCapture={(event) => {
@@ -363,6 +404,7 @@ export function Phone() {
           />
         </div>
       </aside>
+      {!raised && <MiniPhone unread={totalUnread} alert={alertKind} bounce={bounce} onOpen={() => open('lock')} phoneKey={phoneKey} />}
       {!raised && floating.length > 0 && (
         <ol className="phone-float" data-above-video={videoCard ? 'true' : undefined} aria-live="polite">
           {floating.map((note) => (
@@ -376,7 +418,7 @@ export function Phone() {
         </ol>
       )}
       {videoCard && (
-        <aside className={raised ? 'music-card music-card-raised' : 'music-card'} data-phone={raised || peeking ? undefined : 'hidden'} aria-label="Music video">
+        <aside className={raised ? 'music-card music-card-raised' : 'music-card'} data-phone={raised ? undefined : 'hidden'} aria-label="Music video">
           <VideoScreen station={station} className="music-card-player" />
         </aside>
       )}
