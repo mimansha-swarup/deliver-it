@@ -72,7 +72,7 @@ import { findTyreShops, forecourtOutline, FUEL_STATIONS, isOnForecourt, placeFue
 import { IDLE_POSE } from '../traffic/gait'
 import { planPitches } from './pitches'
 import { SportsPitches } from './SportsPitches'
-import { planMetro } from './transitPlacement'
+import { planFlyovers, planMetro } from './transitPlacement'
 import { Transit } from './Transit'
 import { fillEmptyPlots } from './infillPlots'
 import { WarmAssets } from './WarmAssets'
@@ -181,6 +181,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The metro from OSM on the viaduct's pillars: tracks, stations, trains, and what waits below (transit.ts).
   const metro = planMetro({ data, landmarks: cityLandmarks, surface: surfaceMap, roads: roadIndex, collisions })
   worldSurface.report.metro = metro.report
+  // The flyovers, as scenery overhead, with traffic on them and life underneath (transitPlacement.ts).
+  const flyovers = planFlyovers({ data, surface: surfaceMap, collisions })
+  worldSurface.report.flyovers = flyovers.report
   if (isDebug()) (window as unknown as { __deliverItLandmarks?: unknown }).__deliverItLandmarks = cityLandmarks
   lap(`sites, fuel and worship: ${fuel.length} bunks, ${fuel.filter(({ yard }) => yard > 0).length} with a yard, ${tyreShops.length} tyre shops`)
   // TEMPORARY: a spot on the street in front of each Jagannath temple, facing it.
@@ -232,7 +235,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The plants in the pots are small leafy bushes, drawn with the hedges in the tree style.
   props.bushes.push(...story.potPlants)
   if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
-  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
+  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItFlyovers: flyovers, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
@@ -329,7 +332,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -398,7 +401,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -442,7 +445,7 @@ export function World() {
         <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
-        <Part name="transit"><Transit metro={metro} /></Part>
+        <Part name="transit"><Transit metro={metro} flyovers={flyovers} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>

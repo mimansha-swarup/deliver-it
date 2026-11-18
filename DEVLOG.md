@@ -9799,3 +9799,57 @@ Screenshots: `world-pass.local/shots/p11d` (from above), `p11e` (an entrance), `
 | --- | --- | --- |
 | Sarjapur Road | 103 fps, 1 frame over 20 ms, worst 25 ms | 120 fps, none over 20 ms, worst 10 ms |
 | Hosur Road, beside the metro | 88 fps, 1 over 20 ms, worst 42 ms | 120 fps, none, worst 10 ms |
+
+## 2026-11-19: Entry 183, flyovers as scenery
+
+### What I did
+- **Which roads are flyovers** (mapData.ts): a major road (motorway, trunk, primary and their
+  links) mapped as a bridge or viaduct on layer 1 or higher, at least 150 m of it under one name.
+  The 30 or so short bridges on other roads (7 to 73 m) are over storm drains, at ground level,
+  and stay roads. That leaves the Silk Board flyover, double-decker flyover, interchange and Ramp A,
+  the Outer Ring Road's flyovers at Agara, the Electronic City elevated road and the Ragigudda
+  flyover under construction: 18 ways. They're taken out of the roads (which are all at ground
+  level), so they're no longer drawn flat on the ground under themselves, nor ridden.
+- **Decks** (transitPlacement.ts, Transit.tsx): each at its layer's height (6.8 m, or 9.4 m for layer 2,
+  under the metro's 12 m), sloping down to the ground over 130 m at an end that meets a road at ground level and
+  staying up where it meets another flyover. Concrete with asphalt on top and crash barriers.
+  Pillars every 28 m where the ground below allows (a median, open ground, a footpath, not a
+  carriageway), with a cap across the deck. Drawn within 300 m of the map: the Electronic City road
+  runs on for 8 km.
+- **Traffic overhead**: cars, autos and buses as simple instanced shapes, in their lanes each way
+  (one way on one-way decks), 10 to 16 m/s, about one per 40 m of deck, seen only where the deck
+  is off the ground.
+- **Underneath**: in the shade beside every third pillar, rows of parked bikes on open ground or the
+  median, now and then a tea stall (a tin-roofed kiosk, a kettle, glasses, red stools), and posters on
+  a third of the pillars. 125 pillars, 296 bikes, 11 stalls.
+
+Screenshots: `world-pass.local/shots/p12a-11` (Silk Board interchange), `p12a-6` (Agara), `p12b` (a stall).
+
+### What it would take to ride them
+Everything that moves assumes one level of ground today, so a flyover touches all of it:
+1. **Height on the road surface.** Roads are flat meshes at y = 0, with kerbs and a surface map of
+   one level. Ridable decks need the road mesh, markings and kerbs built along a 3D line (the deck
+   heights here are the start), and a second surface map for the deck, or the surface map
+   becoming layered, so props, parking and people know which level a spot is on.
+2. **The scooter's physics.** It's arcade: position in x and z, with the ground's height read from
+   `groundLift`. It would need the height from whichever level it's on, a rule for which level that
+   is (the one it entered by the ramp, kept until it leaves by one), slopes on the ramps (pitch,
+   speed lost uphill), and the crash physics' colliders on the deck (barriers as walls at height),
+   with nothing below catching it.
+3. **The road graph and traffic.** The graph is 2D: junctions where lines cross. A flyover crosses
+   roads without meeting them, so its nodes need a level, and crossings at different levels
+   mustn't join. Traffic lanes, overtaking, signals and the collision checks between vehicles would
+   all need the level, or a car on the flyover brakes for one below.
+4. **Collisions.** The collision world is footprints on the ground. Pillars are fine; walls and
+   posts on the deck need a height range, or riding under the deck hits its barriers.
+5. **Routing, the maps and the camera.** Deliveries route on the graph (the level again); the
+   minimap and full map draw roads flat, so a flyover needs drawing over what it crosses; the camera
+   pulls in when a wall is behind it and would need to ignore the deck overhead when riding under it.
+
+Roughly: making the ground layered (surface map, collisions, groundLift) is the base; the
+scooter's height and slopes, and the graph with levels, are each a solid piece of work on top;
+traffic on levels is the largest. A first ridable version could be the scooter alone on one
+flyover (the Agara one on the Outer Ring Road), with traffic and deliveries still kept off it.
+
+### Performance
+Two merged meshes for the decks and pillars, one for the posters, three instanced meshes for the traffic.

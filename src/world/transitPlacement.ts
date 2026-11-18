@@ -3,6 +3,7 @@ import type { StiltVehicle } from './houseKit'
 import type { Landmarks } from './landmarkPlacement'
 import type { Feature, MapData } from './mapData'
 import { nearestRoadPiece, type RoadIndex } from './props'
+import { getRoadWidth } from './roadData'
 import { Surface, type SurfaceMap } from './surfaceMap'
 import { isInsideBounds, lonLatToWorld, type GroundPoint, type LonLat } from './worldUtils'
 
@@ -279,4 +280,121 @@ export function planMetro({
   metro.report.carts = metro.carts.length
   metro.report.pathMetres = Math.round(metro.path.length)
   return metro
+}
+
+// ---------------------------------------------------------------------------
+// Flyovers
+
+/*
+ * The flyovers OSM maps over HSR's edges (the Silk Board flyovers and interchange, the Outer Ring
+ * Road's at Agara, the Electronic City elevated road): scenery overhead for now, with traffic
+ * on them, not ridden (mapData.ts takes them out of the roads). Each is a deck at its layer's
+ * height, coming down to the ground over a ramp where it meets a road at ground level, on
+ * pillars where the ground below allows one (not in a carriageway). Under the decks: parked
+ * bikes, a tea stall, posters on the pillars.
+ */
+
+export type Flyover = {
+  name: string
+  /** The deck's middle line, its height at each point, its width, and whether it's one way. */
+  path: Path
+  heights: number[]
+  width: number
+  oneWay: boolean
+}
+
+export type Flyovers = {
+  decks: Flyover[]
+  pillars: { x: number; z: number; rotation: number; height: number; width: number; poster: number }[]
+  bikes: StiltVehicle[]
+  stalls: { x: number; z: number; rotation: number; variation: number }[]
+  report: Record<string, number>
+}
+
+/** A deck's height above the ground by its layer, in metres (the metro deck is at 12). */
+const FLYOVER_HEIGHT: Record<number, number> = { 1: 6.8, 2: 9.4 }
+/** It comes down to the ground over this far at an end that meets a road at ground level. */
+const RAMP = 130
+const FLYOVER_PILLAR_EVERY = 28
+/** Ground a pillar can stand on. */
+const PILLAR_GROUND = new Set<Surface>([Surface.Median, Surface.Open, Surface.Footpath, Surface.Park, Surface.Plot, Surface.Paved])
+
+export function planFlyovers({ data, surface, collisions }: { data: MapData; surface: SurfaceMap; collisions: CollisionWorld }): Flyovers {
+  const flyovers: Flyovers = { decks: [], pillars: [], bikes: [], stalls: [], report: {} }
+  // Which ends meet another flyover (so stay up) and which meet the ground (so ramp down).
+  const endKey = ([x, z]: GroundPoint) => `${Math.round(x)},${Math.round(z)}`
+  const ends = new Map<string, number>()
+  const lines = data.flyovers.map((road) => road.geometry.coordinates.map(toGround))
+  for (const line of lines) for (const end of [line[0], line[line.length - 1]]) ends.set(endKey(end), (ends.get(endKey(end)) ?? 0) + 1)
+
+  data.flyovers.forEach((road, i) => {
+    const line = lines[i]
+    if (line.length < 2 || !line.some(([x, z]) => isInsideBounds(x, z, -150))) return
+    const path = makePath(line)
+    const top = FLYOVER_HEIGHT[Math.min(2, Math.max(1, Number(road.properties.layer ?? 1)))]
+    const startsLow = (ends.get(endKey(line[0])) ?? 0) < 2
+    const endsLow = (ends.get(endKey(line[line.length - 1])) ?? 0) < 2
+    const ramp = Math.min(RAMP, path.length / 2)
+    const heights = path.at.map((s) => {
+      let height = top
+      if (startsLow) height = Math.min(height, (top * s) / ramp)
+      if (endsLow) height = Math.min(height, (top * (path.length - s)) / ramp)
+      return height
+    })
+    const deck: Flyover = { name: road.properties.name ?? 'Flyover', path, heights, width: Math.max(7, getRoadWidth(road)), oneWay: road.properties.oneway === 'yes' }
+    flyovers.decks.push(deck)
+
+    // Pillars along the raised part, where the ground allows; under the highest, life.
+    let sinceStall = 60
+    for (let s = FLYOVER_PILLAR_EVERY / 2; s < path.length; s += FLYOVER_PILLAR_EVERY) {
+      const height = heightOnFlyover(deck, s)
+      if (height < 3.5) continue
+      const { x, z, dirX, dirZ } = pointOnPath(path, s)
+      if (!isInsideBounds(x, z, 4)) continue
+      const ground = surface.at(x, z)
+      const rotation = Math.atan2(dirX, dirZ)
+      if (PILLAR_GROUND.has(ground) && !isNearBuilding(collisions, x, z, 1.2)) {
+        flyovers.pillars.push({ x, z, rotation, height, width: deck.width, poster: flyovers.pillars.length % 3 === 0 ? flyovers.pillars.length % 12 : -1 })
+        addPost(collisions, x, z, 1.0)
+      }
+      // In the shade either side of every third pillar, on open ground or a median: bikes, now and then a tea stall.
+      sinceStall += FLYOVER_PILLAR_EVERY
+      if (Math.round(s / FLYOVER_PILLAR_EVERY) % 3 !== 0) continue
+      for (const side of [-1, 1]) {
+        const ox = x + dirZ * side * 3.2
+        const oz = z - dirX * side * 3.2
+        const under = surface.at(ox, oz)
+        if (!PILLAR_GROUND.has(under) || isNearBuilding(collisions, ox, oz, 1.4)) continue
+        if (sinceStall > 160 && under !== Surface.Median) {
+          flyovers.stalls.push({ x: ox, z: oz, rotation: rotation + (side > 0 ? -Math.PI / 2 : Math.PI / 2), variation: (flyovers.stalls.length * 0.37) % 1 })
+          addPost(collisions, ox, oz, 1.3)
+          sinceStall = 0
+          continue
+        }
+        for (let b = -2; b <= 2; b++) {
+          const bx = ox + dirX * b * 1.05
+          const bz = oz + dirZ * b * 1.05
+          if (!PILLAR_GROUND.has(surface.at(bx, bz)) || isNearBuilding(collisions, bx, bz, 0.5)) continue
+          flyovers.bikes.push({ x: bx, z: bz, rotation: rotation + Math.PI / 2 + (b % 2) * 0.1, variation: ((flyovers.bikes.length * 0.618) % 1), car: false })
+          addPost(collisions, bx, bz, 0.35)
+        }
+      }
+    }
+  })
+  flyovers.report.decks = flyovers.decks.length
+  flyovers.report.metres = Math.round(flyovers.decks.reduce((sum, deck) => sum + deck.path.length, 0))
+  flyovers.report.pillars = flyovers.pillars.length
+  flyovers.report.bikes = flyovers.bikes.length
+  flyovers.report.stalls = flyovers.stalls.length
+  return flyovers
+}
+
+/** A flyover's deck height `s` along it. */
+export function heightOnFlyover(deck: Flyover, s: number): number {
+  const { at } = deck.path
+  let i = 1
+  while (i < at.length - 1 && at[i] < s) i++
+  const span = at[i] - at[i - 1] || 1
+  const t = Math.max(0, Math.min(1, (s - at[i - 1]) / span))
+  return deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t
 }

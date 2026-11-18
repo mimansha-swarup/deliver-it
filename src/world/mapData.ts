@@ -5,7 +5,7 @@ import { classifyBuildings, type BuildingKind } from './buildingKinds'
 import { findPlacesOfWorship, type PlaceOfWorship } from './worship'
 import { FUEL_STATIONS } from './fuelStationData'
 import { cutOutRestricted, isRestricted } from './restricted'
-import type { LonLat } from './worldUtils'
+import { lonLatToWorld, type LonLat } from './worldUtils'
 
 type Properties = Record<string, string | undefined>
 
@@ -118,10 +118,25 @@ async function fetchBarriers(): Promise<LineFeature[]> {
 const GREEN_SPACES = new Set(['park', 'garden', 'playground', 'pitch'])
 const NOT_DRIVABLE = new Set(['footway', 'path'])
 
-/** A road mapped above the ground: a bridge, a viaduct, or on layer 1 or higher. */
+/** Road classes that have flyovers: the small bridges on other roads are over drains, at ground level. */
+const FLYOVER_ROADS = new Set(['motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link'])
+/** A road counts as a flyover only if this much of it, in metres, under one name, is bridge. */
+const FLYOVER_MIN_LENGTH = 150
+
+/** A major road mapped as a bridge or viaduct above the ground (layer 1 or higher). */
 function isFlyover(properties: Feature['properties']): boolean {
-  const { bridge, layer } = properties as { bridge?: string; layer?: string }
-  return (bridge !== undefined && bridge !== 'no') || Number(layer ?? 0) >= 1
+  const { bridge, layer, highway } = properties as { bridge?: string; layer?: string; highway?: string }
+  return FLYOVER_ROADS.has(highway ?? '') && (bridge === 'yes' || bridge === 'viaduct') && Number(layer ?? 0) >= 1
+}
+
+function lineLength(coordinates: LonLat[]): number {
+  let length = 0
+  for (let i = 1; i < coordinates.length; i++) {
+    const [ax, , az] = lonLatToWorld(coordinates[i - 1])
+    const [bx, , bz] = lonLatToWorld(coordinates[i])
+    length += Math.hypot(bx - ax, bz - az)
+  }
+  return length
 }
 
 function sortFeatures(features: Feature[]): MapData {
@@ -149,6 +164,16 @@ function sortFeatures(features: Feature[]): MapData {
       areas.push({ ...feature, geometry })
     }
   }
+
+  // Flyovers short in all, under their name (or alone, unnamed), are bridges after all: back to the roads.
+  const flyoverLength = new Map<string, number>()
+  for (const flyover of data.flyovers) {
+    const key = flyover.properties.name ?? flyover.id
+    flyoverLength.set(key, (flyoverLength.get(key) ?? 0) + lineLength(flyover.geometry.coordinates))
+  }
+  const short = data.flyovers.filter((flyover) => (flyoverLength.get(flyover.properties.name ?? flyover.id) ?? 0) < FLYOVER_MIN_LENGTH)
+  data.roads.push(...short)
+  data.flyovers = data.flyovers.filter((flyover) => !short.includes(flyover))
 
   data.buildings = classifyBuildings(buildings, data.places, areas)
   const found = findPlacesOfWorship(data.buildings, data.places, areas)

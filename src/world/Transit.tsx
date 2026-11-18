@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
+import { isInsideBounds } from './worldUtils'
 import { PropInstances } from './RoadsideProps'
 import { StiltParking } from './StiltParking'
 import { box, colored, merge } from './simpleShapes'
-import { pointOnPath, STAIR_RUN, STATION, type Metro, type MetroStation } from './transitPlacement'
+import { createPosterAtlas, POSTER_COLUMNS, POSTER_ROWS } from './posters'
+import { heightOnFlyover, pointOnPath, STAIR_RUN, STATION, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
 
 /*
  * Draws the metro planned in transitPlacement.ts: the tracks and overhead line on the viaduct's deck, the
@@ -317,7 +319,206 @@ function MetroTrains({ metro }: { metro: Metro }) {
   return <instancedMesh ref={mesh} args={[geometry, material, 2 * CARS]} frustumCulled={false} castShadow receiveShadow />
 }
 
-export function Transit({ metro }: { metro: Metro }) {
+// ---- Flyovers ----
+
+const ASPHALT = '#4e4f57'
+
+/** A flyover's deck in sloped pieces: a concrete body, the asphalt on top, crash barriers each side. */
+function createDeckGeometry(deck: Flyover) {
+  const parts: THREE.BufferGeometry[] = []
+  const { points } = deck.path
+  for (let i = 1; i < points.length; i++) {
+    const [ax, az] = points[i - 1]
+    const [bx, bz] = points[i]
+    const ay = deck.heights[i - 1]
+    const by = deck.heights[i]
+    const flat = Math.hypot(bx - ax, bz - az)
+    // Only within 300 m of the map: the Electronic City road runs on for kilometres.
+    if (flat < 0.3 || (!isInsideBounds(ax, az, -300) && !isInsideBounds(bx, bz, -300))) continue
+    const length = Math.hypot(flat, by - ay) + 0.4
+    const pitch = Math.atan2(by - ay, flat)
+    const yaw = Math.atan2(bx - ax, bz - az)
+    const place = (geometry: THREE.BufferGeometry) => parts.push(geometry.rotateX(-pitch).rotateY(yaw).translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2))
+    place(box([deck.width, 1.2, length], [0, -0.6, 0], CONCRETE))
+    place(box([deck.width - 0.7, 0.05, length], [0, 0.025, 0], ASPHALT))
+    for (const side of [-1, 1]) place(box([0.35, 0.95, length], [side * (deck.width / 2 - 0.17), 0.47, 0], CONCRETE_DARK))
+  }
+  return parts
+}
+
+/** A pillar under a flyover: a column and a cap across the deck. */
+function createFlyoverPillar({ x, z, rotation, height, width }: Flyovers['pillars'][number]) {
+  return [
+    box([1.6, height - 1.2, 1.6], [0, (height - 1.2) / 2, 0], CONCRETE),
+    box([Math.min(width * 0.8, 9), 1.0, 2.2], [0, height - 1.7, 0], CONCRETE_DARK),
+  ].map((part) => part.rotateY(rotation).translate(x, 0, z))
+}
+
+/** Posters pasted on some pillars, from the posters' picture (posters.ts), on two faces. */
+function createPillarPosters(pillars: Flyovers['pillars']) {
+  const parts: THREE.BufferGeometry[] = []
+  for (const pillar of pillars) {
+    if (pillar.poster < 0) continue
+    const column = pillar.poster % POSTER_COLUMNS
+    const row = Math.floor(pillar.poster / POSTER_COLUMNS) % POSTER_ROWS
+    for (const side of [-1, 1]) {
+      const plane = new THREE.PlaneGeometry(1.2, 1.7).toNonIndexed()
+      const uv = plane.getAttribute('uv') as THREE.BufferAttribute
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (column + uv.getX(i)) / POSTER_COLUMNS, 1 - (row + 1 - uv.getY(i)) / POSTER_ROWS)
+      plane.rotateY(side > 0 ? Math.PI / 2 : -Math.PI / 2).translate(side * 0.81, 2.1, 0).rotateY(pillar.rotation).translate(pillar.x, 0, pillar.z)
+      parts.push(plane)
+    }
+  }
+  return parts.length ? merge(parts) : null
+}
+
+/** A tea stall under the flyover, its counter to +z: a tin-roofed kiosk, kettle on the stove, glasses, two stools. */
+function createTeaStallGeometry() {
+  const roof = box([2.6, 0.06, 2.2], [0, 2.35, 0.2], '#8a7f74')
+  roof.rotateX(0.08)
+  return merge([
+    box([2.2, 1.0, 1.4], [0, 0.5, 0], '#2f6f8f'),
+    box([2.3, 0.08, 1.5], [0, 1.04, 0.05], '#c9b38a'),
+    ...[-1.05, 1.05].map((x) => box([0.07, 2.3, 0.07], [x, 1.15, 0.65], '#4a4d51')),
+    ...[-1.05, 1.05].map((x) => box([0.07, 2.3, 0.07], [x, 1.15, -0.65], '#4a4d51')),
+    roof,
+    box([0.32, 0.3, 0.32], [-0.6, 1.25, 0.2], '#b8b4ac'),
+    box([0.08, 0.12, 0.08], [0.1, 1.14, 0.45], '#d8d0b8'),
+    box([0.08, 0.12, 0.08], [0.25, 1.14, 0.45], '#d8d0b8'),
+    box([1.6, 0.35, 0.05], [0, 2.1, 0.78], '#e2a12a'),
+    ...[-0.6, 0.6].map((x) => box([0.35, 0.45, 0.35], [x, 0.22, 1.4], '#c62f2f')),
+  ])
+}
+
+/** Simple vehicles for the traffic overhead, along +z, white so each takes its copy's colour: a car and a bus. */
+const OVERHEAD_KINDS = [
+  { body: [1.75, 0.8, 4.2], cabin: [1.6, 0.6, 2.2], share: 0.7, colors: ['#e8e6e0', '#9aa0a6', '#2d5fa8', '#c62828', '#3a3c40', '#d6c9a8'] },
+  { body: [1.45, 0.9, 2.7], cabin: [1.35, 0.6, 1.6], share: 0.2, colors: ['#e6c22e', '#3d8a45'] },
+  { body: [2.5, 2.6, 11], cabin: [2.4, 0.2, 10], share: 0.1, colors: ['#2f7a4a', '#2d5fa8', '#c8a23a'] },
+] as const
+
+function createOverheadGeometry(kind: (typeof OVERHEAD_KINDS)[number]) {
+  const [w, h, l] = kind.body
+  const [cw, ch, cl] = kind.cabin
+  return merge([box([w, h, l], [0, 0.35 + h / 2, 0], '#ffffff'), box([cw, ch, cl], [0, 0.35 + h + ch / 2, -l * 0.05], '#3a4148'), box([w + 0.02, 0.3, l * 0.9], [0, 0.35 + h * 0.75, 0], '#2b3238')])
+}
+
+type Overhead = { deck: number; s: number; speed: number; direction: 1 | -1; lane: number; kind: number }
+
+const overheadTransform = new THREE.Object3D()
+
+/** Traffic on the flyovers: each deck a stream of vehicles each way (one way on one-way decks), seen only where it's up off the ground. */
+function FlyoverTraffic({ decks }: { decks: Flyover[] }) {
+  const geometries = useMemo(() => OVERHEAD_KINDS.map(createOverheadGeometry), [])
+  const material = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.15 }), [])
+  useEffect(() => () => {
+    geometries.forEach((geometry) => geometry.dispose())
+    material.dispose()
+  }, [geometries, material])
+  const vehicles = useMemo(() => {
+    const list: Overhead[] = []
+    let seed = 7
+    const random = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646
+    decks.forEach((deck, index) => {
+      const count = Math.min(24, Math.round(deck.path.length / 40))
+      for (let i = 0; i < count; i++) {
+        const direction: 1 | -1 = deck.oneWay || i % 2 === 0 ? 1 : -1
+        const roll = random()
+        const kind = roll < OVERHEAD_KINDS[0].share ? 0 : roll < OVERHEAD_KINDS[0].share + OVERHEAD_KINDS[1].share ? 1 : 2
+        const lanes = Math.max(1, Math.floor(deck.width / 3.5 / (deck.oneWay ? 1 : 2)))
+        list.push({ deck: index, s: random() * deck.path.length, speed: 10 + random() * 6, direction, lane: Math.floor(random() * lanes), kind })
+      }
+    })
+    return list
+  }, [decks])
+  const meshes = useRef<(THREE.InstancedMesh | null)[]>([])
+  /** Where each vehicle is along its deck now; they start where `vehicles` says. */
+  const positions = useRef<number[]>([])
+  useEffect(() => {
+    positions.current = vehicles.map((vehicle) => vehicle.s)
+  }, [vehicles])
+
+  useEffect(() => {
+    meshes.current.forEach((mesh, kind) => {
+      if (!mesh) return
+      const colors = OVERHEAD_KINDS[kind].colors
+      for (let i = 0; i < mesh.count; i++) mesh.setColorAt(i, new THREE.Color(colors[i % colors.length]))
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    })
+  }, [vehicles])
+
+  useFrame((_, rawDelta) => {
+    const delta = Math.min(rawDelta, 0.1)
+    const counts = OVERHEAD_KINDS.map(() => 0)
+    vehicles.forEach((vehicle, index) => {
+      const deck = decks[vehicle.deck]
+      const s = ((positions.current[index] ?? vehicle.s) + vehicle.direction * vehicle.speed * delta + deck.path.length) % deck.path.length
+      positions.current[index] = s
+      const height = heightOnFlyover(deck, s)
+      if (height < 1.5) return
+      const mesh = meshes.current[vehicle.kind]
+      if (!mesh) return
+      const { x, z, dirX, dirZ } = pointOnPath(deck.path, s)
+      // Lanes from the deck's middle out: on a two-way deck, each way on its own (left) side.
+      const half = deck.width / 2 - 1.8
+      const offset = deck.oneWay ? -half + 1.75 + vehicle.lane * 3.5 : (1.75 + vehicle.lane * 3.5) * -vehicle.direction
+      overheadTransform.position.set(x + dirZ * Math.max(-half, Math.min(half, offset)), height, z - dirX * Math.max(-half, Math.min(half, offset)))
+      overheadTransform.rotation.set(0, Math.atan2(dirX, dirZ) + (vehicle.direction < 0 ? Math.PI : 0), 0)
+      overheadTransform.updateMatrix()
+      mesh.setMatrixAt(counts[vehicle.kind]++, overheadTransform.matrix)
+    })
+    meshes.current.forEach((mesh, kind) => {
+      if (!mesh) return
+      mesh.count = counts[kind]
+      mesh.instanceMatrix.needsUpdate = true
+    })
+  })
+
+  return (
+    <>
+      {geometries.map((geometry, kind) => (
+        <instancedMesh
+          key={kind}
+          ref={(mesh) => {
+            meshes.current[kind] = mesh
+          }}
+          args={[geometry, material, Math.max(1, vehicles.filter((vehicle) => vehicle.kind === kind).length)]}
+          frustumCulled={false}
+          castShadow
+        />
+      ))}
+    </>
+  )
+}
+
+function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
+  const structure = useMemo(() => {
+    const parts = [...flyovers.decks.flatMap(createDeckGeometry), ...flyovers.pillars.flatMap(createFlyoverPillar)]
+    return parts.length ? merge(parts) : null
+  }, [flyovers])
+  const posters = useMemo(() => createPillarPosters(flyovers.pillars), [flyovers])
+  const atlas = useMemo(() => createPosterAtlas(), [])
+  const stall = useMemo(() => createTeaStallGeometry(), [])
+  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), [])
+  useEffect(() => () => {
+    for (const thing of [structure, posters, atlas, stall, material]) thing?.dispose()
+  }, [structure, posters, atlas, stall, material])
+  return (
+    <>
+      {structure && <mesh geometry={structure} material={material} castShadow receiveShadow />}
+      {posters && (
+        <mesh geometry={posters}>
+          <meshStandardMaterial map={atlas} roughness={0.85} polygonOffset polygonOffsetFactor={-2} />
+        </mesh>
+      )}
+      <PropInstances props={flyovers.stalls} geometry={stall} sizeRange={0} vertexColors to={160} />
+      <StiltParking vehicles={flyovers.bikes} drawDistance={90} />
+      <FlyoverTraffic decks={flyovers.decks} />
+    </>
+  )
+}
+
+export function Transit({ metro, flyovers }: { metro: Metro; flyovers: Flyovers }) {
   const track = useMemo(() => createTrackGeometry(metro), [metro])
   const stations = useMemo(() => (metro.stations.length ? merge(metro.stations.map(createStationGeometry)) : null), [metro])
   const cart = useMemo(() => createCartGeometry(), [])
@@ -325,9 +526,9 @@ export function Transit({ metro }: { metro: Metro }) {
   useEffect(() => () => {
     for (const thing of [track, stations, cart, material]) thing?.dispose()
   }, [track, stations, cart, material])
-  if (metro.path.length === 0) return null
   return (
     <>
+      <FlyoverScenery flyovers={flyovers} />
       {track && <mesh geometry={track} material={material} castShadow receiveShadow />}
       {stations && <mesh geometry={stations} material={material} castShadow receiveShadow />}
       {metro.stations.map((station) => (
@@ -336,7 +537,7 @@ export function Transit({ metro }: { metro: Metro }) {
       <PropInstances props={metro.carts} geometry={cart} sizeRange={0.1} vertexColors to={150} />
       <StiltParking vehicles={metro.autos} carModels={['auto']} drawDistance={120} />
       <StiltParking vehicles={metro.bikes} drawDistance={90} />
-      <MetroTrains metro={metro} />
+      {metro.path.length > 0 && <MetroTrains metro={metro} />}
     </>
   )
 }
