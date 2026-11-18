@@ -9075,3 +9075,35 @@ weather over a large thin clock, frosted notification cards, and torch and camer
 home screen has an icon grid, page dots and a frosted dock with Deliver It, Messages, Maps and
 Radio. Apps have a "‹ Home" link over a large title and grouped cards, and chat threads open at
 the newest message.
+
+## 2026-11-18: Entry 155, one ground map for the whole city
+
+### What I did
+`src/world/surfaceMap.ts` draws one map of what the ground is, a metre to a cell over the whole
+play area (11 MB, about 160 ms at load): road, median, footpath, paved ground, building, park,
+empty plot, or open ground. It comes from the road geometry with each street's footpath and
+median widths, the gap between the two halves of a dual carriageway (a median), the building
+footprints, OSM's land-use tags (fuel, parking, school yards and markets paved; parks, gardens,
+pitches, grass and cemeteries park; construction land a plot), petrol forecourts and building
+sites. Drawn in priority order, so a road always wins and a footpath over a park is a footpath.
+
+Every placement now asks it first (`surfaceAllows`), by what's being placed:
+
+| Thing | Allowed on |
+| --- | --- |
+| grass | open ground, medians, parks, plots (sparse weeds) |
+| trees | open ground, medians, footpaths (tree pits), parks |
+| poles | footpaths, medians, open ground, paved |
+| props (carts, signs) | footpaths, open ground, paved, parks, plots |
+| benches | parks, footpaths |
+| a bike on the footpath | footpaths, paved |
+| parked vehicles | road (the kerb rule: next entry) |
+| buildings, fences | entries after that |
+
+The grass reads it as its mask (a one-byte data texture now, not a canvas), so no tufts grow on
+petrol forecourts, parking or school yards any more; before, the forecourt wasn't on the mask.
+The roadside trees and lamps, footpath scooters, park trees and benches, context trees, and
+street-life carts and signs all check it. Refusals are counted for the debug report.
+
+Also: `?spawn=petrol-pump` starts at the bunk nearest the middle of the map, facing its canopy,
+and `scripts/shots.mjs` takes the same screenshots every time for before/after comparisons.

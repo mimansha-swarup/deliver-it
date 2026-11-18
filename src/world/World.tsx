@@ -43,14 +43,15 @@ import { usesNewGround } from './streetEdgeConfig'
 import { addGroundFloorShops, assignStreetPresets, listStreets, streetPresetOf } from './streetPresets'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
-import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, startAtGate } from './homeStart'
+import { createSurfaceMap, worldSurface } from './surfaceMap'
+import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
 import { RestrictedWall } from './RestrictedWall'
 import { ConstructionSites } from './ConstructionSites'
-import { findConstructionSites } from './sitePlacement'
+import { findConstructionSites, siteOutline } from './sitePlacement'
 import { addRestrictedWalls } from './restricted'
 import { RoadMarkings } from './RoadMarkings'
 import { createRoadGraph } from './roadGraph'
@@ -60,7 +61,7 @@ import { ShopFronts } from './ShopFronts'
 import { LandmarkSigns } from './LandmarkSigns'
 import { placeLandmarkSigns } from './landmarks'
 import { FuelStations } from './FuelStations'
-import { FUEL_STATIONS, isOnForecourt, placeFuelStations } from './fuelStationData'
+import { forecourtOutline, FUEL_STATIONS, isOnForecourt, placeFuelStations } from './fuelStationData'
 import { fillEmptyPlots } from './infillPlots'
 import { WarmAssets } from './WarmAssets'
 import { markLoad, startLaps } from '../dev/loadTimeline'
@@ -149,6 +150,10 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
   const templeWalls = planTempleWalls(templeCompounds(data.worship), roadIndex, collisions)
+  // The ground map: what every spot is (road, footpath, paved, building, park, plot...), which
+  // everything placed from here on asks first (surfaceMap.ts).
+  const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
+  worldSurface.map = surfaceMap
   lap('sites, fuel and worship')
   // TEMPORARY: a spot on the street in front of each Jagannath temple, facing it.
   teleportSpots.length = 0
@@ -211,7 +216,10 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Where this ride starts: a debug street, the place the rider was last, or home.
   const spawnSlug = requestedSpawn()
   const saved = forcedTutorial() ? null : useGameStore.getState().lastPosition
-  const spawn = (spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ?? (saved ? { name: 'Where you left off', ...saved } : null) ?? homeStart
+  const spawn =
+    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
+    (saved ? { name: 'Where you left off', ...saved } : null) ??
+    homeStart
   // Not where the ride starts, so the scooter never starts inside a parked car.
   const starts = [homeStart, spawn].filter((point) => point !== null).map(({ x, z }): [number, number] => [x, z])
   const parking = planStreetParking({
@@ -263,7 +271,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes], chaiStalls, surfaceMap }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -332,7 +340,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -349,7 +357,7 @@ export function World() {
         <Part name="lighting"><Lighting /></Part>
         <Part name="ground"><Ground newSoilArea={newSoilArea} /></Part>
         <Part name="parks"><Parks data={data} /></Part>
-        <Part name="grass"><GrassField data={data} paved={edges.paved} /></Part>
+        <Part name="grass"><GrassField surface={surfaceMap} /></Part>
         <Part name="roads"><Roads roads={data.roads} /></Part>
         <Part name="kerbs"><Kerbs roads={data.roads} collisions={collisions} isInCorner={edges.isInCorner} /></Part>
         <Part name="streetEdges"><StreetEdges edges={edges} /></Part>

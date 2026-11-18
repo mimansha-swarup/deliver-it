@@ -1,3 +1,4 @@
+import { surfaceAllows } from './surfaceMap'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import { PALM, TREE_SHAPE } from './foliage'
 import { isClearOfRoads, nearestRoadPiece, scramble, type Prop, type RoadIndex } from './props'
@@ -108,7 +109,7 @@ export function plantContextTrees({
 }): Prop[] {
   const trees: Prop[] = []
   const tryPlant = (species: Species, x: number, z: number, seed: number, room: number) => {
-    if (isNearBuilding(collisions, x, z, room) || !isClearOfRoads(roads, x, z, 1.5)) return false
+    if (!surfaceAllows(x, z, 'tree') || isNearBuilding(collisions, x, z, room) || !isClearOfRoads(roads, x, z, 1.5)) return false
     trees.push(plantTree(species, { x, z }, seed))
     addPost(collisions, x, z, 0.3)
     return true

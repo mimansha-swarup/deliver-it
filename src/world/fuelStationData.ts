@@ -283,3 +283,14 @@ export function isOnForecourt(stations: FuelStation[], x: number, z: number): bo
     )
   })
 }
+
+/** A bunk's forecourt as an outline: the same ground as `isOnForecourt`, for the surface map. */
+export function forecourtOutline(station: FuelStation): [number, number][] {
+  const at = (along: number, out: number): [number, number] => [
+    station.x + station.alongX * along + station.outX * out,
+    station.z + station.alongZ * along + station.outZ * out,
+  ]
+  const half = station.length / 2 + FORECOURT_SIDES
+  const back = station.depth / 2 + FORECOURT_BACK
+  return [at(-half, -station.front), at(half, -station.front), at(half, back), at(-half, back)]
+}

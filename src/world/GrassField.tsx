@@ -1,3 +1,4 @@
+import { Surface, type SurfaceMap } from './surfaceMap'
 import { useEffect, useMemo } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { GRASS_TEXTURES } from './assetUrls'
@@ -6,18 +7,7 @@ import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
-import { getRoadWidth } from './roadData'
-import { PAVEMENT_WIDTH } from './surface'
-import type { MapData } from './mapData'
-import {
-  isRingInPlayArea,
-  lonLatToWorld,
-  PLAY_AREA,
-  PLAY_AREA_DEPTH,
-  PLAY_AREA_WIDTH,
-  type LonLat,
-  type GroundPoint,
-} from './worldUtils'
+import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from './worldUtils'
 import { windUniforms } from './wind'
 
 /** The square of grass around the rider, in metres. It moves with them. */
@@ -34,12 +24,9 @@ const CLUMPS = [
   [0.27, 0.885, 0.5, 0.995],
   [0.58, 0.835, 0.78, 0.995],
 ]
-/** The map of where grass grows has this many pixels per metre. */
-const MASK_SCALE = 1
 /** On that map: full density in parks, thinner on open ground, and none on black. */
 const PARK_DENSITY = 255
 const OPEN_GROUND_DENSITY = 95
-const PATH_WIDTH = 2.5
 
 // The photo is dark, so these go above 1 to lift it. The roots stay darker than the tips.
 const BASE_COLOR = new THREE.Color(1.1, 1.25, 0.8)
@@ -51,85 +38,26 @@ const uniforms = {
   ...windUniforms,
 }
 
-function toMask(position: LonLat): [number, number] {
-  const [x, , z] = lonLatToWorld(position)
-  return [(x - PLAY_AREA.minX) * MASK_SCALE, (z - PLAY_AREA.minZ) * MASK_SCALE]
-}
-
-function traceOutline(context: CanvasRenderingContext2D, points: LonLat[]) {
-  context.beginPath()
-  points.forEach((point, index) => {
-    const [x, y] = toMask(point)
-    if (index === 0) context.moveTo(x, y)
-    else context.lineTo(x, y)
-  })
+/** How thick grass grows on each kind of ground (surfaceMap.ts), out of 255. */
+const DENSITY: Record<number, number> = {
+  [Surface.Park]: PARK_DENSITY,
+  [Surface.Median]: 150,
+  [Surface.Open]: OPEN_GROUND_DENSITY,
+  [Surface.Plot]: 55,
 }
 
 /**
- * A top-down map of where grass may grow, drawn once. A shader can't look up
- * roads or buildings, but it can read an image, so each tuft checks this.
+ * Where grass may grow, as an image a shader can read, made from the city's surface map: thick in
+ * parks and on medians, thinner on open ground, a few weeds on plots, and none on roads,
+ * footpaths, paved ground or buildings. One byte a metre, row 0 the lowest z.
  */
-function createGrassMask(data: MapData, paved: GroundPoint[][]): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = PLAY_AREA_WIDTH * MASK_SCALE
-  canvas.height = PLAY_AREA_DEPTH * MASK_SCALE
-
-  const context = canvas.getContext('2d')
-  if (context) {
-    const shade = (value: number) => `rgb(${value} ${value} ${value})`
-    context.fillStyle = shade(OPEN_GROUND_DENSITY)
-    context.fillRect(0, 0, canvas.width, canvas.height)
-
-    context.fillStyle = shade(PARK_DENSITY)
-    for (const park of data.parks) {
-      traceOutline(context, park.geometry.coordinates[0])
-      context.fill()
-    }
-
-    context.strokeStyle = '#000000'
-    context.fillStyle = '#000000'
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    for (const road of data.roads) {
-      context.lineWidth = (getRoadWidth(road) + PAVEMENT_WIDTH * 2) * MASK_SCALE
-      traceOutline(context, road.geometry.coordinates)
-      context.stroke()
-    }
-
-    context.lineWidth = PATH_WIDTH * MASK_SCALE
-    for (const path of data.footways) {
-      traceOutline(context, path.geometry.coordinates)
-      context.stroke()
-    }
-
-    // Paved forecourts, with a little to spare round them.
-    context.lineWidth = 0.6 * MASK_SCALE
-    for (const outline of paved) {
-      context.beginPath()
-      outline.forEach(([x, z], index) => {
-        const point: [number, number] = [(x - PLAY_AREA.minX) * MASK_SCALE, (z - PLAY_AREA.minZ) * MASK_SCALE]
-        if (index === 0) context.moveTo(...point)
-        else context.lineTo(...point)
-      })
-      context.closePath()
-      context.fill()
-      context.stroke()
-    }
-
-    context.lineWidth = 1.5 * MASK_SCALE
-    for (const building of data.buildings) {
-      const ring = building.geometry.coordinates[0]
-      if (!isRingInPlayArea(ring)) continue
-      traceOutline(context, ring)
-      context.fill()
-      context.stroke()
-    }
-  }
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.generateMipmaps = false
+function createGrassMask(surface: SurfaceMap): THREE.DataTexture {
+  const density = new Uint8Array(surface.cells.length)
+  for (let i = 0; i < density.length; i++) density[i] = DENSITY[surface.cells[i]] ?? 0
+  const texture = new THREE.DataTexture(density, surface.width, surface.depth, THREE.RedFormat, THREE.UnsignedByteType)
   texture.minFilter = THREE.NearestFilter
   texture.magFilter = THREE.NearestFilter
+  texture.needsUpdate = true
   return texture
 }
 
@@ -200,10 +128,10 @@ function addGrassMovement(shader: THREE.WebGLProgramParametersWithUniforms) {
     vec2 fromRider = mod(aRoot.xy - uRider, ${FIELD_SIZE.toFixed(1)}) - ${(FIELD_SIZE / 2).toFixed(1)};
     vec2 root = fromRider + uRider;
 
-    // The image's top row is the world's lowest z, and its v runs the other way.
+    // The mask's row 0 is the world's lowest z (surfaceMap.ts).
     vec2 maskUv = vec2(
       (root.x - (${PLAY_AREA.minX.toFixed(1)})) / ${PLAY_AREA_WIDTH.toFixed(1)},
-      1.0 - (root.y - (${PLAY_AREA.minZ.toFixed(1)})) / ${PLAY_AREA_DEPTH.toFixed(1)}
+      (root.y - (${PLAY_AREA.minZ.toFixed(1)})) / ${PLAY_AREA_DEPTH.toFixed(1)}
     );
     bool onMap = maskUv.x > 0.0 && maskUv.x < 1.0 && maskUv.y > 0.0 && maskUv.y < 1.0;
     float density = onMap ? texture2D(uMask, maskUv).r : 0.0;
@@ -242,9 +170,9 @@ function prepareGrassTextures([color]: THREE.Texture[]) {
 }
 
 /** Swaying tufts of grass near the rider. */
-export function GrassField({ data, paved = [] }: { data: MapData; paved?: GroundPoint[][] }) {
+export function GrassField({ surface }: { surface: SurfaceMap }) {
   const { grassTufts } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const mask = useMemo(() => createGrassMask(data, paved), [data, paved])
+  const mask = useMemo(() => createGrassMask(surface), [surface])
   const geometry = useMemo(() => createTuftGeometry(grassTufts), [grassTufts])
   const [color, alpha] = useCompressedTextures(GRASS_TEXTURES, prepareGrassTextures)
 

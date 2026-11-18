@@ -330,3 +330,13 @@ export function createSiteShapes(sites: ConstructionSite[]): SiteShapes {
 }
 
 export const SHADE_NET_COLOR = NET_COLOR
+
+/** A building site's plot as an outline, for the surface map. */
+export function siteOutline({ x, z, rotation, width, depth }: ConstructionSite): [number, number][] {
+  const forwardX = Math.sin(rotation)
+  const forwardZ = Math.cos(rotation)
+  const alongX = Math.cos(rotation)
+  const alongZ = -Math.sin(rotation)
+  const at = (along: number, out: number): [number, number] => [x + alongX * along + forwardX * out, z + alongZ * along + forwardZ * out]
+  return [at(-width / 2, -depth / 2), at(width / 2, -depth / 2), at(width / 2, depth / 2), at(-width / 2, depth / 2)]
+}

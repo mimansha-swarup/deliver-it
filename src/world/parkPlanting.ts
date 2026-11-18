@@ -1,3 +1,4 @@
+import { surfaceAllows } from './surfaceMap'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { MapData } from './mapData'
 import {
@@ -73,7 +74,7 @@ export function plantParks(
 
         if (random() > TREE_CHANCE) continue
         if (!isInsideOutline(outline, x, z) || !isInsideBounds(x, z, 3)) continue
-        if (isNearBuilding(collisions, x, z, TREE_CLEARANCE)) continue
+        if (isNearBuilding(collisions, x, z, TREE_CLEARANCE) || !surfaceAllows(x, z, 'tree')) continue
         if (!isClearOfRoads(roads, x, z, TREE_CLEARANCE) || !isClearOfRoads(paths, x, z, TREE_CLEARANCE)) continue
 
         addPost(collisions, x, z, TREE_TRUNK_RADIUS)
@@ -97,7 +98,7 @@ export function plantParks(
         const x = startX + forwardX * along + forwardZ * BENCH_OFFSET
         const z = startZ + forwardZ * along - forwardX * BENCH_OFFSET
         if (!isInsideOutline(outline, x, z)) continue
-        if (isNearBuilding(collisions, x, z, BENCH_RADIUS + 0.3)) continue
+        if (isNearBuilding(collisions, x, z, BENCH_RADIUS + 0.3) || !surfaceAllows(x, z, 'bench')) continue
         if (!isClearOfRoads(roads, x, z, BENCH_RADIUS)) continue
 
         addPost(collisions, x, z, BENCH_RADIUS)

@@ -1,3 +1,4 @@
+import { surfaceAllows } from './surfaceMap'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { LineFeature } from './mapData'
 import { createRandom, indexRoadPieces, isClearOfRoads, PointGrid, scramble, toRoadPieces, type Prop, type RoadsideProps } from './props'
@@ -41,6 +42,7 @@ export function placeStreetLife(roads: LineFeature[], collisions: CollisionWorld
 
   const isFree = (x: number, z: number, wallGap: number, roadGap: number, propGap: number) =>
     isInsideBounds(x, z, EDGE_MARGIN) &&
+    surfaceAllows(x, z, 'prop') &&
     !isNearBuilding(collisions, x, z, wallGap) &&
     isClearOfRoads(roadIndex, x, z, roadGap) &&
     !taken.hasWithin(x, z, propGap)

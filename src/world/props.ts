@@ -1,3 +1,4 @@
+import { surfaceAllows } from './surfaceMap'
 import { streetPresetOf } from './streetPresets'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { LineFeature } from './mapData'
@@ -303,7 +304,9 @@ export function generateRoadsideProps(
   // HSR's roads were planted a species at a time, so a whole road is one kind of tree (treeSpecies.ts).
   const avenues = roads.map((road, index) => SPECIES[AVENUE_SPECIES[roadSeed(road, index) % AVENUE_SPECIES.length]])
 
-  const canPlace = (x: number, z: number, buildingGap: number) =>
+  // The ground must allow it too (surfaceMap.ts): a tree on open ground, a median or in a tree pit, a pole on a footpath.
+  const canPlace = (x: number, z: number, buildingGap: number, what: 'tree' | 'pole') =>
+    surfaceAllows(x, z, what) &&
     !isNearBuilding(collisions, x, z, buildingGap) &&
     !keepClear(x, z) &&
     isClearOfRoads(roadIndex, x, z, ROAD_CLEARANCE) &&
@@ -327,7 +330,7 @@ export function generateRoadsideProps(
       const x = piece.start[0] + directionX * along + directionZ * offset
       const z = piece.start[1] + directionZ * along - directionX * offset
 
-      if (!canPlace(x, z, isLamp ? LAMP_BUILDING_GAP : TREE_BUILDING_GAP)) continue
+      if (!canPlace(x, z, isLamp ? LAMP_BUILDING_GAP : TREE_BUILDING_GAP, isLamp ? 'pole' : 'tree')) continue
 
       placed.add(x, z)
       addPost(collisions, x, z, isLamp ? LAMP_POST_RADIUS : TREE_TRUNK_RADIUS)
@@ -351,6 +354,7 @@ export function generateRoadsideProps(
 
   // Scooters left outside shops, kept off the road.
   const isParkingSpot = (x: number, z: number) =>
+    surfaceAllows(x, z, 'footpathBike') &&
     !isNearBuilding(collisions, x, z, PARKED_SCOOTER_RADIUS + 0.1) &&
     !keepClear(x, z) &&
     isClearOfRoads(roadIndex, x, z, PARKED_SCOOTER_RADIUS)
