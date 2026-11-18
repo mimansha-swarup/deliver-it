@@ -1,18 +1,14 @@
 import { ZEBRA_DEPTH, ZEBRA_GAP, type SignalPost } from '../traffic/trafficSignals'
 import { addWall, isNearBuilding, type CollisionWorld } from './collision'
 import type { Gate } from './houseKit'
+import { barrierLine, BoundaryPlanner, type BoundaryReport } from './boundaries'
 import type { LineFeature, MapData } from './mapData'
 import {
   createRandom,
-  forEachRoadNear,
-  indexRoadPieces,
-  isClearOfRoads,
   nearestRoadEdge,
-  toRoadPieces,
   type RoadIndex,
 } from './props'
-import { PAVEMENT_WIDTH } from './surface'
-import { isInsideBounds, isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
+import { isRingInPlayArea, lonLatToWorld, type GroundPoint, type LonLat } from './worldUtils'
 
 /*
  * Fences, walls and barriers along HSR's streets (ART_DIRECTION.md), of the
@@ -82,15 +78,6 @@ const RAILING_EDGE_RANGE: [number, number] = [0.15, 0.8]
 /** Railings keep this clear of a gate's edge, so cars and people can still get in. */
 const GATE_CLEARANCE = 1
 
-/** Park fences stand back from the road beyond the pavement. Where the mapped edge is closer, the fence moves in, up to this far. */
-const PARK_ROAD_CLEARANCE = PAVEMENT_WIDTH + 0.3
-const PARK_MAX_SHIFT = 6
-const PATH_WIDTH = 2
-/** Where a path comes through a park's edge, the fence leaves a gap this wide. */
-const PARK_PATH_GAP = 3
-/** Sides of a park longer than this get a gate in the middle, this wide. */
-const PARK_GATE_SIDE = 40
-const PARK_GATE_WIDTH = 3.5
 /** How parks are fenced: their shares of the green railing, chain-link and steel railing. */
 const PARK_STYLES: [FenceKind, number][] = [
   ['parkRailing', 0.5],
@@ -99,7 +86,7 @@ const PARK_STYLES: [FenceKind, number][] = [
 ]
 
 /** What each OSM barrier becomes. */
-function kindOfBarrier(barrier: LineFeature): FenceKind | null {
+export function kindOfBarrier(barrier: LineFeature): FenceKind | null {
   const { barrier: type, fence_type: fenceType, material } = barrier.properties
   if (type === 'wall') return 'wall'
   if (type === 'retaining_wall') return 'retaining'
@@ -125,25 +112,6 @@ function joinPanels(panels: Panel[], kind: FenceKind, variation: number, collisi
   }
   for (const run of runs) addWall(collisions, run.from, run.to, THICKNESS[kind])
   return runs
-}
-
-/** Cuts a line into panels about `size` long, keeping those `keep` accepts. */
-function cutIntoPanels(points: GroundPoint[], size: number, keep: (from: GroundPoint, to: GroundPoint, middle: GroundPoint) => boolean): Panel[] {
-  const panels: Panel[] = []
-  for (let i = 0; i < points.length - 1; i++) {
-    const [startX, startZ] = points[i]
-    const [endX, endZ] = points[i + 1]
-    const length = Math.hypot(endX - startX, endZ - startZ)
-    if (length < 0.3) continue
-    const count = Math.max(1, Math.round(length / size))
-    const at = (part: number): GroundPoint => [startX + ((endX - startX) * part) / count, startZ + ((endZ - startZ) * part) / count]
-    for (let part = 0; part < count; part++) {
-      const from = at(part)
-      const to = at(part + 1)
-      if (keep(from, to, at(part + 0.5))) panels.push([from, to])
-    }
-  }
-  return panels
 }
 
 /** Railings along both kerbs on the way into each signal junction, starting just back from the stop line. */
@@ -206,155 +174,58 @@ export function planJunctionRailings(
   return joinPanels(panels, 'railing', 0, collisions)
 }
 
-/** Whether the line from a to b crosses the line from c to d. */
-function crosses(a: GroundPoint, b: GroundPoint, c: GroundPoint, d: GroundPoint): boolean {
-  const side = (p: GroundPoint, q: GroundPoint, r: GroundPoint) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
-  return side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0
-}
+/** OSM tags of land whose grounds are walled: schools and colleges. */
+const WALLED_GROUNDS = new Set(['school', 'college', 'kindergarten', 'university'])
+/** A petrol bunk's wall leaves its front open: no panel this close to the road's edge, in metres. */
+const BUNK_OPEN_FRONT = 5
+
+const ring = (coordinates: LonLat[]): GroundPoint[] =>
+  coordinates.slice(0, -1).map((position): GroundPoint => {
+    const [x, , z] = lonLatToWorld(position)
+    return [x, z]
+  })
 
 /**
- * A fence round each park, on every side. Where the park's mapped edge runs
- * up to the road, the fence moves in behind the pavement. It opens where a path
- * crosses it, and has a gate halfway along long sides.
+ * Every boundary as a closed loop that stops at the footpath (boundaries.ts): temple compounds,
+ * plots left walled where a building was taken off the road, school grounds, parks and the
+ * sides and back of petrol bunks; then OSM's mapped walls and fences, joined up and kept off
+ * the footpath, where no loop already runs.
  */
-export function planParkFences(data: MapData, roads: RoadIndex, collisions: CollisionWorld): FenceRun[] {
-  const paths = indexRoadPieces(toRoadPieces(data.footways).map((piece) => ({ ...piece, width: PATH_WIDTH })))
-  const random = createRandom(20261117)
+export function planBoundaries(
+  data: MapData,
+  roads: RoadIndex,
+  collisions: CollisionWorld,
+  { temples, plots, bunks }: { temples: GroundPoint[][]; plots: GroundPoint[][]; bunks: GroundPoint[][] },
+): { runs: FenceRun[]; report: BoundaryReport } {
+  const planner = new BoundaryPlanner(data.footways, roads, collisions)
   const runs: FenceRun[] = []
-
-  data.parks.forEach((park) => {
+  for (const outline of temples) runs.push(...planner.loop({ outline, kind: 'templeWall', variation: 0 }))
+  plots.forEach((outline, i) => runs.push(...planner.loop({ outline, kind: 'wall', variation: (i % 7) / 7 })))
+  const random = createRandom(20261117)
+  for (const area of data.areas) {
+    if (!WALLED_GROUNDS.has(area.properties.amenity ?? '') || !isRingInPlayArea(area.geometry.coordinates[0])) continue
+    runs.push(...planner.loop({ outline: ring(area.geometry.coordinates[0]), kind: 'wall', variation: random() }))
+  }
+  for (const park of data.parks) {
     const roll = random()
     const variation = random()
-    const ring = park.geometry.coordinates[0]
-    if (!isRingInPlayArea(ring)) return
+    if (!isRingInPlayArea(park.geometry.coordinates[0])) continue
     let share = 0
     const kind = PARK_STYLES.find(([, part]) => (share += part) > roll)?.[0] ?? 'parkRailing'
+    runs.push(...planner.loop({ outline: ring(park.geometry.coordinates[0]), kind, variation }))
+  }
+  bunks.forEach((outline, i) => runs.push(...planner.loop({ outline, kind: 'wall', variation: (i % 5) / 5, openWithin: BUNK_OPEN_FRONT })))
 
-    const outline = ring.slice(0, -1).map((position): GroundPoint => {
-      const [x, , z] = lonLatToWorld(position)
-      return [x, z]
-    })
-    if (outline.length < 3) return
-
-    // Moves a point on the edge inwards until it's clear of the road and its pavement.
-    const settle = ([x, z]: GroundPoint, inX: number, inZ: number): GroundPoint | null => {
-      let shift = 0
-      for (let step = 0; step < 3; step++) {
-        const need = PARK_ROAD_CLEARANCE - nearestRoadEdge(roads, x + inX * shift, z + inZ * shift, PARK_ROAD_CLEARANCE + 1)
-        if (need <= 0.01) break
-        shift += need
-      }
-      if (shift > PARK_MAX_SHIFT) return null
-      return [x + inX * shift, z + inZ * shift]
-    }
-
-    const panels: Panel[] = []
-    const closed = [...outline, outline[0]]
-    for (let i = 0; i < closed.length - 1; i++) {
-      const [startX, startZ] = closed[i]
-      const [endX, endZ] = closed[i + 1]
-      const length = Math.hypot(endX - startX, endZ - startZ)
-      if (length < 0.5) continue
-      // Inwards, whichever way round the outline runs.
-      let inX = -(endZ - startZ) / length
-      let inZ = (endX - startX) / length
-      const middleX = (startX + endX) / 2
-      const middleZ = (startZ + endZ) / 2
-      if (!isInsideOutline(outline, middleX + inX * 0.5, middleZ + inZ * 0.5)) {
-        inX = -inX
-        inZ = -inZ
-      }
-
-      const count = Math.max(1, Math.round(length / PANEL[kind]))
-      const at = (part: number): GroundPoint => [startX + ((endX - startX) * part) / count, startZ + ((endZ - startZ) * part) / count]
-      const settled = Array.from({ length: count + 1 }, (_, part) => settle(at(part), inX, inZ))
-      const hasGate = length > PARK_GATE_SIDE
-
-      for (let part = 0; part < count; part++) {
-        const from = settled[part]
-        const to = settled[part + 1]
-        if (!from || !to) continue
-        const along = ((part + 0.5) / count) * length
-        if (hasGate && Math.abs(along - length / 2) < PARK_GATE_WIDTH / 2 + PANEL[kind] / 2) continue
-        const middle: GroundPoint = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]
-        let pathThrough = false
-        forEachRoadNear(paths, middle[0], middle[1], PARK_PATH_GAP + PANEL[kind], (piece) => {
-          if (pathThrough) return
-          // A path crossing this panel, or ending right at it.
-          if (crosses(from, to, piece.start, piece.end)) pathThrough = true
-          else if (Math.hypot(piece.start[0] - middle[0], piece.start[1] - middle[1]) < PARK_PATH_GAP / 2) pathThrough = true
-          else if (Math.hypot(piece.end[0] - middle[0], piece.end[1] - middle[1]) < PARK_PATH_GAP / 2) pathThrough = true
-        })
-        if (pathThrough) continue
-        if (!isClearOfRoads(roads, middle[0], middle[1], PARK_ROAD_CLEARANCE - 0.2)) continue
-        if (isNearBuilding(collisions, from[0], from[1], 0.3) || isNearBuilding(collisions, to[0], to[1], 0.3)) continue
-        panels.push([from, to])
-      }
-    }
-    runs.push(...joinPanels(panels, kind, variation, collisions))
-  })
-  return runs
-}
-
-/**
- * The walls, fences and barriers mapped in OSM. Boundary walls and fences keep
- * off roads and out of anything already built there, such as a compound wall
- * the house kit put up. Crash barriers and road dividers stand at the road's
- * edge or between its two halves, so they only keep off the carriageway itself.
- */
-export function planMappedBarriers(barriers: LineFeature[], roads: RoadIndex, collisions: CollisionWorld): FenceRun[] {
-  const random = createRandom(4471)
-  const runs: FenceRun[] = []
-  for (const barrier of barriers) {
-    const variation = random()
+  // OSM's mapped lines, by kind.
+  const byKind = new Map<FenceKind, GroundPoint[][]>()
+  for (const barrier of data.barriers) {
     const kind = kindOfBarrier(barrier)
     if (!kind) continue
-    const points = barrier.geometry.coordinates.map((position): GroundPoint => {
-      const [x, , z] = lonLatToWorld(position)
-      return [x, z]
-    })
-    const onRoadEdge = kind === 'guardRail' || kind === 'jersey'
-    const fits = ([x, z]: GroundPoint) =>
-      !isInsideBounds(x, z, 2)
-        ? false
-        : onRoadEdge
-        ? nearestRoadEdge(roads, x, z, 1) > -0.2
-        : isClearOfRoads(roads, x, z, 0.3) && !isNearBuilding(collisions, x, z, THICKNESS[kind] / 2 + 0.05)
-    const panels = cutIntoPanels(points, PANEL[kind], (from, to, middle) => fits(from) && fits(middle) && fits(to))
-    runs.push(...joinPanels(panels, kind, variation, collisions))
+    const lines = byKind.get(kind) ?? []
+    lines.push(barrierLine(barrier))
+    byKind.set(kind, lines)
   }
-  return runs
-}
-
-/** A temple compound's wall leaves a gateway this wide, facing the nearest road. */
-const TEMPLE_GATE = 3
-
-/**
- * The striped wall round each temple compound, open in a gateway on the side nearest the road.
- * With `kind: 'wall'`, a plain compound wall round a plot, the same way.
- */
-export function planTempleWalls(compounds: GroundPoint[][], roads: RoadIndex, collisions: CollisionWorld, kind: 'templeWall' | 'wall' = 'templeWall'): FenceRun[] {
-  const runs: FenceRun[] = []
-  for (const compound of compounds) {
-    const closed = [...compound, compound[0]]
-    // The gateway: the point on the wall nearest a road.
-    let gate = compound[0]
-    let nearest = Infinity
-    for (const [x, z] of cutIntoPanels(closed, 1, () => true).map(([from]) => from)) {
-      const edge = nearestRoadEdge(roads, x, z, 60)
-      if (edge < nearest) {
-        nearest = edge
-        gate = [x, z]
-      }
-    }
-    const fits = ([x, z]: GroundPoint) =>
-      isInsideBounds(x, z, 2) && isClearOfRoads(roads, x, z, 0.3) && !isNearBuilding(collisions, x, z, 0.2)
-    const panels = cutIntoPanels(
-      closed,
-      PANEL[kind],
-      (from, to, middle) => Math.hypot(middle[0] - gate[0], middle[1] - gate[1]) > TEMPLE_GATE / 2 && fits(from) && fits(to),
-    )
-    runs.push(...joinPanels(panels, kind, kind === 'templeWall' ? 0 : (compound.length % 7) / 7, collisions))
-  }
-  return runs
+  const mappedRandom = createRandom(4471)
+  for (const [kind, lines] of byKind) runs.push(...planner.mapped(lines, kind, mappedRandom(), kind === 'guardRail' || kind === 'jersey'))
+  return { runs, report: planner.report }
 }

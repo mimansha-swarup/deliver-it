@@ -9155,3 +9155,36 @@ looked up once, and only overlapping footprints get the full count.
 Also: `scripts/shots.mjs` runs Chrome headless (`--windowed` to watch), because typing in
 another window while it ran reached the game and rode the bike off, and it prints the load
 timeline's report lines.
+
+## 2026-11-18: Entry 158, closed boundaries that stop at the footpath
+
+### What I did
+`src/world/boundaries.ts` builds every boundary as a closed loop: temple compounds, plots
+walled where a building was taken off the road (entry 157), school and college grounds (new),
+parks, and the sides and back of each petrol bunk (new, with the front left open). The outline
+is cut into panels. Each panel corner moves in, square to its side or along the bisector at a
+corner so the sides still meet, until the surface map says it's off the road, median and
+footpath. A corner that would have to move more than 8 m is where a road runs in, and the loop
+stops there with a pillar. Where a road or path crosses the line the loop opens in a gate with a
+pillar each side, and every loop gets at least one gate, on the side nearest a road. A panel
+that runs into a building is left out, so the building's own wall closes the loop.
+
+OSM's mapped walls and fences: pieces whose ends meet are joined into one line, a line whose
+ends nearly meet is closed, a wall standing on the footpath moves straight back behind it, and
+a mapped line along a loop that's already built is left out, so there's no double wall. Crash
+barriers and road dividers stay at the road's edge as before.
+
+This replaces `planParkFences`, `planMappedBarriers` and `planTempleWalls`, which dropped any
+panel that was in the way and left half boundaries.
+
+### Counts
+367 loops, 12,330 panels, 327 gates, 1,084 openings where a road runs in, 4 for paths. 5,412
+corners moved behind the footpath, 1,355 panels left out against a building. Mapped lines: 159
+pieces joined into 151 lines; 531 points moved behind the footpath, 1,143 panels dropped as they
+cross a road, 609 left out as duplicates of a loop, and 8,319 are outside the play area (most of
+the barrier file is). No mapped line was near enough to closed to close. 59 ms at load.
+
+### Lesson: a petrol bunk's front is its gate
+The bunk's forecourt runs right up to the road, so moving its front corners in put two gate
+pillars in the middle of the forecourt. A loop with an open front keeps its corners where they
+are and counts the front as its way in.

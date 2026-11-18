@@ -27,7 +27,7 @@ import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
 import { forEachRoadNear, generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadPiece, toRoadPieces } from './props'
-import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWalls } from './fencing'
+import { planBoundaries, planJunctionRailings } from './fencing'
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
 import { teleportSpots } from '../dev/teleportSpots'
@@ -154,8 +154,6 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The riders' bay at each dark store: on its footpath, short of the kerb.
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
-  const templeWalls = planTempleWalls(templeCompounds(data.worship), roadIndex, collisions)
-  const plotWalls = planTempleWalls(setback.plots, roadIndex, collisions, 'wall')
   // The ground map: what every spot is (road, footpath, paved, building, park, plot...), which
   // everything placed from here on asks first (surfaceMap.ts).
   const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
@@ -170,10 +168,10 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     teleportSpots.push({ name: site.name ?? 'Jagannath temple', x: inside[0] + frontX * out, z: inside[1] + frontZ * out, heading: Math.atan2(-frontX, -frontZ) })
   }
   // Walls and fences go up before trees, lamps and benches, which then keep clear of them:
-  // those mapped in OSM first, where nothing is built yet, then round the parks.
-  const mappedBarriers = planMappedBarriers(data.barriers, roadIndex, collisions)
-  const parkFences = planParkFences(data, roadIndex, collisions)
-  lap('barriers and park fences')
+  // closed loops round compounds, school grounds, parks and bunks, then OSM's mapped lines.
+  const boundaries = planBoundaries(data, roadIndex, collisions, { temples: templeCompounds(data.worship), plots: setback.plots, bunks: fuel.map(forecourtOutline) })
+  worldSurface.report.boundaries = boundaries.report
+  lap(`boundaries: ${JSON.stringify(boundaries.report)}`)
   // Main roads get more showrooms; other streets the everyday mix.
   const shopFronts = fillShopUnits(houses.shopUnits, mappedShops, (roll, x, z) => {
     const near = nearestRoadPiece(roadIndex, x, z, 20)
@@ -257,7 +255,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   for (const { start, end, width } of edges.medians) addWall(collisions, start, end, width)
   // Railings on the way into the junctions, after the lanes for the same reason.
   const railings = planJunctionRailings(traffic.signals.posts, roadIndex, houses.gates, collisions, (x, z) => isOnForecourt(fuel, x, z))
-  const fences = [...templeWalls, ...plotWalls, ...mappedBarriers, ...parkFences, ...railings]
+  const fences = [...boundaries.runs, ...railings]
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   lap('railings and tanks')
   const surface = createSurface(data.roads, features, edges.heightAt)
