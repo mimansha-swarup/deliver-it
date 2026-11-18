@@ -9632,3 +9632,41 @@ after. `scripts/shots.mjs` puts its `--hour` in the address too.
 
 Screenshots at 17:30 of 27th Main, 13th Cross and Sarjapur Road, High and Low:
 `world-pass.local/shots/p1-1730`.
+
+## 2026-11-19: Entry 175, the hitches on High
+
+### What I found
+On this Mac, quiet, I couldn't make Sarjapur Road hitch on its own: standing and riding, at 9:00
+and 17:30, from the moment the ride starts or later, and with the CPU slowed 4×, no frame
+went over 26 ms. The prop refresh (every instanced mesh rebuilding its list each 20 m) took at most
+0.6 ms in a frame; no long frame compiled a shader.
+
+**What does make exactly the reported pattern is a change of resolution.** Two changes,
+1.5 → 1.25 → 1.5, gave 18 frames over 20 ms and a worst of 100 ms. Each change rebuilds the
+canvas and every buffer behind the effects, and for a second or so after, frames take about 90 ms.
+`AdaptiveResolution` makes those changes by itself when frames come late, so on a busier
+machine it would drop, hitch, settle, raise, hitch again. With the effects off a change costs
+nothing; the long run of slow frames goes away without the sun's haze effect in the chain,
+though not because of its depth read (tried without it). Why that effect makes resizing slow
+isn't found yet.
+
+### What I did
+- **The resolution changes rarely now** (AdaptiveResolution.tsx): it drops after 3 slow seconds
+  running (was 2), raises after 20 calm seconds (was 5) and no sooner than 45 s after the last
+  change; a level that proved too much isn't tried for 5 minutes (was 1). After any change, 2.5 s
+  aren't judged, so a change's own slow frames can't call for the next one. Judging starts 6 s
+  after the start (was 3), past the streaming of the nearby city.
+- **Only the copies in use go to the GPU** when a prop list refreshes (RoadsideProps.tsx): the
+  buffers are sized for every copy in the city (28,000 trees, 1.8 MB for one mesh), and all of it
+  was sent at each refresh, for every mesh at once.
+- `scripts/bench.mjs`: `--stand` (as `--ride`, standing still), `--now` (from the moment the ride
+  starts), `--throttle 4` (the CPU slowed during the run), and the long frames listed with when
+  they came.
+
+### Worst frames (High, Sarjapur Road, a 2× screen)
+| | FPS | Frames over 20 ms | Worst |
+| --- | --- | --- | --- |
+| Standing, 4 s | 120 | 0 | 16.4 ms |
+| Riding, 6 s | 120 | 0 | 16.6 ms |
+| Riding, CPU 4× slower | 68 to 82 | 1 to 49 | 24.5 to 50 ms (the same build, run to run, with another Chrome busy) |
+| Two forced resolution changes (before) | 75 | 18 | 100 ms |

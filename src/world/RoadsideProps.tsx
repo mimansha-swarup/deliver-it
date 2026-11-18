@@ -1,3 +1,4 @@
+import { isDebug } from '../dev/spawn'
 import { useEffect, useMemo, useRef } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { FOLIAGE_TEXTURES } from './assetUrls'
@@ -407,6 +408,10 @@ function createHaloMaterial(): THREE.ShaderMaterial {
   })
 }
 
+/** Debug (`__deliverItRefresh` with ?debug): the most time one frame has spent refreshing instance lists, in ms. */
+const refreshStats = { frame: -1, sum: 0, max: 0, frames: 0 }
+if (isDebug()) (window as unknown as { __deliverItRefresh?: typeof refreshStats }).__deliverItRefresh = refreshStats
+
 /** A steady 0 to 1 roll for a spot, so a thinned tree is the same tree in each of its parts. */
 function thinRoll(x: number, z: number): number {
   const mixed = Math.imul(Math.round(x * 10) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(Math.round(z * 10), 0xc2b2ae35)
@@ -471,7 +476,7 @@ export function PropInstances({
   const lastRefresh = useRef<{ x: number; z: number; reach: number } | null>(null)
   const grid = useMemo(() => createPropGrid(props), [props])
 
-  useFrame(() => {
+  useFrame(({ gl }) => {
     const instances = mesh.current
     if (!instances) return
 
@@ -491,6 +496,7 @@ export function PropInstances({
       return
     }
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
+    const refreshStart = performance.now()
 
     let count = 0
     forEachPropNear(grid, livePlayer.x, livePlayer.z, reach, (prop) => {
@@ -513,8 +519,24 @@ export function PropInstances({
     })
 
     instances.count = count
+    // Only the copies in use go to the GPU: the buffers are sized for every copy in the city
+    // (28,000 trees), and sending all of them at each refresh was megabytes at once.
+    instances.instanceMatrix.clearUpdateRanges()
+    instances.instanceMatrix.addUpdateRange(0, Math.max(1, count) * 16)
     instances.instanceMatrix.needsUpdate = true
-    if (instances.instanceColor) instances.instanceColor.needsUpdate = true
+    if (instances.instanceColor) {
+      instances.instanceColor.clearUpdateRanges()
+      instances.instanceColor.addUpdateRange(0, Math.max(1, count) * 3)
+      instances.instanceColor.needsUpdate = true
+    }
+    const frame = gl.info.render.frame
+    if (refreshStats.frame !== frame) {
+      refreshStats.frame = frame
+      refreshStats.sum = 0
+      refreshStats.frames++
+    }
+    refreshStats.sum += performance.now() - refreshStart
+    refreshStats.max = Math.max(refreshStats.max, refreshStats.sum)
   })
 
   return (

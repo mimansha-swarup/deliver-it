@@ -18,18 +18,28 @@ const LATE = 1.3
  */
 const SLOWEST_REFRESH = 1 / 60
 const FASTEST_REFRESH = 1 / 60
-/** If this share of a batch's frames are late, two batches running, the resolution drops. */
+/**
+ * Every change of resolution costs: the canvas and every buffer of the effects behind it are
+ * made again, and for a second or so after, frames take 90 ms or more (measured on High; with
+ * the sun's haze effect in the chain, though not from its depth read). So it changes rarely.
+ *
+ * If this share of a batch's frames are late, `DROP_BATCHES` batches running, the resolution drops.
+ */
 const DROP_SHARE = 0.2
-/** If no more than this share are late, five batches running, it tries a step up. */
+const DROP_BATCHES = 3
+/** If no more than this share are late, `CALM_BATCHES` batches running, it tries a step up, at most once in `RAISE_GAP` seconds. */
 const CALM_SHARE = 0.02
-const CALM_BATCHES = 5
+const CALM_BATCHES = 20
+const RAISE_GAP = 45
 /** A resolution that proved too much isn't tried again for this long, in seconds. */
-const CEILING_SECONDS = 60
+const CEILING_SECONDS = 300
 /**
  * Just after Start, shaders compile and the nearby city is built, so frames
  * are late for reasons a lower resolution won't fix. Judging waits this long, in seconds.
  */
-const WARM_UP = 3
+const WARM_UP = 6
+/** After a change, its own slow frames aren't judged: they'd only call for another change. In seconds. */
+const SETTLE = 2.5
 
 /**
  * Keeps the frame rate steady by lowering the resolution when frames come in
@@ -44,7 +54,7 @@ export function AdaptiveResolution() {
   const started = useGameStore((state) => state.started)
   const quality = useGameStore((state) => state.quality)
   const lowScale = useGameStore((state) => state.lowScale)
-  const batch = useRef({ time: 0, frames: [] as number[], slow: 0, calm: 0, ceiling: Infinity, ceilingAge: 0, sinceRaise: Infinity, warmUp: WARM_UP, refresh: SLOWEST_REFRESH })
+  const batch = useRef({ time: 0, frames: [] as number[], slow: 0, calm: 0, ceiling: Infinity, ceilingAge: 0, sinceRaise: Infinity, sinceChange: Infinity, warmUp: WARM_UP, refresh: SLOWEST_REFRESH })
   /** A resolution waiting to be applied at the start of the next frame. See `applyRatio`. */
   const pending = useRef<number | null>(null)
 
@@ -72,6 +82,8 @@ export function AdaptiveResolution() {
       setDpr(pending.current)
       useResolution.setState({ pixelRatio: pending.current })
       pending.current = null
+      batch.current.warmUp = Math.max(batch.current.warmUp, SETTLE)
+      batch.current.sinceChange = 0
     }
 
     // The title screen's flight over the whole city isn't what riding costs.
@@ -80,8 +92,11 @@ export function AdaptiveResolution() {
       state.warmUp = WARM_UP
       return
     }
+    state.sinceChange += delta
     if (state.warmUp > 0) {
       state.warmUp -= delta
+      state.frames = []
+      state.time = 0
       return
     }
     state.frames.push(delta)
@@ -109,7 +124,7 @@ export function AdaptiveResolution() {
     state.slow = lateShare > DROP_SHARE ? state.slow + 1 : 0
     state.calm = lateShare <= CALM_SHARE ? state.calm + 1 : 0
 
-    if (state.slow >= 2 && pixelRatio > lowest) {
+    if (state.slow >= DROP_BATCHES && pixelRatio > lowest) {
       // Too much just after a step up: that level isn't tried again for a while,
       // so the picture doesn't keep sharpening and blurring.
       if (state.sinceRaise <= 3) {
@@ -119,7 +134,7 @@ export function AdaptiveResolution() {
       pending.current = Math.max(lowest, pixelRatio - STEP)
       state.slow = 0
       state.calm = 0
-    } else if (state.calm >= CALM_BATCHES && pixelRatio < highest) {
+    } else if (state.calm >= CALM_BATCHES && state.sinceChange >= RAISE_GAP && pixelRatio < highest) {
       pending.current = Math.min(highest, pixelRatio + STEP)
       state.calm = 0
       state.sinceRaise = 0

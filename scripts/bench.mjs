@@ -8,6 +8,7 @@
  *     node --experimental-websocket scripts/bench.mjs --ride [--quality High] [--profile] [--streets main-road]
  *     node --experimental-websocket scripts/bench.mjs --eval "window.__deliverIt.scene.getObjectByName('part:props').visible = false"
  *
+ * --stand stands still for 4 s instead, measured the same way.
  * --ride rides forward for 6 s with the resolution left to the game, and reports what a player
  * sees: frame intervals (FPS, frames over 20 ms, the worst), each frame's own work, and how many
  * long frames compiled a shader. It also prints the load timeline's steps.
@@ -35,7 +36,13 @@ const PROFILE = args.includes('--profile')
 /** JavaScript run in the page once the ride has started, before measuring. */
 const EVAL = option('eval', '')
 /** --ride: ride along the street on one quality at the screen's own resolution, as a player would, and count stutters. */
-const RIDE = args.includes('--ride')
+const RIDE = args.includes('--ride') || args.includes('--stand')
+/** --stand: as --ride, but standing still for 4 s: hitches that aren't from moving. */
+const STAND = args.includes('--stand')
+/** --now: measure from the moment the ride starts, on the quality it starts on, not 3 s after choosing one. */
+const NOW = args.includes('--now')
+/** --throttle 4: slows the CPU this many times during --ride or --stand. */
+const THROTTLE = Number(option('throttle', '1'))
 const RIDE_QUALITY = option('quality', 'High')
 /** The time of day, set before measuring with a clear sky, so runs compare: 9 as the old baselines (a first visit now starts at 17:30). */
 const HOUR = Number(option('hour', '9'))
@@ -183,8 +190,10 @@ const FLOOR = `(async () => {
 const RIDE_RUN = (quality) => `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   ${SET_SKY}
-  ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
-  await sleep(3000)
+  if (!${NOW}) {
+    ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
+    await sleep(3000)
+  }
   const { gl } = window.__deliverIt
   const raf = window.requestAnimationFrame
   const frames = []
@@ -205,8 +214,8 @@ const RIDE_RUN = (quality) => `(async () => {
   window.__bench.frames.clear()
   window.__bench.on = true
   const key = (code, down) => window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code, bubbles: true }))
-  key('KeyW', true)
-  await sleep(6000)
+  if (!${STAND}) key('KeyW', true)
+  await sleep(${STAND} ? 4000 : 6000)
   key('KeyW', false)
   on = false
   window.__bench.on = false
@@ -225,6 +234,8 @@ const RIDE_RUN = (quality) => `(async () => {
     workMean: +(work.reduce((n, t) => n + t, 0) / work.length).toFixed(1),
     workP95: +work[Math.floor(work.length * 0.95)].toFixed(1),
     workOver20: work.filter((t) => t > 20).length,
+    // The long frames themselves, at what time in the run and how long, slowest first.
+    longest: frames.map((f, i) => ({ at: +((frames.slice(0, i).reduce((n, g) => n + g.interval, 0)) / 1000).toFixed(2), ms: +f.interval.toFixed(1), compiled: f.compiled })).filter((f) => f.ms > 20).sort((a, b) => b.ms - a.ms).slice(0, 8),
   }
 })()`
 
@@ -288,7 +299,10 @@ try {
         await send('Profiler.enable')
         await send('Profiler.start')
       }
+      // --throttle 4: the CPU slowed for the ride, as a slower laptop's would be.
+      if (THROTTLE > 1) await send('Emulation.setCPUThrottlingRate', { rate: THROTTLE })
       row.ride = await evaluate(RIDE_RUN(RIDE_QUALITY))
+      if (THROTTLE > 1) await send('Emulation.setCPUThrottlingRate', { rate: 1 })
       if (PROFILE) {
         const { profile } = await send('Profiler.stop')
         row.profile = summarize(profile).slice(0, 25)
