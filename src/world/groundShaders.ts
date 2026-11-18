@@ -137,12 +137,24 @@ export function patchAsphalt(material: THREE.MeshStandardMaterial): AsphaltUnifo
         float dust = (1.0 - smoothstep(0.35, 1.5, edge)) * (0.5 + 0.5 * groundLayers(ground * 0.7)) * kerbed;
         asphalt = mix(asphalt, uDust * 0.55, dust * 0.34 * (1.0 - gutter * 0.4));
 
+        // Tar patches: fresh black rectangles where a trench was filled in, and blobs where a
+        // pothole was; less dust on them, as they're newer than the road round them.
+        vec2 tarCell = floor(ground / vec2(5.0, 3.0));
+        vec2 inTar = fract(ground / vec2(5.0, 3.0));
+        float tarRect = step(0.93, groundHash(tarCell + 17.0)) * step(0.12, inTar.x) * step(inTar.x, 0.88) * step(0.15, inTar.y) * step(inTar.y, 0.85);
+        float tarBlob = smoothstep(0.8, 0.84, groundLayers(ground * 0.35 + 41.0));
+        float tar = max(tarRect, tarBlob) * isStreet;
+        asphalt = mix(asphalt, uAsphalt * 0.55 * (0.95 + 0.1 * middle), tar * 0.85);
+        // Damp: darker patches along the gutter, where water stands after washing and rain.
+        float dampEdge = (1.0 - smoothstep(0.3, 1.4, edge)) * kerbed;
+        float damp = max(dampEdge * smoothstep(0.55, 0.75, groundLayers(ground * 0.5 + 23.0)), smoothstep(0.86, 0.9, groundLayers(ground * 0.18 + 61.0)) * 0.7) * isStreet;
+        asphalt *= 1.0 - damp * 0.28;
         diffuseColor.rgb = asphalt * grain * (1.0 - uWet * 0.38);`,
       )
       .replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
-        roughnessFactor *= (1.0 - 0.15 * track) * (1.0 - 0.5 * uWet);`,
+        roughnessFactor *= (1.0 - 0.15 * track) * (1.0 - 0.5 * uWet) * (1.0 - 0.35 * damp) * (1.0 - 0.15 * tar);`,
       )
   }
   return uniforms

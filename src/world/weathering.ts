@@ -24,12 +24,21 @@ export const WEATHERING = {
   contactHeight: 0.5,
   contactStrength: 0.6,
   /** Faded patches: how much of the paint's colour they lose, at most. */
-  fade: 0.45,
+  fade: 0.55,
   /** Damp stains: how much darker, at most. */
-  damp: 0.2,
+  damp: 0.3,
   /** Streaks under the sills: how much darker, at most, and the share of windows that have them. */
-  streaks: 0.28,
-  streakShare: 0.55,
+  streaks: 0.38,
+  streakShare: 0.7,
+  /** Long rain streaks down the wall from above: how much darker, at most. */
+  rain: 0.16,
+  /**
+   * Rust run down from a fitting (a grille, an AC's bracket, a pipe clamp): the share of
+   * 1.2 m strips of wall with one in each storey, and how far towards rust's colour it goes.
+   */
+  rustShare: 0.16,
+  rust: 0.55,
+  rustTint: [0.56, 0.33, 0.19] as const,
   /**
    * Faces turned to the ground (the ceiling under stilts, the undersides of
    * balcony slabs and sunshades) get no sky: this much darker, baked in.
@@ -97,6 +106,19 @@ function weatheringGlsl(streaks: [number, number] | null): string {
       paint *= 1.0 - hasStreak * underWindow * lines * run * ${f(W.streaks)} * isWall;`
           : ''
       }
+
+      // Rain streaks: long, thin and vertical, the whole height of the wall, stronger on weathered walls.
+      float rainLines = smoothstep(0.55, 0.9, weatherNoise(vec2(onWall.x * 5.0, onWall.y * 0.12 + weather * 7.0)));
+      paint *= 1.0 - rainLines * ${f(W.rain)} * (0.4 + 0.6 * weather) * isWall;
+
+      // Rust: in a few strips of wall, a thin orange-brown run from near the top of each storey down.
+      float strip = floor(onWall.x / 1.2);
+      float storeyRust = floor(onWall.y / 3.2);
+      float hasRust = step(1.0 - ${f(W.rustShare)} * (0.5 + weather), weatherHash(vec2(strip * 1.7, storeyRust + 3.0)));
+      float inStrip = 1.0 - smoothstep(0.06, 0.16, abs(fract(onWall.x / 1.2) - 0.5 - 0.2 * (weatherHash(vec2(strip, 9.0)) - 0.5)));
+      float drop = fract(onWall.y / 3.2);
+      float runDown = smoothstep(0.35, 0.85, drop) * (1.0 - smoothstep(0.85, 0.95, drop)) * (0.6 + 0.4 * weatherNoise(vec2(onWall.x * 20.0, onWall.y * 4.0)));
+      paint = mix(paint, paint * vec3(${W.rustTint.map(f).join(', ')}) * 1.3, hasRust * inStrip * runDown * ${f(W.rust)} * isWall * step(1.0, vWeatherWorld.y));
 
       // Grime at the foot of the wall: a ragged band of splashed red earth, darkest at the ground.
       float height = vWeatherWorld.y;

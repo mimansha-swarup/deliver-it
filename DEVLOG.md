@@ -9425,3 +9425,22 @@ props and pocket parks along them.
 ### Performance
 High 60 fps, 4.6 ms of work. Low 53 to 55 fps with this machine's usual hitches, 3.4 ms. The
 load average was 6 to 8 during one run, where High's work read 8.9 ms; the repeat read 4.6.
+
+## 2026-11-18: Entry 167, heavier weathering
+
+### What I did
+All in the shaders, so it costs no textures and Low has it too.
+- **Walls** (weathering.ts): faded patches up to 55% (was 45%), damp stains 30% darker (was
+  20%), streaks under 70% of sills (was 55%), 38% darker. New: long thin rain streaks the full
+  height of the wall, and rust runs. In about one 1.2 m strip of wall in six, each storey, a
+  thin orange-brown run starts near the top and runs down, as from a grille, an AC's bracket
+  or a pipe clamp.
+- **Roads** (groundShaders.ts, the asphalt): tar patches, fresh black rectangles where a
+  trench was filled in (about 7% of 5 × 3 m cells) and blobs where a pothole was, with less
+  dust and a little more shine than the road round them. Damp patches darker and shinier along
+  the gutters, and the odd one out in the road.
+
+### Performance (back to back with the build from before the world pass)
+High 60 fps, 5.0 ms of work (before: 60 fps, 4.8 ms). Low 60 fps, 4.4 ms (before: 54 fps
+with this machine's hitches, 4.1 ms). One run read High at 32 fps under load and its repeat
+read 60.
