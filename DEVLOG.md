@@ -9023,3 +9023,9 @@ Checked: phone moved to K opens and closes the phone and P does nothing; reset b
 
 Checked end to end with `?tutorial=1`: every step advances, Skip works, and `tutorialDone` is
 saved at the end. A speed breaker sits just ahead of the start, so step 2 is right there.
+
+### Performance, this pass (Entries 146–151)
+Riding Sarjapur Road at an emulated 2× screen on High, side by side with `main`: 60 FPS both, no
+frames over 20 ms, frame work 3.4–3.9 / 4.1–4.8 ms (mean / p95) against 3.6–3.9 / 4.8 ms, time
+to ride 4.8–4.9 s against 5.3–5.4 s. The phone's apps draw only while open; photo mode costs
+nothing until used; the tutorial checks a few values five times a second.
