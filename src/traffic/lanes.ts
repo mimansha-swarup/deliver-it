@@ -23,6 +23,12 @@ export type Lane = {
   weight?: number
   /** Whether buses run on its street. */
   buses?: boolean
+  /**
+   * Stretches with a vehicle parked at the kerb, which traffic eases out around: from and to (metres
+   * along), and `edge`, the parked vehicle's inner side, sideways from the lane (left is positive,
+   * as `shift`), less a margin. A vehicle there keeps its own left side to the right of it.
+   */
+  parked?: { from: number; to: number; edge: number }[]
 }
 
 type LaneRules = {

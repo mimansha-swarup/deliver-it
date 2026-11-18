@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { Fragment, useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -61,8 +61,15 @@ function Parked({
       drawn++
     }
     instances.count = drawn
+    // Only the slots in use go to the GPU: the kerbside lists hold thousands, of which a few dozen are drawn.
+    instances.instanceMatrix.clearUpdateRanges()
+    instances.instanceMatrix.addUpdateRange(0, drawn * 16)
     instances.instanceMatrix.needsUpdate = true
-    if (instances.instanceColor) instances.instanceColor.needsUpdate = true
+    if (instances.instanceColor) {
+      instances.instanceColor.clearUpdateRanges()
+      instances.instanceColor.addUpdateRange(0, drawn * 3)
+      instances.instanceColor.needsUpdate = true
+    }
   })
 
   if (items.length === 0) return null
@@ -80,8 +87,19 @@ function Parked({
   )
 }
 
-/** Bikes and cars parked under blocks of flats on stilts. */
-export function StiltParking({ vehicles }: { vehicles: StiltVehicle[] }) {
+/**
+ * Bikes and cars parked under blocks of flats on stilts, and, with a longer `drawDistance` and a
+ * few car models, along the kerb (streetParking.ts).
+ */
+export function StiltParking({
+  vehicles,
+  drawDistance = DRAW_DISTANCE,
+  carModels = [CAR_MODEL],
+}: {
+  vehicles: StiltVehicle[]
+  drawDistance?: number
+  carModels?: readonly string[]
+}) {
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const gl = useThree((state) => state.gl)
   const reflection = getStreetReflection(gl)
@@ -89,28 +107,32 @@ export function StiltParking({ vehicles }: { vehicles: StiltVehicle[] }) {
   const shapes = useMemo(
     () => ({
       bike: createParkedScooterGeometry(scene, STEERING_Z),
-      car: createParkedCarGeometry(scene, CAR_MODEL),
       bikeFar: createParkedScooterGeometry(scene, STEERING_Z, true),
-      carFar: createParkedCarGeometry(scene, CAR_MODEL, true),
+      cars: carModels.map((model) => createParkedCarGeometry(scene, model)),
+      carsFar: carModels.map((model) => createParkedCarGeometry(scene, model, true)),
     }),
-    [scene],
+    [scene, carModels],
   )
   useEffect(
     () => () => {
-      for (const shape of Object.values(shapes)) shape.dispose()
+      for (const shape of [shapes.bike, shapes.bikeFar, ...shapes.cars, ...shapes.carsFar]) shape.dispose()
     },
     [shapes],
   )
 
   const bikes = useMemo(() => vehicles.filter(({ car }) => !car), [vehicles])
-  const cars = useMemo(() => vehicles.filter(({ car }) => car), [vehicles])
+  const carsByModel = useMemo(() => carModels.map((_, model) => vehicles.filter((item) => item.car && (item.model ?? 0) === model)), [vehicles, carModels])
 
   return (
     <>
       <Parked items={bikes} geometry={shapes.bike} palette={PARKED_COLORS} reflection={reflection} from={0} to={DETAIL_DISTANCE} />
-      <Parked items={bikes} geometry={shapes.bikeFar} palette={PARKED_COLORS} reflection={reflection} from={DETAIL_DISTANCE} to={DRAW_DISTANCE} />
-      <Parked items={cars} geometry={shapes.car} palette={CAR_COLORS} reflection={reflection} from={0} to={DETAIL_DISTANCE} />
-      <Parked items={cars} geometry={shapes.carFar} palette={CAR_COLORS} reflection={reflection} from={DETAIL_DISTANCE} to={DRAW_DISTANCE} />
+      <Parked items={bikes} geometry={shapes.bikeFar} palette={PARKED_COLORS} reflection={reflection} from={DETAIL_DISTANCE} to={drawDistance} />
+      {carsByModel.map((cars, model) => (
+        <Fragment key={model}>
+          <Parked items={cars} geometry={shapes.cars[model]} palette={CAR_COLORS} reflection={reflection} from={0} to={DETAIL_DISTANCE} />
+          <Parked items={cars} geometry={shapes.carsFar[model]} palette={CAR_COLORS} reflection={reflection} from={DETAIL_DISTANCE} to={drawDistance} />
+        </Fragment>
+      ))}
     </>
   )
 }

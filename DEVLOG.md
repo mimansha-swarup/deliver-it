@@ -8699,3 +8699,40 @@ patience go and make it up by riding carefully or fast, and a really bad trip ca
 
 ### Try it
 Accept an order and crash a few times with it on board: the meter climbs, the customer writes.
+
+## 2026-11-18: Entry 132, kerbside parking
+
+### What I did
+Most parked vehicles now stand along the kerb (`src/world/streetParking.ts`), as in HSR:
+
+- **Cars and bikes parallel to the road edge**, on the road. Cars in slots of 5.2 m, bikes in
+  rows of two to four; three car models (hatchback, sedan, SUV). Shop streets are the fullest,
+  then residential streets and main roads. None near junctions (14 m), in front of gates, on a
+  petrol bunk's forecourt, or where the ride starts. Streets under 5 m (service lanes, tracks)
+  aren't parked on; under 7 m, only one side is, chosen per road.
+- **A few bikes stay on the footpath** outside shops (3 shops in 10, one or two each), still
+  loose, so they can be knocked over.
+- **Solid:** each car is a wall as wide as itself, each kerb bike a post, added after the
+  traffic lanes are built so they don't count as blocking them.
+- **Traffic eases out around them.** Each lane knows where something is parked at its kerb and
+  how far it pokes in (`markParkedOnLanes`); a vehicle there keeps its own side clear of it
+  (`parkedLimit` in trafficLogic.ts), pulling towards or over the middle of a narrow street, and
+  the existing overlap guard makes it wait for oncoming traffic. Two-wheelers and autos keep
+  squeezing as before, never further left than that. Checked: 6,286 samples of moving traffic
+  over 20 s on 13th Cross, none inside anything solid, 830 eased out round parked vehicles.
+
+### Performance
+4,356 cars and 11,501 bikes in all. The first try had 10,852 cars and 25,559 loose bikes, and
+two all-pairs loops (spots against every junction and gate; parked vehicles against every
+lane) took 15 s each at load. Now: grids for both (about 60 ms in all), kerb bikes are static
+instances (loose bodies cost a little every frame each), and parked meshes upload only the slots
+they use. Riding, side by side with the previous commit: frame work 6.9–9.0 ms against
+8.3–10.8 ms, load 9.7–11.1 s against 9.8–10.7 s.
+
+### Lesson 248: count before you build
+"Along every kerb" is tens of thousands of things on a whole map. Logging the counts on the load
+timeline (`street parking: N cars, N bikes`) showed it at once; the fix was in the numbers.
+
+### Try it
+`?spawn=residential-street`: cars along one kerb, bikes along the other, traffic pulling out
+round them.

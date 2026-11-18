@@ -1163,9 +1163,11 @@ function squeezeThrough(
   rider: ScooterState,
   downed: Obstacle[],
   dt: number,
+  /** The furthest left it may go here, past a parked vehicle (see `parkedLimit`). */
+  limit = Infinity,
 ) {
   const rules = TRAFFIC_RULES
-  const roomAt = (shift: number) => findGapAhead(vehicle, lane, active, rider, downed, shift - vehicle.shift).gap
+  const roomAt = (shift: number) => findGapAhead(vehicle, lane, active, rider, downed, Math.min(shift, limit) - vehicle.shift).gap
 
   const here = roomAt(vehicle.shiftTarget)
   if (here < rules.squeezeLookAt) {
@@ -1183,9 +1185,32 @@ function squeezeThrough(
   } else if (vehicle.shiftTarget !== 0 && roomAt(0) >= rules.squeezeLookAt) {
     vehicle.shiftTarget = 0
   }
+  vehicle.shiftTarget = Math.min(vehicle.shiftTarget, limit)
+  easeShift(vehicle, dt)
+}
 
+function easeShift(vehicle: Vehicle, dt: number) {
   const change = vehicle.shiftTarget - vehicle.shift
-  vehicle.shift += Math.sign(change) * Math.min(Math.abs(change), rules.squeezeSpeed * dt)
+  vehicle.shift += Math.sign(change) * Math.min(Math.abs(change), TRAFFIC_RULES.squeezeSpeed * dt)
+}
+
+/** Looks this far ahead for parked vehicles to ease out around, in metres, so the move starts in time. */
+const PARKED_LOOK_AHEAD = 7
+
+/**
+ * The furthest left a vehicle may run on its lane here, as a shift: past a vehicle parked at the
+ * kerb, its left side stays right of the parked one's inner side. Infinity where nothing's parked.
+ */
+function parkedLimit(vehicle: Vehicle, lane: Lane): number {
+  if (!lane.parked) return Infinity
+  let limit = Infinity
+  const back = vehicle.along - vehicle.halfLength
+  const front = vehicle.along + vehicle.halfLength + PARKED_LOOK_AHEAD
+  for (const { from, to, edge } of lane.parked) {
+    if (to < back || from > front) continue
+    limit = Math.min(limit, edge - vehicle.radius)
+  }
+  return limit
 }
 
 /** Horns: long and often when the rider is in the way, now and then in a queue, and the odd one anyway. */
@@ -1214,7 +1239,13 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
 
   const lane = roadLanes[vehicle.lane]
 
-  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, world.downed, dt)
+  // Out around anything parked at the kerb; two-wheelers and autos squeeze about as well, no further left.
+  const limit = parkedLimit(vehicle, lane)
+  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, world.downed, dt, limit)
+  else {
+    vehicle.shiftTarget = Math.min(0, limit)
+    easeShift(vehicle, dt)
+  }
 
   const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider, world.downed)
   const hasWaited = blockedBy === 'crossing' && vehicle.waiting > rules.patience

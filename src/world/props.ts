@@ -55,6 +55,8 @@ const PARKING_DISTANCE = 2.1
 const PARKED_SCOOTER_GAP = 1
 const PARKED_SCOOTER_RADIUS = 0.35
 const MAX_PARKED_PER_SHOP = 4
+/** Shops with a scooter or two on the footpath outside, out of 1. */
+const FOOTPATH_PARKING_SHARE = 0.3
 /** Lamp posts further apart than this don't get a cable between them, in metres. */
 const MAX_CABLE_SPAN = 75
 
@@ -359,7 +361,8 @@ export function generateRoadsideProps(
     // How many the street has room and custom for (streetPresets.ts): more on a shop street.
     const near = nearestRoadPiece(roadIndex, front.x, front.z, 14)
     const most = (near && streetPresetOf(roads[near.piece.road])?.parkedPerShop) ?? MAX_PARKED_PER_SHOP
-    const parked = Math.floor(random() * (most + 1))
+    // Most parked two-wheelers are at the kerb now (streetParking.ts); a few still stand on the footpath.
+    const parked = random() < FOOTPATH_PARKING_SHARE ? 1 + Math.floor(random() * Math.min(2, most)) : 0
 
     for (let index = 0; index < parked; index++) {
       const across = (index - (parked - 1) / 2) * PARKED_SCOOTER_GAP

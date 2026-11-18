@@ -69,6 +69,12 @@ import { StreetLife } from './StreetLife'
 import { placeStreetLife } from './streetPlacement'
 import { fillShopUnits, generateShopFronts } from './shopFrontPlacement'
 import { typeByChance, typeByChanceOnMainRoad } from './signboards'
+import { addParkedCarWalls, markParkedOnLanes, parkedFootprints, planStreetParking, STREET_CAR_MODELS } from './streetParking'
+
+/** Cars parked along the kerb are drawn this far, in metres: further than those under buildings, as they're in the open. */
+const STREET_PARKING_DRAW = 150
+/** No parking this close to where the ride starts, in metres. */
+const SPAWN_CLEAR = 12
 
 const SIGNAL_POLE_RADIUS = 0.1
 const MENU_BOARD_RADIUS = 0.35
@@ -196,6 +202,21 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     edges.liftAt,
     (x, z) => !isNearBuilding(collisions, x, z, 0.45) && isClearOfRoads(roadIndex, x, z, 0.35),
   )
+  // Kerbside parking: cars and bikes parallel to the road edge (streetParking.ts), made solid once
+  // the traffic lanes exist, below.
+  // Not where the ride starts, so the scooter never starts inside a parked car.
+  const spawnSlug = requestedSpawn()
+  const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
+  const starts = [start, ...(spawn ? [[spawn.x, spawn.z]] : [])]
+  const parking = planStreetParking({
+    roads: data.roads,
+    pieces: roadPieces,
+    graph,
+    gates: houses.gates,
+    collisions,
+    keepClear: (x, z) => isOnForecourt(fuel, x, z) || starts.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < SPAWN_CLEAR),
+  })
+  lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes`)
   const physics = createCrashPhysics(rapier, collisions)
   lap('parked scooters and physics')
   const features = placeRoadFeatures(graph)
@@ -206,6 +227,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   }
   const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt)
   lap('road features and traffic')
+  // After the lanes, so parked cars don't count as blocking them: traffic eases out around them instead.
+  markParkedOnLanes(traffic.roadLanes, parkedFootprints(parking))
+  addParkedCarWalls(collisions, parking)
   // After the lanes, as a pole by the kerb would otherwise close the pavement path beside it.
   for (const { x, z } of traffic.signals.posts) addPost(collisions, x, z, SIGNAL_POLE_RADIUS)
   // Medians too: a lane runs close beside each, and would otherwise count as blocked.
@@ -220,9 +244,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
   lap('surface, soil and shop people')
-  // Debug: ?spawn=<street> starts the rider on that street (dev server, or with ?debug).
-  const spawnSlug = requestedSpawn()
-  const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
+  // Debug: ?spawn=<street> starts the rider on that street (dev server, or with ?debug): found above, before the parking.
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
   // Home: the gate of the house nearest where the ride starts, where the rider sleeps.
@@ -232,7 +254,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   )
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes] }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -301,7 +323,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
@@ -327,7 +349,10 @@ export function World() {
         <Part name="roadFeatures"><RoadDetails features={features} /></Part>
         <Part name="buildings"><Buildings buildings={data.buildings} /></Part>
         <Part name="houses"><HouseKitMesh kit={houses} /></Part>
-        <Part name="stilts"><StiltParking vehicles={[...houses.stiltParking, ...infill.parkedCars]} /></Part>
+        <Part name="stilts">
+          <StiltParking vehicles={[...houses.stiltParking, ...infill.parkedCars]} />
+          <StiltParking vehicles={streetParked} drawDistance={STREET_PARKING_DRAW} carModels={STREET_CAR_MODELS} />
+        </Part>
         <Part name="hoardings"><Hoardings hoardings={infill.hoardings} /></Part>
         <Part name="cityKit"><CityKit placements={kit} /></Part>
         <Part name="darkStore"><DarkStores stores={stores} /></Part>

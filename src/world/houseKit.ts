@@ -513,7 +513,8 @@ export type HouseKit = {
 /** `house`: a family house's gate, rather than a block of flats' or a school's. */
 export type Gate = { x: number; z: number; width: number; house?: boolean }
 
-export type StiltVehicle = { x: number; z: number; rotation: number; variation: number; car: boolean }
+/** `model`: for a car, which of the models drawing it offers (StiltParking's `carModels`); left out, the first. */
+export type StiltVehicle = { x: number; z: number; rotation: number; variation: number; car: boolean; model?: number }
 
 /** A dark store's front, whose building is left as it is. */
 type Skip = { x: number; z: number; rotation: number }
