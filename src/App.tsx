@@ -25,6 +25,7 @@ import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 import { DutyUi } from './ui/DutyUi'
+import { ChatBubbles } from './ui/ChatBubbles'
 
 /** The sky and haze before the sky's own colours take over, a frame after start. */
 const SKY_COLOR = '#e3dbc4'
@@ -49,6 +50,7 @@ function RidingUi() {
     <>
       <Hud />
       <DutyUi />
+      <ChatBubbles />
       <MessageToast />
       <PlayerHorn />
       <RadioPlayer />

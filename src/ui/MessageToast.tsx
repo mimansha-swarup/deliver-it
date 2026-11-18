@@ -20,6 +20,8 @@ const newestAtLoad = useGameStore.getState().messages[0]?.id
 export function MessageToast() {
   const latest = useGameStore((state) => state.messages[0])
   const [hiddenId, setHiddenId] = useState(newestAtLoad)
+  // Online, Ravi's messages come as chat bubbles instead (ChatBubbles.tsx).
+  const online = useGameStore((state) => state.duty === 'online')
 
   useEffect(() => {
     if (!latest || latest.id === hiddenId) return
@@ -27,7 +29,7 @@ export function MessageToast() {
     return () => window.clearTimeout(timer)
   }, [latest, hiddenId])
 
-  if (!latest || latest.id === hiddenId) return null
+  if (!latest || latest.id === hiddenId || online) return null
 
   return (
     <aside className="message-toast" role="status" aria-live="polite">

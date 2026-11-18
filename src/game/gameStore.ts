@@ -137,6 +137,8 @@ type GameState = Telemetry & {
   day: number
   /** Where the rider lives: the gate of a house near the start. */
   home: { x: number; z: number } | null
+  /** Chat on the HUD while online: customers and Ravi, newest last. Not saved. */
+  chat: ChatLine[]
 
   startGame: () => void
   setLoading: (loading: LoadProgress) => void
@@ -184,7 +186,13 @@ type GameState = Telemetry & {
   /** Sleeps: off duty only. Moves the clock to the morning, starts the next day and saves. */
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
+  postChat: (from: ChatLine['from'], name: string, text: string) => void
 }
+
+export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string }
+
+/** How many chat lines are kept; the HUD shows the last few. */
+const CHAT_KEPT = 12
 
 export type Message = { id: number; text: string }
 
@@ -363,6 +371,7 @@ export const useGameStore = create<GameState>()(
       answers: [],
       day: 1,
       home: null,
+      chat: [],
 
       // Starting the career and today's shift happens the first time the rider sets off.
       startGame: () =>
@@ -593,6 +602,8 @@ export const useGameStore = create<GameState>()(
     }),
 
   setHome: (home) => set({ home }),
+  postChat: (from, name, text) =>
+    set((state) => (state.duty === 'online' ? { chat: [...state.chat, { id: nextMessageId++, from, name, text }].slice(-CHAT_KEPT) } : state)),
 
   setTelemetry: (telemetry) => set(telemetry),
   setAtBunk: (atBunk) => set({ atBunk }),

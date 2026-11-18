@@ -8646,3 +8646,26 @@ loading never finished. It now waits for the planner itself.
 
 ### Try it
 Load, press O, accept with Y. Press O mid-order to see the choice. Ride home and press Z.
+
+## 2026-11-18: Entry 130, customer chat on the HUD
+
+### What I did
+While online, compact chat bubbles on the right of the HUD (`src/ui/ChatBubbles.tsx`), the last
+four, each fading after nine seconds, so the phone needn't be raised to keep up:
+
+- **The customer** writes their order note when it's accepted, a word on pickup, then gets more
+  pointed as the on-time limit runs down: at half of it, three quarters, when it's late, and when
+  it's very late (1.5×). Event orders worry about the function; lines live in
+  `src/missions/customerChat.ts` (made-up people, English with some Kannada and Hindi).
+- **Ravi** at dispatch posts the assignment, and his usual messages (shift goal done, low
+  acceptance) appear as bubbles while online. Off duty there's no chat; his toast shows as before.
+
+Customer bubbles are light with their name in red, Ravi's dark with his in green, so they're
+told apart at a glance.
+
+### Why
+The timer alone is abstract. A customer asking "where have you reached?" makes the same minutes
+feel like someone waiting.
+
+### Try it
+Go online, accept an order, and ride slowly: the customer's messages change as the clock runs.
