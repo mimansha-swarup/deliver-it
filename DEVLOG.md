@@ -9604,3 +9604,20 @@ At 17:30, with the shafts on: High 11.4 ms against 10.5.
   footpath (250 ms, half of it road-distance queries for 20,000 buildings), the surface map
   (130 ms), the extra colliders (+70 ms) and the cover map (80 ms). Getting under 7 s needs that
   planning baked into the map data at build time, or done in a worker.
+
+## 2026-11-19: Entry 173, a helmet with some shape
+
+### What I did
+With the camera closer, the rider's helmet read as a plain white egg: from behind, the visor
+(on the front) never shows. It's built for the view from behind and a little above now
+(Rider.tsx): a dark rubber rim round the bottom edge, higher at the front; the visor as a
+band across the eyes that wraps round to the sides, on dark pivots at the temples; a chin bar a
+little proud of the shell; two vents on top; twin dark stripes from the back of the neck over the
+top to the visor; a thin orange reflector strip above the rim at the back; and the chin straps
+down from under the rim. The shell keeps the colour bought at the Garage. A few hundred triangles
+more, one rider, every quality.
+
+Tried: one centre stripe with a spoiler across the back read as a cross, and with a square
+reflector under twin stripes, as a face.
+
+Screenshots: `world-pass.local/shots/fu6d` (`zoom.png` against `fu6/zoom-before.png`).

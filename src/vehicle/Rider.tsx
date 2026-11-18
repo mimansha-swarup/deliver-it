@@ -166,6 +166,8 @@ export function Rider({
         metalness: 0.3,
         envMap: reflection,
       }),
+      rubber: new THREE.MeshStandardMaterial({ color: '#1c1d20', roughness: 0.85 }),
+      reflector: new THREE.MeshStandardMaterial({ color: '#e8792b', roughness: 0.35, side: THREE.DoubleSide }),
       visor: new THREE.MeshStandardMaterial({
         color: VISOR,
         roughness: 0.08,
@@ -281,18 +283,52 @@ export function Rider({
       </mesh>
 
       <group ref={head} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
-        {/* Helmet, over the model's head */}
+        {/* The helmet, over the model's head (+z forward). Seen from behind and a little above, as the
+            camera sees it: a shell with a dark rubber rim, the visor wrapping round to the sides on
+            its pivots, a chin bar, vents, twin stripes front to back, a reflector strip and straps. */}
         <mesh scale={[0.96, 1, 1.08]} material={materials.helmet}>
           <sphereGeometry args={[0.15, 18, 14]} />
         </mesh>
-        {/* Visor */}
-        <mesh position={[0, -0.01, 0.045]} scale={[0.94, 0.68, 1.08]} material={materials.visor}>
-          <sphereGeometry args={[0.145, 16, 12]} />
+        {/* The rim round the bottom edge, higher at the front. */}
+        <mesh position={[0, -0.1, -0.01]} rotation={[Math.PI / 2 - 0.22, 0, 0]} scale={[0.98, 1.1, 1]} material={materials.rubber}>
+          <torusGeometry args={[0.108, 0.013, 6, 24]} />
         </mesh>
-        {/* A stripe over the top, so the helmet shows which way it faces */}
-        <mesh position={[0, 0.03, -0.01]} scale={[0.2, 1, 1.1]} material={materials.trim}>
-          <sphereGeometry args={[0.135, 12, 10]} />
+        {/* The visor: a band across the eyes, wrapping well round the sides. */}
+        <mesh scale={[0.985, 1, 1.1]} material={materials.visor}>
+          <sphereGeometry args={[0.153, 20, 4, Math.PI / 2 - 1.3, 2.6, Math.PI * 0.4, Math.PI * 0.2]} />
         </mesh>
+        {[-1, 1].map((side) => (
+          <mesh key={side} position={[side * 0.146, -0.002, 0.012]} rotation={[0, 0, Math.PI / 2]} material={materials.rubber}>
+            <cylinderGeometry args={[0.026, 0.026, 0.014, 12]} />
+          </mesh>
+        ))}
+        {/* The chin bar, a little proud of the shell at the front and bottom. */}
+        <mesh scale={[0.97, 1, 1.13]} material={materials.helmet}>
+          <sphereGeometry args={[0.152, 18, 4, Math.PI / 2 - 1.15, 2.3, Math.PI * 0.6, Math.PI * 0.2]} />
+        </mesh>
+        {/* Two vents on top. */}
+        {[-1, 1].map((side) => (
+          <mesh key={side} position={[side * 0.035, 0.143, 0.045]} rotation={[0.3, 0, 0]} material={materials.rubber}>
+            <boxGeometry args={[0.024, 0.012, 0.055]} />
+          </mesh>
+        ))}
+        {/* Twin stripes, front to back over the top, either side of the middle. */}
+        {[-1, 1].map((side) => (
+          // A half ring in the front-to-back plane: from just below the back, over the top, to the visor.
+          <mesh key={side} position={[side * 0.034, 0, 0]} rotation={[0, Math.PI / 2, -0.15]} scale={[1.08, 1, 1]} material={materials.trim}>
+            <torusGeometry args={[0.1475, 0.006, 4, 24, Math.PI * 0.72]} />
+          </mesh>
+        ))}
+        {/* A thin reflector strip low on the back, just above the rim. */}
+        <mesh position={[0, -0.072, -0.152]} rotation={[0.55, Math.PI, 0]} material={materials.reflector}>
+          <planeGeometry args={[0.1, 0.014]} />
+        </mesh>
+        {/* The chin straps, down from under the rim at each side. */}
+        {[-1, 1].map((side) => (
+          <mesh key={side} position={[side * 0.085, -0.14, 0.035]} rotation={[0.2, 0, side * 0.35]} material={materials.rubber}>
+            <boxGeometry args={[0.012, 0.075, 0.014]} />
+          </mesh>
+        ))}
       </group>
     </group>
   )
