@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DISPATCHER } from '../game/career'
 import { useGameStore, type ChatLine } from '../game/gameStore'
-import { CHAT_TIMES, customerLine, type ChatStage } from '../missions/customerChat'
+import { CHAT_TIMES, customerLine, FRUSTRATION, moodOf, type ChatStage } from '../missions/customerChat'
 
 /*
  * Chat on the right of the HUD while online: the customer of the order on, and Ravi at dispatch.
@@ -35,6 +35,11 @@ function CustomerChatDirector() {
         if (state.duty === 'online') for (const message of [...fresh].reverse()) state.postChat('dispatch', RAVI, message.text)
       }
 
+      // A customer who cancelled says so (the rider cancelling is Ravi's to tell).
+      if (!state.mission && previous.mission && previous.frustration >= FRUSTRATION.warn && state.duty === 'online') {
+        state.postChat('customer', previous.mission.story.customer, customerLine('cancelled', previous.mission.story, state.missionNumber))
+      }
+
       const { mission, phase } = state
       if (!mission || state.duty !== 'online') return
       const say = (stage: ChatStage) => {
@@ -52,6 +57,11 @@ function CustomerChatDirector() {
       if (phase === 'toCustomer' && previous.phase === 'collecting') say('collected')
       if (phase !== 'toPickup' && phase !== 'toCustomer') return
 
+      // Rough riding with their order on board, and a last warning before they cancel.
+      if (state.crashes > previous.crashes && phase === 'toCustomer') say('crash')
+      if (state.knocks > previous.knocks && mission.story.care === 'fragile') say('bump')
+      if (state.frustration >= FRUSTRATION.warn) say('fuming')
+
       const used = state.seconds / mission.onTimeSeconds
       if (used >= CHAT_TIMES.veryLate) say('veryLate')
       else if (used >= CHAT_TIMES.late) say('late')
@@ -62,11 +72,7 @@ function CustomerChatDirector() {
   return null
 }
 
-function Bubble({ line, onGone }: { line: ChatLine; onGone: (id: number) => void }) {
-  useEffect(() => {
-    const timer = window.setTimeout(() => onGone(line.id), SHOW_FOR)
-    return () => window.clearTimeout(timer)
-  }, [line.id, onGone])
+function Bubble({ line }: { line: ChatLine }) {
   return (
     <li className="chat-bubble" data-from={line.from}>
       <span className="chat-name">{line.from === 'dispatch' ? DISPATCHER : line.name}</span>
@@ -75,20 +81,46 @@ function Bubble({ line, onGone }: { line: ChatLine; onGone: (id: number) => void
   )
 }
 
+/** The customer's mood: a word and a bar, green to red, while their order is on its way. */
+export function MoodMeter({ className = 'mood' }: { className?: string }) {
+  const frustration = useGameStore((state) => state.frustration)
+  const customer = useGameStore((state) => state.mission?.story.customer)
+  const riding = useGameStore((state) => state.phase === 'toPickup' || state.phase === 'toCustomer')
+  if (!customer || !riding) return null
+  const mood = moodOf(frustration)
+  return (
+    <div className={className} data-mood={mood.toLowerCase()} title={`${customer} is ${mood.toLowerCase()}`}>
+      <span className="mood-label">
+        {customer} · <strong>{mood}</strong>
+      </span>
+      <span className="mood-bar" aria-hidden="true">
+        <span style={{ width: `${Math.round(frustration * 100)}%` }} />
+      </span>
+    </div>
+  )
+}
+
 export function ChatBubbles() {
   const online = useGameStore((state) => state.duty === 'online')
   const chat = useGameStore((state) => state.chat)
-  const [gone, setGone] = useState<Set<number>>(() => new Set())
-  const [hide] = useState(() => (id: number) => setGone((before) => new Set(before).add(id)))
+  // Lines fade by age, so one pushed out by newer lines can't come back once they've gone.
+  // A new line is newer than `now` until the next tick, which still counts as showing.
+  const [now, setNow] = useState(() => performance.now())
+  useEffect(() => {
+    if (!online) return
+    const timer = window.setInterval(() => setNow(performance.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [online])
 
-  const shown = online ? chat.filter((line) => !gone.has(line.id)).slice(-SHOWN) : []
+  const shown = online ? chat.filter((line) => now - line.at < SHOW_FOR).slice(-SHOWN) : []
   return (
     <>
       <CustomerChatDirector />
+      {online && <MoodMeter />}
       {shown.length > 0 && (
         <ol className="chat" aria-live="polite" aria-label="Messages">
           {shown.map((line) => (
-            <Bubble key={line.id} line={line} onGone={hide} />
+            <Bubble key={line.id} line={line} />
           ))}
         </ol>
       )}

@@ -2335,3 +2335,58 @@ body,
     animation: none;
   }
 }
+
+/* ---- The customer's mood while their order is on (ChatBubbles.tsx) ---- */
+
+.mood,
+.phone-mood {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.mood {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  width: 200px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 72%);
+}
+
+.phone-mood {
+  margin-top: 4px;
+}
+
+.mood-bar {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(244 241 232 / 15%);
+  overflow: hidden;
+}
+
+.mood-bar span {
+  display: block;
+  height: 100%;
+  background: #3ddc97;
+  transition: width 0.3s ease-out;
+}
+
+[data-mood='waiting'] .mood-bar span {
+  background: #e5c046;
+}
+
+[data-mood='annoyed'] .mood-bar span {
+  background: #ff9a3d;
+}
+
+[data-mood='fuming'] .mood-bar span {
+  background: #ff5a4e;
+}
+
+[data-mood='fuming'] strong {
+  color: #ff6b5e;
+}

@@ -12,6 +12,7 @@ import {
 } from './garage'
 import { persist } from 'zustand/middleware'
 import { calculateReward } from '../missions/missionLogic'
+import { FRUSTRATION } from '../missions/customerChat'
 import { RATINGS_KEPT } from '../missions/orderStory'
 import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
@@ -67,6 +68,8 @@ type Telemetry = {
   atStore: boolean
   /** Stopped at home, where the rider can sleep. */
   atHome: boolean
+  /** How frustrated the current customer is, 0 to 1 (customerChat.ts). */
+  frustration: number
 }
 
 /** An order offered to the rider, waiting for an answer until `expiresAt` (performance.now()). */
@@ -139,6 +142,8 @@ type GameState = Telemetry & {
   home: { x: number; z: number } | null
   /** Chat on the HUD while online: customers and Ravi, newest last. Not saved. */
   chat: ChatLine[]
+  /** What rough riding with the current order on board has added to the customer's frustration. */
+  rough: number
 
   startGame: () => void
   setLoading: (loading: LoadProgress) => void
@@ -187,9 +192,12 @@ type GameState = Telemetry & {
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
   postChat: (from: ChatLine['from'], name: string, text: string) => void
+  /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
+  customerCancels: () => void
 }
 
-export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string }
+/** `at`: when it was posted (performance.now()), so the HUD can let it fade by age. */
+export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string; at: number }
 
 /** How many chat lines are kept; the HUD shows the last few. */
 const CHAT_KEPT = 12
@@ -372,6 +380,8 @@ export const useGameStore = create<GameState>()(
       day: 1,
       home: null,
       chat: [],
+      rough: 0,
+      frustration: 0,
 
       // Starting the career and today's shift happens the first time the rider sets off.
       startGame: () =>
@@ -409,6 +419,7 @@ export const useGameStore = create<GameState>()(
               streak: state.fiveStarStreak,
               nightPay,
               period: dayPeriod(liveSky.hours),
+              frustration: state.frustration,
             }),
           }
         }),
@@ -491,6 +502,8 @@ export const useGameStore = create<GameState>()(
       crashes: 0,
       knocks: 0,
       mission: null,
+      rough: 0,
+      frustration: 0,
     }))
     if (get().offlineAfterOrder) get().goOffline()
   },
@@ -530,7 +543,7 @@ export const useGameStore = create<GameState>()(
         credits = Math.max(0, credits - CANCEL_PENALTY.credits)
         ratings = [...ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT)
         if (shift) shift = { ...shift, cancelled: shift.cancelled + 1, earnings: shift.earnings - CANCEL_PENALTY.credits }
-        Object.assign(changes, { mission: null, phase: 'toPickup', pendingReward: null, seconds: 0, crashes: 0, knocks: 0, missionNumber: state.missionNumber + 1, fiveStarStreak: 0 })
+        Object.assign(changes, { mission: null, phase: 'toPickup', pendingReward: null, seconds: 0, crashes: 0, knocks: 0, rough: 0, frustration: 0, missionNumber: state.missionNumber + 1, fiveStarStreak: 0 })
       } else if (hasOrderOn(state)) {
         return { askingOffline: true }
       }
@@ -572,6 +585,8 @@ export const useGameStore = create<GameState>()(
         seconds: 0,
         crashes: 0,
         knocks: 0,
+        rough: 0,
+        frustration: 0,
         answers: [...state.answers, true].slice(-ANSWERS_KEPT),
       }
     }),
@@ -602,14 +617,40 @@ export const useGameStore = create<GameState>()(
     }),
 
   setHome: (home) => set({ home }),
+  customerCancels: () =>
+    set((state) => {
+      if (!hasOrderOn(state) || (state.phase !== 'toPickup' && state.phase !== 'toCustomer')) return state
+      const customer = state.mission?.story.customer ?? 'The customer'
+      return {
+        mission: null,
+        phase: 'toPickup',
+        pendingReward: null,
+        seconds: 0,
+        crashes: 0,
+        knocks: 0,
+        rough: 0,
+        frustration: 0,
+        missionNumber: state.missionNumber + 1,
+        ratings: [...state.ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT),
+        fiveStarStreak: 0,
+        shift: state.shift ? { ...state.shift, cancelled: state.shift.cancelled + 1 } : state.shift,
+        messages: addMessages(state.messages, [`${customer} cancelled, maga. Too late, or too rough a ride. It counts against your rating. Next one, careful!`]),
+      }
+    }),
   postChat: (from, name, text) =>
-    set((state) => (state.duty === 'online' ? { chat: [...state.chat, { id: nextMessageId++, from, name, text }].slice(-CHAT_KEPT) } : state)),
+    set((state) => (state.duty === 'online' ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now() }].slice(-CHAT_KEPT) } : state)),
 
   setTelemetry: (telemetry) => set(telemetry),
   setAtBunk: (atBunk) => set({ atBunk }),
   setSky: (skyTime, weather, night) => set({ skyTime, weather, night }),
-  recordCrash: () => set((state) => ({ crashes: state.crashes + 1 })),
-  recordKnock: () => set((state) => ({ knocks: state.knocks + 1 })),
+  // With the customer's order on board, rough riding frustrates them (customerChat.ts).
+  recordCrash: () =>
+    set((state) => ({ crashes: state.crashes + 1, rough: state.rough + (state.phase === 'toCustomer' ? FRUSTRATION.crash : 0) })),
+  recordKnock: () =>
+    set((state) => ({
+      knocks: state.knocks + 1,
+      rough: state.rough + (state.mission?.story.care === 'fragile' ? FRUSTRATION.fragileKnock : FRUSTRATION.knock),
+    })),
   changeStation: (direction) =>
     set((state) => {
       const index = STATIONS.findIndex(({ id }) => id === state.stationId)

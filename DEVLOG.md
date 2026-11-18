@@ -8669,3 +8669,33 @@ feel like someone waiting.
 
 ### Try it
 Go online, accept an order, and ride slowly: the customer's messages change as the clock runs.
+
+## 2026-11-18: Entry 131, the customer's frustration
+
+### What I did
+Each order has a frustration meter, 0 (happy) to 1 (they cancel), rules in
+`src/missions/customerChat.ts`:
+
+- **Time:** nothing until half the on-time limit is used, then 0.6 per share of the limit up to
+  it and 1.2 per share past it (×1.3 for event orders). Worked out from the share used each
+  time, not added up frame by frame, so it can't drift.
+- **Rough riding with the parcel on board:** +0.15 a crash, +0.04 a hard landing on a pothole or
+  breaker (+0.08 if fragile). Crashes on the way to the pickup don't count: the customer can't
+  tell.
+- **Effects:** the stars come from it (5 under 0.22, then one fewer per 0.22), the tip shrinks
+  by up to half, and the rating card still says what caused it (late, crashes, bumps). At 0.85
+  the customer warns they'll cancel; at 1 they **cancel**: no pay, it counts as a 1★ rating,
+  and Ravi and the customer both say so.
+- **On screen:** a small meter on the right ("Divya · Annoyed", green to red) while their order
+  is on, the same on the phone, and chat lines for a crash, a bump on something fragile, and the
+  last warning.
+
+Also fixed: a chat bubble pushed out of the last four by newer ones could come back after they
+faded, as its fade timer had stopped when it left the screen. Bubbles now fade by their age.
+
+### Why
+Stars used to be a list of penalties added up at the end. Now the rider can watch the customer's
+patience go and make it up by riding carefully or fast, and a really bad trip can be lost.
+
+### Try it
+Accept an order and crash a few times with it on board: the meter climbs, the customer writes.

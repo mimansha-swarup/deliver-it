@@ -9,6 +9,7 @@ import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { getCurrentStop, hasArrived } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
+import { timeFrustration } from './customerChat'
 
 /** How often the HUD gets new numbers. Far less often than the game runs. */
 const TELEMETRY_INTERVAL = 0.1
@@ -131,6 +132,15 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     sinceTelemetry.current += frameTime
     if (sinceTelemetry.current >= TELEMETRY_INTERVAL) {
       sinceTelemetry.current = 0
+      // The customer's frustration: the clock and rough riding. Held still while the parcel changes hands.
+      const riding = game.mission && (game.phase === 'toPickup' || game.phase === 'toCustomer')
+      let frustration = riding && game.mission
+        ? Math.min(1, timeFrustration(elapsed.current / game.mission.onTimeSeconds, game.mission.story.care) + game.rough)
+        : game.mission ? game.frustration : 0
+      if (riding && frustration >= 1) {
+        game.customerCancels()
+        frustration = 0
+      }
       game.setTelemetry({
         speedKmh: Math.round(travelSpeed * 3.6),
         distance: Math.round(routeLength),
@@ -143,6 +153,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         nitroOn: state.nitroOn,
         crashed: state.crashLeft > 0,
         atStore: isAtStore(game.planner, state.x, state.z, travelSpeed),
+        frustration: Math.round(frustration * 100) / 100,
         atHome: game.home !== null && Math.hypot(game.home.x - state.x, game.home.z - state.z) <= HOME_RANGE && travelSpeed <= HOME_MAX_SPEED,
       })
     }

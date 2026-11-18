@@ -1,4 +1,5 @@
 import type { PeriodId } from '../game/duty'
+import { starsFromFrustration } from './customerChat'
 /**
  * Who an order is for, what's in it, and how they feel when it arrives. The
  * dark store is a fashion one: clothes, shoes and accessories, delivered fast.
@@ -112,13 +113,15 @@ type RatingInput = {
   knocks: number
   /** 5-star deliveries in a row before this one. */
   streak: number
+  /** How frustrated the customer got, 0 to 1 (customerChat.ts). Given, it sets the stars and trims the tip. */
+  frustration?: number
 }
 
 /**
  * Starts at 5 stars and takes off for lateness, crashes, and the item's own
  * needs. Never below 1. The tip follows the stars.
  */
-export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak }: RatingInput): Rating {
+export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration }: RatingInput): Rating {
   let stars = 5
   const lost: string[] = []
   const take = (count: number, reason: string) => {
@@ -135,8 +138,16 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
   if (story.care === 'event') take(late ? 1 : 0, 'Nearly missed the event')
   stars = Math.max(1, stars)
 
+  // With the customer's frustration known, it decides: the reasons above say what caused it.
+  if (frustration !== undefined) {
+    stars = starsFromFrustration(frustration)
+    lost.splice(0, lost.length, ...lost.map((reason) => reason.replace(/ −\d★$/, '')))
+    if (stars < 5 && lost.length === 0) lost.push('Kept waiting')
+  }
+
   const streakTip = stars === 5 ? Math.min(STREAK_TIP_MAX, streak * STREAK_TIP) : 0
-  return { stars, tip: TIPS[stars] + streakTip, lost, reaction: reactionFor(story, stars, late, knocks, crashes) }
+  const tip = Math.round((TIPS[stars] + streakTip) * (1 - (frustration ?? 0) * 0.5))
+  return { stars, tip, lost: stars === 5 ? [] : lost, reaction: reactionFor(story, stars, late, knocks, crashes) }
 }
 
 function reactionFor(story: OrderStory, stars: number, late: boolean, knocks: number, crashes: number): string {

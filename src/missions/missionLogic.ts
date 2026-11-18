@@ -25,6 +25,8 @@ export type RideRecord = {
   nightPay?: boolean
   /** The time of day, whose rush hours pay more. */
   period?: DayPeriod
+  /** How frustrated the customer got, 0 to 1: it sets the stars and the tip. */
+  frustration?: number
 }
 
 /**
@@ -36,14 +38,14 @@ export type RideRecord = {
 export function calculateReward(
   seconds: number,
   mission: Pick<Mission, 'kind' | 'tier' | 'dropCount' | 'onTimeSeconds' | 'story'>,
-  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period }: RideRecord = {},
+  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period, frustration }: RideRecord = {},
 ): Reward {
   const rules = MISSION_RULES
   const { kind, tier, dropCount, onTimeSeconds, story } = mission
   const onTime = seconds <= onTimeSeconds
   const rush = kind === 'rush'
   const baseCredits = rules.baseCredits * dropCount
-  const rating = rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak })
+  const rating = rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration })
 
   return {
     kind,

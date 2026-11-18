@@ -59,3 +59,42 @@ export function customerLine(stage: ChatStage, story: OrderStory, seed: number):
       return pick(['Cancelled. I\'ll get it myself.', 'Forget it, I cancelled.'], seed)
   }
 }
+
+/*
+ * How frustrated the customer is, from 0 (happy) to 1 (they cancel). Time does most of it: nothing
+ * until half the on-time limit is used, then it climbs, faster once late. Riding roughly with
+ * their order on board adds to it: a crash a lot, a hard landing on a pothole or breaker a little,
+ * more for something fragile.
+ */
+export const FRUSTRATION = {
+  /** Per share of the on-time limit, from half of it to all of it, and past it. */
+  beforeLate: 0.6,
+  afterLate: 1.2,
+  /** Event orders (a wedding, an interview) mind the time this much more. */
+  eventTime: 1.3,
+  crash: 0.15,
+  knock: 0.04,
+  fragileKnock: 0.08,
+  /** The customer warns they'll cancel at this, and cancels at 1. */
+  warn: 0.85,
+}
+
+/** The part of frustration that comes from time, given the share of the on-time limit used. */
+export function timeFrustration(used: number, care: OrderStory['care']): number {
+  const { beforeLate, afterLate, eventTime } = FRUSTRATION
+  const part = beforeLate * Math.max(0, Math.min(used, 1) - 0.5) + afterLate * Math.max(0, used - 1)
+  return part * (care === 'event' ? eventTime : 1)
+}
+
+/** Stars from frustration: a happy customer gives 5, a fuming one 1. */
+export function starsFromFrustration(frustration: number): number {
+  return Math.max(1, Math.min(5, 5 - Math.floor(frustration * 4.5)))
+}
+
+/** A word for the customer's mood, for the meter. */
+export function moodOf(frustration: number): string {
+  if (frustration < 0.15) return 'Happy'
+  if (frustration < 0.4) return 'Waiting'
+  if (frustration < 0.7) return 'Annoyed'
+  return 'Fuming'
+}
