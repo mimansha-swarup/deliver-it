@@ -7,7 +7,6 @@ import { createCrashPhysics } from '../physics/crashPhysics'
 import { loadRapier } from '../physics/rapier'
 import { createTrafficWorld } from '../traffic/trafficLogic'
 import { createTrafficSignals } from '../traffic/trafficSignals'
-import { SCOOTER_SPAWN } from '../vehicle/vehicleConfig'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
 import { Skyline } from './Skyline'
@@ -44,6 +43,8 @@ import { usesNewGround } from './streetEdgeConfig'
 import { addGroundFloorShops, assignStreetPresets, listStreets, streetPresetOf } from './streetPresets'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
+import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, startAtGate } from './homeStart'
+import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
@@ -133,8 +134,8 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   lap('shop fronts and city kit')
   const graph = createRoadGraph(data.roads)
   const signalNodes = createTrafficSignals(graph).junctions.map(({ node }) => node)
-  const start: [number, number] = [SCOOTER_SPAWN.x, SCOOTER_SPAWN.z]
-  const stores = findDarkStores(data.buildings, graph, collisions, mappedShops, start, signalNodes)
+  // The main dark store: the shop front nearest a spot on 27th Main in Sector 2, central to the streets round it.
+  const stores = findDarkStores(data.buildings, graph, collisions, mappedShops, MAIN_STORE_NEAR, signalNodes, { min: 0, max: MAIN_STORE_SEARCH })
   for (const store of stores) addDarkStorePosts(collisions, store)
   lap('road graph and dark stores')
   // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
@@ -204,10 +205,15 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   )
   // Kerbside parking: cars and bikes parallel to the road edge (streetParking.ts), made solid once
   // the traffic lanes exist, below.
-  // Not where the ride starts, so the scooter never starts inside a parked car.
+  // Home: the family house nearest the spot on 16th Cross Road, and the start in front of its gate.
+  const homeGate = nearestHouseGate(houses.gates, HOME_NEAR)
+  const homeStart = homeGate ? startAtGate(homeGate, roadIndex, HOME_FACING) : null
+  // Where this ride starts: a debug street, the place the rider was last, or home.
   const spawnSlug = requestedSpawn()
-  const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
-  const starts = [start, ...(spawn ? [[spawn.x, spawn.z]] : [])]
+  const saved = forcedTutorial() ? null : useGameStore.getState().lastPosition
+  const spawn = (spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ?? (saved ? { name: 'Where you left off', ...saved } : null) ?? homeStart
+  // Not where the ride starts, so the scooter never starts inside a parked car.
+  const starts = [homeStart, spawn].filter((point) => point !== null).map(({ x, z }): [number, number] => [x, z])
   const parking = planStreetParking({
     roads: data.roads,
     pieces: roadPieces,
@@ -244,14 +250,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
   lap('surface, soil and shop people')
-  // Debug: ?spawn=<street> starts the rider on that street (dev server, or with ?debug): found above, before the parking.
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
-  // Home: the gate of the house nearest where the ride starts, where the rider sleeps.
-  const home = houses.gates.filter((gate) => gate.house).reduce<{ x: number; z: number } | null>(
-    (best, gate) => (!best || Math.hypot(gate.x - start[0], gate.z - start[1]) < Math.hypot(best.x - start[0], best.z - start[1]) ? { x: gate.x, z: gate.z } : best),
-    null,
-  )
+  const home = homeGate ? { x: homeGate.x, z: homeGate.z } : null
   // Chai stalls, by their street, for the phone's Maps app to offer as places to go.
   const chaiStalls = shopFronts
     .filter(({ type }) => type === 'chai')

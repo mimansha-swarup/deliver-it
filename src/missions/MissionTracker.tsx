@@ -20,6 +20,9 @@ const RIDE_REPORT_INTERVAL = 2
 /** Longest a single frame may count for, so a hidden tab doesn't run the clock. */
 const MAX_FRAME_TIME = 0.1
 
+/** How often the rider's position is saved, to start there next time, in seconds. */
+const SAVE_POSITION_EVERY = 3
+
 /** A waypoint counts as reached this close, in metres, and is cleared. */
 const WAYPOINT_REACHED = 12
 
@@ -52,6 +55,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const ridden = useRef(0)
   const sinceRideReport = useRef(0)
   const wasBoosting = useRef(false)
+  const sinceSaved = useRef(0)
   /** How long the current customer has been fuming, in seconds. */
   const fuming = useRef(0)
   /** The grace period left before an accepted order's clock starts, in seconds. */
@@ -111,6 +115,13 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       routeLength = updateLiveRoute(collisions, graph, field, state.x, state.z, target.x, target.z)
     } else {
       clearLiveRoute()
+    }
+
+    // Where the rider is, saved now and then (not mid-crash), so the next visit starts here.
+    sinceSaved.current += frameTime
+    if (game.started && sinceSaved.current >= SAVE_POSITION_EVERY && state.crashLeft === 0) {
+      sinceSaved.current = 0
+      game.setLastPosition({ x: state.x, z: state.z, heading: state.heading })
     }
 
     // Riding and drift boosts count towards today's daily challenges.

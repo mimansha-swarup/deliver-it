@@ -144,6 +144,8 @@ type GameState = Telemetry & {
   day: number
   /** Where the rider lives: the gate of a house near the start. */
   home: { x: number; z: number } | null
+  /** Where the rider was last, saved now and then, to start there next time. Null: start at home. */
+  lastPosition: { x: number; z: number; heading: number } | null
   /** A point the rider picked on the full map, with its nearest road point, to be routed to. Cleared on arrival or by an order. */
   waypoint: { x: number; z: number; node: number } | null
   /** Chat on the HUD while online: customers and Ravi, newest last. Not saved. */
@@ -205,6 +207,7 @@ type GameState = Telemetry & {
   /** Sleeps: off duty only. Moves the clock to the morning, starts the next day and saves. */
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
+  setLastPosition: (position: { x: number; z: number; heading: number }) => void
   postChat: (from: ChatLine['from'], name: string, text: string, urgent?: boolean) => void
   setPlaces: (places: GameState['places']) => void
   setPhotoMode: (on: boolean) => void
@@ -430,6 +433,7 @@ export const useGameStore = create<GameState>()(
       answers: [],
       day: 1,
       home: null,
+      lastPosition: null,
       chat: [],
       history: [],
       ledger: [],
@@ -687,6 +691,8 @@ export const useGameStore = create<GameState>()(
       if (state.duty !== 'off') return state
       liveSky.setHoursTo = WAKE_HOUR
       return {
+        // Waking up at home: that's where the next visit starts too.
+        lastPosition: null,
         day: state.day + 1,
         shiftSummary: null,
         messages: addMessages(state.messages, [`Good morning! Day ${state.day + 1}. Go online whenever you're ready.`]),
@@ -694,6 +700,7 @@ export const useGameStore = create<GameState>()(
     }),
 
   setHome: (home) => set({ home }),
+  setLastPosition: (lastPosition) => set({ lastPosition }),
   setWaypoint: (waypoint) => set({ waypoint }),
   setPlaces: (places) => set({ places }),
   setPhotoMode: (photoMode) => set({ photoMode }),
@@ -804,6 +811,7 @@ export const useGameStore = create<GameState>()(
         day: state.day,
         history: state.history,
         ledger: state.ledger,
+        lastPosition: state.lastPosition,
       }),
     },
   ),

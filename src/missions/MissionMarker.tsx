@@ -14,6 +14,7 @@ const POINTER_HEIGHT = 7
 const HOME_COLOR = '#7fb2ff'
 /** Home's marker only shows off duty, and only this close, in metres. */
 const HOME_SHOWN_WITHIN = 120
+const POINTER_HIDDEN_WITHIN = 15
 
 /**
  * Home: a soft ring at the gate and a small pointer, only off duty and only nearby, so it doesn't
@@ -27,8 +28,13 @@ export function HomeMarker() {
 
   useFrame(({ clock }) => {
     if (!group.current || !home) return
-    group.current.visible = offDuty && Math.hypot(home.x - livePlayer.x, home.z - livePlayer.z) < HOME_SHOWN_WITHIN
-    if (pointer.current) pointer.current.position.y = 3.2 + Math.sin(clock.elapsedTime * 2) * 0.3
+    const distance = Math.hypot(home.x - livePlayer.x, home.z - livePlayer.z)
+    group.current.visible = offDuty && distance < HOME_SHOWN_WITHIN
+    if (pointer.current) {
+      // Up close the ring is enough; the pointer would hang right in front of the camera.
+      pointer.current.visible = distance > POINTER_HIDDEN_WITHIN
+      pointer.current.position.y = 3.2 + Math.sin(clock.elapsedTime * 2) * 0.3
+    }
   })
 
   if (!home) return null

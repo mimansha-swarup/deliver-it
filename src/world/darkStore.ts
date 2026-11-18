@@ -186,13 +186,11 @@ export function findDarkStores(
   shopFronts: ShopFront[],
   start: GroundPoint,
   signalNodes: number[] = [],
+  /** How far from `start` the home store may be, in metres: by default not right on top of the rider. */
+  range: { min: number; max: number } = { min: MIN_START_DISTANCE, max: MAX_START_DISTANCE },
 ): DarkStore[] {
   const roadNodes = findOpenRoadNodes(graph, collisions, signalNodes)
-  const home = findStoreIn(buildings, graph, collisions, shopFronts, roadNodes, {
-    near: start,
-    min: MIN_START_DISTANCE,
-    max: MAX_START_DISTANCE,
-  })
+  const home = findStoreIn(buildings, graph, collisions, shopFronts, roadNodes, { near: start, ...range })
   if (!home) throw new Error('No building on the map suits the dark store')
   const stores = [home]
 

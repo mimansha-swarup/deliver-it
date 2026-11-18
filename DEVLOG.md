@@ -8965,3 +8965,19 @@ The phone's tabs are gone. It works like a phone now (`src/ui/Phone.tsx` for the
     returns, and an order offer gets back the time it was paused.
   - Settings: controls, picture quality, sound, language (English; Kannada is listed as coming
     later), and the tutorial.
+
+## 2026-11-18: Entry 149, starting at home in central HSR
+
+### What I did
+- **First play starts at home** (`src/world/homeStart.ts`): the family house on the west arm of
+  16th Cross Road in Sector 2, a quiet residential street just off 27th Main Road. The rider
+  starts in the street outside its gate, facing along it towards 27th Main and its shops. The
+  play area ends about 180 m east of 27th Main, so home is on the west side, looking east at the
+  shops across the junction: no wall, no map edge.
+- **The main dark store is on 27th Main**, 60 m away: the shop front nearest a spot on 27th Main
+  in Sector 2 (`MAIN_STORE_NEAR`), so the tutorial's first ride is a short one. The other stores
+  are placed from it, where streets are out of reach, as before (two more are 1.4–1.5 km away).
+- **Returning players start where they last were**: the position is saved every 3 s (not
+  mid-crash), and sleeping resets it to home. `?spawn=` still overrides it for testing, and
+  `?tutorial=1` always starts at home.
+- Up close, the home marker's pointer hides; the ring stays.
