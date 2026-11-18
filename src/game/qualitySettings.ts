@@ -64,7 +64,11 @@ type QualityPreset = {
   /** Tufts of grass around the rider. */
   grassTufts: number
   vehicles: number
-  /** Vehicles further than this are drawn with their far versions, under 1,000 triangles (Traffic.tsx), in metres. */
+  /**
+   * Vehicles further than this from the rider are drawn with their far versions, under 1,000
+   * triangles (Traffic.tsx), in metres. Far enough that a far version is never close to the camera
+   * (3.8 m behind the rider): at 20 m an auto's far version read as low detail on a laptop.
+   */
   vehicleDetailDistance: number
   pedestrians: number
   /** How many of the nearest vehicles get a real headlight at night, which lights what it hits. */
@@ -98,7 +102,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     treeThin: { from: 40, keep: 0.45 },
     grassTufts: 0,
     vehicles: 10,
-    vehicleDetailDistance: 16,
+    vehicleDetailDistance: 32,
     pedestrians: 6,
     carLights: 0,
   },
@@ -127,7 +131,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     treeThin: { from: 50, keep: 0.7 },
     grassTufts: 1400,
     vehicles: 28,
-    vehicleDetailDistance: 20,
+    vehicleDetailDistance: 40,
     pedestrians: 22,
     carLights: 2,
   },
@@ -157,7 +161,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     treeThin: null,
     grassTufts: 3200,
     vehicles: 40,
-    vehicleDetailDistance: 24,
+    vehicleDetailDistance: 50,
     pedestrians: 36,
     carLights: 4,
   },

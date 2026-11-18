@@ -9704,3 +9704,16 @@ themselves keep their terracotta and cement, with a rim and soil now.
 - The city kit's planters beside doors were faceted cones; they're pot clusters now.
 - The salon's pot by its door had a green cone; it gets a leafy plant too.
 Screenshots: `world-pass.local/shots/p4e`.
+
+## 2026-11-19: Entry 178, no far models near the camera
+
+### What I did
+Traffic changed to its far versions (under 1,000 triangles, against about 6,500) at 16 m from
+the rider on Low, 20 on Medium and 24 on High. The camera is 3.8 m behind the rider, so on a laptop
+an auto 20 m off was about 140 px long in its far version, and read as low detail. Now:
+- Traffic (autos, cars, two-wheelers, their riders and wheels): 32 m on Low, 40 on Medium, 50 on
+  High (qualitySettings.ts). Buses keep their 80 m.
+- Parked vehicles under stilt buildings: 35 m (was 20). Loose parked scooters: 30 m (was 20).
+
+### Performance (Sarjapur Road, riding 6 s, a 2× screen)
+High 120 fps, no frame over 20 ms, worst 10.4 ms, 3.1 ms of work a frame. Low 120 fps, worst 10.4 ms, 2.2 ms.

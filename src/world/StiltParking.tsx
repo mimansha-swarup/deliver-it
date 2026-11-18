@@ -13,7 +13,7 @@ import type { StiltVehicle } from './houseKit'
 /** Parked vehicles further than this aren't drawn, in metres. Under a building, they're hard to see from further. */
 const DRAW_DISTANCE = 75
 /** Nearer than this they're the detailed models; further, the far versions of a few hundred triangles. */
-const DETAIL_DISTANCE = 20
+const DETAIL_DISTANCE = 35
 /** They never move, so which ones are near is only worked out every so many frames. */
 const REFRESH_FRAMES = 20
 const CAR_MODEL = 'hatchback'

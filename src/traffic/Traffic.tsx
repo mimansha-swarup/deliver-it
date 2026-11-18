@@ -74,7 +74,7 @@ const BUS_COLORS = ['#3f7a4a', '#a8352c', '#2f5a8f', '#b98a2c']
 /** Parked scooters are detailed, and smaller than a few pixels past this, in metres. */
 const PARKED_DRAW_DISTANCE = 90
 /** Parked scooters nearer than this get the detailed model; the rest, out to PARKED_DRAW_DISTANCE, the far one. */
-const PARKED_DETAIL_DISTANCE = 20
+const PARKED_DETAIL_DISTANCE = 30
 /** A bus is big, few, and only a few hundred triangles more than a car: it keeps its shape this far out. */
 const BUS_DETAIL_DISTANCE = 80
 /**
