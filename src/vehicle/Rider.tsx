@@ -9,7 +9,7 @@ import { HIP, JOG, type Probe } from './riderShape'
 import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { tuning } from './tuning'
-import { BRAND_DYE, BRAND_INK, createJacketPrintTexture } from './brandPrint'
+import { BRAND_DYE, BRAND_INK, createHelmetDecalTexture, createJacketPrintTexture } from './brandPrint'
 
 /*
  * The rider, on the same character base as the people in the street: the man
@@ -167,7 +167,7 @@ export function Rider({
         envMap: reflection,
       }),
       rubber: new THREE.MeshStandardMaterial({ color: '#1c1d20', roughness: 0.85 }),
-      reflector: new THREE.MeshStandardMaterial({ color: '#e8792b', roughness: 0.35, side: THREE.DoubleSide }),
+      decal: new THREE.MeshStandardMaterial({ map: createHelmetDecalTexture(), transparent: true, alphaTest: 0.4, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1 }),
       visor: new THREE.MeshStandardMaterial({
         color: VISOR,
         roughness: 0.08,
@@ -181,7 +181,10 @@ export function Rider({
   const printTexture = useMemo(() => createJacketPrintTexture(), [])
 
   useEffect(
-    () => () => Object.values(materials).forEach((material) => material.dispose()),
+    () => () => {
+      materials.decal.map?.dispose()
+      Object.values(materials).forEach((material) => material.dispose())
+    },
     [materials],
   )
 
@@ -285,7 +288,8 @@ export function Rider({
       <group ref={head} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
         {/* The helmet, over the model's head (+z forward). Seen from behind and a little above, as the
             camera sees it: a shell with a dark rubber rim, the visor wrapping round to the sides on
-            its pivots, a chin bar, vents, twin stripes front to back, a reflector strip and straps. */}
+            its pivots, a chin bar, vents on top and at the back, twin stripes, the Deliver It decal and
+            the straps. */}
         <mesh scale={[0.96, 1, 1.08]} material={materials.helmet}>
           <sphereGeometry args={[0.15, 18, 14]} />
         </mesh>
@@ -314,14 +318,24 @@ export function Rider({
         ))}
         {/* Twin stripes, front to back over the top, either side of the middle. */}
         {[-1, 1].map((side) => (
-          // A half ring in the front-to-back plane: from just below the back, over the top, to the visor.
-          <mesh key={side} position={[side * 0.034, 0, 0]} rotation={[0, Math.PI / 2, -0.15]} scale={[1.08, 1, 1]} material={materials.trim}>
-            <torusGeometry args={[0.1475, 0.006, 4, 24, Math.PI * 0.72]} />
+          // A part ring in the front-to-back plane: from above the decal at the back, over the top, to the visor.
+          <mesh key={side} position={[side * 0.034, 0, 0]} rotation={[0, Math.PI / 2, 0.22]} scale={[1.08, 1, 1]} material={materials.trim}>
+            <torusGeometry args={[0.1475, 0.006, 4, 24, Math.PI * 0.6]} />
           </mesh>
         ))}
-        {/* A thin reflector strip low on the back, just above the rim. */}
-        <mesh position={[0, -0.072, -0.152]} rotation={[0.55, Math.PI, 0]} material={materials.reflector}>
-          <planeGeometry args={[0.1, 0.014]} />
+        {/* Two exhaust vents at the back, outside the stripes, and the Deliver It decal low on the back
+            (no separate reflector: with one under the decal, the back read as a face). */}
+        {[-1, 1].map((side) => (
+          <mesh key={side} position={[side * 0.07, 0.07, -0.142]} rotation={[-0.75, side * 0.42, 0]} material={materials.rubber}>
+            <boxGeometry args={[0.03, 0.012, 0.03]} />
+          </mesh>
+        ))}
+        <mesh scale={[0.96, 1, 1.08]} material={materials.decal}>
+          <sphereGeometry args={[0.1508, 12, 3, (Math.PI * 3) / 2 - 0.52, 1.04, Math.PI * 0.5, Math.PI * 0.15]} />
+        </mesh>
+        {/* The strap's buckle end, across the back under the rim. */}
+        <mesh position={[0, -0.122, -0.09]} rotation={[0.5, 0, 0]} material={materials.rubber}>
+          <boxGeometry args={[0.1, 0.012, 0.012]} />
         </mesh>
         {/* The chin straps, down from under the rim at each side. */}
         {[-1, 1].map((side) => (

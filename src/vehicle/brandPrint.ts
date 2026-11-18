@@ -135,3 +135,20 @@ export function createBoxLogoTexture(): THREE.CanvasTexture {
     weather(context, 512, 512)
   })
 }
+
+/**
+ * The small sticker on the back of the helmet: the wordmark on a marigold pill, as the riders
+ * stick the company's decal on. On a see-through picture, laid on the shell (Rider.tsx).
+ */
+export function createHelmetDecalTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 96
+  return paintWithFont(canvas, (context) => {
+    context.fillStyle = BRAND_YELLOW
+    context.beginPath()
+    context.roundRect(6, 10, 244, 76, 34)
+    context.fill()
+    drawMark(context, { x: 128, y: 62, width: 200, kannada: false })
+  })
+}

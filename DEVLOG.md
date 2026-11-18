@@ -9717,3 +9717,17 @@ an auto 20 m off was about 140 px long in its far version, and read as low detai
 
 ### Performance (Sarjapur Road, riding 6 s, a 2× screen)
 High 120 fps, no frame over 20 ms, worst 10.4 ms, 3.1 ms of work a frame. Low 120 fps, worst 10.4 ms, 2.2 ms.
+
+## 2026-11-19: Entry 179, the back of the helmet
+
+### What I did
+From behind, the helmet still read mostly as a white dome. Its back now has (Rider.tsx,
+brandPrint.ts):
+- **The Deliver It decal**: the wordmark on a marigold pill, laid on a patch of the shell itself
+  so it follows the curve (`createHelmetDecalTexture`).
+- **Two exhaust vents** at the back, outside the twin stripes, as well as the two on top.
+- **The strap's buckle end** across the back under the rim, as well as the straps down each side.
+- The twin stripes now stop above the decal. The orange reflector strip is gone: under the decal
+  it made the back read as a face.
+
+Screenshot: `world-pass.local/shots/p6b/zoom.png`.
