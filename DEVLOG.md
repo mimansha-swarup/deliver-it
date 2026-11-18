@@ -8853,3 +8853,13 @@ sat top right and the copy on the phone are gone: there's one, beside the timer 
 ### Why
 The HUD had grown a message stack, a toast, an order card and a mood box. Now the screen is the
 road, the minimap and the way to go; the phone is where you read, and it tells you when to.
+
+## 2026-11-18: Entry 141, the order clock starts after a grace period
+
+### What I did
+An accepted order's clock now starts 10 s after accepting (`graceSeconds`), whether the rider has
+moved or not. Before, it stayed frozen until the scooter moved, so waiting at the kerb cost
+nothing. The top timer shows the full time with "starts in 7" during the grace.
+
+### Try it
+Accept an order and don't move: the grace counts down, then the clock runs.

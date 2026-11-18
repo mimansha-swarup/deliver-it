@@ -52,6 +52,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const ridden = useRef(0)
   const sinceRideReport = useRef(0)
   const wasBoosting = useRef(false)
+  /** The grace period left before an accepted order's clock starts, in seconds. */
+  const grace = useRef(0)
   /** Seconds until the dispatcher offers the next order, while online and free. */
   const offerIn = useRef(4)
 
@@ -62,6 +64,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     if (game.missionNumber !== currentMission.current) {
       currentMission.current = game.missionNumber
       elapsed.current = 0
+      grace.current = MISSION_RULES.graceSeconds
     }
 
     if (state.crashCount !== countedCrashes.current) {
@@ -83,9 +86,11 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     const stop = getCurrentStop(game.mission, game.phase)
     const frameTime = Math.min(delta, MAX_FRAME_TIME)
 
-    // The clock starts when the rider sets off, not when the page loads.
-    const hasSetOff = elapsed.current > 0 || travelSpeed > 0
-    if (stop && hasSetOff) elapsed.current += frameTime
+    // The clock starts once the grace after accepting is over, moving or not.
+    if (stop && game.mission) {
+      if (grace.current > 0) grace.current = Math.max(0, grace.current - frameTime)
+      else elapsed.current += frameTime
+    }
 
     const distance = stop ? Math.hypot(stop.x - state.x, stop.z - state.z) : 0
     if (stop && hasArrived(distance, travelSpeed)) {
@@ -164,6 +169,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         crashed: state.crashLeft > 0,
         atStore: isAtStore(game.planner, state.x, state.z, travelSpeed),
         frustration: Math.round(frustration * 100) / 100,
+        graceLeft: stop ? Math.ceil(grace.current) : 0,
         atHome: game.home !== null && Math.hypot(game.home.x - state.x, game.home.z - state.z) <= HOME_RANGE && travelSpeed <= HOME_MAX_SPEED,
       })
     }

@@ -41,7 +41,15 @@ function OrderTimer() {
   const onTime = useGameStore((state) => state.mission?.onTimeSeconds ?? null)
   const seconds = useGameStore((state) => state.seconds)
   const riding = useGameStore((state) => state.phase === 'toPickup' || state.phase === 'toCustomer')
+  const graceLeft = useGameStore((state) => state.graceLeft)
   if (onTime === null || !riding) return null
+  if (graceLeft > 0) {
+    return (
+      <span className="route-timer" data-grace="true" title="The order's clock starts after a short grace">
+        {formatTime(onTime)} <small>starts in {graceLeft}</small>
+      </span>
+    )
+  }
   const left = onTime - seconds
   return (
     <span className="route-timer" data-late={left < 0} data-hurry={left >= 0 && left <= 20}>

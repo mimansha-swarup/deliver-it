@@ -7,6 +7,9 @@ export const MISSION_RULES = {
   /** The scooter must be below this speed inside the ring, in metres per second. */
   maxArrivalSpeed: 3,
 
+  /** After accepting, the order's clock waits this long before it starts, in seconds. */
+  graceSeconds: 10,
+
   /** Always paid for a completed delivery, whatever else happens. */
   baseCredits: 50,
   baseXp: 25,

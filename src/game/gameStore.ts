@@ -70,6 +70,8 @@ type Telemetry = {
   atHome: boolean
   /** How frustrated the current customer is, 0 to 1 (customerChat.ts). */
   frustration: number
+  /** Seconds left before an accepted order's clock starts. */
+  graceLeft: number
 }
 
 /** An order offered to the rider, waiting for an answer until `expiresAt` (performance.now()). */
@@ -386,6 +388,7 @@ export const useGameStore = create<GameState>()(
       waypoint: null,
       rough: 0,
       frustration: 0,
+      graceLeft: 0,
 
       // Starting the career and today's shift happens the first time the rider sets off.
       startGame: () =>
