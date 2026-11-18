@@ -1,19 +1,9 @@
 import { useEffect, useRef } from 'react'
 import type { DriveInput } from './ScooterController'
+import { isKey } from '../game/keyBindings'
 
-const KEY_BINDINGS: Record<string, keyof DriveInput> = {
-  KeyW: 'forward',
-  ArrowUp: 'forward',
-  KeyS: 'backward',
-  ArrowDown: 'backward',
-  KeyA: 'left',
-  ArrowLeft: 'left',
-  KeyD: 'right',
-  ArrowRight: 'right',
-  Space: 'handbrake',
-  ShiftLeft: 'nitro',
-  ShiftRight: 'nitro',
-}
+/** The riding controls, each by its action in the key bindings (keyBindings.ts), so they can be changed. */
+const CONTROLS: (keyof DriveInput)[] = ['forward', 'backward', 'left', 'right', 'handbrake', 'nitro']
 
 function noKeysPressed(): DriveInput {
   return { forward: false, backward: false, left: false, right: false, handbrake: false, nitro: false }
@@ -28,7 +18,7 @@ export function useDriveInput() {
 
   useEffect(() => {
     const setKey = (event: KeyboardEvent, pressed: boolean) => {
-      const control = KEY_BINDINGS[event.code]
+      const control = CONTROLS.find((name) => isKey(name, event.code))
       if (!control) return
 
       event.preventDefault() // Stops the arrow keys and Space scrolling the page.

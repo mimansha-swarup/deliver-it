@@ -8981,3 +8981,20 @@ The phone's tabs are gone. It works like a phone now (`src/ui/Phone.tsx` for the
   mid-crash), and sleeping resets it to home. `?spawn=` still overrides it for testing, and
   `?tutorial=1` always starts at home.
 - Up close, the home marker's pointer hides; the ring stays.
+
+## 2026-11-18: Entry 150, keys: changeable, and a help overlay
+
+### What I did
+- **Every key is changeable** (`src/game/keyBindings.ts`). Each action (riding, drift, nitro,
+  horn, online, accept, decline, sleep, phone, map, radio, skip time, weather, help) has its
+  keys, saved apart from progress. Every handler asks the bindings instead of a fixed key.
+  Enter and Esc stay fixed: the phone's unlock and the back key everywhere.
+- **Controls in Settings**: click an action's key, press the new one. The press is caught
+  before the game sees it (binding O doesn't also send you online), and a key given to one
+  action is taken from any other. Esc cancels; "Reset to the default keys" restores them.
+- **Help overlay**: F1 or ? lists every key by group, over the game.
+- The permanent key list along the bottom of the screen is gone. Everywhere the UI names a key
+  (the off-duty badge, the offer card, the home prompt, the phone's tab, the maps) it shows the
+  current binding.
+
+Checked: phone moved to K opens and closes the phone and P does nothing; reset brings P back.

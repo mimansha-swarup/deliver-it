@@ -1,3 +1,4 @@
+import { isKey } from '../game/keyBindings'
 import { ONLINE_CLOCK_SCALE } from '../game/duty'
 import { isDebug } from '../dev/spawn'
 import { useEffect, useRef } from 'react'
@@ -150,8 +151,8 @@ export function Sky() {
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
-      if (event.code === 'KeyN') state.current.hours = (state.current.hours + SKIP_HOURS) % 24
-      if (event.code === 'KeyM') changeWeather(state.current, Math.random)
+      if (isKey('skipTime', event.code)) state.current.hours = (state.current.hours + SKIP_HOURS) % 24
+      if (isKey('weather', event.code)) changeWeather(state.current, Math.random)
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)

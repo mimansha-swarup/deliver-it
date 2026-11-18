@@ -1,3 +1,4 @@
+import { useKeyName } from '../game/keyBindings'
 import { use, useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { MISSION_RULES } from '../game/missionConfig'
@@ -22,6 +23,7 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const mapImage = useMemo(() => createMapImage(data), [data])
   const online = useGameStore((state) => state.duty === 'online')
+  const mapKey = useKeyName('map')
   const distance = useGameStore((state) => state.distance)
   const hasTarget = useGameStore((state) => state.mission !== null || state.waypoint !== null)
   const stores = useGameStore((state) => state.planner?.stores)
@@ -128,7 +130,7 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
         className="minimap-canvas"
         role="button"
         tabIndex={-1}
-        aria-label="Map: click or press Tab for the full map"
+        aria-label={`Map: click or press ${mapKey} for the full map`}
         onClick={onOpen}
       />
       {hasTarget && distance > 0 && (

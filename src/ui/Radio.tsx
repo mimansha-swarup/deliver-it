@@ -1,3 +1,4 @@
+import { isKey } from '../game/keyBindings'
 import { useEffect, useRef, useState } from 'react'
 import { setMusicOn, setSfxOn } from '../audio/audioEngine'
 import { playStation, stopStation } from '../audio/radio'
@@ -5,7 +6,6 @@ import type { VideoStation } from '../audio/stations'
 import { useStation } from '../audio/useStation'
 import { useGameStore } from '../game/gameStore'
 
-const NEXT_STATION_KEY = 'KeyR'
 
 /**
  * Keeps the sound in step with the settings. It draws nothing. Code stations
@@ -29,7 +29,7 @@ export function RadioPlayer() {
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
-      if (event.code === NEXT_STATION_KEY && !event.repeat) changeStation(1)
+      if (isKey('radio', event.code) && !event.repeat) changeStation(1)
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)

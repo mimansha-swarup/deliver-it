@@ -1,3 +1,5 @@
+import { useKeyName } from '../game/keyBindings'
+import { isKey } from '../game/keyBindings'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { WEATHERS } from '../sky/skyLogic'
@@ -19,7 +21,6 @@ import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
  * for new messages. The apps are in phoneApps.tsx.
  */
 
-const PHONE_KEY = 'KeyP'
 
 /** How long a message peeks the phone up (or shows as a banner on it), in milliseconds. */
 const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500 }
@@ -231,7 +232,7 @@ export function Phone() {
     const handleKey = (event: KeyboardEvent) => {
       if (event.repeat) return
       const now = state.current
-      if (event.code === PHONE_KEY) {
+      if (isKey('phone', event.code)) {
         autoRaised.current = false
         if (now.raised) setRaised(false)
         else {
@@ -253,6 +254,7 @@ export function Phone() {
   }, [])
 
   const totalUnread = Object.values(unread).reduce((sum, count) => sum + count, 0)
+  const phoneKey = useKeyName('phone')
   const badges: Partial<Record<AppId, number>> = { messages: totalUnread, deliver: offer ? 1 : 0, garage: atStore ? 1 : 0 }
   const station = useStation()
   const videoCard = station.kind === 'video'
@@ -305,7 +307,7 @@ export function Phone() {
       </aside>
       {!raised && (
         <button type="button" className="phone-tab" onClick={() => open('lock')} aria-label="Open the phone (P)">
-          Phone · P{totalUnread > 0 && <span className="phone-tab-count">{totalUnread}</span>}
+          Phone · {phoneKey}{totalUnread > 0 && <span className="phone-tab-count">{totalUnread}</span>}
         </button>
       )}
       {peek && (

@@ -3252,3 +3252,164 @@ body,
   font-weight: 700;
   text-align: right;
 }
+
+/* ---- Keys: the help overlay (F1 / ?) and the phone's Controls (HelpOverlay.tsx) ---- */
+
+.help-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 35;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 18px 22px;
+  border-radius: 16px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 94%);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 55%);
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+}
+
+.help-overlay header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.help-overlay h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.help-overlay header button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 999px;
+  color: #f4f1e8;
+  background: rgb(244 241 232 / 14%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.help-note {
+  margin: 12px 0 0;
+  color: #c9c6bc;
+  font-size: 12px;
+}
+
+.key-list {
+  display: grid;
+  gap: 10px;
+}
+
+.help-overlay .key-list {
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 24px;
+}
+
+.key-list h3 {
+  margin: 0 0 4px;
+  color: #3ddc97;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.key-list dl {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.key-row dt {
+  font-size: 13px;
+}
+
+.key-row dd {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+}
+
+.key-list kbd,
+.key-fixed kbd {
+  min-width: 18px;
+  padding: 1px 6px;
+  border: 1px solid rgb(244 241 232 / 30%);
+  border-radius: 5px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.key-fixed {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #c9c6bc;
+  font-size: 12px;
+}
+
+.key-change {
+  padding: 3px 8px;
+  border: 1px solid rgb(244 241 232 / 25%);
+  border-radius: 6px;
+  color: var(--phone-ink, #f4f1e8);
+  background: rgb(255 255 255 / 6%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.key-change[data-listening='true'] {
+  border-color: #3ddc97;
+  color: #3ddc97;
+}
+
+.key-reset {
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--phone-ink, #f4f1e8);
+  background: rgb(255 255 255 / 10%);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.app-card {
+  min-width: 0;
+}
+
+.app .key-row dt {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.app .key-row dd {
+  flex: none;
+  max-width: 55%;
+}
+
+.app .key-change {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

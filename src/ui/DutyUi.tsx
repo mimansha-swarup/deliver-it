@@ -1,3 +1,5 @@
+import { keyFor, useKeyName } from '../game/keyBindings'
+import { isKey } from '../game/keyBindings'
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { CANCEL_PENALTY, dayPeriod, formatHour, OFFER_SECONDS, type ShiftGoal, type ShiftSummary } from '../game/duty'
@@ -11,7 +13,6 @@ import { playPing } from '../audio/uiSounds'
  * O goes online or offline, Y accepts an offer, X declines it, Z sleeps at home.
  */
 
-const KEYS = { duty: 'KeyO', accept: 'KeyY', decline: 'KeyX', sleep: 'KeyZ' }
 
 /** How long the screen stays dark when sleeping, in milliseconds. */
 const SLEEP_FADE_MS = 1800
@@ -27,10 +28,10 @@ function DutyKeys() {
     const handleKey = (event: KeyboardEvent) => {
       if (event.repeat || isTyping(event)) return
       const game = useGameStore.getState()
-      if (event.code === KEYS.duty) game.toggleDuty()
-      else if (event.code === KEYS.accept && game.offer) game.acceptOffer()
-      else if (event.code === KEYS.decline && game.offer) game.declineOffer()
-      else if (event.code === KEYS.sleep && game.atHome && game.duty === 'off') game.endDay()
+      if (isKey('online', event.code)) game.toggleDuty()
+      else if (isKey('accept', event.code) && game.offer) game.acceptOffer()
+      else if (isKey('decline', event.code) && game.offer) game.declineOffer()
+      else if (isKey('sleep', event.code) && game.atHome && game.duty === 'off') game.endDay()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -53,6 +54,7 @@ export function GoalLine({ goal }: { goal: ShiftGoal }) {
 /** Off duty or online, at a glance, with the key to change it. */
 function DutyBadge() {
   const duty = useGameStore((state) => state.duty)
+  const onlineKey = useKeyName('online')
   const goal = useGameStore((state) => state.shift?.goal ?? null)
   const finishing = useGameStore((state) => state.offlineAfterOrder)
   const skyTime = useGameStore((state) => state.skyTime)
@@ -63,7 +65,7 @@ function DutyBadge() {
   if (duty === 'off') {
     return (
       <p className="duty-badge" data-duty="off" role="status">
-        <strong>Off duty</strong> <span>Ride anywhere · <kbd>O</kbd> to go online</span>
+        <strong>Off duty</strong> <span>Ride anywhere · <kbd>{onlineKey}</kbd> to go online</span>
       </p>
     )
   }
@@ -144,10 +146,10 @@ function OfferCard() {
       </div>
       <div className="duty-offer-buttons">
         <button type="button" className="duty-accept" onClick={(event) => { accept(); event.currentTarget.blur() }}>
-          <kbd>Y</kbd> Accept
+          <kbd>{keyFor('accept')}</kbd> Accept
         </button>
         <button type="button" className="duty-decline" onClick={(event) => { decline(); event.currentTarget.blur() }}>
-          <kbd>X</kbd>
+          <kbd>{keyFor('decline')}</kbd>
         </button>
       </div>
     </section>
@@ -221,12 +223,13 @@ function ShiftSummaryCard({ summary }: { summary: ShiftSummary }) {
 /** At home: sleep until the morning, which ends the day and saves. */
 function HomePrompt() {
   const atHome = useGameStore((state) => state.atHome)
+  const sleepKey = useKeyName('sleep')
   const duty = useGameStore((state) => state.duty)
   if (!atHome) return null
   return (
     <p className="duty-home" role="status">
       <strong>Home</strong>{' '}
-      {duty === 'off' ? <span><kbd>Z</kbd> to sleep until {formatHour(7)}</span> : <span>Go offline to sleep</span>}
+      {duty === 'off' ? <span><kbd>{sleepKey}</kbd> to sleep until {formatHour(7)}</span> : <span>Go offline to sleep</span>}
     </p>
   )
 }

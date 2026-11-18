@@ -1,3 +1,4 @@
+import { keyFor } from '../game/keyBindings'
 import { useGameStore } from '../game/gameStore'
 import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
 import { levelFromXp, levelProgress, UNLOCK_LEVELS } from '../game/progression'
@@ -15,6 +16,7 @@ import { RadioControls } from './Radio'
 import { QualityPicker } from './QualityPicker'
 import { DISPATCHER } from '../game/career'
 import { setMapOpen } from './uiState'
+import { KeyList } from './HelpOverlay'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 
 /*
@@ -251,7 +253,7 @@ function DutySheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: ()
         <span className="phone-period">Day {day} · {period.label}</span>
       </p>
       <p className="phone-stop">
-        {duty === 'off' ? 'Ride anywhere. Go online for orders.' : offer ? 'Y to accept · X to decline' : `${period.label}: ${period.payShare > 0 ? `+${Math.round(period.payShare * 100)}% pay` : 'normal pay'}`}
+        {duty === 'off' ? 'Ride anywhere. Go online for orders.' : offer ? `${keyFor('accept')} to accept · ${keyFor('decline')} to decline` : `${period.label}: ${period.payShare > 0 ? `+${Math.round(period.payShare * 100)}% pay` : 'normal pay'}`}
       </p>
       {duty === 'online' && goal && (
         <p className="phone-goal">
@@ -266,13 +268,13 @@ function DutySheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: ()
           event.currentTarget.blur()
         }}
       >
-        {duty === 'off' ? 'Go online · O' : 'Go offline · O'}
+        {duty === 'off' ? `Go online · ${keyFor('online')}` : `Go offline · ${keyFor('online')}`}
       </button>
       {raised && (
         <>
           <p className="phone-order-line">
             Acceptance {rate === null ? '—' : `${Math.round(rate * 100)}%`}
-            {duty === 'off' && ' · Sleep at home (Z) to end the day'}
+            {duty === 'off' && ` · Sleep at home (${keyFor('sleep')}) to end the day`}
           </p>
           <GarageButton onOpen={onOpenGarage} />
         </>
@@ -490,7 +492,7 @@ function MapsApp({ nav }: { nav: PhoneNav }) {
       <AppBar title="Maps" nav={nav} />
       <div className="app-body">
         <button type="button" className="app-wide-button" onClick={(event) => { nav.close(); setMapOpen(true); event.currentTarget.blur() }}>
-          Open the full map · Tab
+          Open the full map · {keyFor('map')}
         </button>
         <section className="app-card">
           <p className="app-card-title">Saved places {hasOrder && <small>· routes are off during an order</small>}</p>
@@ -500,7 +502,7 @@ function MapsApp({ nav }: { nav: PhoneNav }) {
                 <button type="button" disabled={hasOrder} onClick={() => goTo(place.x, place.z)}>
                   <span>
                     {place.name}
-                    <small>{place.kind === 'home' ? 'Sleep here (Z)' : place.kind === 'store' ? 'Pickups and the Garage' : 'Chai break'}</small>
+                    <small>{place.kind === 'home' ? `Sleep here (${keyFor('sleep')})` : place.kind === 'store' ? 'Pickups and the Garage' : 'Chai break'}</small>
                   </span>
                   <span className="app-list-right">{far(place.x, place.z)}</span>
                 </button>
@@ -683,11 +685,9 @@ export function PhoneApp({ app, nav }: { app: AppId; nav: PhoneNav }) {
   }
 }
 
-/** The keys, as a list (Entry 151 makes them changeable). */
+/** The keys, each changeable: click, then press the new key. */
 function ControlsList() {
-  return (
-    <p className="phone-keys">W A S D ride · Space drift · Shift nitro · O online · Y / X answer an offer · Tab map · P phone · H horn · R radio · Z sleep at home · N skip time · M weather</p>
-  )
+  return <KeyList editable />
 }
 
 /** More settings: the tutorial (Entry 150). */

@@ -1,3 +1,5 @@
+import { keyFor } from '../game/keyBindings'
+import { isKey } from '../game/keyBindings'
 import { Suspense, use, useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { MISSION_RULES } from '../game/missionConfig'
@@ -204,7 +206,7 @@ function MapCanvas() {
         }}
       />
       <p className="full-map-hint">
-        {hasOrder ? 'Following your order · Tab or Esc to close' : 'Click to set a waypoint · drag to move · scroll to zoom · Tab or Esc to close'}
+        {hasOrder ? `Following your order · ${keyFor('map')} or Esc to close` : `Click to set a waypoint · drag to move · scroll to zoom · ${keyFor('map')} or Esc to close`}
         {waypoint && !hasOrder && (
           <button type="button" onClick={() => setWaypoint(null)}>
             Clear waypoint
@@ -220,7 +222,7 @@ export function FullMap() {
   const open = useUi((state) => state.mapOpen)
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
-      if (event.code === 'Tab') {
+      if (isKey('map', event.code)) {
         // Tab would otherwise move the keyboard focus around the page.
         event.preventDefault()
         if (!event.repeat) setMapOpen(!useUi.getState().mapOpen)
@@ -239,7 +241,7 @@ export function FullMap() {
         <MapCanvas />
       </Suspense>
       <button type="button" className="full-map-close" onClick={() => setMapOpen(false)}>
-        Close · Tab
+        Close · {keyFor('map')}
       </button>
     </section>
   )
