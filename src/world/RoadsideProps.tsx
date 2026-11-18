@@ -14,8 +14,11 @@ import {
   createCanopyGeometries,
   createCreeperGeometries,
   createLeafyCanopyGeometries,
+  createPalmGeometries,
   createPetalGeometry,
   createTrunkGeometry,
+  PALM,
+  TREE_SHAPE_COUNT,
 } from './foliage'
 import { windUniforms } from './wind'
 import { groundLift } from './groundLift'
@@ -38,8 +41,7 @@ const LEAF_BRIGHTNESS = 4.2
 const LEAF_CUTOFF = 0.45
 const BARK_REPEAT: [number, number] = [1.5, 2]
 
-/** The number of tree shapes. */
-const TREE_KINDS = 3
+const PALM_TRUNK_COLOR = '#7d7466'
 
 const GLOW_COLOR = new THREE.Color('#ffc67a')
 const GLOW_RADIUS = 7
@@ -86,6 +88,7 @@ const TITLE_PROP_REACH = 400
 const REFRESH_DISTANCE = 20
 
 const transform = new THREE.Object3D()
+transform.rotation.order = 'YXZ'
 
 /**
  * A plastic rooftop water tank: a seven-sided drum with a narrower top. There
@@ -422,12 +425,13 @@ export function PropInstances({
     lastRefresh.current = { x: livePlayer.x, z: livePlayer.z, reach }
 
     let count = 0
-    for (const { x, y, z, rotation, variation, tint, size = 1 } of props) {
+    for (const { x, y, z, rotation, variation, tint, size = 1, lean } of props) {
       if (Math.hypot(x - livePlayer.x, z - livePlayer.z) > reach) continue
 
       // Things on the ground stand on it, raised footpaths included. Roof tanks give their own height.
       transform.position.set(x, y ?? groundLift.at(x, z), z)
-      transform.rotation.y = rotation
+      // A tree's lean tips it over sideways, then the turn points it any way round (order YXZ).
+      transform.rotation.set(lean ?? 0, rotation, 0)
       transform.scale.setScalar((1 - sizeRange / 2 + variation * sizeRange) * size)
       transform.updateMatrix()
       instances.setMatrixAt(count, transform.matrix)
@@ -508,6 +512,7 @@ export function RoadsideProps({
 }) {
   const { leafyTrees } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
+  const palm = useMemo(() => createPalmGeometries(), [])
   const canopies = useMemo(
     () => (leafyTrees ? createLeafyCanopyGeometries() : createCanopyGeometries()),
     [leafyTrees],
@@ -535,13 +540,15 @@ export function RoadsideProps({
   )
   const windPhase = useRef(0)
 
-  // Each kind of tree needs its own instanced mesh, as a mesh holds one shape.
+  // Each kind of tree needs its own instanced mesh, as a mesh holds one shape. Palms have their own trunk too.
+  const palms = useMemo(() => props.trees.filter(({ kind }) => kind === PALM), [props.trees])
+  const broadleaf = useMemo(() => props.trees.filter(({ kind }) => kind !== PALM), [props.trees])
   const treesByKind = useMemo(
     () =>
       canopies.map((_, kind) =>
-        props.trees.filter(({ variation, kind: shape }) => (shape ?? Math.floor(variation * 997) % TREE_KINDS) === kind),
+        broadleaf.filter(({ variation, kind: shape }) => (shape ?? Math.floor(variation * 997) % TREE_SHAPE_COUNT) === kind),
       ),
-    [canopies, props.trees],
+    [canopies, broadleaf],
   )
 
   useFrame((_, delta) => {
@@ -556,6 +563,8 @@ export function RoadsideProps({
   useEffect(
     () => () => {
       trunk.dispose()
+      palm.trunk.dispose()
+      palm.crown.dispose()
       canopies.forEach((canopy) => canopy.dispose())
       lamp.dispose()
       posters.forEach((geometry) => geometry.dispose())
@@ -571,14 +580,14 @@ export function RoadsideProps({
       creeper.leaves.dispose()
       creeper.flowers.dispose()
     },
-    [trunk, canopies, lamp, posters, posterImage, lampGlow, lightCone, lightConeMaterial, halo, haloMaterial, tank, bench, petals, creeper],
+    [trunk, palm, canopies, lamp, posters, posterImage, lampGlow, lightCone, lightConeMaterial, halo, haloMaterial, tank, bench, petals, creeper],
   )
 
   return (
     <>
       <PropInstances
         key={String(leafyTrees)}
-        props={props.trees}
+        props={broadleaf}
         geometry={trunk}
         color={leafyTrees ? '#ffffff' : TRUNK_COLOR}
         sizeRange={0.5}
@@ -596,6 +605,9 @@ export function RoadsideProps({
           leaves={leafyTrees ? leaves : undefined}
         />
       ))}
+      {/* Coconut palms: drawn the same on every quality, a vertex-coloured crown and a ringed trunk. */}
+      <PropInstances props={palms} geometry={palm.trunk} color={PALM_TRUNK_COLOR} sizeRange={0.3} sway />
+      <PropInstances props={palms} geometry={palm.crown} sizeRange={0.3} sway vertexColors />
       <PropInstances props={treesInFlower} geometry={petals} colors={CANOPY_COLORS} sizeRange={0.5} flat />
       <PropInstances
         key={`creeper-leaves-${leafyTrees}`}

@@ -2,7 +2,7 @@ import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { MapData } from './mapData'
 import {
   createRandom,
-  strayTint,
+  scramble,
   indexRoadPieces,
   isClearOfRoads,
   toRoadPieces,
@@ -16,6 +16,7 @@ import {
   lonLatToWorld,
   type GroundPoint,
 } from './worldUtils'
+import { PARK_SPECIES, plantTree, SPECIES } from './treeSpecies'
 
 /** Trees are tried on a grid this wide, in metres, then nudged so they don't look planted. */
 const TREE_GRID = 9
@@ -66,7 +67,8 @@ export function plantParks(
       for (let gridZ = Math.min(...zs); gridZ < Math.max(...zs); gridZ += TREE_GRID) {
         const x = gridX + (random() - 0.5) * TREE_NUDGE * 2
         const z = gridZ + (random() - 0.5) * TREE_NUDGE * 2
-        const rotation = random() * 6.28
+        // Two draws that once set turn and shade; kept so everything planted after stays where it was.
+        random()
         const variation = random()
 
         if (random() > TREE_CHANCE) continue
@@ -75,7 +77,9 @@ export function plantParks(
         if (!isClearOfRoads(roads, x, z, TREE_CLEARANCE) || !isClearOfRoads(paths, x, z, TREE_CLEARANCE)) continue
 
         addPost(collisions, x, z, TREE_TRUNK_RADIUS)
-        props.trees.push({ x, z, rotation, variation, tint: strayTint(props.trees.length) })
+        // A park is a mix of species, each tree its own (treeSpecies.ts).
+        const seed = props.trees.length + 1
+        props.trees.push(plantTree(SPECIES[PARK_SPECIES[scramble(seed * 3 + Math.round(variation * 1000)) % PARK_SPECIES.length]], { x, z }, seed))
       }
     }
 

@@ -27,7 +27,7 @@ import { createSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
-import { generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadPiece, toRoadPieces } from './props'
+import { forEachRoadNear, generateRoadsideProps, indexRoadPieces, isClearOfRoads, nearestRoadPiece, toRoadPieces } from './props'
 import { planJunctionRailings, planMappedBarriers, planParkFences, planTempleWalls } from './fencing'
 import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from './worship'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
@@ -44,6 +44,7 @@ import { usesNewGround } from './streetEdgeConfig'
 import { addGroundFloorShops, assignStreetPresets, listStreets, streetPresetOf } from './streetPresets'
 import { generateRoofTanks } from './roofTanks'
 import { planHouseKit } from './houseKit'
+import { plantContextTrees } from './treeSpecies'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
 import { RestrictedWall } from './RestrictedWall'
@@ -165,6 +166,15 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
   lap('shop units and roadside props')
   const benches = plantParks(data, collisions, props)
+  // Trees placed by where they grow: palms and ashokas behind compound gates, a peepal or banyan
+  // by each temple, a big tree on some junction corners (treeSpecies.ts).
+  const junctions = graph.links.flatMap((links, node) => {
+    if (links.length < 3) return []
+    let reach = 0
+    forEachRoadNear(roadIndex, graph.xs[node], graph.zs[node], 2, (piece) => (reach = Math.max(reach, piece.width / 2)))
+    return [{ x: graph.xs[node], z: graph.zs[node], reach }]
+  })
+  props.trees.push(...plantContextTrees({ gates: houses.gates, temples: worship, junctions, roads: roadIndex, collisions }))
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
   lap('parks and street life')

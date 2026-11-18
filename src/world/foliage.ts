@@ -26,7 +26,40 @@ const TREE_SHAPES: Blob[][] = [
     [-1.8, 4.4, -0.5, 1.6],
     [0.3, 4.3, 1.8, 1.4],
   ],
+  // An umbrella: a broad, flat-topped spread held high, as a mature rain tree or gulmohar.
+  [
+    [0, 5.4, 0, 1.7],
+    [2.2, 5.1, 0.6, 1.5],
+    [-2.1, 5.2, -0.4, 1.5],
+    [0.5, 5.0, 2.1, 1.4],
+    [-0.4, 5.1, -2.1, 1.4],
+    [1.4, 5.6, -1.4, 1.2],
+  ],
+  // A column: the mast-tree ashoka, narrow and tall, its drooping leaves almost to the ground.
+  [
+    [0, 1.8, 0, 0.75],
+    [0, 3.1, 0, 0.8],
+    [0, 4.4, 0, 0.72],
+    [0, 5.6, 0, 0.6],
+    [0, 6.6, 0, 0.42],
+  ],
+  // A dome: a banyan or peepal, the old tree beside a temple, wider than it is tall.
+  [
+    [0, 5.6, 0, 2.4],
+    [2.6, 4.9, 0.8, 2.0],
+    [-2.5, 5.0, -0.9, 2.1],
+    [0.8, 4.8, 2.6, 1.9],
+    [-0.9, 4.9, -2.5, 1.9],
+    [1.9, 6.2, -1.6, 1.6],
+    [-1.6, 6.3, 1.5, 1.6],
+  ],
 ]
+
+/** The tree shapes, by name, as the planting in props.ts asks for them. The palm is drawn on its own (`createPalmGeometries`). */
+export const TREE_SHAPE = { round: 0, tall: 1, wide: 2, umbrella: 3, column: 4, dome: 5 } as const
+export const TREE_SHAPE_COUNT = 6
+/** A coconut palm: its own trunk and crown, not one of the ball-built canopies. */
+export const PALM = 6
 
 /** Where each frond sits on the leaf image: [left, top, right, bottom], then its card's width and height. */
 const FRONDS = [
@@ -173,6 +206,78 @@ export function createTrunkGeometry(): THREE.BufferGeometry {
   if (!merged) throw new Error('Could not merge trunk geometry')
   ;[trunk, ...branches, ...parts].forEach((part) => part.dispose())
   return merged
+}
+
+/** A palm's crown, in metres up the trunk, and how many fronds it has, each in this many lengths. */
+const PALM_TOP = 8.6
+const PALM_FRONDS = 14
+const FROND_STEPS = 5
+
+/**
+ * A coconut palm: a tall, thin trunk with a slight curve and rings, and a crown of fronds that
+ * arch out and droop, each a strip narrowing to its tip. Vertex-coloured, no texture, about 120
+ * triangles for the crown, so it's the same on every quality. The crown sits on the trunk's top.
+ */
+export function createPalmGeometries(): { trunk: THREE.BufferGeometry; crown: THREE.BufferGeometry } {
+  // The trunk, bowed a little: a cylinder bent by moving each ring sideways.
+  const trunk = new THREE.CylinderGeometry(0.13, 0.2, PALM_TOP, 7, 8).toNonIndexed()
+  trunk.translate(0, PALM_TOP / 2, 0)
+  const trunkPositions = trunk.getAttribute('position')
+  for (let i = 0; i < trunkPositions.count; i++) {
+    const up = trunkPositions.getY(i) / PALM_TOP
+    trunkPositions.setX(i, trunkPositions.getX(i) + Math.sin(up * Math.PI * 0.9) * 0.35)
+  }
+  trunk.computeVertexNormals()
+
+  const positions: number[] = []
+  const colors: number[] = []
+  const random = createRandom(9721)
+  const green = new THREE.Color('#5b8a3a')
+  const dry = new THREE.Color('#8d8a42')
+  const topX = Math.sin(Math.PI * 0.9) * 0.35
+  for (let frond = 0; frond < PALM_FRONDS; frond++) {
+    const turn = (frond / PALM_FRONDS) * Math.PI * 2 + random() * 0.3
+    const length = 3.2 + random() * 0.8
+    const lift = 0.5 + random() * 0.4
+    const shade = new THREE.Color().copy(green).lerp(dry, random() * 0.35)
+    const point = (t: number, side: number): [number, number, number] => {
+      // Out along the frond, arching up then drooping, its width narrowing to the tip.
+      const out = t * length
+      const height = PALM_TOP + Math.sin(t * Math.PI * 0.7) * lift - t * t * 1.6
+      const width = 0.62 * (1 - t * 0.8) * side
+      return [topX + Math.cos(turn) * out - Math.sin(turn) * width, height, Math.sin(turn) * out + Math.cos(turn) * width]
+    }
+    for (let step = 0; step < FROND_STEPS; step++) {
+      const [a, b] = [step / FROND_STEPS, (step + 1) / FROND_STEPS]
+      for (const corner of [point(a, -1), point(b, -1), point(b, 1), point(a, -1), point(b, 1), point(a, 1)]) {
+        positions.push(...corner)
+        colors.push(shade.r, shade.g, shade.b)
+      }
+    }
+  }
+  // Each frond's back face too, so it shows from below (the material draws front faces only).
+  const frontCount = positions.length / 9
+  for (let triangle = 0; triangle < frontCount; triangle++) {
+    for (const corner of [0, 2, 1]) {
+      const at = (triangle * 3 + corner) * 3
+      positions.push(positions[at], positions[at + 1], positions[at + 2])
+      colors.push(colors[at] * 0.8, colors[at + 1] * 0.8, colors[at + 2] * 0.8)
+    }
+  }
+  // A cluster of coconuts under the crown.
+  const nuts = new THREE.IcosahedronGeometry(0.42, 0).toNonIndexed()
+  nuts.translate(topX, PALM_TOP - 0.35, 0)
+  const nutColor = new THREE.Color('#6b5a2a')
+  for (let i = 0; i < nuts.getAttribute('position').count; i++) {
+    positions.push(nuts.getAttribute('position').getX(i), nuts.getAttribute('position').getY(i), nuts.getAttribute('position').getZ(i))
+    colors.push(nutColor.r, nutColor.g, nutColor.b)
+  }
+  nuts.dispose()
+  const crown = new THREE.BufferGeometry()
+  crown.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  crown.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  crown.computeVertexNormals()
+  return { trunk, crown }
 }
 
 /**

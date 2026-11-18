@@ -5,6 +5,7 @@ import { getRoadWidth } from './roadData'
 import { clipToPlayArea } from './roadGeometry'
 import type { ShopFront } from './shopFrontPlacement'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
+import { AVENUE_SPECIES, plantTree, SPECIES } from './treeSpecies'
 
 export type Prop = {
   x: number
@@ -23,6 +24,8 @@ export type Prop = {
   width?: number
   /** A size multiplier, on top of the difference `variation` makes. */
   size?: number
+  /** How far it leans from upright, in radians, towards a side set by `rotation` (trees). */
+  lean?: number
 }
 
 /** Two neighbouring lamp posts on the same road, which a cable can join. */
@@ -72,35 +75,11 @@ export const CANOPY_HEX = [
   '#ecc63a',
   '#ea8fb6',
   '#9b7ad2',
+  // Copper pod: a warmer gold than the tabebuia (darker reads as dead leaves once the leaf photo shades it).
+  '#f2b82a',
 ]
 export const GREEN_TINTS = 8
-const BLOSSOM = { gulmohar: 8, yellow: 9, pink: 10, jacaranda: 11 }
-/** Tree shapes, as listed in foliage.ts. */
-const SHAPE = { round: 0, tall: 1, wide: 2 }
-
-/**
- * How one road is planted. HSR's roads were planted a species at a time, so a
- * whole road flowers together. `blossom` is the colour its flowering trees take.
- */
-type Avenue = { blossom?: number; shape?: number; size: number }
-const GREEN_AVENUE: Avenue = { size: 1 }
-/** A road gets one of these by its name, so the mix is two in five green, three in five in flower. */
-const AVENUES: Avenue[] = [
-  GREEN_AVENUE,
-  GREEN_AVENUE,
-  GREEN_AVENUE,
-  // Rain trees: all green, and big enough to meet over the road.
-  { shape: SHAPE.wide, size: 1.3 },
-  { blossom: BLOSSOM.pink, shape: SHAPE.round, size: 1.05 },
-  { blossom: BLOSSOM.pink, shape: SHAPE.round, size: 1.05 },
-  { blossom: BLOSSOM.pink, shape: SHAPE.wide, size: 1.1 },
-  { blossom: BLOSSOM.yellow, shape: SHAPE.round, size: 1 },
-  { blossom: BLOSSOM.gulmohar, shape: SHAPE.wide, size: 1.15 },
-  { blossom: BLOSSOM.jacaranda, shape: SHAPE.tall, size: 1.1 },
-]
-/** On a flowering road, this share of the trees are in flower, in percent. */
-const AVENUE_BLOOM = 72
-/** Anywhere else, the odd tree is in flower. */
+/** The odd tree off the avenues is in flower. */
 const STRAY_BLOOM = 5
 /** Trees on roads at least this wide grow bigger, in metres. */
 const WIDE_ROAD = 7
@@ -319,7 +298,8 @@ export function generateRoadsideProps(
   const placed = new PointGrid(MIN_PROP_SPACING)
   const props: RoadsideProps = { trees: [], lamps: [], postPairs: [], parkedScooters: [] }
   const lastLampOnRoad = new Map<number, Prop>()
-  const avenues = roads.map((road, index) => AVENUES[roadSeed(road, index) % AVENUES.length])
+  // HSR's roads were planted a species at a time, so a whole road is one kind of tree (treeSpecies.ts).
+  const avenues = roads.map((road, index) => SPECIES[AVENUE_SPECIES[roadSeed(road, index) % AVENUE_SPECIES.length]])
 
   const canPlace = (x: number, z: number, buildingGap: number) =>
     !isNearBuilding(collisions, x, z, buildingGap) &&
@@ -354,14 +334,7 @@ export function generateRoadsideProps(
       const rotation = isLamp ? Math.atan2(-directionZ * side, directionX * side) : random() * 6.28
       const prop = { x, z, rotation, variation: random() }
       if (!isLamp) {
-        const avenue = avenues[piece.road]
-        const blooms = avenue.blossom !== undefined && scramble(slot) % 100 < AVENUE_BLOOM
-        props.trees.push({
-          ...prop,
-          tint: blooms ? avenue.blossom : strayTint(slot),
-          kind: avenue.shape,
-          size: avenue.size * (piece.width >= WIDE_ROAD ? WIDE_ROAD_SIZE : 1),
-        })
+        props.trees.push(plantTree(avenues[piece.road], prop, slot, piece.width >= WIDE_ROAD ? WIDE_ROAD_SIZE : 1))
         continue
       }
 

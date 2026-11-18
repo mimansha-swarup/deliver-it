@@ -8468,3 +8468,38 @@ it's never downloaded: the game points the loader at `public/basis`.
 (High at 4× CPU: 46–55 ms here, 20 ms in step 4's runs). Every comparison in this pass is made
 side by side with the previous commit for this reason. My own browser tab running the game in
 the background also skewed one set of runs; it's closed during benchmarks now.
+
+## 2026-11-18: Entry 126, variety: tree species, placed by where they grow
+
+### What I did
+`treeSpecies.ts` lists HSR's trees: rain tree, gulmohar, jacaranda, pink and yellow tabebuia,
+copper pod, neem, ashoka, coconut palm, banyan and peepal. Each has a canopy shape, a size range,
+its own green or flower colour (and the share in flower), and a lean range. `plantTree` makes one
+from a seed, so each tree gets its own size, turn, lean and shade, the same on every visit.
+
+- **Avenues** are still planted a species per road (by the road's name), now from the species list.
+- **Parks** get a mix.
+- **Context trees**: a coconut palm, ashoka or neem behind about a third of compound gates; a
+  peepal or banyan beside each temple; a rain tree or banyan on a corner of one junction in five.
+- **New shapes** (foliage.ts): umbrella (rain tree, gulmohar), column (ashoka), dome (banyan,
+  peepal), on Low as solid balls and on Medium/High as leaf cards like the others. The palm has
+  its own bowed trunk and a vertex-coloured crown of 14 arching fronds (about 300 triangles,
+  two-sided), the same on every quality.
+- **Lean**: instanced trees are turned in YXZ order, so the lean tips them sideways and the turn
+  points that lean any way round. Trunk and canopy share it, so the canopy stays on its trunk.
+
+### Why
+Three shapes in four greens made every street look alike. Species placed by context also tell
+you where you are: palms mean houses, a huge dome means a temple.
+
+### Lesson 244: check a colour under the material, not as a swatch
+Copper pod's `#d99a22` looked like a fine gold as hex, but the leaf photo multiplies it down, and
+on screen the tree looked dead and autumnal. Flower tints must be lighter than the colour you
+want, since the texture darkens them. Check in the game, under the day's light, before choosing.
+
+### Frame time (24th Main, side by side with the previous build, synced / CPU ms)
+Low 10.6–12.2 / 4.3–5.6 vs 11.4–11.7 / 4.2–5.7; High 15.6–16.0 / 6.2–7.5 vs 15.3–16.3 / 6.2–6.8.
+No measurable cost (five more draw calls for the new shapes and palms).
+
+### Try it
+Ride off 24th Main into the houses: palms behind gates. Find a temple for its peepal.
