@@ -66,14 +66,37 @@ function createChairs() {
   return merge([...chair(0), ...chair(0.1)])
 }
 
-/** Three terracotta pots with plants, in a cluster. */
+/** A leafy mound: a squashed, lumpy low-poly ball, vertex coloured. */
+const leaves = (radius: number, height: number, position: [number, number, number], color: string) => {
+  const geometry = new THREE.IcosahedronGeometry(radius, 0).toNonIndexed()
+  geometry.scale(1, height / radius / 2, 1)
+  geometry.translate(...position)
+  return colored(geometry, color)
+}
+
+/**
+ * Pots outside a shop: a tall areca palm in a big terracotta pot, a rounder plant in a weathered
+ * cement pot and a small one, so the cluster has some height without reaching the signboard.
+ */
 function createPots() {
-  return merge(
-    [[0, 0, 0.32], [0.38, 0.1, 0.26], [-0.34, -0.06, 0.22]].flatMap(([x, z, size]) => [
-      tube(size * 0.55, size, [x, size / 2, z], [0, 0, 0], '#a4552f'),
-      box([size * 1.1, size * 0.9, size * 1.1], [x, size * 1.4, z], '#3f7d3a'),
-    ]),
-  )
+  const terracotta = '#9c5232'
+  const cement = '#8e8a82'
+  return merge([
+    // The palm: a big pot, a few stems and a tuft of fronds up to about 1.5 m.
+    tube(0.21, 0.42, [0, 0.21, 0], [0, 0, 0], terracotta),
+    box([0.46, 0.05, 0.46], [0, 0.43, 0], '#5b3a28'),
+    ...[[-0.06, 0.12], [0.07, -0.18], [0.02, 0.2]].map(([z, tilt]) => tube(0.018, 0.85, [0, 0.85, z], [0, 0, tilt], '#6f7a3a')),
+    leaves(0.38, 0.5, [0.03, 1.3, 0], '#4a7a36'),
+    leaves(0.26, 0.36, [-0.12, 1.12, 0.12], '#5b8a3e'),
+    // A rounder plant in a cement pot.
+    tube(0.17, 0.32, [0.48, 0.16, 0.12], [0, 0, 0], cement),
+    leaves(0.3, 0.42, [0.48, 0.5, 0.12], '#3f6f35'),
+    // A small one in front, with a few flowers.
+    tube(0.11, 0.22, [0.22, 0.11, 0.38], [0, 0, 0], terracotta),
+    leaves(0.17, 0.24, [0.22, 0.32, 0.38], '#5e8f40'),
+    box([0.08, 0.06, 0.08], [0.26, 0.42, 0.4], '#d0483a'),
+    box([0.07, 0.06, 0.07], [0.16, 0.4, 0.34], '#e6b43a'),
+  ])
 }
 
 /** A garbage pile: a low dark mound with bags on it. */

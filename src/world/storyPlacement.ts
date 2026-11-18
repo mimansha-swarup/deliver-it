@@ -32,6 +32,9 @@ const STORY = {
   /** Shares of shop fronts with plastic chairs out front, and with pots by the door. */
   chairs: 0.14,
   pots: 0.16,
+  /** On shop streets more fronts have pots (27th Main's shopkeepers keep a palm or two by the door), sometimes at both ends. */
+  shopStreetPots: 0.45,
+  bothEnds: 0.35,
   /** A garbage pile every this many metres of road, on this share. */
   garbageEvery: 140,
   garbageChance: 0.45,
@@ -136,17 +139,26 @@ export function placeStoryProps({
   for (const front of shopFronts) {
     const outX = Math.sin(front.rotation)
     const outZ = Math.cos(front.rotation)
+    const near = nearestRoadPiece(index, front.x, front.z, 12)
+    const onShopStreet = near ? streetPresetOf(roads[near.piece.road])?.name === 'shop' : false
+    const potShare = onShopStreet ? STORY.shopStreetPots : STORY.pots
     const roll = random()
     if (roll < STORY.chairs) {
       const across = (random() - 0.5) * front.width * 0.6
       const x = front.x + outX * 1.3 + outZ * across
       const z = front.z + outZ * 1.3 - outX * across
       if (fits(x, z, 0.5, 'prop')) put('chairs', { x, z, rotation: front.rotation + (random() - 0.5) * 0.8, variation: random() })
-    } else if (roll < STORY.chairs + STORY.pots) {
-      const across = front.width / 2 - 0.4
-      const x = front.x + outX * 0.6 + outZ * across
-      const z = front.z + outZ * 0.6 - outX * across
-      if (fits(x, z, 0.35, 'prop')) put('pots', { x, z, rotation: front.rotation, variation: random() })
+    } else if (roll < STORY.chairs + potShare) {
+      // At an end of the front, by the wall: beside the shutter, under the board rather than in front of it.
+      const first = random() < 0.5 ? 1 : -1
+      const ends = random() < STORY.bothEnds ? [first, -first] : [first]
+      for (const end of ends) {
+        const across = (front.width / 2 - 0.45) * end
+        const x = front.x + outX * 0.55 + outZ * across
+        const z = front.z + outZ * 0.55 - outX * across
+        // Mirrored at the other end, so the palm stands at the outside.
+        if (fits(x, z, 0.4, 'prop')) put('pots', { x, z, rotation: front.rotation + (end > 0 ? Math.PI : 0), variation: random() })
+      }
     }
   }
 

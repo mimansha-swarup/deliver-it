@@ -9469,3 +9469,25 @@ Screenshots at 17:30 on High and Low, before and after: `world-pass.local/shots/
 
 ### Performance
 No new light, pass or texture: the same shader work as before.
+
+## 2026-11-18: Entry 169, trees and pots on the shop streets
+
+### What I did
+- **Trees in footpath pits on shop streets** (props.ts). Shop streets had almost none: the
+  roadside trees stand 2 m out and need 1.8 m from a wall, and 27th Main's shops are closer than
+  that. Now one every 26 m a side, the two sides staggered, in a pit at the kerb (0.85 m out,
+  as the avenues), neem, copper pod or rain tree by road. A smaller arch canopy (0.7×) leaning
+  out over the road by 7 to 10°, further than an avenue's, so the leaves hang over the road and
+  not the boards. **No trunk stands in front of a signboard**: a spot within a shop's front, less
+  0.35 m at each end, is moved along by up to 4.5 m to the gap between two shops, or dropped.
+  2,276 trees. The pits come with them (streetEdgeGeometry.ts draws one under any tree on a footpath).
+- **Potted plants outside shops** (storyPlacement.ts, StoryProps.tsx): on shop streets 45% of
+  shops have pots (16% elsewhere), a third of them at both ends of the front, by the wall beside the
+  shutter. The cluster is new: an areca palm in a big terracotta pot (about 1.5 m), a rounder
+  plant in a weathered cement pot and a small one with a few flowers. Low-poly leaf mounds,
+  vertex coloured, one instanced shape, drawn within 70 m on every quality, as before.
+
+Screenshots: `world-pass.local/shots/fu2b` (27th Main and 24th Main, High and Low).
+
+### Performance
+On Low the shop trees are solid canopies like all the others; item 5's tree thinning covers them too.

@@ -42,7 +42,7 @@ export type RoadsideProps = {
   /** Shrubs down the medians. Hedges in compounds come from the house kit. */
   bushes: Prop[]
   /** How many avenue arches and median trees went in, and arches refused, for the load timeline. */
-  counts?: { archTrees: number; archRefused: number; medianTrees: number }
+  counts?: { archTrees: number; archRefused: number; medianTrees: number; shopTrees: number }
 }
 
 const PROP_SPACING = 13
@@ -118,6 +118,21 @@ const MEDIAN_SPECIES: SpeciesName[] = ['neem', 'gulmohar', 'copperPod', 'gulmoha
 const MEDIAN_SIZE = 0.85
 /** Shrubs between the median trees, this far apart along the median, in metres. */
 const MEDIAN_SHRUB_SPACING = 4.5
+
+/**
+ * Shop streets get trees too, sparser: one every `SHOP_TREE_SPACING` metres a side, in a pit at the
+ * kerb, with a smaller arch canopy leaning out over the road, high above the awnings. A tree never
+ * stands in front of a shop's signboard: only between two shops' fronts, or past their ends, moved
+ * along by up to `SHOP_TREE_SHIFT` metres to find such a gap.
+ */
+const SHOP_TREE_SPACING = 26
+const SHOP_TREE_SPECIES: SpeciesName[] = ['neem', 'copperPod', 'rainTree', 'neem']
+const SHOP_TREE_SIZE = 0.7
+/** Leaning further out than an avenue's, so the canopy hangs over the road, not the shops' boards. */
+const SHOP_TREE_LEAN: [number, number] = [0.12, 0.17]
+const SHOP_TREE_SHIFT = [0, 1.5, -1.5, 3, -3, 4.5, -4.5]
+/** How far in from each end of a shop's front its signboard reaches, in metres, which a trunk may stand in front of. */
+const SIGN_END_MARGIN = 0.35
 
 const isArchRoad = (road: LineFeature) => {
   const name = streetPresetOf(road)?.name
@@ -336,7 +351,7 @@ export function generateRoadsideProps(
   const roadIndex = indexRoadPieces(pieces)
   const placed = new PointGrid(MIN_PROP_SPACING)
   const props: RoadsideProps = { trees: [], lamps: [], postPairs: [], parkedScooters: [], bushes: [] }
-  props.counts = { archTrees: 0, archRefused: 0, medianTrees: 0 }
+  props.counts = { archTrees: 0, archRefused: 0, medianTrees: 0, shopTrees: 0 }
   const lastLampOnRoad = new Map<number, Prop>()
   // HSR's roads were planted a species at a time, so a whole road is one kind of tree (treeSpecies.ts).
   const avenues = roads.map((road, index) => SPECIES[AVENUE_SPECIES[roadSeed(road, index) % AVENUE_SPECIES.length]])
@@ -424,8 +439,64 @@ export function generateRoadsideProps(
     }
   }
 
-  props.counts.archTrees = props.trees.filter(({ kind }) => kind === TREE_SHAPE.arch).length
+  // Shop streets: sparser trees at the kerb, between the signboards.
+  const fronts = new Map<number, ShopFront[]>()
+  const FRONT_CELL = 16
+  for (const front of shopFronts) {
+    const key = roadCellKey(Math.floor(front.x / FRONT_CELL), Math.floor(front.z / FRONT_CELL))
+    const cell = fronts.get(key)
+    if (cell) cell.push(front)
+    else fronts.set(key, [front])
+  }
+  /** Whether a trunk here would stand in front of a shop's signboard. */
+  const hidesSign = (x: number, z: number) => {
+    for (let cellX = Math.floor(x / FRONT_CELL) - 1; cellX <= Math.floor(x / FRONT_CELL) + 1; cellX++) {
+      for (let cellZ = Math.floor(z / FRONT_CELL) - 1; cellZ <= Math.floor(z / FRONT_CELL) + 1; cellZ++) {
+        for (const front of fronts.get(roadCellKey(cellX, cellZ)) ?? []) {
+          const out = (x - front.x) * Math.sin(front.rotation) + (z - front.z) * Math.cos(front.rotation)
+          const across = (x - front.x) * Math.cos(front.rotation) - (z - front.z) * Math.sin(front.rotation)
+          if (out > -0.5 && out < 8 && Math.abs(across) < front.width / 2 - SIGN_END_MARGIN) return true
+        }
+      }
+    }
+    return false
+  }
+  let shopTrees = 0
+  for (const piece of pieces) {
+    const road = roads[piece.road]
+    if (streetPresetOf(road)?.name !== 'shop') continue
+    const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1])
+    if (length < 1) continue
+    const directionX = (piece.end[0] - piece.start[0]) / length
+    const directionZ = (piece.end[1] - piece.start[1]) / length
+    const offset = piece.width / 2 + ARCH_ROAD_GAP
+    const species = SPECIES[SHOP_TREE_SPECIES[roadSeed(road, piece.road) % SHOP_TREE_SPECIES.length]]
+    for (const side of [1, -1]) {
+      for (let along = (side > 0 ? 0.3 : 0.8) * SHOP_TREE_SPACING; along < length; along += SHOP_TREE_SPACING) {
+        slot++
+        for (const shift of SHOP_TREE_SHIFT) {
+          const at = along + shift
+          if (at < 0 || at > length) continue
+          const x = piece.start[0] + directionX * at + directionZ * offset * side
+          const z = piece.start[1] + directionZ * at - directionX * offset * side
+          if (hidesSign(x, z) || !canPlace(x, z, ARCH_BUILDING_GAP, 'tree')) continue
+          placed.add(x, z)
+          addPost(collisions, x, z, TREE_TRUNK_RADIUS)
+          const tree = plantTree(species, { x, z }, slot, SHOP_TREE_SIZE)
+          tree.rotation = Math.atan2(-directionZ * side, directionX * side) + (random() - 0.5) * ARCH_TURN
+          tree.lean = SHOP_TREE_LEAN[0] + (SHOP_TREE_LEAN[1] - SHOP_TREE_LEAN[0]) * random()
+          tree.kind = TREE_SHAPE.arch
+          props.trees.push(tree)
+          shopTrees++
+          break
+        }
+      }
+    }
+  }
+
+  props.counts.archTrees = props.trees.filter(({ kind }) => kind === TREE_SHAPE.arch).length - shopTrees
   props.counts.archRefused = archRefused
+  props.counts.shopTrees = shopTrees
 
   // Trees down the median of a main road, where it's drawn: on the median, clear of junctions.
   for (const piece of pieces) {
