@@ -44,6 +44,12 @@ export function dayPeriod(hours: number): DayPeriod {
   return current
 }
 
+/**
+ * While online the game clock runs at this share of its speed: about five real minutes a game
+ * hour, so a twenty-minute shift is about four game hours, and the lunch rush most of half an hour.
+ */
+export const ONLINE_CLOCK_SCALE = 0.25
+
 /** Where the rider wakes after sleeping, in hours. */
 export const WAKE_HOUR = 7
 
@@ -96,7 +102,8 @@ export function createShiftGoal(hours: number, level: number, random: () => numb
     return { kind: 'earn', text: `Earn ${target} credits this shift`, target, progress: 0, bonus: 120, state: 'open' }
   }
   if (roll < 0.6) {
-    const deadline = Math.ceil(hours) + 5
+    // Two game hours on the slowed clock: about ten real minutes.
+    const deadline = Math.ceil(hours) + 2
     const target = 3 + (level >= 3 ? 1 : 0)
     return { kind: 'orders', text: `${target} orders before ${formatHour(deadline)}`, target, progress: 0, deadline, bonus: 150, state: 'open' }
   }

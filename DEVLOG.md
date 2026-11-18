@@ -8863,3 +8863,16 @@ nothing. The top timer shows the full time with "starts in 7" during the grace.
 
 ### Try it
 Accept an order and don't move: the grace counts down, then the clock runs.
+
+## 2026-11-18: Entry 142, a slower clock while online
+
+### What I did
+Online, the game clock runs at a quarter of its speed (`ONLINE_CLOCK_SCALE`): about five real
+minutes per game hour, against 75 s off duty. A twenty-minute shift is now about four game
+hours, and the lunch rush lasts most of half an hour, so each period has time to feel like
+itself. The weather keeps its own pace. Shift goals against the clock give two game hours
+(about ten real minutes) instead of five. The shift summary shows time online in real minutes
+only; game-clock durations are gone.
+
+### Why
+At full speed a single shift swept through most of a day, lunch rush and all, in a few minutes.

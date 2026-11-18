@@ -1,3 +1,4 @@
+import { ONLINE_CLOCK_SCALE } from '../game/duty'
 import { isDebug } from '../dev/spawn'
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
@@ -164,7 +165,8 @@ export function Sky() {
       liveSky.setHoursTo = null
     }
     const before = sky.hours
-    stepSky(sky, dt)
+    // Online, the clock runs slower: a shift is a few game hours, and a rush lasts a good while.
+    stepSky(sky, dt, Math.random, useGameStore.getState().duty === 'online' ? ONLINE_CLOCK_SCALE : 1)
     liveSky.totalHours += (sky.hours - before + 24) % 24
     liveSky.hours = sky.hours
 

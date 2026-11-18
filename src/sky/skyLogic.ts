@@ -180,10 +180,13 @@ export function changeWeather(state: SkyState, random: () => number) {
   state.weatherLeft = minWeatherTime + random() * (maxWeatherTime - minWeatherTime)
 }
 
-/** Advances the clock and the weather. Updates `state` in place. */
-export function stepSky(state: SkyState, dt: number, random: () => number = Math.random) {
+/**
+ * Advances the clock and the weather. Updates `state` in place. `clockScale` slows the clock alone
+ * (not the weather), as going online does, so a shift is a few game hours.
+ */
+export function stepSky(state: SkyState, dt: number, random: () => number = Math.random, clockScale = 1) {
   const isNight = state.hours < 5.5 || state.hours >= 18.5
-  const clockSpeed = isNight ? SKY_RULES.nightClockSpeed : 1
+  const clockSpeed = (isNight ? SKY_RULES.nightClockSpeed : 1) * clockScale
   state.hours = (state.hours + (dt * clockSpeed * 24) / SKY_RULES.dayLength) % 24
 
   state.weatherLeft -= dt

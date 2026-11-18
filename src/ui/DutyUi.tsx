@@ -177,11 +177,10 @@ function OfflineQuestion() {
   )
 }
 
-function formatDuration(realSeconds: number, gameHours: number): string {
+/** Time online, in real time: game-clock durations would only confuse. */
+function formatDuration(realSeconds: number): string {
   const minutes = Math.round(realSeconds / 60)
-  const hours = Math.floor(gameHours)
-  const gameMinutes = Math.round((gameHours - hours) * 60)
-  return `${minutes} min · ${hours} h ${gameMinutes} m on the clock`
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
 
 /** What the shift came to, shown on going offline. */
@@ -202,7 +201,7 @@ function ShiftSummaryCard({ summary }: { summary: ShiftSummary }) {
         <dt>Distance</dt>
         <dd>{(summary.distance / 1000).toFixed(1)} km</dd>
         <dt>Time online</dt>
-        <dd>{formatDuration(summary.realSeconds, summary.gameHours)}</dd>
+        <dd>{formatDuration(summary.realSeconds)}</dd>
         {summary.goal && (
           <>
             <dt>Shift goal</dt>
