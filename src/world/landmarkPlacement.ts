@@ -1,3 +1,4 @@
+import { metroLine, PILLAR_LINE_REACH, projectOnPath } from './transitPlacement'
 import { addPost, addWall, isNearBuilding, type CollisionWorld } from './collision'
 import type { MapData } from './mapData'
 import { nearestRoadPiece, PointGrid, type Prop, type RoadIndex } from './props'
@@ -134,6 +135,9 @@ export function placeLandmarks({ data, surface, roads, collisions }: { data: Map
   landmarks.report.lakeCells = landmarks.lake.reduce((sum, [, from, to]) => sum + to - from + 1, 0)
 
   // ---- The metro viaduct: pillars in the median between Hosur Road's two carriageways ----
+  // Only near the line as OSM maps it (transitPlacement.ts), where it has one: other roads share the name.
+  const line = metroLine(data)
+  const onLine = (x: number, z: number) => line.length === 0 || projectOnPath(line, x, z).off < PILLAR_LINE_REACH
   const pillarGrid = new PointGrid(16)
   for (const piece of roads.pieces) {
     if (data.roads[piece.road].properties.name !== METRO_ROAD) continue
@@ -159,16 +163,25 @@ export function placeLandmarks({ data, surface, roads, collisions }: { data: Map
         const middle = (first + last) / 2
         const x = piece.start[0] + alongX * along + alongZ * middle * side
         const z = piece.start[1] + alongZ * along - alongX * middle * side
-        if (!isInsideBounds(x, z, 10) || pillarGrid.hasWithin(x, z, PILLAR_EVERY * 0.6)) continue
+        if (!isInsideBounds(x, z, 10) || !onLine(x, z) || pillarGrid.hasWithin(x, z, PILLAR_EVERY * 0.6)) continue
         pillarGrid.add(x, z)
         landmarks.pillars.push({ x, z, rotation: Math.atan2(alongX, alongZ), variation: 0 })
         addPost(collisions, x, z, 0.9)
       }
     }
   }
-  // Spans: each pillar to its nearest neighbours ahead, at most two, none crossing back.
+  // Spans: along OSM's line, pillar to pillar in its order. With no line, each pillar to its nearest
+  // neighbours, at most two.
+  if (line.length > 0) {
+    const ordered = landmarks.pillars.map(({ x, z }) => ({ x, z, along: projectOnPath(line, x, z).along })).sort((a, b) => a.along - b.along)
+    for (let i = 1; i < ordered.length; i++) {
+      const from = ordered[i - 1]
+      const to = ordered[i]
+      if (Math.hypot(to.x - from.x, to.z - from.z) < SPAN_MAX * 1.6) landmarks.spans.push({ from: [from.x, from.z], to: [to.x, to.z] })
+    }
+  }
   const seen = new Set<string>()
-  landmarks.pillars.forEach((pillar, i) => {
+  if (line.length === 0) landmarks.pillars.forEach((pillar, i) => {
     const near = landmarks.pillars
       .map((other, j) => ({ j, distance: Math.hypot(other.x - pillar.x, other.z - pillar.z) }))
       .filter(({ j, distance }) => j !== i && distance < SPAN_MAX)

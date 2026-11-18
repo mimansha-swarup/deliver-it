@@ -9763,3 +9763,39 @@ window (`--edge`, 10 to 24 px), so nothing touches an edge on a small laptop or 
 
 Checked at 1280 × 720, 1440 × 810, 1920 × 1080 and 2560 × 1080 (`scripts/shots.mjs --size`).
 Screenshots: `world-pass.local/shots/p7` (sizes), `p7-offer`, `p7-order`.
+
+## 2026-11-19: Entry 182, the metro: tracks, trains and stations from OSM
+
+### What I did
+- **OSM's transit data** (scripts/prepare_transit.mjs → public/data/hsr-transit.geojson): the
+  map file had no metro and no bus stops, so a script asks the public Overpass API for the play
+  area's box once: metro lines, stations and entrances, bus stops with the routes from their
+  relations, and bus stations. It ships gzipped like the rest of the map.
+- **The viaduct follows the real line.** The Yellow Line's ways are stitched into one line
+  (transitPlacement.ts). The pillars landmarkPlacement.ts stands in Hosur Road's median are kept
+  only within 30 m of it (31 stood on other roads sharing the name, and their spans made a
+  second, branching deck), and the deck spans them in the line's order.
+- **Tracks and overhead line** on the deck: two tracks on concrete plinths with their rails, a
+  wire over each, masts every other span (Transit.tsx).
+- **Trains**: two three-car trains, steel with the line's yellow band and a purple trim, one each
+  way. Each runs at up to 16 m/s, brakes into each station, waits 16 s, and off the end of the
+  line waits 35 to 80 s and comes back the other way. Instanced, six cars in one draw.
+- **Stations at OSM's nodes**: Hongasandra and Bommanahalli (Central Silk Board is past the
+  pillars' end). Each is a 76 m concourse over the road, as wide as the road and its footpaths,
+  glazed with a purple band and a yellow line, on columns; platforms either side of the tracks at
+  the deck with yellow edge lines; a shallow gabled roof with a purple fascia. **Stairs and an
+  escalator** under a purple canopy climb from the footpath at each of OSM's entrances (one each side
+  where it has none), with a bridge across to the concourse. **Name boards** in Kannada over English,
+  with a round M mark (the city's metro, not its logo), on both sides.
+- **Below**: autos waiting in a row at the kerb by each entrance (the traffic model, parked), bikes
+  parked along the median under the viaduct, and fruit carts under striped umbrellas between them.
+  All checked on the surface map and solid. 9 autos, 58 bikes, 8 carts.
+
+Debug: `__deliverItMetro` (the plan) and `__deliverItTrains` (to move them), with ?debug.
+Screenshots: `world-pass.local/shots/p11d` (from above), `p11e` (an entrance), `p11g` (a train).
+
+### Performance (riding 6 s, a 2× screen)
+| | High | Low |
+| --- | --- | --- |
+| Sarjapur Road | 103 fps, 1 frame over 20 ms, worst 25 ms | 120 fps, none over 20 ms, worst 10 ms |
+| Hosur Road, beside the metro | 88 fps, 1 over 20 ms, worst 42 ms | 120 fps, none, worst 10 ms |

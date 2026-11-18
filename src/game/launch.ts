@@ -33,6 +33,7 @@ export const WORLD_PARTS = {
   shopPeople: 'Shopkeepers and customers',
   fuel: 'Petrol bunks',
   pitches: 'Sports pitches',
+  transit: 'The metro, flyovers and bus stands',
   temples: 'Temples, mosques and churches',
   fences: 'Walls, fences and railings',
   boundary: 'The edge of the map',

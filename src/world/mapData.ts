@@ -14,7 +14,7 @@ type Geometry =
   | { type: 'LineString'; coordinates: LonLat[] }
   | { type: 'Polygon'; coordinates: LonLat[][] }
 
-type Feature<G extends Geometry = Geometry> = {
+export type Feature<G extends Geometry = Geometry> = {
   id: string
   properties: Properties
   geometry: G
@@ -54,6 +54,14 @@ export type MapData = {
    * `FuelStations` puts an open canopy on pillars in their place.
    */
   fuelRoofs: PolygonFeature[]
+  /**
+   * Flyovers: roads mapped as bridges or above the ground (`bridge`, `layer` 1 or more), such as
+   * the Silk Board flyover. Taken out of `roads`, which are all at ground level: they're drawn as
+   * scenery overhead (transitPlacement.ts), not ridden.
+   */
+  flyovers: LineFeature[]
+  /** Metro lines, stations and entrances, bus stops and bus stations, from OSM (scripts/prepare_transit.mjs). */
+  transit: Feature[]
 }
 
 /** A roof this close to a petrol bunk's mapped spot is its canopy, in metres. */
@@ -85,6 +93,7 @@ const BARRIERS_URL = `${import.meta.env.BASE_URL}data/hsr-barriers.geojson`
 const EXTRA_BUILDINGS_URL = `${import.meta.env.BASE_URL}data/hsr-extra-buildings.geojson`
 /** Temples, mosques and churches OSM doesn't have, or hasn't named, from Overture. Made by scripts/prepare_extra_places.py. */
 const EXTRA_WORSHIP_URL = `${import.meta.env.BASE_URL}data/hsr-extra-worship.geojson`
+const TRANSIT_URL = `${import.meta.env.BASE_URL}data/hsr-transit.geojson`
 
 /** A small extra file. Without it the game still runs, with OSM's buildings only. */
 async function fetchExtra(url: string): Promise<Feature[]> {
@@ -109,8 +118,14 @@ async function fetchBarriers(): Promise<LineFeature[]> {
 const GREEN_SPACES = new Set(['park', 'garden', 'playground', 'pitch'])
 const NOT_DRIVABLE = new Set(['footway', 'path'])
 
+/** A road mapped above the ground: a bridge, a viaduct, or on layer 1 or higher. */
+function isFlyover(properties: Feature['properties']): boolean {
+  const { bridge, layer } = properties as { bridge?: string; layer?: string }
+  return (bridge !== undefined && bridge !== 'no') || Number(layer ?? 0) >= 1
+}
+
 function sortFeatures(features: Feature[]): MapData {
-  const data: MapData = { buildings: [], roads: [], footways: [], barriers: [], worship: [], parks: [], places: [], areas: [], restricted: [], fuelRoofs: [] }
+  const data: MapData = { buildings: [], roads: [], footways: [], barriers: [], worship: [], parks: [], places: [], areas: [], restricted: [], fuelRoofs: [], flyovers: [], transit: [] }
   const buildings: PolygonFeature[] = []
   const areas = data.areas
 
@@ -123,6 +138,8 @@ function sortFeatures(features: Feature[]): MapData {
       else buildings.push(building)
     } else if (geometry.type === 'Polygon' && GREEN_SPACES.has(properties.leisure ?? '')) {
       data.parks.push({ ...feature, geometry })
+    } else if (geometry.type === 'LineString' && properties.highway && isFlyover(properties) && !NOT_DRIVABLE.has(properties.highway)) {
+      data.flyovers.push({ ...feature, geometry })
     } else if (geometry.type === 'LineString' && properties.highway) {
       const layer = NOT_DRIVABLE.has(properties.highway) ? data.footways : data.roads
       layer.push({ ...feature, geometry })
@@ -147,6 +164,7 @@ async function fetchMapData(): Promise<MapData> {
   const barriers = fetchBarriers()
   const extraBuildings = fetchExtra(EXTRA_BUILDINGS_URL)
   const extraWorship = fetchExtra(EXTRA_WORSHIP_URL)
+  const transit = fetchExtra(TRANSIT_URL)
   // The page's loader is usually downloading it already. Otherwise, download it here.
   const preloaded = await waitForPreloadedMap()
   markLoad('map downloaded')
@@ -160,6 +178,7 @@ async function fetchMapData(): Promise<MapData> {
   const { features } = JSON.parse(text) as { features: Feature[] }
   const data = sortFeatures([...features, ...(await extraBuildings), ...(await extraWorship)])
   data.barriers = cutOutRestricted(await barriers, data.restricted)
+  data.transit = await transit
   markLoad('map read')
 
   const buildingKinds: Partial<Record<BuildingKind, number>> = {}
