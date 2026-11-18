@@ -8785,3 +8785,19 @@ real customer gives up.
 ### Why
 A customer reacting the instant you crashed broke the illusion. Now the ride still matters,
 but it comes back to you when you hand the parcel over, as it would.
+
+## 2026-11-18: Entry 136, a round minimap instead of the phone's map
+
+### What I did
+The map has left the phone. A round **minimap** sits bottom-left (`src/ui/Minimap.tsx`),
+centred on the rider and turned so ahead is up: roads, buildings, street names, the route, the
+stop (or a waypoint), the street being ridden, and the distance by road. It's 140 px off duty
+and grows to 190 px online, a little more zoomed in. Clicking it will open the full map (next
+entry). Off-map stops sit on the rim with an arrow, as on the phone, but clamped to the circle.
+
+The drawing code moved to `src/ui/mapDrawing.ts`, shared with the full map. Waypoints are new
+in the store: the route tracking leads to one when there's no order, and clears it on arrival.
+The phone now sits right of the minimap.
+
+### Try it
+Go online and accept: the route and pickup marker appear on the minimap.

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
 import { levelFromXp, levelProgress, UNLOCK_LEVELS } from '../game/progression'
@@ -12,7 +12,6 @@ import { GoalLine } from './DutyUi'
 import { MoodMeter } from './ChatBubbles'
 import { CareerSheet, TodaySheet } from './CareerSheets'
 import { Garage } from './Garage'
-import { PhoneMap } from './PhoneMap'
 import { useStation } from '../audio/useStation'
 import { RadioControls, VideoScreen } from './Radio'
 
@@ -436,9 +435,6 @@ export function Phone() {
     <>
       <aside className={classes.join(' ')} aria-label="Rider phone">
         <div className="phone-screen">
-          <Suspense fallback={null}>
-            <PhoneMap raised={raised} />
-          </Suspense>
           <StatusBar />
           <div className="phone-lower">
             {raised && !garageOpen && <PhoneTabs tab={tab} setTab={setTab} />}

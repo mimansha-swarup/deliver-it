@@ -20,6 +20,9 @@ const RIDE_REPORT_INTERVAL = 2
 /** Longest a single frame may count for, so a hidden tab doesn't run the clock. */
 const MAX_FRAME_TIME = 0.1
 
+/** A waypoint counts as reached this close, in metres, and is cleared. */
+const WAYPOINT_REACHED = 12
+
 /** Home is a gate: stopped this close to it counts as at home, in metres, below this speed. */
 const HOME_RANGE = 8
 const HOME_MAX_SPEED = 1.5
@@ -89,11 +92,15 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       game.arriveAtStop(elapsed.current)
     }
 
+    // The route: to the order's stop, or else to the rider's own waypoint, which clears on arrival.
+    const waypoint = stop ? null : game.waypoint
+    if (waypoint && Math.hypot(waypoint.x - state.x, waypoint.z - state.z) < WAYPOINT_REACHED) game.setWaypoint(null)
+    const target = stop ?? waypoint
     let routeLength = 0
-    if (stop && game.planner) {
-      const field = game.planner.getRouteField(stop.node)
+    if (target && game.planner) {
+      const field = game.planner.getRouteField(target.node)
       const { collisions, graph } = game.planner
-      routeLength = updateLiveRoute(collisions, graph, field, state.x, state.z, stop.x, stop.z)
+      routeLength = updateLiveRoute(collisions, graph, field, state.x, state.z, target.x, target.z)
     } else {
       clearLiveRoute()
     }

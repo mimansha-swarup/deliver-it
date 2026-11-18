@@ -1,11 +1,9 @@
-import { use, useEffect, useMemo, useRef } from 'react'
+/* Drawing the map: the pre-drawn image of HSR, the route, pins, the rider. Shared by the minimap and the full map. */
 import { useGameStore } from '../game/gameStore'
-import { MISSION_RULES } from '../game/missionConfig'
 import { livePlayer, liveRoute } from '../game/livePlayer'
 import { getCurrentStop } from '../missions/missionLogic'
-import { loadMapData, type MapData } from '../world/mapData'
+import type { MapData } from '../world/mapData'
 import { getRoadWidth } from '../world/roadData'
-import { createMapLabels, CURRENT_ROAD_HEIGHT, drawCurrentRoad, drawMapLabels, findCurrentRoad } from './mapLabels'
 import {
   isRingInPlayArea,
   lonLatToWorld,
@@ -19,39 +17,34 @@ import {
  * Resolution of the pre-drawn map image, in pixels per metre: 2 for a small map,
  * less for a big one, so the image stays under about 16 million pixels (64 MB).
  */
-const IMAGE_SCALE = Math.min(2, Math.sqrt(16_000_000 / (PLAY_AREA_WIDTH * PLAY_AREA_DEPTH)))
+export const IMAGE_SCALE = Math.min(2, Math.sqrt(16_000_000 / (PLAY_AREA_WIDTH * PLAY_AREA_DEPTH)))
 /** How quickly the map turns to follow the bike. Higher is tighter. */
-const TURN_RESPONSE = 7
+export const TURN_RESPONSE = 7
 /** How quickly the map zooms and shifts when the phone is raised or lowered. */
-const LAYOUT_RESPONSE = 9
+export const LAYOUT_RESPONSE = 9
 
 /** Metres of the world for each pixel of the phone, as `[tucked away, raised]`. */
-const METRES_PER_PIXEL = [1.15, 1.9]
 /** How far down the screen the rider sits. Lower sits above the order details. */
-const RIDER_POSITION = [0.42, 0.27]
 /** How much of the screen's bottom the order details cover, which markers stay clear of. */
-const SHEET_SHARE = [0.36, 0.56]
-const STATUS_BAR_HEIGHT = 42
-const EDGE_MARGIN = 14
+export const EDGE_MARGIN = 14
 
-const GROUND_COLOR = '#22252a'
-const ROAD_COLOR = '#646a73'
-const BUILDING_COLOR = '#353940'
-const PARK_COLOR = '#284232'
+export const GROUND_COLOR = '#22252a'
+export const ROAD_COLOR = '#646a73'
+export const BUILDING_COLOR = '#353940'
+export const PARK_COLOR = '#284232'
 /** Military land, which can't be entered. */
-const RESTRICTED_COLOR = '#33362a'
+export const RESTRICTED_COLOR = '#33362a'
 /** The road name pill sits this far below the status bar, in pixels. */
-const CURRENT_ROAD_GAP = 4
 /** How often the road you're on is looked up again, in milliseconds. */
-const CURRENT_ROAD_EVERY = 250
-const PLAYER_COLOR = '#ffffff'
+export const CURRENT_ROAD_EVERY = 250
+export const PLAYER_COLOR = '#ffffff'
 
-function toImage(position: LonLat): [number, number] {
+export function toImage(position: LonLat): [number, number] {
   const [x, , z] = lonLatToWorld(position)
   return [(x - PLAY_AREA.minX) * IMAGE_SCALE, (z - PLAY_AREA.minZ) * IMAGE_SCALE]
 }
 
-function traceLine(context: CanvasRenderingContext2D, points: LonLat[]) {
+export function traceLine(context: CanvasRenderingContext2D, points: LonLat[]) {
   context.beginPath()
   points.forEach((point, i) => {
     const [x, y] = toImage(point)
@@ -61,7 +54,7 @@ function traceLine(context: CanvasRenderingContext2D, points: LonLat[]) {
 }
 
 /** Draws the whole play area once. Each frame only has to rotate this image. */
-function createMapImage(data: MapData): HTMLCanvasElement {
+export function createMapImage(data: MapData): HTMLCanvasElement {
   const image = document.createElement('canvas')
   image.width = Math.ceil(PLAY_AREA_WIDTH * IMAGE_SCALE)
   image.height = Math.ceil(PLAY_AREA_DEPTH * IMAGE_SCALE)
@@ -106,7 +99,7 @@ function createMapImage(data: MapData): HTMLCanvasElement {
 }
 
 /** Where the map's drawing stands on this frame. */
-type View = {
+export type View = {
   width: number
   height: number
   riderX: number
@@ -116,9 +109,11 @@ type View = {
   /** How far above and below the rider a marker can sit. */
   roomAbove: number
   roomBelow: number
+  /** A round map: markers keep inside this radius from the rider instead of the box above. */
+  radius?: number
 }
 
-function toScreen({ pixelsPerMetre, rotation }: View, x: number, z: number): [number, number] {
+export function toScreen({ pixelsPerMetre, rotation }: View, x: number, z: number): [number, number] {
   const worldX = (x - livePlayer.x) * pixelsPerMetre
   const worldZ = (z - livePlayer.z) * pixelsPerMetre
   return [
@@ -127,7 +122,7 @@ function toScreen({ pixelsPerMetre, rotation }: View, x: number, z: number): [nu
   ]
 }
 
-function drawPlayer(context: CanvasRenderingContext2D, { riderX, riderY }: View) {
+export function drawPlayer(context: CanvasRenderingContext2D, { riderX, riderY }: View) {
   context.fillStyle = PLAYER_COLOR
   context.strokeStyle = '#000000'
   context.lineWidth = 1.5
@@ -142,7 +137,7 @@ function drawPlayer(context: CanvasRenderingContext2D, { riderX, riderY }: View)
 }
 
 /** Draws the road route from the rider to the current stop. */
-function drawRoute(context: CanvasRenderingContext2D, view: View, color: string) {
+export function drawRoute(context: CanvasRenderingContext2D, view: View, color: string) {
   const { points } = liveRoute
 
   context.beginPath()
@@ -163,13 +158,13 @@ function drawRoute(context: CanvasRenderingContext2D, view: View, color: string)
 }
 
 /** How far a pin's head sits above the spot it marks, and its size, in pixels. */
-const PIN_LIFT = 15
-const PIN_RADIUS = 9
+export const PIN_LIFT = 15
+export const PIN_RADIUS = 9
 /** An off-map marker keeps this far from the edge, leaving room for its arrow. */
-const OFF_MAP_MARGIN = 34
+export const OFF_MAP_MARGIN = 34
 
 /** A small picture of what's at the stop: a parcel to collect, a house to deliver to. */
-function drawStopIcon(context: CanvasRenderingContext2D, x: number, y: number, pickup: boolean) {
+export function drawStopIcon(context: CanvasRenderingContext2D, x: number, y: number, pickup: boolean) {
   context.fillStyle = '#10231a'
   context.strokeStyle = '#10231a'
   context.lineWidth = 1.4
@@ -192,7 +187,7 @@ function drawStopIcon(context: CanvasRenderingContext2D, x: number, y: number, p
 }
 
 /** A round marker with the stop's icon in it. */
-function drawBadge(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
+export function drawBadge(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
   context.fillStyle = color
   context.strokeStyle = '#000000'
   context.lineWidth = 2
@@ -204,7 +199,7 @@ function drawBadge(context: CanvasRenderingContext2D, x: number, y: number, colo
 }
 
 /** A map pin: a badge on a point, with the point exactly on the stop. */
-function drawPin(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
+export function drawPin(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
   context.fillStyle = color
   context.strokeStyle = '#000000'
   context.lineWidth = 2
@@ -223,7 +218,7 @@ function drawPin(context: CanvasRenderingContext2D, x: number, y: number, color:
  * it and how far it is by road. It pulses gently so it reads as "over there",
  * not as a place on the map.
  */
-function drawOffMap(
+export function drawOffMap(
   context: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -267,14 +262,35 @@ function drawOffMap(
   context.fillText(label, labelX, labelY)
 }
 
-/** Draws the current stop as a pin, or at the edge with an arrow if it's off the map. */
-function drawTarget(context: CanvasRenderingContext2D, view: View, time: number) {
-  const { mission, phase } = useGameStore.getState()
+/** Where to draw a marker for: the order's stop, or else the rider's own waypoint. */
+export function currentTarget(): { x: number; z: number; color: string; pickup: boolean } | null {
+  const { mission, phase, waypoint } = useGameStore.getState()
   const stop = getCurrentStop(mission, phase)
-  if (!stop) return
-  const pickup = phase === 'toPickup'
+  if (stop) return { x: stop.x, z: stop.z, color: stop.color, pickup: phase === 'toPickup' }
+  return waypoint ? { x: waypoint.x, z: waypoint.z, color: WAYPOINT_COLOR, pickup: false } : null
+}
+
+export const WAYPOINT_COLOR = '#7fb2ff'
+
+/** Draws the current stop as a pin, or at the edge with an arrow if it's off the map. */
+export function drawTarget(context: CanvasRenderingContext2D, view: View, time: number) {
+  const target = currentTarget()
+  if (!target) return
+  const { pickup } = target
+  const stop = target
 
   const [x, y] = toScreen(view, stop.x, stop.z)
+  if (view.radius !== undefined) {
+    // Round: a pin fits if its head is inside the circle; otherwise it sits on the rim, pointing out.
+    const reach = view.radius - EDGE_MARGIN
+    if (Math.hypot(x, y - PIN_LIFT) <= reach - PIN_RADIUS) {
+      drawPin(context, view.riderX + x, view.riderY + y, stop.color, pickup)
+      return
+    }
+    const scale = (view.radius - OFF_MAP_MARGIN) / Math.max(Math.hypot(x, y), 1)
+    drawOffMap(context, view.riderX + x * scale, view.riderY + y * scale, Math.atan2(y, x), stop.color, pickup, time)
+    return
+  }
   // A pin's head stands above its point, so it needs that much more room at the top.
   const fitsAcross = Math.abs(x) <= view.width / 2 - EDGE_MARGIN
   const fitsUpDown = y < 0 ? -y <= view.roomAbove - PIN_LIFT : y <= view.roomBelow
@@ -300,7 +316,7 @@ function drawTarget(context: CanvasRenderingContext2D, view: View, time: number)
 }
 
 /** Matches the canvas to the size it's shown at, which changes as the phone is raised. */
-function fitCanvas(canvas: HTMLCanvasElement): [number, number] {
+export function fitCanvas(canvas: HTMLCanvasElement): [number, number] {
   const pixelRatio = window.devicePixelRatio || 1
   const width = canvas.clientWidth
   const height = canvas.clientHeight
@@ -312,118 +328,3 @@ function fitCanvas(canvas: HTMLCanvasElement): [number, number] {
   return [width, height]
 }
 
-/** A map centred on the bike, turned so that ahead is always up. */
-/** The phone map is redrawn at most this often, in milliseconds (about 30 a second). */
-const MAP_FRAME_MS = 32
-
-export function PhoneMap({ raised }: { raised: boolean }) {
-  const data = use(loadMapData())
-  const canvas = useRef<HTMLCanvasElement>(null)
-  const raisedAmount = useRef(raised ? 1 : 0)
-  const target = useRef(raised ? 1 : 0)
-  const mapImage = useMemo(() => createMapImage(data), [data])
-  const stores = useGameStore((state) => state.planner?.stores)
-  const labels = useMemo(() => {
-    const mapLabels = createMapLabels(data)
-    // Every dark store, in the pickup colour, so a rider far from home can find the nearest.
-    for (const store of stores ?? []) {
-      mapLabels.shops.unshift({ x: store.x, z: store.z, text: 'Dark store', color: MISSION_RULES.pickupColor })
-    }
-    return mapLabels
-  }, [data, stores])
-
-  useEffect(() => {
-    target.current = raised ? 1 : 0
-  }, [raised])
-
-  useEffect(() => {
-    const element = canvas.current
-    const context = element?.getContext('2d')
-    if (!element || !context) return
-
-    let frame = 0
-    let previousTime = performance.now()
-    let shownHeading = livePlayer.heading
-    let currentRoad: string | null = null
-    let lastRoadCheck = -Infinity
-
-    const blend = ([tucked, up]: number[]) => tucked + (up - tucked) * raisedAmount.current
-
-    const draw = (time: number) => {
-      // Redrawn at most MAP_FRAME_MS apart: a small map turning with the rider looks smooth at 30 a
-      // second, and redrawing it, names and all, every frame was a noticeable share of each frame.
-      if (time - previousTime < MAP_FRAME_MS) {
-        frame = requestAnimationFrame(draw)
-        return
-      }
-      // A frame's timestamp can be earlier than the last, and a negative step would blow up the maths.
-      const delta = Math.max(0, (time - previousTime) / 1000)
-      previousTime = time
-      shownHeading += (livePlayer.heading - shownHeading) * (1 - Math.exp(-TURN_RESPONSE * delta))
-      raisedAmount.current +=
-        (target.current - raisedAmount.current) * (1 - Math.exp(-LAYOUT_RESPONSE * delta))
-
-      const [width, height] = fitCanvas(element)
-      const pixelRatio = window.devicePixelRatio || 1
-      const riderY = height * blend(RIDER_POSITION)
-      if (time - lastRoadCheck > CURRENT_ROAD_EVERY) {
-        lastRoadCheck = time
-        currentRoad = findCurrentRoad(labels, livePlayer.x, livePlayer.z, currentRoad)
-      }
-      // The road name pill takes some room at the top, which markers keep clear of.
-      const pillSpace = currentRoad ? CURRENT_ROAD_HEIGHT + CURRENT_ROAD_GAP : 0
-      const view: View = {
-        width,
-        height,
-        riderX: width / 2,
-        riderY,
-        pixelsPerMetre: 1 / blend(METRES_PER_PIXEL),
-        // The world's +Z is down on the image, so a half turn puts "ahead" at the top.
-        rotation: Math.PI + shownHeading,
-        roomAbove: riderY - STATUS_BAR_HEIGHT - pillSpace - EDGE_MARGIN,
-        roomBelow: height * (1 - blend(SHEET_SHARE)) - riderY - EDGE_MARGIN,
-      }
-
-      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-      context.fillStyle = GROUND_COLOR
-      context.fillRect(0, 0, width, height)
-
-      context.save()
-      context.translate(view.riderX, view.riderY)
-      context.rotate(view.rotation)
-      context.scale(view.pixelsPerMetre / IMAGE_SCALE, view.pixelsPerMetre / IMAGE_SCALE)
-      context.drawImage(
-        mapImage,
-        -(livePlayer.x - PLAY_AREA.minX) * IMAGE_SCALE,
-        -(livePlayer.z - PLAY_AREA.minZ) * IMAGE_SCALE,
-      )
-      context.restore()
-
-      // The route goes under the names, as in a map app, and the pins and rider go over them.
-      const { mission, phase } = useGameStore.getState()
-      const stop = getCurrentStop(mission, phase)
-      if (stop) drawRoute(context, view, stop.color)
-      drawMapLabels(context, labels, {
-        pixelsPerMetre: view.pixelsPerMetre,
-        centre: [livePlayer.x, livePlayer.z],
-        reach: Math.hypot(width, height) / view.pixelsPerMetre,
-        project: (x, z) => {
-          const [screenX, screenY] = toScreen(view, x, z)
-          return [view.riderX + screenX, view.riderY + screenY]
-        },
-        bounds: [4, STATUS_BAR_HEIGHT + pillSpace, width - 4, riderY + view.roomBelow + EDGE_MARGIN],
-        keepClear: [view.riderX, view.riderY, 14],
-      })
-      drawTarget(context, view, time)
-      drawPlayer(context, view)
-      if (currentRoad) drawCurrentRoad(context, currentRoad, width / 2, STATUS_BAR_HEIGHT + CURRENT_ROAD_GAP)
-
-      frame = requestAnimationFrame(draw)
-    }
-
-    frame = requestAnimationFrame(draw)
-    return () => cancelAnimationFrame(frame)
-  }, [mapImage, labels])
-
-  return <canvas ref={canvas} className="phone-map" aria-label="Map of the route" />
-}

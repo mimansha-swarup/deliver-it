@@ -140,6 +140,8 @@ type GameState = Telemetry & {
   day: number
   /** Where the rider lives: the gate of a house near the start. */
   home: { x: number; z: number } | null
+  /** A point the rider picked on the full map, with its nearest road point, to be routed to. Cleared on arrival or by an order. */
+  waypoint: { x: number; z: number; node: number } | null
   /** Chat on the HUD while online: customers and Ravi, newest last. Not saved. */
   chat: ChatLine[]
   /** How roughly the current order has been carried (customerChat.ts): judged at the door, not felt as mood. */
@@ -192,6 +194,7 @@ type GameState = Telemetry & {
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
   postChat: (from: ChatLine['from'], name: string, text: string) => void
+  setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
   /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
   customerCancels: () => void
 }
@@ -380,6 +383,7 @@ export const useGameStore = create<GameState>()(
       day: 1,
       home: null,
       chat: [],
+      waypoint: null,
       rough: 0,
       frustration: 0,
 
@@ -618,6 +622,7 @@ export const useGameStore = create<GameState>()(
     }),
 
   setHome: (home) => set({ home }),
+  setWaypoint: (waypoint) => set({ waypoint }),
   customerCancels: () =>
     set((state) => {
       if (!hasOrderOn(state) || (state.phase !== 'toPickup' && state.phase !== 'toCustomer')) return state

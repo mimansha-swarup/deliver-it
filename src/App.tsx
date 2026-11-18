@@ -25,6 +25,8 @@ import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 import { DutyUi } from './ui/DutyUi'
+import { Minimap } from './ui/Minimap'
+import { setMapOpen } from './ui/uiState'
 import { ChatBubbles } from './ui/ChatBubbles'
 
 /** The sky and haze before the sky's own colours take over, a frame after start. */
@@ -56,6 +58,9 @@ function RidingUi() {
       <RadioPlayer />
       <QualityPicker className="quality-hud" />
       <DirectionArrow />
+      <Suspense fallback={null}>
+        <Minimap onOpen={() => setMapOpen(true)} />
+      </Suspense>
       <Phone />
 
       <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · Shift nitro · O online/offline · H honk · R radio · P phone · N skips time · M changes weather</p>
