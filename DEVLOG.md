@@ -8914,3 +8914,11 @@ Riding Sarjapur Road at an emulated 2× screen on High, side by side with the bu
 HUD rework: 60 FPS both, frame work 3.6–3.8 / 4.5–4.9 ms (mean / p95) against 3.3–3.5 /
 4.3–4.8 ms, time to ride 4.7–5.2 s against 4.8–5.5 s. The minimap redraws at most 30 times a
 second, as the phone's map did; the full map draws only while open.
+
+## 2026-11-18: Entry 146, the full map fills its panel
+
+### What I did
+The full map always fills its panel now. Its furthest zoom is where HSR just covers the panel
+(it was where HSR just fitted inside it, leaving the rest empty), and the view is kept on the
+map: centred on the rider where it can be, never so near an edge that empty ground shows beyond
+it. Scroll to zoom about the pointer and drag to move, both within those limits.

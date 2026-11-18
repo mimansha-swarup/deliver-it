@@ -24,21 +24,37 @@ const HOME_COLOR = '#7fb2ff'
 
 type Camera = { zoom: number; centreX: number; centreZ: number }
 
+/**
+ * Pixels per metre at a zoom: zoom 1 is the furthest out, where HSR just covers the panel (no
+ * empty margin beyond the map), and it zooms in from there.
+ */
+function scaleOf(camera: Camera, width: number, height: number): number {
+  return Math.max(width / PLAY_AREA_WIDTH, height / PLAY_AREA_DEPTH) * camera.zoom
+}
+
+/** Keeps the view on the map: centred on its point where it can be, never so near an edge that beyond shows. */
+function clampCamera(camera: Camera, width: number, height: number) {
+  const scale = scaleOf(camera, width, height)
+  const halfX = width / 2 / scale
+  const halfZ = height / 2 / scale
+  const clamp = (value: number, low: number, high: number) => (low > high ? (low + high) / 2 : Math.min(high, Math.max(low, value)))
+  camera.centreX = clamp(camera.centreX, PLAY_AREA.minX + halfX, PLAY_AREA.minX + PLAY_AREA_WIDTH - halfX)
+  camera.centreZ = clamp(camera.centreZ, PLAY_AREA.minZ + halfZ, PLAY_AREA.minZ + PLAY_AREA_DEPTH - halfZ)
+}
+
 function MapCanvas() {
   const data = use(loadMapData())
   const canvas = useRef<HTMLCanvasElement>(null)
   const mapImage = useMemo(() => createMapImage(data), [data])
   const labels = useMemo(() => createMapLabels(data), [data])
   // Starts centred on the rider, zoomed to see the neighbourhood.
-  const camera = useRef<Camera>({ zoom: 2.5, centreX: livePlayer.x, centreZ: livePlayer.z })
+  const camera = useRef<Camera>({ zoom: 2, centreX: livePlayer.x, centreZ: livePlayer.z })
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const hasOrder = useGameStore((state) => state.mission !== null)
   const waypoint = useGameStore((state) => state.waypoint)
   const setWaypoint = useGameStore((state) => state.setWaypoint)
 
-  /** Pixels per metre at the current zoom: zoom 1 fits all of HSR in the canvas. */
-  const scaleFor = (width: number, height: number) =>
-    Math.min(width / PLAY_AREA_WIDTH, height / PLAY_AREA_DEPTH) * camera.current.zoom
+  const scaleFor = (width: number, height: number) => scaleOf(camera.current, width, height)
 
   const toWorld = (element: HTMLCanvasElement, clientX: number, clientY: number): [number, number] => {
     const rect = element.getBoundingClientRect()
@@ -60,6 +76,7 @@ function MapCanvas() {
       last = time
       const [width, height] = fitCanvas(element)
       const pixelRatio = window.devicePixelRatio || 1
+      clampCamera(camera.current, width, height)
       const scale = scaleFor(width, height)
       const { centreX, centreZ } = camera.current
       const project = (x: number, z: number): [number, number] => [width / 2 + (x - centreX) * scale, height / 2 + (z - centreZ) * scale]
