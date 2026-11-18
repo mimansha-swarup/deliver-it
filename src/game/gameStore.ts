@@ -193,14 +193,14 @@ type GameState = Telemetry & {
   /** Sleeps: off duty only. Moves the clock to the morning, starts the next day and saves. */
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
-  postChat: (from: ChatLine['from'], name: string, text: string) => void
+  postChat: (from: ChatLine['from'], name: string, text: string, urgent?: boolean) => void
   setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
   /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
   customerCancels: () => void
 }
 
-/** `at`: when it was posted (performance.now()), so the HUD can let it fade by age. */
-export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string; at: number }
+/** `at`: when it was posted (performance.now()). `urgent`: late, about to cancel, or cancelled. */
+export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string; at: number; urgent?: boolean }
 
 /** How many chat lines are kept; the HUD shows the last few. */
 const CHAT_KEPT = 12
@@ -643,8 +643,8 @@ export const useGameStore = create<GameState>()(
         messages: addMessages(state.messages, [`${customer} cancelled, maga. Too late, or too rough a ride. It counts against your rating. Next one, careful!`]),
       }
     }),
-  postChat: (from, name, text) =>
-    set((state) => (state.duty === 'online' ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now() }].slice(-CHAT_KEPT) } : state)),
+  postChat: (from, name, text, urgent = false) =>
+    set((state) => (state.duty === 'online' ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now(), urgent }].slice(-CHAT_KEPT) } : state)),
 
   setTelemetry: (telemetry) => set(telemetry),
   setAtBunk: (atBunk) => set({ atBunk }),

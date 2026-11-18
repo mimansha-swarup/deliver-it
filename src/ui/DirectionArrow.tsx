@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveRoute } from '../game/livePlayer'
-import { MoodMeter } from './ChatBubbles'
+import { moodOf } from '../missions/customerChat'
 import { currentTarget } from './mapDrawing'
 
 /** How quickly the arrow swings to a new direction. Higher is tighter. */
@@ -10,6 +10,25 @@ const TURN_RESPONSE = 9
 /** The shortest signed turn between two angles, between -PI and PI. */
 function angleBetween(from: number, to: number): number {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from))
+}
+
+/** The customer's mood: a word and a bar, green to red, while their order is on its way. */
+function MoodMeter({ className }: { className: string }) {
+  const frustration = useGameStore((state) => state.frustration)
+  const customer = useGameStore((state) => state.mission?.story.customer)
+  const riding = useGameStore((state) => state.phase === 'toPickup' || state.phase === 'toCustomer')
+  if (!customer || !riding) return null
+  const mood = moodOf(frustration)
+  return (
+    <div className={className} data-mood={mood.toLowerCase()} title={`${customer} is ${mood.toLowerCase()}`}>
+      <span className="mood-label">
+        {customer} · <strong>{mood}</strong>
+      </span>
+      <span className="mood-bar" aria-hidden="true">
+        <span style={{ width: `${Math.round(frustration * 100)}%` }} />
+      </span>
+    </div>
+  )
 }
 
 function formatTime(seconds: number): string {

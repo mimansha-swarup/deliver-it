@@ -8835,3 +8835,21 @@ Top centre holds only the way: the order's timer (amber in the last 20 s, red wi
 once late) with the customer's mood bar under it, the direction arrow in the middle (in the
 stop's colour, or the waypoint's), and the distance by road on the right. The mood meter that
 sat top right and the copy on the phone are gone: there's one, beside the timer it follows.
+
+## 2026-11-18: Entry 140, the phone holds the conversation
+
+### What I did
+- **The phone (P)** has five screens: Order (the order, or going online), Chats (the current
+  customer's thread and Ravi's), Music (the radio), Career (the career and today's goals), and
+  Settings (quality, music, sound effects, keys).
+- **Away, it's hidden** below the screen, but for a small "Phone · P" tab with an unread count.
+- **Peeks:** a new message slides the phone's top up for 3 s with who it's from and the first
+  line, and a soft ping; clicking it opens the chats. Urgent ones (the customer's late, very
+  late, about to cancel, or cancelled) stay 6 s, with a red edge and a sharper, lower sound. A
+  new station peeks "Now playing". Nothing peeks while the phone is up.
+- The chat bubbles on the HUD and Ravi's toast are gone: the phone and its peeks replace them.
+  The small quality picker stays top right.
+
+### Why
+The HUD had grown a message stack, a toast, an order card and a mood box. Now the screen is the
+road, the minimap and the way to go; the phone is where you read, and it tells you when to.

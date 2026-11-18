@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
-import { DISPATCHER } from '../game/career'
-import { useGameStore, type ChatLine } from '../game/gameStore'
-import { CHAT_TIMES, customerLine, FRUSTRATION, moodOf, type ChatStage } from '../missions/customerChat'
+import { useEffect } from 'react'
+import { useGameStore } from '../game/gameStore'
+import { CHAT_TIMES, customerLine, FRUSTRATION, type ChatStage } from '../missions/customerChat'
 
 /*
  * Chat on the right of the HUD while online: the customer of the order on, and Ravi at dispatch.
@@ -9,11 +8,10 @@ import { CHAT_TIMES, customerLine, FRUSTRATION, moodOf, type ChatStage } from '.
  * keep up. Off duty there's no chat (Ravi's messages show as the usual toast then).
  */
 
-/** How many bubbles show at once, and how long each stays, in milliseconds. */
-const SHOWN = 4
-const SHOW_FOR = 9000
 
 const RAVI = 'Ravi'
+/** Lines that peek the phone longer, with a red edge and a sharper sound: late, about to cancel, cancelled. */
+const URGENT = new Set<ChatStage>(['late', 'veryLate', 'fuming', 'cancelled'])
 
 /**
  * Posts the customer's lines as their order goes on: their note when it's accepted, a word on
@@ -37,7 +35,7 @@ function CustomerChatDirector() {
 
       // A customer who cancelled says so (the rider cancelling is Ravi's to tell).
       if (!state.mission && previous.mission && previous.seconds >= previous.mission.onTimeSeconds * FRUSTRATION.warnAt && state.duty === 'online') {
-        state.postChat('customer', previous.mission.story.customer, customerLine('cancelled', previous.mission.story, state.missionNumber))
+        state.postChat('customer', previous.mission.story.customer, customerLine('cancelled', previous.mission.story, state.missionNumber), true)
       }
 
       const { mission, phase } = state
@@ -45,7 +43,7 @@ function CustomerChatDirector() {
       const say = (stage: ChatStage) => {
         if (said.has(stage)) return
         said.add(stage)
-        state.postChat('customer', mission.story.customer, customerLine(stage, mission.story, state.missionNumber + said.size))
+        state.postChat('customer', mission.story.customer, customerLine(stage, mission.story, state.missionNumber + said.size), URGENT.has(stage))
       }
 
       if (state.missionNumber !== order) {
@@ -70,57 +68,10 @@ function CustomerChatDirector() {
   return null
 }
 
-function Bubble({ line }: { line: ChatLine }) {
-  return (
-    <li className="chat-bubble" data-from={line.from}>
-      <span className="chat-name">{line.from === 'dispatch' ? DISPATCHER : line.name}</span>
-      {line.text}
-    </li>
-  )
-}
-
-/** The customer's mood: a word and a bar, green to red, while their order is on its way. */
-export function MoodMeter({ className = 'mood' }: { className?: string }) {
-  const frustration = useGameStore((state) => state.frustration)
-  const customer = useGameStore((state) => state.mission?.story.customer)
-  const riding = useGameStore((state) => state.phase === 'toPickup' || state.phase === 'toCustomer')
-  if (!customer || !riding) return null
-  const mood = moodOf(frustration)
-  return (
-    <div className={className} data-mood={mood.toLowerCase()} title={`${customer} is ${mood.toLowerCase()}`}>
-      <span className="mood-label">
-        {customer} · <strong>{mood}</strong>
-      </span>
-      <span className="mood-bar" aria-hidden="true">
-        <span style={{ width: `${Math.round(frustration * 100)}%` }} />
-      </span>
-    </div>
-  )
-}
-
+/**
+ * Posts the conversation as the order goes on (above). The lines are read on the phone, and peek it
+ * up when it's away (Phone.tsx); nothing is drawn here.
+ */
 export function ChatBubbles() {
-  const online = useGameStore((state) => state.duty === 'online')
-  const chat = useGameStore((state) => state.chat)
-  // Lines fade by age, so one pushed out by newer lines can't come back once they've gone.
-  // A new line is newer than `now` until the next tick, which still counts as showing.
-  const [now, setNow] = useState(() => performance.now())
-  useEffect(() => {
-    if (!online) return
-    const timer = window.setInterval(() => setNow(performance.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [online])
-
-  const shown = online ? chat.filter((line) => now - line.at < SHOW_FOR).slice(-SHOWN) : []
-  return (
-    <>
-      <CustomerChatDirector />
-      {shown.length > 0 && (
-        <ol className="chat" aria-live="polite" aria-label="Messages">
-          {shown.map((line) => (
-            <Bubble key={line.id} line={line} />
-          ))}
-        </ol>
-      )}
-    </>
-  )
+  return <CustomerChatDirector />
 }

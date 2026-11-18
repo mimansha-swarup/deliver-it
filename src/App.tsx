@@ -12,7 +12,6 @@ import { DirectionArrow } from './ui/DirectionArrow'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { Hud } from './ui/Hud'
 import { LoadingScreen } from './ui/LoadingScreen'
-import { MessageToast } from './ui/MessageToast'
 import { PlayerHorn } from './ui/PlayerHorn'
 import { RadioPlayer } from './ui/Radio'
 import { Phone } from './ui/Phone'
@@ -54,7 +53,6 @@ function RidingUi() {
       <Hud />
       <DutyUi />
       <ChatBubbles />
-      <MessageToast />
       <PlayerHorn />
       <RadioPlayer />
       <QualityPicker className="quality-hud" />
