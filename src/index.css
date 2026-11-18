@@ -3552,6 +3552,39 @@ body,
   right: 340px;
 }
 
+/* ---- The phone hidden while riding (Phone.tsx) ----
+ * Away, nothing of it stays on screen: it's below the bottom edge. While a notification is
+ * showing it peeks up (its top strip), then slides away again. P raises it. */
+
+.phone-away {
+  transform: translateY(calc(100% + 24px));
+  pointer-events: none;
+}
+
+.phone-away:hover {
+  transform: translateY(calc(100% + 24px));
+}
+
+.phone-away.phone-peeking {
+  transform: translateY(calc(100% - var(--phone-peek)));
+  pointer-events: auto;
+}
+
+.phone-away.phone-peeking:hover {
+  transform: translateY(calc(100% - var(--phone-peek) - 10px));
+}
+
+/* With the phone hidden, a music video drops to the corner. */
+.music-card[data-phone='hidden'] {
+  bottom: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-away.phone-peeking:hover {
+    transform: translateY(calc(100% - var(--phone-peek)));
+  }
+}
+
 /* ---- Notifications floating above the half-open phone (Phone.tsx) ---- */
 
 .phone-float {

@@ -17,8 +17,9 @@ import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
  * The rider's phone, as a phone: a lock screen with the time, weather and notifications when it
  * comes up; a home screen of app icons on a wallpaper, with unread badges; a status bar with the
  * time, signal and battery; banners for new messages while it's in use; back (Esc) from an app to
- * home and from home to put it away. Away, it hides below the screen but for its tab, and peeks up
- * for new messages. The apps are in phoneApps.tsx.
+ * home and from home to put it away. Away, it's hidden below the screen: nothing of it stays on
+ * screen while riding. A new message peeks it up for a few seconds (its top strip, with the
+ * notification floating above), then it slides away again. P raises it. The apps are in phoneApps.tsx.
  */
 
 
@@ -299,6 +300,8 @@ export function Phone() {
   // A banner across the top of the open phone, unless it's on the lock screen (which lists them)
   // or that chat is the one showing. Half open, they float above it instead (below).
   const banner = notification && raised && screen !== 'lock' && !(screen === 'messages' && thread === notification.thread) ? notification : null
+  // Away, it peeks up only while a notification is showing.
+  const peeking = !raised && floating.length > 0
   const openNote = (note: Peek) => {
     open('home')
     if (note.thread) nav.openThread(note.thread)
@@ -308,7 +311,8 @@ export function Phone() {
   return (
     <>
       <aside
-        className={raised ? 'phone phone-raised' : 'phone phone-away'}
+        className={raised ? 'phone phone-raised' : peeking ? 'phone phone-away phone-peeking' : 'phone phone-away'}
+        aria-hidden={!raised && !peeking ? true : undefined}
         aria-label={raised ? 'Rider phone' : `Rider phone: click or press ${phoneKey} to open`}
         data-alert={!raised && notification?.kind === 'urgent' ? 'true' : undefined}
         onClickCapture={(event) => {
@@ -372,7 +376,7 @@ export function Phone() {
         </ol>
       )}
       {videoCard && (
-        <aside className={raised ? 'music-card music-card-raised' : 'music-card'} aria-label="Music video">
+        <aside className={raised ? 'music-card music-card-raised' : 'music-card'} data-phone={raised || peeking ? undefined : 'hidden'} aria-label="Music video">
           <VideoScreen station={station} className="music-card-player" />
         </aside>
       )}

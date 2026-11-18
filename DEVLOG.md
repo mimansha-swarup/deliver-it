@@ -9540,3 +9540,16 @@ Screenshots: `world-pass.local/shots/fu3-before` (before), `fu3k` (the pump), `f
 Paving is one branch in the soil shader, taken only on paved ground. The cover map is two
 bytes a metre now, 23 MB on the GPU (11 MB before). The bunks are still three meshes for all of
 them, plus one for the paint and one for the pads; the pitches one mesh; the tyre shops two.
+
+## 2026-11-18: Entry 171, the phone out of the way
+
+### What I did
+The phone no longer sits half open in the bottom-right while riding: its lock screen was always
+there, over the street. Away, it's now below the bottom edge, with nothing showing
+(Phone.tsx, index.css). **A new message peeks it up**: the top strip (status bar, unread count
+and clock) rises with the notification floating above it, for as long as the notification shows
+(3 s, 6 s if urgent, 2.5 s for "Now playing"), then it slides away again. A click on the strip or
+a note opens it as before. **P** raises it to the lock screen, and handovers still bring it up by
+themselves. A music video drops to the corner while the phone is away.
+
+Screenshots: `world-pass.local/shots/fu4` (riding), `fu4-peek` (a message), `fu4-p` (after P).
