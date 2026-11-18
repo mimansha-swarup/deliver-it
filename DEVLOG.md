@@ -9731,3 +9731,16 @@ brandPrint.ts):
   it made the back read as a face.
 
 Screenshot: `world-pass.local/shots/p6b/zoom.png`.
+
+## 2026-11-19: Entry 180, the quality switch and the credits move into the phone
+
+### What I did
+- **The Low/Medium/High switch** is gone from the top-right corner while riding. It was already
+  in the phone's Settings app; that's where it lives now (and on the title screen). The help
+  overlay (F1) says where it is.
+- **Credits** (src/ui/Credits.tsx): while riding, only a small "© OpenStreetMap", as its licence
+  asks, just right of the minimap. The full line (OpenStreetMap, Overture Maps, Google Open
+  Buildings, Microsoft, the 3D model credits) is on the title screen, in Settings ("Map and model
+  credits") and in the help overlay.
+- With ?debug, `__deliverItQuality('high')` sets the quality and `__deliverItStore` is the game's
+  store, for scripts; `scripts/bench.mjs` and `scripts/shots.mjs` set the quality that way.

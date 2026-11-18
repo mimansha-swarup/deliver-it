@@ -145,7 +145,7 @@ const TIMER = `(() => {
 const measure = (quality, dpr) => `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   ${SET_SKY}
-  ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
+  ;(window.__deliverItQuality ? window.__deliverItQuality('${quality}'.toLowerCase()) : [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click())
   window.__deliverItLockDpr = ${dpr}
   await sleep(4000)
   const sample = async (sync) => {
@@ -191,7 +191,7 @@ const RIDE_RUN = (quality) => `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
   ${SET_SKY}
   if (!${NOW}) {
-    ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
+    ;(window.__deliverItQuality ? window.__deliverItQuality('${quality}'.toLowerCase()) : [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click())
     await sleep(3000)
   }
   const { gl } = window.__deliverIt

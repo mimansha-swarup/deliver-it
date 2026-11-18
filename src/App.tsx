@@ -1,3 +1,5 @@
+import { isDebug } from './dev/spawn'
+import type { Quality } from './game/qualitySettings'
 // First, so these change three's shader code before any material is built: the golden haze,
 // and a cap on brightness that stops black frames (see brightnessCap.ts).
 import { markLoad } from './dev/loadTimeline'
@@ -15,7 +17,6 @@ import { LoadingScreen } from './ui/LoadingScreen'
 import { PlayerHorn } from './ui/PlayerHorn'
 import { RadioPlayer } from './ui/Radio'
 import { Phone } from './ui/Phone'
-import { QualityPicker } from './ui/QualityPicker'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
@@ -31,9 +32,23 @@ import { PhotoModeUi } from './ui/PhotoMode'
 import { HelpOverlay } from './ui/HelpOverlay'
 import { setMapOpen } from './ui/uiState'
 import { ChatBubbles } from './ui/ChatBubbles'
+import { Attribution } from './ui/Credits'
 
 /** The sky and haze before the sky's own colours take over, a frame after start. */
 const SKY_COLOR = '#e3dbc4'
+
+/** OpenStreetMap's credit stays on screen; while riding, only that (Credits.tsx). */
+// Debug: the picture quality, for scripts, now that its switch is in the phone (`__deliverItQuality('high')`, with ?debug).
+if (isDebug()) {
+  ;(window as unknown as { __deliverItQuality?: (quality: Quality) => void }).__deliverItQuality = (quality) => useGameStore.getState().setQuality(quality)
+  // The game's store, for scripts to set up a moment (an order offer, an order on the way).
+  ;(window as unknown as { __deliverItStore?: typeof useGameStore }).__deliverItStore = useGameStore
+}
+
+function AttributionLine() {
+  const started = useGameStore((state) => state.started)
+  return <Attribution riding={started} />
+}
 
 function GameUi() {
   const started = useGameStore((state) => state.started)
@@ -62,7 +77,6 @@ function RidingUi() {
       <ChatBubbles />
       <PlayerHorn />
       <RadioPlayer />
-      <QualityPicker className="quality-hud" />
       <DirectionArrow />
       <Suspense fallback={null}>
         <Minimap onOpen={() => setMapOpen(true)} />
@@ -108,19 +122,7 @@ function App() {
         <GameUi />
       </ErrorBoundary>
 
-      <p className="attribution">
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
-          © OpenStreetMap contributors
-        </a>
-        {' · '}
-        <a href={`${import.meta.env.BASE_URL}data/CREDITS.txt`} target="_blank" rel="noreferrer">
-          Overture Maps, Google Open Buildings, Microsoft
-        </a>
-        {' · '}
-        <a href={`${import.meta.env.BASE_URL}models/CREDITS.txt`} target="_blank" rel="noreferrer">
-          3D model credits
-        </a>
-      </p>
+      <AttributionLine />
     </>
   )
 }

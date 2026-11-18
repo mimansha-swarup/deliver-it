@@ -1,3 +1,4 @@
+import { FullCredits } from './Credits'
 import { useEffect, useState } from 'react'
 import { ACTIONS, isKey, keyName, RESERVED_KEYS, useKeys, type Action } from '../game/keyBindings'
 
@@ -80,7 +81,10 @@ export function HelpOverlay() {
         </button>
       </header>
       <KeyList />
-      <p className="help-note">Change any of them in the phone: Settings → Controls.</p>
+      <p className="help-note">Change any of them in the phone: Settings → Controls. The picture quality is there too.</p>
+      <p className="help-note help-credits">
+        <FullCredits />
+      </p>
     </section>
   )
 }

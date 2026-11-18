@@ -15,6 +15,7 @@ import { CareerSheet, TodaySheet } from './CareerSheets'
 import { Garage } from './Garage'
 import { RadioControls } from './Radio'
 import { QualityPicker } from './QualityPicker'
+import { FullCredits } from './Credits'
 import { DISPATCHER } from '../game/career'
 import { setMapOpen } from './uiState'
 import { KeyList } from './HelpOverlay'
@@ -701,11 +702,19 @@ function ControlsList() {
 function SettingsExtras() {
   const running = useTutorial((state) => state.step !== null)
   return (
-    <section className="app-card">
-      <p className="app-card-title">Tutorial</p>
-      <button type="button" className="app-wide-button" disabled={running} onClick={(event) => { useTutorial.getState().start(); event.currentTarget.blur() }}>
-        {running ? 'Tutorial running' : 'Replay the tutorial'}
-      </button>
-    </section>
+    <>
+      <section className="app-card">
+        <p className="app-card-title">Tutorial</p>
+        <button type="button" className="app-wide-button" disabled={running} onClick={(event) => { useTutorial.getState().start(); event.currentTarget.blur() }}>
+          {running ? 'Tutorial running' : 'Replay the tutorial'}
+        </button>
+      </section>
+      <section className="app-card app-credits">
+        <p className="app-card-title">Map and model credits</p>
+        <p>
+          <FullCredits />
+        </p>
+      </section>
+    </>
   )
 }
