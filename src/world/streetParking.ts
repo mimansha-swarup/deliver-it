@@ -2,7 +2,8 @@ import { addPost, addWall, isNearBuilding, type CollisionWorld } from './collisi
 import type { Gate, StiltVehicle } from './houseKit'
 import type { LineFeature } from './mapData'
 import type { Lane } from '../traffic/lanes'
-import { createRandom, PointGrid, scramble, type RoadPiece } from './props'
+import { createRandom, nearestRoadPiece, PointGrid, scramble, type RoadIndex, type RoadPiece } from './props'
+import { Surface, worldSurface } from './surfaceMap'
 import type { RoadGraph } from './roadGraph'
 import { streetPresetOf, type StreetPresetName } from './streetPresets'
 import { isInsideBounds, type GroundPoint } from './worldUtils'
@@ -53,7 +54,12 @@ export type StreetParking = {
   bikes: StiltVehicle[]
   /** Each car's length as a wall, to make solid once the traffic lanes exist. */
   walls: [GroundPoint, GroundPoint][]
+  /** Spots refused, by why: for the debug report. */
+  rejected: Record<string, number>
 }
+
+/** The surface map's cells are a metre: this much of a footprint may fall in a neighbouring cell. */
+const CELL_SLACK = 0.75
 
 export function planStreetParking({
   roads,
@@ -62,6 +68,7 @@ export function planStreetParking({
   gates,
   collisions,
   keepClear,
+  roadIndex,
 }: {
   roads: LineFeature[]
   pieces: RoadPiece[]
@@ -70,9 +77,16 @@ export function planStreetParking({
   collisions: CollisionWorld
   /** Ground kept clear, such as a petrol bunk's forecourt. */
   keepClear: (x: number, z: number) => boolean
+  roadIndex: RoadIndex
 }): StreetParking {
   const random = createRandom(20261118)
-  const parking: StreetParking = { cars: [], bikes: [], walls: [] }
+  const parking: StreetParking = { cars: [], bikes: [], walls: [], rejected: {} }
+  const surface = worldSurface.map
+  /** Counts why a spot was refused, for the debug report, and refuses it. */
+  const reject = (why: string) => {
+    parking.rejected[why] = (parking.rejected[why] ?? 0) + 1
+    return false
+  }
   // Junctions and gates in grids, so each spot only looks at those nearby.
   const junctions = new PointGrid(JUNCTION_CLEAR)
   graph.links.forEach((links, node) => {
@@ -114,10 +128,32 @@ export function planStreetParking({
         // Facing the way traffic on that side goes, mostly; now and then the other way.
         const facing = heading + (side === 1 ? 0 : Math.PI) + (random() < 0.15 ? Math.PI : 0)
 
+        // At the outer kerb only: the whole footprint on drawn road, and footpath (not more road
+        // or a median) beyond the kerb, and this road the nearest one (no overlapping road).
+        const atOuterKerb = (distance: number, offset: number, halfLength: number, halfWidth: number) => {
+          if (!surface) return true
+          // Corners inset by a cell, as the map is a metre to a cell and the kerb side sits on its edge.
+          const inLength = Math.max(0, halfLength - CELL_SLACK)
+          const inWidth = Math.max(0, halfWidth - CELL_SLACK)
+          for (const [d, o] of [[0, 0], [-inLength, -inWidth], [inLength, -inWidth], [-inLength, inWidth], [inLength, inWidth]]) {
+            const [px, pz] = point(distance + d, offset + o)
+            if (surface.at(px, pz) !== Surface.Road) return reject('off the road')
+          }
+          for (const beyond of [1, 2.5, 4]) {
+            const [px, pz] = point(distance, half + beyond)
+            const ground = surface.at(px, pz)
+            if (ground === Surface.Road || ground === Surface.Median) return reject('inner edge or median')
+          }
+          const [cx, cz] = point(distance, offset)
+          const nearest = nearestRoadPiece(roadIndex, cx, cz, half + 2)
+          if (nearest && nearest.piece.road !== piece.road && nearest.edge < -0.2) return reject('overlapping road')
+          return true
+        }
+
         if (roll < density.car) {
           const offset = half - KERB_GAP - CAR.halfWidth
           const [x, z] = point(along, offset)
-          if (!isFree(x, z, CAR.halfWidth + 0.2)) continue
+          if (!isFree(x, z, CAR.halfWidth + 0.2) || !atOuterKerb(along, offset, CAR.length / 2, CAR.halfWidth)) continue
           parking.cars.push({ x, z, rotation: facing + (random() - 0.5) * 0.04, variation: random(), car: true, model: scramble(Math.round(x * 7) ^ Math.round(z * 3)) % STREET_CAR_MODELS.length })
           parking.walls.push([point(along - CAR.length / 2, offset), point(along + CAR.length / 2, offset)])
         } else if (roll < density.car + density.bikes) {
@@ -126,7 +162,7 @@ export function planStreetParking({
           const offset = half - KERB_GAP - BIKE.halfWidth
           for (let bike = 0; bike < count; bike++) {
             const [x, z] = point(along + (bike - (count - 1) / 2) * BIKE.spacing, offset)
-            if (!isFree(x, z, BIKE.halfWidth + 0.15)) continue
+            if (!isFree(x, z, BIKE.halfWidth + 0.15) || !atOuterKerb(along + (bike - (count - 1) / 2) * BIKE.spacing, offset, 0.9, BIKE.halfWidth)) continue
             parking.bikes.push({ x, z, rotation: facing + (random() - 0.5) * 0.25, variation: random(), car: false })
           }
         }

@@ -229,8 +229,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     gates: houses.gates,
     collisions,
     keepClear: (x, z) => isOnForecourt(fuel, x, z) || starts.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < SPAWN_CLEAR),
+    roadIndex,
   })
-  lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes`)
+  lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes; refused ${JSON.stringify(parking.rejected)}`)
   const physics = createCrashPhysics(rapier, collisions)
   lap('parked scooters and physics')
   const features = placeRoadFeatures(graph)

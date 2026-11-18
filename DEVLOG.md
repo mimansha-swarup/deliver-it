@@ -9107,3 +9107,22 @@ street-life carts and signs all check it. Refusals are counted for the debug rep
 
 Also: `?spawn=petrol-pump` starts at the bunk nearest the middle of the map, facing its canopy,
 and `scripts/shots.mjs` takes the same screenshots every time for before/after comparisons.
+
+## 2026-11-18: Entry 156, parked vehicles only at the outer kerb
+
+### What I did
+`planStreetParking` now asks the surface map before parking a car or a row of bikes. The whole
+footprint must be on drawn road, there must be footpath (not more road or a median) just beyond
+the kerb, and the road being parked on must be the nearest one there. So nothing parks beside a
+median, on the inner edge of a dual carriageway, across a side road's mouth, or on a road that
+overlaps another. Junctions and gates were already kept clear.
+
+Street parking went from 4,356 cars and 11,501 bikes to 3,501 cars and 8,087 bikes. Spots
+refused: 3,999 for road or a median just beyond the kerb, 113 for a footprint off the road, and 4
+for an overlapping road.
+
+### Lesson: a grid answers in cells
+My first count refused 7,541 spots as "off the road". A car's outer side sits 0.15 m from the
+kerb, and on a 1 m grid that edge is in a cell whose centre is on the footpath. Checking a
+footprint against a grid needs it inset by most of a cell (`CELL_SLACK = 0.75`). After the inset,
+113 spots were refused for that reason.
