@@ -9,7 +9,7 @@ import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { getCurrentStop, hasArrived } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
-import { timeFrustration } from './customerChat'
+import { FRUSTRATION, timeFrustration } from './customerChat'
 
 /** How often the HUD gets new numbers. Far less often than the game runs. */
 const TELEMETRY_INTERVAL = 0.1
@@ -134,10 +134,13 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       sinceTelemetry.current = 0
       // The customer's frustration: the clock and rough riding. Held still while the parcel changes hands.
       const riding = game.mission && (game.phase === 'toPickup' || game.phase === 'toCustomer')
+      // Only time makes the customer cancel, at three times the timer; rough riding can't on its own.
+      const used = game.mission ? elapsed.current / game.mission.onTimeSeconds : 0
+      const cancelNow = used >= FRUSTRATION.cancelAt
       let frustration = riding && game.mission
-        ? Math.min(1, timeFrustration(elapsed.current / game.mission.onTimeSeconds, game.mission.story.care) + game.rough)
+        ? cancelNow ? 1 : Math.min(FRUSTRATION.roughMost, timeFrustration(used, game.mission.story.care) + game.rough)
         : game.mission ? game.frustration : 0
-      if (riding && frustration >= 1) {
+      if (riding && cancelNow) {
         game.customerCancels()
         frustration = 0
       }

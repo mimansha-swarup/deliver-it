@@ -8753,3 +8753,19 @@ does, and the game now rewards it.
 
 ### Try it
 Accept a fragile order and roll over a breaker slowly: nothing. Take it fast: "Bump!".
+
+## 2026-11-18: Entry 134, customers cancel at three times the timer
+
+### What I did
+Only time makes a customer cancel now, and only at **3× the timer shown to the rider** (a 2:31
+timer cancels at about 7:33). Frustration from time is 0 until half the timer is used, 0.3 when it
+runs out (0.45 for event orders), then climbs evenly to 1 at 3×. The customer warns ("last
+chance") at 2.5×. Rough riding still adds frustration, costing stars and tip, but can't take it
+past 0.95 before the cancel time, so a crash or two never makes anyone cancel.
+
+Stars by time alone: 5–4★ within the timer, 3★ around 1.5–2×, 2★ by 2.5×, 1★ just before 3×.
+
+### Why
+The customer cancelled at about 1.6× the timer, sooner if the ride was rough, which was too quick
+and too easily triggered by things they couldn't see. Three times the promised time is when a
+real customer gives up.

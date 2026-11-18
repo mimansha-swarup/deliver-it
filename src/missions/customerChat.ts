@@ -61,29 +61,33 @@ export function customerLine(stage: ChatStage, story: OrderStory, seed: number):
 }
 
 /*
- * How frustrated the customer is, from 0 (happy) to 1 (they cancel). Time does most of it: nothing
- * until half the on-time limit is used, then it climbs, faster once late. Riding roughly with
- * their order on board adds to it: a crash a lot, a hard landing on a pothole or breaker a little,
- * more for something fragile.
+ * How frustrated the customer is, from 0 (happy) to 1. Time decides it: nothing until half the
+ * timer shown to the rider is used, climbing to `atLimit` when it runs out, then on to 1 at three
+ * times the timer, when the customer cancels. Only time can make them cancel. Riding roughly with
+ * their order on board adds to it (a crash a lot, a hard landing a little, more for something
+ * fragile), which costs stars and tip, but never takes it past `roughMost` on its own.
  */
 export const FRUSTRATION = {
-  /** Per share of the on-time limit, from half of it to all of it, and past it. */
-  beforeLate: 0.6,
-  afterLate: 1.2,
-  /** Event orders (a wedding, an interview) mind the time this much more. */
-  eventTime: 1.3,
+  /** Frustration when the timer runs out: event orders (a wedding, an interview) mind more. */
+  atLimit: 0.3,
+  eventAtLimit: 0.45,
+  /** Shares of the timer: the customer warns at the first and cancels at the second. */
+  warnAt: 2.5,
+  cancelAt: 3,
   crash: 0.15,
   knock: 0.04,
   fragileKnock: 0.08,
-  /** The customer warns they'll cancel at this, and cancels at 1. */
-  warn: 0.85,
+  /** The most frustration can reach before the cancel time, however rough the ride. */
+  roughMost: 0.95,
 }
 
-/** The part of frustration that comes from time, given the share of the on-time limit used. */
+/** The part of frustration that comes from time, given the share of the timer used: 1 at `cancelAt`. */
 export function timeFrustration(used: number, care: OrderStory['care']): number {
-  const { beforeLate, afterLate, eventTime } = FRUSTRATION
-  const part = beforeLate * Math.max(0, Math.min(used, 1) - 0.5) + afterLate * Math.max(0, used - 1)
-  return part * (care === 'event' ? eventTime : 1)
+  const { cancelAt } = FRUSTRATION
+  const atLimit = care === 'event' ? FRUSTRATION.eventAtLimit : FRUSTRATION.atLimit
+  if (used <= 0.5) return 0
+  if (used <= 1) return atLimit * ((used - 0.5) / 0.5)
+  return Math.min(1, atLimit + (1 - atLimit) * ((used - 1) / (cancelAt - 1)))
 }
 
 /** Stars from frustration: a happy customer gives 5, a fuming one 1. */
