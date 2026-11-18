@@ -14,6 +14,7 @@ import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { PAVEMENT_HEIGHT, ROAD_HEIGHT } from '../world/surface'
 import { livePlayer, liveSky } from '../game/livePlayer'
+import { dayPeriod } from '../game/duty'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { STEERING_Z } from '../vehicle/Rider'
 import { isDebug } from '../dev/spawn'
@@ -28,6 +29,7 @@ import {
   takeHonks,
   takeImpacts,
   LOOSE_DRAW_DISTANCE,
+  easeDensity,
   stepTraffic,
   type Pedestrian,
   type TrafficWorld,
@@ -958,6 +960,8 @@ export function Traffic({
 
   useFrame((_, delta) => {
     const rider = scooter.current
+    // Busier at the rush hours, quiet at night (duty.ts).
+    easeDensity(world, dayPeriod(liveSky.hours).traffic, delta)
     stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP))
     // Debug: the traffic, for checking from the console that no two vehicles overlap.
     if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: world.vehicles.slice(0, vehicles) }

@@ -1,6 +1,7 @@
 import type { Mission, MissionPhase, MissionStop, Reward } from '../game/gameTypes'
 import { MISSION_RULES } from '../game/missionConfig'
 import { rateDelivery } from './orderStory'
+import type { DayPeriod } from '../game/duty'
 
 /** The stop the player is heading for, or null when there isn't one. */
 export function getCurrentStop(mission: Mission | null, phase: MissionPhase): MissionStop | null {
@@ -22,6 +23,8 @@ export type RideRecord = {
   /** 5-star deliveries in a row before this one. */
   streak?: number
   nightPay?: boolean
+  /** The time of day, whose rush hours pay more. */
+  period?: DayPeriod
 }
 
 /**
@@ -33,7 +36,7 @@ export type RideRecord = {
 export function calculateReward(
   seconds: number,
   mission: Pick<Mission, 'kind' | 'tier' | 'dropCount' | 'onTimeSeconds' | 'story'>,
-  { crashes = 0, knocks = 0, streak = 0, nightPay = false }: RideRecord = {},
+  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period }: RideRecord = {},
 ): Reward {
   const rules = MISSION_RULES
   const { kind, tier, dropCount, onTimeSeconds, story } = mission
@@ -49,6 +52,8 @@ export function calculateReward(
     onTimeCredits: onTime ? rules.onTimeCredits + (rush ? rules.rushExtraCredits : 0) : 0,
     cleanRideCredits: crashes === 0 ? rules.cleanRideCredits : 0,
     nightCredits: nightPay ? Math.round((baseCredits + tier.extraCredits) * rules.nightPayShare) : 0,
+    peakCredits: period ? Math.round((baseCredits + tier.extraCredits) * period.payShare) : 0,
+    peakLabel: period?.label ?? '',
     crashes,
     xp: rules.baseXp * dropCount + tier.extraXp + (rush && onTime ? rules.rushExtraXp : 0),
     seconds,

@@ -1,5 +1,6 @@
 import type { DeliveryTier, Drop, Mission, MissionStop, OrderKind, WaitingCustomer } from '../game/gameTypes'
 import { UNLOCK_LEVELS } from '../game/progression'
+import type { DayPeriod } from '../game/duty'
 import { DARK_STORE_NAME, DELIVERY_TIERS, MISSION_RULES } from '../game/missionConfig'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
@@ -20,7 +21,8 @@ export type MissionPlanner = {
   /** Finds the route to a road point, remembering each one so it's only worked out once. */
   getRouteField: (node: number) => RouteField
   /** Plans an order from wherever the rider is. Their `level` decides what kinds of order can come up. */
-  planMission: (fromX: number, fromZ: number, level: number) => Mission
+  /** `period` is the time of day: it sets how often orders are rushes or double drops, and what's ordered. */
+  planMission: (fromX: number, fromZ: number, level: number, period?: DayPeriod) => Mission
 }
 
 /** How far back from the road's edge a customer stands, in metres, best first. */
@@ -44,10 +46,12 @@ function rollTier(level: number, random: () => number): DeliveryTier {
 }
 
 /** Rush orders and double drops come up now and then, once the rider's level allows them. */
-function rollKind(level: number, random: () => number): OrderKind {
+function rollKind(level: number, random: () => number, period?: DayPeriod): OrderKind {
   const roll = random()
-  if (level >= UNLOCK_LEVELS.doubleDrop && roll < MISSION_RULES.doubleChance) return 'double'
-  if (level >= UNLOCK_LEVELS.rush && roll > 1 - MISSION_RULES.rushChance) return 'rush'
+  const doubleChance = period?.doubleChance ?? MISSION_RULES.doubleChance
+  const rushChance = period?.rushChance ?? MISSION_RULES.rushChance
+  if (level >= UNLOCK_LEVELS.doubleDrop && roll < doubleChance) return 'double'
+  if (level >= UNLOCK_LEVELS.rush && roll > 1 - rushChance) return 'rush'
   return 'standard'
 }
 
@@ -136,7 +140,7 @@ export function createMissionPlanner(
     return options.length > 0 ? pickRandom(options, random) : null
   }
 
-  const planMission = (fromX: number, fromZ: number, level: number): Mission => {
+  const planMission = (fromX: number, fromZ: number, level: number, period?: DayPeriod): Mission => {
     const start = findNearestNode(graph, fromX, fromZ)
     const store = nearestStore(stores, fromX, fromZ)
     const fromStore = getRouteField(store.node)
@@ -160,12 +164,12 @@ export function createMissionPlanner(
     const tier = [wanted, ...allowed].find((option) => customersFor(option).length > 0) ?? wanted
     const customer = pickRandom(customersFor(tier), random)
 
-    let kind = rollKind(level, random)
+    let kind = rollKind(level, random, period)
     const second = kind === 'double' ? findSecondDrop(customer) : null
     if (kind === 'double' && second === null) kind = 'standard'
-    const story = createOrderStory(random)
-    let secondStory = createOrderStory(random)
-    if (secondStory.customer === story.customer) secondStory = createOrderStory(random)
+    const story = createOrderStory(random, period?.id)
+    let secondStory = createOrderStory(random, period?.id)
+    if (secondStory.customer === story.customer) secondStory = createOrderStory(random, period?.id)
     const nextDrops: Drop[] =
       second === null
         ? []

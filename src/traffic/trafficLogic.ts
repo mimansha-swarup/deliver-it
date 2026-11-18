@@ -404,6 +404,11 @@ export type Pedestrian = Mover & {
 export type LooseBody = Tumbler & { tint: number }
 
 export type TrafficWorld = {
+  /**
+   * How much of the vehicle count is out, 0 to 1, set by the time of day (duty.ts). Vehicles past
+   * it aren't sent out again when they'd respawn, so traffic thins out of sight, never on screen.
+   */
+  density: number
   physics: CrashPhysics
   /** Buildings and walls, which driving traffic is kept out of. */
   collisions: CollisionWorld
@@ -645,6 +650,7 @@ export function createTrafficWorld(
     pedestrians,
     signals,
     signalClock: 0,
+    density: 1,
     random,
     honks: [],
     impacts: [],
@@ -1816,6 +1822,11 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
 }
 
 /** Advances everything. Only the first `vehicleCount` and `pedestrianCount` are in play. */
+/** Moves the traffic's density towards the time of day's, gently, so a change of period isn't a jump. */
+export function easeDensity(world: TrafficWorld, target: number, dt: number) {
+  world.density += (target - world.density) * Math.min(1, dt * 0.2)
+}
+
 export function stepTraffic(
   world: TrafficWorld,
   rider: ScooterState,
@@ -1829,7 +1840,8 @@ export function stepTraffic(
   world.signalClock += dt
   listDowned(world, rider, activeVehicles, pedestrianCount)
 
-  for (const vehicle of activeVehicles) {
+  const outNow = Math.round(vehicleCount * world.density)
+  for (const [index, vehicle] of activeVehicles.entries()) {
     const tooFar = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) > rules.vehicleRemoveAt
     if (vehicle.lane === -1 || tooFar) {
       if (vehicle.body) world.physics.removeBody(vehicle)
@@ -1850,6 +1862,12 @@ export function stepTraffic(
             other.lane === -1 ||
             Math.hypot(other.x - lane.startX, other.z - lane.startZ) >= Math.max(rules.spawnGap, other.halfLength + vehicle.halfLength + 2),
         )
+      // Quieter times of day keep some vehicles in: off the road, far away, until it's busy again.
+      if (index >= outNow) {
+        vehicle.x = 1e6
+        vehicle.z = 1e6
+        continue
+      }
       const lane = findLaneInRing(
         roadLanes,
         rider.x,

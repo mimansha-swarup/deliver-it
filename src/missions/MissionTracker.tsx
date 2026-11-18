@@ -1,13 +1,14 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
-import { livePlayer } from '../game/livePlayer'
+import { livePlayer, liveSky } from '../game/livePlayer'
 import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
 import { MISSION_RULES } from '../game/missionConfig'
 import type { MissionPlanner } from './missionPlanner'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { getCurrentStop, hasArrived } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
+import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
 
 /** How often the HUD gets new numbers. Far less often than the game runs. */
 const TELEMETRY_INTERVAL = 0.1
@@ -17,6 +18,18 @@ const RIDE_REPORT_INTERVAL = 2
 
 /** Longest a single frame may count for, so a hidden tab doesn't run the clock. */
 const MAX_FRAME_TIME = 0.1
+
+/** Home is a gate: stopped this close to it counts as at home, in metres, below this speed. */
+const HOME_RANGE = 8
+const HOME_MAX_SPEED = 1.5
+
+/** Seconds until the next offer, from the time of day's range, slower when acceptance is low. */
+function nextOfferGap(answers: boolean[]): number {
+  const [shortest, longest] = dayPeriod(liveSky.hours).offerGap
+  const rate = acceptanceRate(answers)
+  const slower = rate !== null && rate < LOW_ACCEPTANCE ? LOW_ACCEPTANCE_SLOWDOWN : 1
+  return (shortest + Math.random() * (longest - shortest)) * slower
+}
 
 /** Whether the rider has stopped by any dark store, where the Garage opens. */
 function isAtStore(planner: MissionPlanner | null, x: number, z: number, speed: number): boolean {
@@ -35,6 +48,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const ridden = useRef(0)
   const sinceRideReport = useRef(0)
   const wasBoosting = useRef(false)
+  /** Seconds until the dispatcher offers the next order, while online and free. */
+  const offerIn = useRef(4)
 
   useFrame((_, delta) => {
     const game = useGameStore.getState()
@@ -96,6 +111,23 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       wasBoosting.current = boosting
     }
 
+    // The dispatcher: while online with nothing on, an offer every so often; an unanswered one runs out.
+    if (game.duty === 'online') {
+      if (game.offer && performance.now() > game.offer.expiresAt) game.declineOffer(true)
+      if (!game.mission && !game.offer && !game.offlineAfterOrder) {
+        offerIn.current -= frameTime
+        if (offerIn.current <= 0) {
+          game.makeOffer()
+          offerIn.current = nextOfferGap(game.answers)
+        }
+      } else if (game.mission) {
+        // The first offer after a delivery comes a little sooner.
+        offerIn.current = Math.min(offerIn.current, 5)
+      }
+    } else {
+      offerIn.current = 3
+    }
+
     sinceTelemetry.current += frameTime
     if (sinceTelemetry.current >= TELEMETRY_INTERVAL) {
       sinceTelemetry.current = 0
@@ -111,6 +143,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         nitroOn: state.nitroOn,
         crashed: state.crashLeft > 0,
         atStore: isAtStore(game.planner, state.x, state.z, travelSpeed),
+        atHome: game.home !== null && Math.hypot(game.home.x - state.x, game.home.z - state.z) <= HOME_RANGE && travelSpeed <= HOME_MAX_SPEED,
       })
     }
   })

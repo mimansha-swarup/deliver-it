@@ -8606,3 +8606,43 @@ at once. A benchmark has to ride, from the first frame, on the player's screen.
 
 ### Try it
 `node --experimental-websocket scripts/bench.mjs --ride --dpr 2 --streets main-road`
+
+## 2026-11-18: Entry 129, duty modes: free roam, going online, shifts and days
+
+### What I did
+The game is free-roam now; delivering is optional (`src/game/duty.ts`, `src/ui/DutyUi.tsx`).
+
+- **Off duty** after loading: ride anywhere, no orders, no clock. A badge says "Off duty · O to
+  go online", and the phone's sheet has a Go online button.
+- **Online** (O, or the phone): the dispatcher offers orders now and then. An offer card shows
+  the item, customer, route, kind and rough pay, with a 15 s bar. **Y accepts, X declines**;
+  one left to run out counts as declined. The last 20 answers make an **acceptance rate** (on
+  the phone); below 60% offers come about a third slower and Ravi says so.
+- **Going offline mid-order** asks: finish it first (offline after the delivery), or cancel it
+  (−40 credits, and it counts as a 1★ rating), or stay online.
+- **Time of day** (morning, lunch rush, evening rush, night) sets pay (+20% at lunch, +15% in
+  the evening, shown as its own line on the delivery card), how often offers come, how often
+  they're rushes or double drops, what's ordered (gym shorts in the morning, party dresses in the
+  evening), and how much **traffic** is out (night 45%, evening 100% of the quality preset's
+  count). Traffic never goes above the preset; vehicles are only held back when they'd respawn,
+  out of sight.
+- **Shift goal** (optional): one per shift, chosen for the time and level: earn N credits, N
+  orders before a time, 3 five-star deliveries, or 4 with no crashes. Met, it pays a bonus.
+- **Shift summary** on going offline: deliveries (and cancellations), earnings, tips, average
+  rating, distance, time online (real and on the game clock), the goal, and the best moment
+  (the biggest tip, the earliest arrival, or a spotless 5★ ride).
+- **Home and days:** home is the gate of the family house nearest the start, with a soft blue
+  ring nearby when off duty. Stopped there, **Z sleeps** until 7 am: the screen fades, the day
+  counter moves on and everything is saved (the day and acceptance answers are saved now too).
+
+### Why
+Delivering every minute made the city a route between markers. Off duty, it's a place to ride
+around; online is a choice, with time of day giving each shift its own feel.
+
+### Lesson 247: a "ready" check can hide an assumption
+The loading screen waited for `mission !== null`, which meant "the planner is ready" only
+because a mission used to be planned the moment it was. Once missions waited for going online,
+loading never finished. It now waits for the planner itself.
+
+### Try it
+Load, press O, accept with Y. Press O mid-order to see the choice. Ride home and press Z.

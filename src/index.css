@@ -2006,3 +2006,265 @@ body,
     animation-duration: 2.4s;
   }
 }
+
+/* ---- Duty: off duty or online, order offers, the shift summary, home (DutyUi.tsx) ---- */
+
+.duty-badge {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 72%);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.duty-badge strong::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #9aa0a8;
+  vertical-align: 1px;
+}
+
+.duty-badge[data-duty='online'] {
+  border-radius: 12px;
+}
+
+.duty-badge[data-duty='online'] strong::before {
+  background: #3ddc97;
+}
+
+.duty-badge span {
+  color: #c9c6bc;
+}
+
+.duty-badge kbd,
+.duty-offer kbd,
+.duty-home kbd {
+  padding: 0 5px;
+  border: 1px solid rgb(244 241 232 / 35%);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.duty-goal {
+  flex-basis: 100%;
+  color: #f4f1e8;
+  font-size: 12px;
+}
+
+.duty-goal[data-state='met'] {
+  color: #3ddc97;
+}
+
+.duty-goal[data-state='missed'] {
+  color: #c9c6bc;
+  text-decoration: line-through;
+}
+
+.duty-goal-progress {
+  color: #c9c6bc;
+  font-variant-numeric: tabular-nums;
+}
+
+.duty-offer {
+  top: 60px;
+  right: 12px;
+  width: min(300px, calc(100vw - 32px));
+  box-sizing: border-box;
+  display: grid;
+  gap: 4px;
+  background: rgb(15 17 21 / 90%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  animation: message-in 0.25s ease-out;
+}
+
+.duty-offer-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.duty-offer-kind {
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #10231a;
+  background: #ffb02e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.duty-offer-pay {
+  margin-left: auto;
+  color: #3ddc97;
+  font-weight: 700;
+}
+
+.duty-offer-care {
+  color: #ffb02e;
+  font-size: 12px;
+}
+
+.duty-offer-timer {
+  display: block;
+  height: 4px;
+  margin: 4px 0 2px;
+  border-radius: 2px;
+  background: rgb(244 241 232 / 15%);
+  overflow: hidden;
+}
+
+.duty-offer-timer span {
+  display: block;
+  height: 100%;
+  background: #3ddc97;
+  transition: width 0.2s linear;
+}
+
+.duty-offer-buttons,
+.duty-question-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.duty-question-buttons {
+  flex-direction: column;
+  margin-top: 14px;
+}
+
+.duty-offer button,
+.duty-question button {
+  flex: 1;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.duty-accept {
+  color: #10231a;
+  background: #3ddc97;
+}
+
+.duty-decline,
+.duty-question .duty-plain {
+  color: #f4f1e8;
+  background: rgb(244 241 232 / 14%);
+}
+
+.duty-question .duty-cancel {
+  color: #fff;
+  background: #b8433a;
+}
+
+.duty-question .duty-cancel span {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.duty-best {
+  margin: 0 0 14px;
+  color: #ffb02e;
+}
+
+.duty-home {
+  position: fixed;
+  bottom: 140px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 80%);
+  transform: translateX(-50%);
+  font-size: 14px;
+}
+
+.duty-home strong {
+  color: #7fb2ff;
+}
+
+.duty-sleep {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: #f4f1e8;
+  background: #0b0c0f;
+  font-size: 28px;
+  font-weight: 700;
+  animation: sleep-fade 1.8s ease-in-out both;
+}
+
+.duty-sleep p {
+  margin: 0;
+}
+
+.duty-sleep .hud-detail {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+@keyframes sleep-fade {
+  0% {
+    opacity: 0;
+  }
+  25%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duty-offer,
+  .duty-sleep {
+    animation: none;
+  }
+}
+
+.phone-period {
+  color: #c9c6bc;
+  font-size: 12px;
+}
+
+.phone-goal {
+  margin: 4px 0 0;
+}
+
+.phone-duty-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  color: #f4f1e8;
+  background: rgb(244 241 232 / 14%);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.phone-duty-online {
+  color: #10231a;
+  background: #3ddc97;
+}

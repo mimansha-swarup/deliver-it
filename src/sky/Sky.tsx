@@ -159,7 +159,14 @@ export function Sky() {
   useFrame(({ camera, scene }, delta) => {
     const dt = Math.min(delta, MAX_STEP)
     const sky = state.current
+    if (liveSky.setHoursTo !== null) {
+      sky.hours = liveSky.setHoursTo
+      liveSky.setHoursTo = null
+    }
+    const before = sky.hours
     stepSky(sky, dt)
+    liveSky.totalHours += (sky.hours - before + 24) % 24
+    liveSky.hours = sky.hours
 
     const look = getSkyLook(sky)
     drift.current += dt * (0.015 + sky.wind * 0.05)

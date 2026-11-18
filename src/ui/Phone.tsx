@@ -6,6 +6,9 @@ import { MISSION_RULES } from '../game/missionConfig'
 import { getCurrentStop } from '../missions/missionLogic'
 import { averageRating, CARE_HINTS, TOP_TIP, type Care } from '../missions/orderStory'
 import { WEATHERS, type WeatherName } from '../sky/skyLogic'
+import { acceptanceRate, dayPeriod } from '../game/duty'
+import { liveSky } from '../game/livePlayer'
+import { GoalLine } from './DutyUi'
 import { CareerSheet, TodaySheet } from './CareerSheets'
 import { Garage } from './Garage'
 import { PhoneMap } from './PhoneMap'
@@ -269,6 +272,58 @@ function GarageButton({ onOpen }: { onOpen: () => void }) {
   )
 }
 
+/** No order on: off duty (go online), or online and waiting for the next offer. */
+function DutySheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: () => void }) {
+  const duty = useGameStore((state) => state.duty)
+  const offer = useGameStore((state) => state.offer)
+  const goal = useGameStore((state) => state.shift?.goal ?? null)
+  const answers = useGameStore((state) => state.answers)
+  const day = useGameStore((state) => state.day)
+  const toggleDuty = useGameStore((state) => state.toggleDuty)
+  const skyTime = useGameStore((state) => state.skyTime)
+  const rate = acceptanceRate(answers)
+  void skyTime
+  const period = dayPeriod(liveSky.hours)
+
+  return (
+    <section className="phone-sheet">
+      <p className="phone-sheet-top">
+        <span className="phone-objective">
+          {duty === 'off' ? 'Off duty' : offer ? 'New order offered' : 'Waiting for orders'}
+        </span>
+        <span className="phone-period">Day {day} · {period.label}</span>
+      </p>
+      <p className="phone-stop">
+        {duty === 'off' ? 'Ride anywhere. Go online for orders.' : offer ? 'Y to accept · X to decline' : `${period.label}: ${period.payShare > 0 ? `+${Math.round(period.payShare * 100)}% pay` : 'normal pay'}`}
+      </p>
+      {duty === 'online' && goal && (
+        <p className="phone-goal">
+          <GoalLine goal={goal} />
+        </p>
+      )}
+      <button
+        type="button"
+        className={duty === 'off' ? 'phone-duty-button phone-duty-online' : 'phone-duty-button'}
+        onClick={(event) => {
+          toggleDuty()
+          event.currentTarget.blur()
+        }}
+      >
+        {duty === 'off' ? 'Go online · O' : 'Go offline · O'}
+      </button>
+      {raised && (
+        <>
+          <p className="phone-order-line">
+            Acceptance {rate === null ? '—' : `${Math.round(rate * 100)}%`}
+            {duty === 'off' && ' · Sleep at home (Z) to end the day'}
+          </p>
+          <GarageButton onOpen={onOpenGarage} />
+        </>
+      )}
+    </section>
+  )
+}
+
 function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: () => void }) {
   const phase = useGameStore((state) => state.phase)
   const mission = useGameStore((state) => state.mission)
@@ -281,12 +336,15 @@ function OrderSheet({ raised, onOpenGarage }: { raised: boolean; onOpenGarage: (
   const stop = getCurrentStop(mission, phase) ?? (handingOff && mission ? mission.customer : null)
 
   if (!mission || !stop) {
-    return (
-      <section className="phone-sheet">
-        <p className="phone-objective">{SHEET_MESSAGES[phase] ?? 'Finding an order'}</p>
-        {raised && <GarageButton onOpen={onOpenGarage} />}
-      </section>
-    )
+    if (phase === 'delivered') {
+      return (
+        <section className="phone-sheet">
+          <p className="phone-objective">{SHEET_MESSAGES[phase]}</p>
+          {raised && <GarageButton onOpen={onOpenGarage} />}
+        </section>
+      )
+    }
+    return <DutySheet raised={raised} onOpenGarage={onOpenGarage} />
   }
 
   return (

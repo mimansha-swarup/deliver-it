@@ -24,6 +24,7 @@ import { DevStats } from './dev/DevStats'
 import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
+import { DutyUi } from './ui/DutyUi'
 
 /** The sky and haze before the sky's own colours take over, a frame after start. */
 const SKY_COLOR = '#e3dbc4'
@@ -47,6 +48,7 @@ function RidingUi() {
   return (
     <>
       <Hud />
+      <DutyUi />
       <MessageToast />
       <PlayerHorn />
       <RadioPlayer />
@@ -54,7 +56,7 @@ function RidingUi() {
       <DirectionArrow />
       <Phone />
 
-      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · Shift nitro · H honk · R radio · P phone · N skips time · M changes weather</p>
+      <p className="controls-hint">W A S D or arrow keys to ride · Hold Space while turning to drift · Shift nitro · O online/offline · H honk · R radio · P phone · N skips time · M changes weather</p>
     </>
   )
 }

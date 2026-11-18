@@ -153,6 +153,7 @@ function LevelUp() {
 function DeliveryComplete() {
   const reward = useGameStore((state) => state.lastReward)
   const nextMission = useGameStore((state) => state.nextMission)
+  const goingOffline = useGameStore((state) => state.offlineAfterOrder)
 
   if (!reward) return null
   const title = reward.kind === 'double' ? 'Both orders delivered' : 'Order delivered'
@@ -174,6 +175,12 @@ function DeliveryComplete() {
         )}
         <dt>{reward.kind === 'rush' ? 'Rush bonus' : 'On-time bonus'}</dt>
         <dd>{reward.onTime ? `+${reward.onTimeCredits} credits` : 'Missed'}</dd>
+        {reward.peakCredits > 0 && (
+          <>
+            <dt>{reward.peakLabel}</dt>
+            <dd>+{reward.peakCredits} credits</dd>
+          </>
+        )}
         {reward.nightCredits > 0 && (
           <>
             <dt>Night shift</dt>
@@ -193,7 +200,7 @@ function DeliveryComplete() {
       </dl>
       <RiderRating />
       <button type="button" autoFocus onClick={nextMission}>
-        Next delivery
+        {goingOffline ? 'Go offline' : 'Back to orders'}
       </button>
     </section>
   )

@@ -1,3 +1,4 @@
+import type { PeriodId } from '../game/duty'
 /**
  * Who an order is for, what's in it, and how they feel when it arrives. The
  * dark store is a fashion one: clothes, shoes and accessories, delivered fast.
@@ -21,24 +22,29 @@ export type OrderStory = {
   note: string
 }
 
-type Item = { item: string; care: Care; note: string }
+/** `when`: the times of day it's ordered; left out, any time. */
+type Item = { item: string; care: Care; note: string; when?: PeriodId[] }
 
 const ITEMS: Item[] = [
   { item: 'A bottle of perfume', care: 'fragile', note: "It's a gift, and it's glass! Gently over the humps please." },
   { item: 'Glass bangles', care: 'fragile', note: 'Two dozen glass bangles for the function. Handle with care, maga.' },
   { item: 'A pair of sunglasses', care: 'fragile', note: 'New sunglasses. Please no jumping over the breakers!' },
   { item: 'A gift-wrapped watch', care: 'fragile', note: "It's for my husband's birthday. Don't shake it too much!" },
-  { item: 'A silk saree', care: 'event', note: "My cousin's wedding starts at 7. I need it before that!" },
-  { item: 'A formal blazer', care: 'event', note: 'Interview in an hour and my blazer has a stain. Please hurry!' },
-  { item: 'A party dress', care: 'event', note: "Office party tonight and I've nothing to wear. Bega banni!" },
-  { item: 'A sherwani', care: 'event', note: "Sangeet is tonight. I'm the groom's brother, I can't be late!" },
+  { item: 'A silk saree', care: 'event', note: "My cousin's wedding starts at 7. I need it before that!", when: ['lunch', 'evening'] },
+  { item: 'A formal blazer', care: 'event', note: 'Interview in an hour and my blazer has a stain. Please hurry!', when: ['morning', 'lunch'] },
+  { item: 'A party dress', care: 'event', note: "Office party tonight and I've nothing to wear. Bega banni!", when: ['evening'] },
+  { item: 'A sherwani', care: 'event', note: "Sangeet is tonight. I'm the groom's brother, I can't be late!", when: ['evening'] },
   { item: 'White sneakers', care: 'none', note: "Size 9. I'll try them on at the gate, wait two minutes na." },
   { item: 'An oversized tee', care: 'none', note: 'Black, size L. Thank you!' },
-  { item: 'A cotton kurta', care: 'none', note: "For the pooja tomorrow. Ring twice, the bell's a bit weak." },
+  { item: 'A cotton kurta', care: 'none', note: "For the pooja tomorrow. Ring twice, the bell's a bit weak.", when: ['evening', 'night'] },
   { item: 'Jeans to try on', care: 'none', note: 'Try and buy. If they fit, I keep both pairs!' },
   { item: 'Silver jhumkas', care: 'none', note: 'To match my new saree. Thank you!' },
-  { item: 'A hoodie', care: 'none', note: 'It got cold all of a sudden. Grey one please.' },
-  { item: 'Running shoes', care: 'none', note: 'Starting my 5K training tomorrow morning!' },
+  { item: 'A hoodie', care: 'none', note: 'It got cold all of a sudden. Grey one please.', when: ['evening', 'night'] },
+  { item: 'Running shoes', care: 'none', note: 'Starting my 5K training tomorrow morning!', when: ['evening', 'night'] },
+  { item: 'Gym shorts', care: 'none', note: 'Gym at 7, forgot mine. Fast fast please!', when: ['morning'] },
+  { item: 'A formal shirt', care: 'event', note: 'Client meeting at noon and my shirt is torn. Help!', when: ['morning'] },
+  { item: 'A light kurti', care: 'none', note: 'For lunch with the office gang. Thank you!', when: ['lunch'] },
+  { item: 'Comfy pyjamas', care: 'none', note: 'Late night order, sorry! The gate is open.', when: ['night'] },
   { item: 'A leather handbag', care: 'none', note: "Bruno will bark at the gate. He's friendly!" },
 ]
 
@@ -63,8 +69,10 @@ const CUSTOMERS = [
 
 const pick = <T>(items: T[], random: () => number): T => items[Math.floor(random() * items.length)]
 
-export function createOrderStory(random: () => number): OrderStory {
-  const { item, care, note } = pick(ITEMS, random)
+/** An order, with what's ordered fitting the time of day when `period` is given. */
+export function createOrderStory(random: () => number, period?: PeriodId): OrderStory {
+  const items = period ? ITEMS.filter(({ when }) => !when || when.includes(period)) : ITEMS
+  const { item, care, note } = pick(items, random)
   return { customer: pick(CUSTOMERS, random), item, care, note }
 }
 

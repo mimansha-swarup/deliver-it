@@ -16,7 +16,25 @@ import { RATINGS_KEPT } from '../missions/orderStory'
 import type { MissionPlanner } from '../missions/missionPlanner'
 import type { Mission, MissionPhase, Reward } from './gameTypes'
 import type { WeatherName } from '../sky/skyLogic'
-import { livePlayer } from './livePlayer'
+import { livePlayer, liveSky } from './livePlayer'
+import {
+  acceptanceRate,
+  ANSWERS_KEPT,
+  bestMomentOf,
+  CANCEL_PENALTY,
+  createShiftGoal,
+  dayPeriod,
+  goalStep,
+  isPastDeadline,
+  LOW_ACCEPTANCE,
+  newShift,
+  OFFER_SECONDS,
+  summarize,
+  WAKE_HOUR,
+  type DutyState,
+  type ShiftStats,
+  type ShiftSummary,
+} from './duty'
 import {
   advanceCareer,
   advanceDaily,
@@ -47,7 +65,12 @@ type Telemetry = {
   crashed: boolean
   /** Stopped by the dark store, where the Garage opens. */
   atStore: boolean
+  /** Stopped at home, where the rider can sleep. */
+  atHome: boolean
 }
+
+/** An order offered to the rider, waiting for an answer until `expiresAt` (performance.now()). */
+export type Offer = { mission: Mission; expiresAt: number }
 
 type GameState = Telemetry & {
   /** False while the title screen is showing. */
@@ -98,6 +121,22 @@ type GameState = Telemetry & {
   daily: DailyShift | null
   streak: Streak
   messages: Message[]
+  /** Off duty (free roam, the default after loading) or online, taking orders. */
+  duty: DutyState
+  offer: Offer | null
+  /** The shift while online; its summary once offline, until dismissed. */
+  shift: ShiftStats | null
+  shiftSummary: ShiftSummary | null
+  /** Going offline was asked for with an order on: the rider is choosing to finish or cancel it. */
+  askingOffline: boolean
+  /** Finishing the current order, then going offline. */
+  offlineAfterOrder: boolean
+  /** The rider's last answers to offers, true for accepted, newest last. */
+  answers: boolean[]
+  /** Which day it is, from 1. Sleeping starts the next. */
+  day: number
+  /** Where the rider lives: the gate of a house near the start. */
+  home: { x: number; z: number } | null
 
   startGame: () => void
   setLoading: (loading: LoadProgress) => void
@@ -129,6 +168,22 @@ type GameState = Telemetry & {
   recordRide: (metres: number) => void
   /** Counts a drift boost towards today's goals. */
   recordBoost: () => void
+  /** O, or the phone: online from off duty; from online, offline (asking first if an order is on). */
+  toggleDuty: () => void
+  goOnline: () => void
+  /** With `cancel`, an order on is cancelled (with a penalty); without, the rider finishes it first. */
+  goOffline: (choice?: 'finish' | 'cancel') => void
+  /** Closes the finish-or-cancel question without going offline. */
+  stayOnline: () => void
+  /** A new order offer, made by the dispatcher while online and free. */
+  makeOffer: () => void
+  acceptOffer: () => void
+  /** Declined by the rider, or `missed` when the offer ran out. Both count against acceptance. */
+  declineOffer: (missed?: boolean) => void
+  dismissSummary: () => void
+  /** Sleeps: off duty only. Moves the clock to the morning, starts the next day and saves. */
+  endDay: () => void
+  setHome: (home: { x: number; z: number }) => void
 }
 
 export type Message = { id: number; text: string }
@@ -210,6 +265,47 @@ function chooseColour<T>(
   return result([...owned, id], credits - colour.price)
 }
 
+/** Whether an accepted order is under way: picked up or not, not yet delivered. */
+function hasOrderOn(state: GameState): boolean {
+  return state.mission !== null && state.phase !== 'delivered'
+}
+
+/** Marks a goal against the clock missed once its time has gone. */
+function checkDeadline(shift: ShiftStats): ShiftStats {
+  if (shift.goal?.state !== 'open' || !isPastDeadline(shift, liveSky.totalHours)) return shift
+  return { ...shift, goal: { ...shift.goal, state: 'missed' } }
+}
+
+/** Adds a delivery to the shift: the tally, the goal (and its bonus, once met), and the best moment. */
+function tallyDelivery(shift: ShiftStats, reward: Reward, earned: number, onTimeSeconds: number) {
+  let goal = checkDeadline(shift).goal
+  let bonus = 0
+  let goalMessage = ''
+  if (goal?.state === 'open') {
+    const progress = goal.progress + goalStep(goal, reward, earned)
+    goal = { ...goal, progress }
+    if (progress >= goal.target) {
+      goal = { ...goal, state: 'met' }
+      bonus = goal.bonus
+      goalMessage = `Shift goal done: ${goal.text}! +${bonus} credits bonus. Sakkath!`
+    }
+  }
+  const moment = bestMomentOf(reward, onTimeSeconds)
+  return {
+    bonus,
+    goalMessage,
+    shift: {
+      ...shift,
+      deliveries: shift.deliveries + 1,
+      earnings: shift.earnings + earned + bonus,
+      tips: shift.tips + reward.tipCredits,
+      ratings: [...shift.ratings, reward.stars],
+      goal,
+      best: moment.score > 0 && moment.score > (shift.best?.score ?? 0) ? moment : shift.best,
+    },
+  }
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -257,6 +353,16 @@ export const useGameStore = create<GameState>()(
       daily: null,
       streak: { days: 0, lastDate: '' },
       messages: [],
+      atHome: false,
+      duty: 'off',
+      offer: null,
+      shift: null,
+      shiftSummary: null,
+      askingOffline: false,
+      offlineAfterOrder: false,
+      answers: [],
+      day: 1,
+      home: null,
 
       // Starting the career and today's shift happens the first time the rider sets off.
       startGame: () =>
@@ -273,10 +379,8 @@ export const useGameStore = create<GameState>()(
       setLowScale: (lowScale) => set({ lowScale }),
       setLoading: (loading) => set({ loading }),
 
-      startMissions: (planner, fromX, fromZ) => {
-        if (get().mission) return
-        set({ planner, mission: planner.planMission(fromX, fromZ, levelFromXp(get().xp)) })
-      },
+      // Orders only come while online (see makeOffer); off duty, the rider just rides.
+      startMissions: (planner) => set({ planner }),
 
       arriveAtStop: (seconds) =>
         set((state) => {
@@ -295,6 +399,7 @@ export const useGameStore = create<GameState>()(
               knocks: state.knocks,
               streak: state.fiveStarStreak,
               nightPay,
+              period: dayPeriod(liveSky.hours),
             }),
           }
         }),
@@ -326,9 +431,11 @@ export const useGameStore = create<GameState>()(
               reward.onTimeCredits +
               reward.cleanRideCredits +
               reward.nightCredits +
+              reward.peakCredits +
               reward.tipCredits,
             xp: state.xp + reward.xp,
           }
+          const earned = paid.credits - state.credits
           // The delivery also counts towards the career and today's shift, which may pay more.
           const event: CareerEvent = {
             type: 'delivery',
@@ -341,8 +448,15 @@ export const useGameStore = create<GameState>()(
           const after = { ...paid, ...progress }
           const levelBefore = levelFromXp(state.xp)
           const levelAfter = levelFromXp(after.xp)
+          // The shift's tally, its goal, and its best moment.
+          const shiftStep = state.shift ? tallyDelivery(state.shift, reward, earned, state.mission?.onTimeSeconds ?? 0) : null
+          if (shiftStep) {
+            after.credits += shiftStep.bonus
+            if (shiftStep.goalMessage) progress.messages = addMessages(progress.messages ?? state.messages, [shiftStep.goalMessage])
+          }
           return {
             ...progress,
+            shift: shiftStep?.shift ?? state.shift,
             phase: 'delivered',
             lastReward: reward,
             lastLevelUp:
@@ -357,7 +471,8 @@ export const useGameStore = create<GameState>()(
           }
         }),
 
-  nextMission: () =>
+  // After a delivery: back to waiting for offers, or offline if the rider asked to finish first.
+  nextMission: () => {
     set((state) => ({
       phase: 'toPickup',
       missionNumber: state.missionNumber + 1,
@@ -366,9 +481,118 @@ export const useGameStore = create<GameState>()(
       seconds: 0,
       crashes: 0,
       knocks: 0,
-      // The next delivery starts wherever the rider is.
-      mission: state.planner?.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp)) ?? state.mission,
-    })),
+      mission: null,
+    }))
+    if (get().offlineAfterOrder) get().goOffline()
+  },
+
+  toggleDuty: () => {
+    const state = get()
+    if (state.duty === 'off') state.goOnline()
+    else if (hasOrderOn(state)) set({ askingOffline: true })
+    else state.goOffline()
+  },
+
+  goOnline: () =>
+    set((state) => {
+      if (state.duty === 'online') return state
+      const period = dayPeriod(liveSky.hours)
+      const goal = createShiftGoal(liveSky.hours, levelFromXp(state.xp), Math.random)
+      const rate = acceptanceRate(state.answers)
+      const lines = [`You're online, maga. ${period.label} now. Orders coming!`, `Shift goal (optional): ${goal.text}. Bonus ${goal.bonus} credits.`]
+      if (rate !== null && rate < LOW_ACCEPTANCE) lines.push(`Your acceptance is ${Math.round(rate * 100)}%. Take a few more, okay? Orders come slower when it's low.`)
+      return {
+        duty: 'online',
+        shift: newShift(goal, liveSky.hours, liveSky.totalHours, performance.now()),
+        shiftSummary: null,
+        offlineAfterOrder: false,
+        messages: addMessages(state.messages, lines),
+      }
+    }),
+
+  goOffline: (choice) =>
+    set((state) => {
+      if (state.duty === 'off') return state
+      if (hasOrderOn(state) && choice === 'finish') return { askingOffline: false, offlineAfterOrder: true }
+      let { credits, ratings, shift } = state
+      const changes: Partial<GameState> = {}
+      if (hasOrderOn(state) && choice === 'cancel') {
+        // Cancelling costs credits and counts as a low rating, as on a real delivery app.
+        credits = Math.max(0, credits - CANCEL_PENALTY.credits)
+        ratings = [...ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT)
+        if (shift) shift = { ...shift, cancelled: shift.cancelled + 1, earnings: shift.earnings - CANCEL_PENALTY.credits }
+        Object.assign(changes, { mission: null, phase: 'toPickup', pendingReward: null, seconds: 0, crashes: 0, knocks: 0, missionNumber: state.missionNumber + 1, fiveStarStreak: 0 })
+      } else if (hasOrderOn(state)) {
+        return { askingOffline: true }
+      }
+      const finished = shift
+        ? summarize({ ...shift, gameHours: liveSky.totalHours - shift.startedTotal, realSeconds: (performance.now() - shift.startedReal) / 1000 })
+        : null
+      return {
+        ...changes,
+        credits,
+        ratings,
+        duty: 'off',
+        offer: null,
+        shift: null,
+        shiftSummary: finished,
+        askingOffline: false,
+        offlineAfterOrder: false,
+        lastReward: null,
+        messages: addMessages(state.messages, [choice === 'cancel' ? `Order cancelled. −${CANCEL_PENALTY.credits} credits, and it hurts the rating. You're offline now.` : 'Offline. Good shift, maga! Rest well.']),
+      }
+    }),
+
+  stayOnline: () => set({ askingOffline: false }),
+
+  makeOffer: () =>
+    set((state) => {
+      if (state.duty !== 'online' || state.mission || state.offer || !state.planner || state.offlineAfterOrder) return state
+      const mission = state.planner.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp), dayPeriod(liveSky.hours))
+      return { offer: { mission, expiresAt: performance.now() + OFFER_SECONDS * 1000 } }
+    }),
+
+  acceptOffer: () =>
+    set((state) => {
+      if (!state.offer || state.mission) return state
+      return {
+        offer: null,
+        mission: state.offer.mission,
+        phase: 'toPickup',
+        missionNumber: state.missionNumber + 1,
+        seconds: 0,
+        crashes: 0,
+        knocks: 0,
+        answers: [...state.answers, true].slice(-ANSWERS_KEPT),
+      }
+    }),
+
+  declineOffer: (missed = false) =>
+    set((state) => {
+      if (!state.offer) return state
+      const answers = [...state.answers, false].slice(-ANSWERS_KEPT)
+      const rate = acceptanceRate(answers) ?? 1
+      // Ravi says something the first time the rate drops below the line, not on every decline.
+      const before = acceptanceRate(state.answers) ?? 1
+      const warn = rate < LOW_ACCEPTANCE && before >= LOW_ACCEPTANCE
+      const lines = [missed ? 'Missed that one. No problem, next one is coming.' : '', warn ? `Acceptance is down to ${Math.round(rate * 100)}%, maga. Orders will come a bit slower.` : ''].filter(Boolean)
+      return { offer: null, answers, messages: addMessages(state.messages, lines) }
+    }),
+
+  dismissSummary: () => set({ shiftSummary: null }),
+
+  endDay: () =>
+    set((state) => {
+      if (state.duty !== 'off') return state
+      liveSky.setHoursTo = WAKE_HOUR
+      return {
+        day: state.day + 1,
+        shiftSummary: null,
+        messages: addMessages(state.messages, [`Good morning! Day ${state.day + 1}. Go online whenever you're ready.`]),
+      }
+    }),
+
+  setHome: (home) => set({ home }),
 
   setTelemetry: (telemetry) => set(telemetry),
   setAtBunk: (atBunk) => set({ atBunk }),
@@ -397,7 +621,12 @@ export const useGameStore = create<GameState>()(
       paintId: id,
       credits,
     }))),
-  recordRide: (metres) => set((state) => applyEvent(state, { type: 'ride', metres })),
+  recordRide: (metres) =>
+    set((state) => ({
+      ...applyEvent(state, { type: 'ride', metres }),
+      // While online, it counts towards the shift too, and a goal against the clock can run out.
+      ...(state.shift ? { shift: checkDeadline({ ...state.shift, distance: state.shift.distance + metres }) } : {}),
+    })),
   recordBoost: () => set((state) => applyEvent(state, { type: 'boost' })),
   chooseHelmet: (id) =>
     set((state) => chooseColour(state.credits, HELMETS, state.ownedHelmets, id, (owned, credits) => ({
@@ -430,6 +659,8 @@ export const useGameStore = create<GameState>()(
         messages: state.messages,
         ratings: state.ratings,
         fiveStarStreak: state.fiveStarStreak,
+        answers: state.answers,
+        day: state.day,
       }),
     },
   ),

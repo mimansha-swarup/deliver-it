@@ -76,7 +76,8 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
 export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const loading = useGameStore((state) => state.loading)
   const started = useGameStore((state) => state.started)
-  const missionReady = useGameStore((state) => state.mission !== null)
+  // Orders come once online; what's needed now is the planner that will make them.
+  const missionReady = useGameStore((state) => state.planner !== null)
   const startGame = useGameStore((state) => state.startGame)
   const planned = useLaunch((state) => state.planned)
   const built = useLaunch((state) => state.built)

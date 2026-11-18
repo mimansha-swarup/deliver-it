@@ -510,7 +510,8 @@ export type HouseKit = {
   gates: Gate[]
 }
 
-export type Gate = { x: number; z: number; width: number }
+/** `house`: a family house's gate, rather than a block of flats' or a school's. */
+export type Gate = { x: number; z: number; width: number; house?: boolean }
 
 export type StiltVehicle = { x: number; z: number; rotation: number; variation: number; car: boolean }
 
@@ -893,6 +894,7 @@ function dressBuildings(
         x: front.start[0] + front.alongX * ((gateFrom + gateTo) / 2) + front.outX * yard,
         z: front.start[1] + front.alongZ * ((gateFrom + gateTo) / 2) + front.outZ * yard,
         width: gateTo - gateFrom,
+        house: !isApartment,
       })
 
       // A poster on the street side of the wall, beside the gate, now and then.

@@ -80,6 +80,9 @@ export type Reward = {
   cleanRideCredits: number
   /** Extra for working after dark, once it's unlocked. */
   nightCredits: number
+  /** Extra for a busy time of day, such as the lunch rush, and its name. */
+  peakCredits: number
+  peakLabel: string
   crashes: number
   xp: number
   seconds: number

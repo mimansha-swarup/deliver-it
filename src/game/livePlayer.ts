@@ -14,6 +14,11 @@ export const liveSky = {
   rain: 0,
   /** How windy it is, from 0 to 1. */
   wind: 0.3,
+  /** The time of day, from 0 up to 24, and game hours since loading (it never wraps), for shift times. */
+  hours: 9,
+  totalHours: 0,
+  /** Set to an hour to move the clock there, as sleeping does. The Sky picks it up on its next frame. */
+  setHoursTo: null as number | null,
 }
 
 export const liveView = {

@@ -225,9 +225,14 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const spawn = spawnSlug ? findSpawn(data.roads, spawnSlug) : null
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
+  // Home: the gate of the house nearest where the ride starts, where the rider sleeps.
+  const home = houses.gates.filter((gate) => gate.house).reduce<{ x: number; z: number } | null>(
+    (best, gate) => (!best || Math.hypot(gate.x - start[0], gate.z - start[1]) < Math.hypot(best.x - start[0], best.z - start[1]) ? { x: gate.x, z: gate.z } : best),
+    null,
+  )
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -296,7 +301,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
 
@@ -336,7 +341,7 @@ export function World() {
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>
-        <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} /></Part>
+        <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} home={home} /></Part>
       </WarmAssets>
     </Suspense>
   )
