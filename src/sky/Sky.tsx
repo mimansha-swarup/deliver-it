@@ -4,7 +4,7 @@ import { isDebug } from '../dev/spawn'
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { useGameStore } from '../game/gameStore'
+import { isFirstVisit, useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { Rain } from './Rain'
@@ -14,6 +14,7 @@ import {
   formatClock,
   getSkyLook,
   stepSky,
+  SKY_RULES,
   type Rgb,
 } from './skyLogic'
 
@@ -135,13 +136,17 @@ function setColor(color: THREE.Color, [red, green, blue]: Rgb) {
   color.setRGB(red, green, blue, THREE.SRGBColorSpace)
 }
 
+/** The golden haze's own colour, and how far the haze moves to it from the horizon's colour at its thickest. */
+const HAZE_GOLD: Rgb = [0.93, 0.76, 0.52]
+const HAZE_WARMTH = 0.35
+
 /** Past this much darkness, the phone shows a moon instead of a sun. */
 const NIGHT_ICON_LEVEL = 0.5
 
 /** Runs the clock and the weather, and paints the sky. Everything else reads `liveSky`. */
 export function Sky() {
   const { skyClouds, rainDrops } = useGameStore((state) => QUALITY_PRESETS[state.quality])
-  const state = useRef(createSkyState())
+  const state = useRef(createSkyState(isFirstVisit ? SKY_RULES.firstStartHour : SKY_RULES.startHour))
   // Debug: the clock and the weather, to set from the console (`__deliverItSky` with ?debug).
   useEffect(() => {
     if (isDebug()) (window as unknown as { __deliverItSky?: unknown }).__deliverItSky = state.current
@@ -187,7 +192,15 @@ export function Sky() {
     uniforms.uDrift.value = drift.current
     uniforms.uDrawClouds.value = skyClouds
 
-    if (scene.fog) setColor(scene.fog.color, look.horizon)
+    // The haze is golden where the sun is up: the horizon's colour, warmed as the haze thickens.
+    if (scene.fog) {
+      const warm = HAZE_WARMTH * look.haze * (1 - look.night)
+      setColor(scene.fog.color, [
+        look.horizon[0] + (HAZE_GOLD[0] - look.horizon[0]) * warm,
+        look.horizon[1] + (HAZE_GOLD[1] - look.horizon[1]) * warm,
+        look.horizon[2] + (HAZE_GOLD[2] - look.horizon[2]) * warm,
+      ])
+    }
     dome.current?.position.copy(camera.position)
 
     const skyTime = formatClock(sky.hours)

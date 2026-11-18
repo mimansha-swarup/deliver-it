@@ -32,3 +32,11 @@ export function skipTransparencyPass(pass: N8AOPostPass | null) {
   pass.autoDetectTransparency = false
   pass.configuration.transparencyAware = false
 }
+
+/**
+ * The sun's light in the haze. `hazeGlow` is how bright the air glows looking towards the sun
+ * (sunHaze.ts), at full sun and the thickest haze. `fullLight` is the sun's light at which it's
+ * at full strength. The shafts shine from a disc `discRadius` across, `discDistance` away, with
+ * `shaftSamples` steps from each pixel towards it, each adding `shaftWeight`.
+ */
+export const SUN = { hazeGlow: 0.55, fullLight: 3, discRadius: 22, discDistance: 900, shaftSamples: 48, shaftWeight: 0.35 }

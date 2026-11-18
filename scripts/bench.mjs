@@ -34,6 +34,9 @@ const PROFILE = args.includes('--profile')
 /** --ride: ride along the street on one quality at the screen's own resolution, as a player would, and count stutters. */
 const RIDE = args.includes('--ride')
 const RIDE_QUALITY = option('quality', 'High')
+/** The time of day, set before measuring with a clear sky, so runs compare: 9 as the old baselines (a first visit now starts at 17:30). */
+const HOUR = Number(option('hour', '9'))
+const SET_SKY = `{ const sky = window.__deliverItSky; if (sky) { sky.hours = ${HOUR}; sky.weather = 'clear'; sky.weatherLeft = 9999; sky.clouds = 0.2; sky.rain = 0 } }`
 /** --dpr 2: emulate a sharp (Retina) screen, whatever screen Chrome opens on. */
 const SCREEN_DPR = Number(option('dpr', '0'))
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
@@ -131,6 +134,7 @@ const TIMER = `(() => {
 
 const measure = (quality, dpr) => `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  ${SET_SKY}
   ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
   window.__deliverItLockDpr = ${dpr}
   await sleep(4000)
@@ -175,6 +179,7 @@ const FLOOR = `(async () => {
 /** Rides forward on the chosen quality and records every frame. */
 const RIDE_RUN = (quality) => `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  ${SET_SKY}
   ;[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click()
   await sleep(3000)
   const { gl } = window.__deliverIt

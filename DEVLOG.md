@@ -9230,3 +9230,46 @@ same machine: High 60 fps, no frames over 20 ms (before: 60, none). Low 54 fps w
 over 20 ms (before: 52 fps, 9). The Low hitches were there before; the machine was busier
 than for the earlier baselines (the dev server and another game tab were open). The ride now
 starts 0.5–0.9 s later than before the world pass, most of it the building setback (entry 157).
+
+## 2026-11-18: Entry 161, golden hour, sun in the haze, warmer mornings, a stronger grade
+
+### What I did
+- **A first visit starts at golden hour.** With no saved progress (`isFirstVisit`, read before
+  the store saves anything), the clock starts at 17:30 instead of 9:00. Through the evening's
+  golden hour (16:45 to 18:24) the clock runs at half speed, so it lasts about two and a half
+  real minutes rather than one.
+- **The haze glows towards the sun** (`src/world/sunHaze.ts`): one pass over the picture, reading
+  depth, before the tone mapping. Looking towards the sun the air glows with its light, more
+  the further away what you see is, so the end of a street turns gold and trees and buildings
+  stand dark against it. Every quality has it, Low too.
+- **Sun shafts through leaves and between buildings** on Medium and High (`sunShafts` in
+  qualitySettings.ts): postprocessing's `GodRays`, from a disc where the sun is that's never
+  drawn itself (the pass draws it in a scene of its own), at half resolution with 48 samples.
+- **Stronger warm haze**: 25% haze halfway to the draw distance (was 21%), and the haze's
+  colour moves from the horizon's towards gold as it thickens.
+- **Warmer mornings** (6:30 to 9:30): more of the warm sun colour, thicker haze, a warmer
+  horizon, and the sky's fill, which lights the shade, moved 40% towards a warm white. A
+  street in morning shade was a cool blue-grey; now it's neutral and warm.
+- **The grade**: contrast 0.42 (was 0.3), and a touch of green added to the midtones
+  (most at middle grey, none in black or white), so leaves and grass read alive under the warm
+  light without greening the sky or the shadows. Still the one LUT over everything.
+
+`scripts/bench.mjs` takes `--hour` (9 by default, as the old baselines), as a fresh profile is
+now a first visit and would ride at 17:30.
+
+### Lessons
+- `getViewPosition` belongs to postprocessing's own depth materials, not to effect shaders. An
+  effect rebuilds the view ray from its own inverse projection.
+- A shafts disc added to the scene covered the sky's sun, which is brighter, and showed as a
+  dark sun in a bright ring.
+
+### Performance (riding Sarjapur Road, back to back with a build from before the world pass)
+| | High work, ms | Low work, ms | FPS High / Low |
+| --- | --- | --- | --- |
+| 9:00, before | 4.8 | 3.5 | 60 / 54 |
+| 9:00, now | 5.0 | 3.7 | 60 / 60 |
+| 17:18, before | 5.1 | 4.3 | 60 / 60 |
+| 17:18, now | 5.6 | 3.6 | 60 / 60 |
+
+The shafts cost about half a millisecond on High with the sun low. The haze glow doesn't show
+on Low.

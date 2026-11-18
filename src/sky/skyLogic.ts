@@ -30,6 +30,12 @@ export const SKY_RULES = {
   /** The clock runs this much faster after dark, so most riding is in daylight. */
   nightClockSpeed: 2,
   startHour: 9,
+  /** A first visit (no saved progress) starts at golden hour instead, with the low sun across the streets. */
+  firstStartHour: 17.5,
+  /** The clock runs at this speed through the evening's golden hour, so it lasts a few real minutes. */
+  goldenClockSpeed: 0.5,
+  goldenClockFrom: 16.75,
+  goldenClockTo: 18.4,
   /** How long one weather lasts, in real seconds. */
   minWeatherTime: 45,
   maxWeatherTime: 110,
@@ -122,6 +128,22 @@ export const CLEAR_SKY = {
   goldenWarmth: 0.2,
   goldenAmbient: 0.82,
   goldenBounce: 0.75,
+  /**
+   * Mornings (6:30 to 9:30) are warmer still: Bengaluru's morning light through dust and
+   * smoke is a soft gold, not the cool blue-white of an empty sky. More of the warm sun colour,
+   * and a thicker haze, at the peak.
+   */
+  morningWarmth: 0.3,
+  morningHaze: 0.2,
+  /** In the morning the sky's fill, which lights the shade, and the horizon move this far to warm. */
+  morningFill: 0.4,
+  morningFillColor: [1, 0.88, 0.74] as Rgb,
+  morningHorizon: 0.35,
+}
+
+/** 1 through the morning, 6:30 to 9:30, easing in and out over half an hour. */
+function morningHours(hours: number): number {
+  return smoothstep(6, 6.5, hours) * (1 - smoothstep(9.5, 10, hours))
 }
 
 /** 1 through the riding windows (8 to 11 and 4 to 6), easing in and out over half an hour. */
@@ -149,10 +171,10 @@ function smoothstep(start: number, end: number, value: number): number {
   return t * t * (3 - 2 * t)
 }
 
-export function createSkyState(): SkyState {
+export function createSkyState(hours: number = SKY_RULES.startHour): SkyState {
   const { clouds, rain, wind } = WEATHERS.clear
   return {
-    hours: SKY_RULES.startHour,
+    hours,
     weather: 'clear',
     weatherLeft: SKY_RULES.minWeatherTime,
     clouds,
@@ -186,7 +208,8 @@ export function changeWeather(state: SkyState, random: () => number) {
  */
 export function stepSky(state: SkyState, dt: number, random: () => number = Math.random, clockScale = 1) {
   const isNight = state.hours < 5.5 || state.hours >= 18.5
-  const clockSpeed = (isNight ? SKY_RULES.nightClockSpeed : 1) * clockScale
+  const isGolden = state.hours >= SKY_RULES.goldenClockFrom && state.hours < SKY_RULES.goldenClockTo
+  const clockSpeed = (isNight ? SKY_RULES.nightClockSpeed : isGolden ? SKY_RULES.goldenClockSpeed : 1) * clockScale
   state.hours = (state.hours + (dt * clockSpeed * 24) / SKY_RULES.dayLength) % 24
 
   state.weatherLeft -= dt
@@ -239,7 +262,9 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
   // A clear sky is a deeper blue overhead (not at the horizon, which stays hazy).
   const clear = 1 - smoothstep(CLEAR_SKY.cloudsFrom, CLEAR_SKY.cloudsTo, clouds)
   const golden = goldenHours(hours) * clear
+  const morning = morningHours(hours) * clear
   zenith = mixColor(zenith, CLEAR_SKY.zenith, clear * daylight * (1 - dusk))
+  horizon = mixColor(horizon, DUSK_HORIZON, morning * CLEAR_SKY.morningHorizon)
 
   // Cloud cover greys everything, and dims it after dark too.
   const cover = smoothstep(0.3, 1, clouds)
@@ -263,7 +288,7 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
       ? mixColor(
           mixColor(LOW_SUNLIGHT, SUNLIGHT, smoothstep(0.05, 0.45, lightSun[1])),
           CLEAR_SKY.sunColor,
-          Math.min(1, clear * CLEAR_SKY.sunWarmth + golden * CLEAR_SKY.goldenWarmth),
+          Math.min(1, clear * CLEAR_SKY.sunWarmth + golden * CLEAR_SKY.goldenWarmth + morning * CLEAR_SKY.morningWarmth),
         )
       : MOONLIGHT,
     lightIntensity:
@@ -275,12 +300,12 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
       (1 - cover * 0.12) *
       mix(1, CLEAR_SKY.ambient, clear * daylight) *
       mix(1, CLEAR_SKY.goldenAmbient, golden * daylight),
-    ambientColor: mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight),
+    ambientColor: mixColor(mixColor(NIGHT_AMBIENT, DAY_AMBIENT, daylight), CLEAR_SKY.morningFillColor, morning * CLEAR_SKY.morningFill),
     groundColor: mixColor(mixColor(NIGHT_GROUND, DAY_GROUND, daylight), [0, 0, 0], (1 - CLEAR_SKY.goldenBounce) * golden * daylight),
     // Thickest with the sun low, thinner at noon and after dark. Cloud thickens it too.
     haze: Math.min(
       1,
-      mix(NIGHT_HAZE, mix(1, NOON_HAZE, smoothstep(0.15, 0.5, sunHeight)), daylight) + cover * 0.3,
+      mix(NIGHT_HAZE, mix(1, NOON_HAZE, smoothstep(0.15, 0.5, sunHeight)), daylight) + cover * 0.3 + morning * CLEAR_SKY.morningHaze,
     ),
     zenith,
     horizon,

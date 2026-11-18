@@ -11,8 +11,13 @@ export const GRADE = {
   warmth: [1.04, 1, 0.9] as const,
   /** 1 keeps colours as they are; lower greys them towards their brightness. */
   saturation: 0.88,
-  /** A gentle S-curve: deeper darks and brighter lights. AgX alone is a little flat. */
-  contrast: 0.3,
+  /** An S-curve: deeper darks and brighter lights. AgX alone is a little flat. */
+  contrast: 0.42,
+  /**
+   * Added to the midtones (most at middle grey, none in black or white): a touch of green, so
+   * leaves and grass read alive under the warm light, without greening the sky or the shadows.
+   */
+  midtoneTint: [-0.008, 0.022, -0.006] as const,
   /** Lifts black to a faded warm brown, like old film or sun-bleached paint. 0 keeps true black. */
   fadedBlack: 0.025,
   fadedBlackTint: [1, 0.86, 0.72] as const,
@@ -25,6 +30,9 @@ export function gradeColor(red: number, green: number, blue: number): [number, n
   let rgb = [red * GRADE.warmth[0], green * GRADE.warmth[1], blue * GRADE.warmth[2]]
   const brightness = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
   rgb = rgb.map((channel) => brightness + (channel - brightness) * GRADE.saturation)
+  const middle = Math.min(1, Math.max(0, brightness))
+  const midtones = 4 * middle * (1 - middle)
+  rgb = rgb.map((channel, index) => channel + GRADE.midtoneTint[index] * midtones)
   rgb = rgb.map((channel) => {
     const value = clamp01(channel)
     const curve = value * value * (3 - 2 * value)

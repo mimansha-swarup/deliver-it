@@ -379,6 +379,21 @@ function tallyDelivery(shift: ShiftStats, reward: Reward, earned: number, onTime
   }
 }
 
+/** Where progress is saved in the browser. */
+const SAVE_KEY = 'slikk-it-progress'
+
+/**
+ * Whether this is a first visit: no progress saved yet when the page loaded. Read before the
+ * store is made, as the store saves itself from then on. A first visit starts at golden hour.
+ */
+export const isFirstVisit: boolean = (() => {
+  try {
+    return localStorage.getItem(SAVE_KEY) === null
+  } catch {
+    return false
+  }
+})()
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -792,7 +807,7 @@ export const useGameStore = create<GameState>()(
     }),
     {
       // Kept from the project's earlier name, so existing saves still load.
-      name: 'slikk-it-progress',
+      name: SAVE_KEY,
       version: 1,
       // Only progress and settings are saved. Everything else starts fresh on each visit.
       partialize: (state) => ({

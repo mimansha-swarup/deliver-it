@@ -28,6 +28,8 @@ type QualityPreset = {
   ambientOcclusion: 'off' | 'fast' | 'balanced'
   /** A soft glow around the brightest lights. */
   bloom: boolean
+  /** Sun shafts through leaves and between buildings when the sun is low. The sun's haze glow is on every quality. */
+  sunShafts: boolean
   /**
    * Smoothing jagged edges, as an effect on the finished picture. FXAA is
    * cheapest, SMAA sharper. Multisampling looked best but cost about 12 ms a
@@ -68,6 +70,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSoftness: 1,
     ambientOcclusion: 'off',
     bloom: false,
+    sunShafts: false,
     antialiasing: 'fxaa',
     windows: false,
     surfaces: 'plain',
@@ -92,6 +95,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSoftness: 2,
     ambientOcclusion: 'fast',
     bloom: true,
+    sunShafts: true,
     antialiasing: 'smaa',
     windows: true,
     surfaces: 'color',
@@ -118,6 +122,7 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     shadowSoftness: 3,
     ambientOcclusion: 'balanced',
     bloom: true,
+    sunShafts: true,
     antialiasing: 'smaa',
     windows: true,
     surfaces: 'bumps',
