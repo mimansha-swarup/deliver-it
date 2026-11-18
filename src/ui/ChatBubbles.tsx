@@ -25,11 +25,11 @@ function CustomerChatDirector() {
 
     return useGameStore.subscribe((state, previous) => {
       // Ravi's messages appear as chat while online.
+      // Ids only grow, so anything above the last one seen is new, even if older ones were replaced.
       const newest = state.messages[0]
       if (newest && newest.id !== seenMessage) {
-        const seenAt = state.messages.findIndex((message) => message.id === seenMessage)
-        const fresh = state.messages.slice(0, seenAt === -1 ? 3 : Math.min(seenAt, 3))
-        seenMessage = newest.id
+        const fresh = state.messages.filter((message) => message.id > (seenMessage ?? -Infinity))
+        seenMessage = Math.max(newest.id, seenMessage ?? -Infinity)
         if (state.duty === 'online') for (const message of [...fresh].reverse()) state.postChat('dispatch', RAVI, message.text)
       }
 

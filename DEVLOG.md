@@ -8889,3 +8889,14 @@ At full speed a single shift swept through most of a day, lunch rush and all, in
   (0.75) the least patient. Patience stretches the timer as they feel it, so an impatient
   customer turns Fuming sooner after the timer runs out. For a customer of usual patience, Fuming
   arrives at about 2.1× the timer; for Vikram about 1.5×; for Lakshmi aunty about 3.1×.
+
+## 2026-11-18: Entry 144, one welcome and one goal per shift
+
+### What I did
+Going online posted Ravi's welcome and the shift goal once each time, but his messages are saved,
+so every shift's welcome and goal stayed in his thread: after a few shifts it read like the same
+messages over and over. These lines are now tagged, and going online replaces the last shift's
+instead of adding to them (old saves' untagged copies are tidied up by their wording). The chat
+picks out new messages by id, so a replaced one can't make it re-post older lines.
+
+Checked: online, offline, online again leaves one welcome and one goal.

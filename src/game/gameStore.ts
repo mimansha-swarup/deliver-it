@@ -209,12 +209,29 @@ export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string
 /** How many chat lines are kept; the HUD shows the last few. */
 const CHAT_KEPT = 12
 
-export type Message = { id: number; text: string }
+/** `tag`: a message that's replaced, not added to, when sent again, such as the shift's welcome and goal. */
+export type Message = { id: number; text: string; tag?: string }
 
 /** How many of Ravi's messages are kept. */
 const MESSAGES_KEPT = 15
 
 let nextMessageId = Date.now()
+
+/**
+ * Ravi's lines that stand for something current, such as this shift's welcome and goal: each
+ * replaces the earlier one with its tag, so going online again doesn't stack them up.
+ */
+/** How tagged lines began before they had tags, so saves from then are tidied up too. */
+const UNTAGGED_STARTS: Record<string, string> = { online: "You're online", goal: 'Shift goal', acceptance: 'Your acceptance is' }
+
+function replaceTagged(messages: Message[], lines: { tag: string; text: string }[]): Message[] {
+  const tags = new Set(lines.map(({ tag }) => tag))
+  const isOld = (message: Message) =>
+    message.tag ? tags.has(message.tag) : [...tags].some((tag) => UNTAGGED_STARTS[tag] && message.text.startsWith(UNTAGGED_STARTS[tag]))
+  const kept = messages.filter((message) => !isOld(message))
+  const added = lines.map(({ tag, text }) => ({ id: nextMessageId++, text, tag })).reverse()
+  return [...added, ...kept].slice(0, MESSAGES_KEPT)
+}
 
 /** Puts Ravi's new lines on top of the list, newest first, and keeps the list short. */
 function addMessages(messages: Message[], lines: string[]): Message[] {
@@ -532,14 +549,18 @@ export const useGameStore = create<GameState>()(
       const period = dayPeriod(liveSky.hours)
       const goal = createShiftGoal(liveSky.hours, levelFromXp(state.xp), Math.random)
       const rate = acceptanceRate(state.answers)
-      const lines = [`You're online, maga. ${period.label} now. Orders coming!`, `Shift goal (optional): ${goal.text}. Bonus ${goal.bonus} credits.`]
-      if (rate !== null && rate < LOW_ACCEPTANCE) lines.push(`Your acceptance is ${Math.round(rate * 100)}%. Take a few more, okay? Orders come slower when it's low.`)
+      // The welcome and the goal are this shift's: they replace the last shift's rather than pile up.
+      const lines = [
+        { tag: 'online', text: `You're online, maga. ${period.label} now. Orders coming!` },
+        { tag: 'goal', text: `Shift goal (optional): ${goal.text}. Bonus ${goal.bonus} credits.` },
+      ]
+      if (rate !== null && rate < LOW_ACCEPTANCE) lines.push({ tag: 'acceptance', text: `Your acceptance is ${Math.round(rate * 100)}%. Take a few more, okay? Orders come slower when it's low.` })
       return {
         duty: 'online',
         shift: newShift(goal, liveSky.hours, liveSky.totalHours, performance.now()),
         shiftSummary: null,
         offlineAfterOrder: false,
-        messages: addMessages(state.messages, lines),
+        messages: replaceTagged(state.messages, lines),
       }
     }),
 
