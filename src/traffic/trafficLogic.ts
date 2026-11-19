@@ -426,6 +426,11 @@ export type TrafficWorld = {
   roadLanes: Lane[]
   /** The flyovers whose lanes are among `roadLanes` (deckLanes.ts). */
   decks: Flyover[]
+  /**
+   * A rush-hour jam: traffic within `reach` of it crawls, the more the nearer and the higher
+   * `amount` (0 to 1), and more of the traffic appears there. Null when there's none.
+   */
+  jam: { x: number; z: number; reach: number; amount: number } | null
   walkLanes: Lane[]
   vehicles: Vehicle[]
   pedestrians: Pedestrian[]
@@ -488,6 +493,9 @@ function findLaneInRing(
   }
   return -1
 }
+
+/** At the heart of a rush-hour jam at its height, traffic's speed is cut by this share. */
+const JAM_SLOWS = 0.68
 
 /** The busiest street's traffic weight: a lane is picked in proportion to its own weight against this. */
 const MAX_LANE_WEIGHT = 10
@@ -660,6 +668,7 @@ export function createTrafficWorld(
     collisions,
     breakers: roadLanes.map((lane) => (lane.startNode < 0 ? [] : breakersOnLink(lane.startNode, lane.endNode))),
     decks,
+    jam: null,
     riderPusher,
     loose,
     roadLanes,
@@ -1333,7 +1342,11 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider, downed)
   const hasWaited = blockedBy === 'crossing' && vehicle.waiting > rules.patience
   const keep = vehicle.nimble ? rules.nimbleGap : rules.carGap
-  const free = hasWaited ? vehicle.cruiseSpeed : Math.min(vehicle.cruiseSpeed, Math.max(0, gap - keep))
+  // In a rush-hour jam it crawls: down to about a third of its speed at the jam's heart.
+  const jam = world.jam
+  const jammed = jam ? jam.amount * Math.max(0, 1 - Math.hypot(vehicle.x - jam.x, vehicle.z - jam.z) / jam.reach) : 0
+  const cruise = vehicle.cruiseSpeed * (1 - JAM_SLOWS * jammed)
+  const free = hasWaited ? cruise : Math.min(cruise, Math.max(0, gap - keep))
 
   // Patience never overrules a red light, unless this one doesn't stop for them at all.
   // The speed that stops it in time is sqrt(2 x braking x distance).
@@ -1942,6 +1955,11 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
 
 /** Advances everything. Only the first `vehicleCount` and `pedestrianCount` are in play. */
 /** Moves the traffic's density towards the time of day's, gently, so a change of period isn't a jump. */
+/** Sets (or lifts, with null) the rush-hour jam: see `TrafficWorld.jam`. */
+export function setJam(world: TrafficWorld, jam: TrafficWorld['jam']) {
+  world.jam = jam
+}
+
 export function easeDensity(world: TrafficWorld, target: number, dt: number) {
   world.density += (target - world.density) * Math.min(1, dt * 0.2)
 }
@@ -1998,9 +2016,12 @@ export function stepTraffic(
         mountRider(vehicle, vehicle.thrownRider)
       }
       // Busier streets take more of the traffic (streetPresets.ts), and buses keep to the main roads.
+      // In a jam, lanes near its heart take traffic whatever their street's weight: it bunches there.
+      const jam = world.jam
+      const inJam = (lane: Lane) => jam !== null && Math.hypot(lane.startX - jam.x, lane.startZ - jam.z) < jam.reach * 0.6 && random() < jam.amount
       const isFree = (lane: Lane) =>
         (vehicle.kind !== 'bus' || lane.buses === true) &&
-        random() * MAX_LANE_WEIGHT < (lane.weight ?? 1) &&
+        (inJam(lane) || random() * MAX_LANE_WEIGHT < (lane.weight ?? 1)) &&
         activeVehicles.every(
           (other) =>
             other.lane === -1 ||

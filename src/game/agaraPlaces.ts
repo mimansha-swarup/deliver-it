@@ -12,6 +12,8 @@ export const agaraPlaces = {
   jagannath: null as Spot | null,
   /** Where Outer Ring Road meets the flyover's ramp: the Agara junction. */
   junction: null as Spot | null,
+  /** The traffic policeman at the junction's lights: where he stands, and which signal junction he watches. */
+  police: null as (Spot & { junction: number }) | null,
   /** The lake's middle, and how far out its water reaches. */
   lake: null as (Spot & { reach: number }) | null,
   /** Whether a flyover deck or the viaduct is overhead at a point. */

@@ -49,6 +49,13 @@ const ITEMS: Item[] = [
   { item: 'A light kurti', care: 'none', note: 'For lunch with the office gang. Thank you!', when: ['lunch'] },
   { item: 'Comfy pyjamas', care: 'none', note: 'Late night order, sorry! The gate is open.', when: ['night'] },
   { item: 'A leather handbag', care: 'none', note: "Bruno will bark at the gate. He's friendly!" },
+  // Local to the temples and offices round Agara.
+  { item: 'Jasmine and marigold garlands', care: 'fragile', note: "For the evening pooja. Please don't crush the flowers!", when: ['morning', 'evening'] },
+  { item: 'A dozen tender coconuts', care: 'none', note: 'For the function at home. Heavy, I know. Thank you, maga!', when: ['morning', 'lunch'] },
+  { item: 'A pooja thali set', care: 'fragile', note: 'Brass lamps and a glass of kumkum. Gently over the humps please.', when: ['morning', 'evening'] },
+  { item: 'Agarbatti, camphor and oil', care: 'none', note: "It's Saturday, Hanuman's day. Before the aarti if you can!", when: ['morning', 'evening'] },
+  { item: 'Six office lunch boxes', care: 'event', note: 'Team lunch at one sharp. The whole floor is hungry!', when: ['lunch'] },
+  { item: 'Lunch for the stand-up meeting', care: 'event', note: 'Meeting ends at 1:30 and they eat at their desks. Bega banni!', when: ['lunch'] },
 ]
 
 /**

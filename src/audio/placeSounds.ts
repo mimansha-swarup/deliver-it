@@ -1,4 +1,5 @@
 import { agaraPlaces } from '../game/agaraPlaces'
+import { rushHour } from '../game/rush'
 import { noiseLoop } from './ambience'
 
 /*
@@ -35,8 +36,6 @@ const between = ([low, high]: [number, number]) => low + Math.random() * (high -
 /** 1 at a place, falling to 0 at `reach` metres from it. */
 const nearness = (spot: { x: number; z: number } | null, x: number, z: number, reach: number) =>
   spot ? Math.max(0, 1 - Math.hypot(spot.x - x, spot.z - z) / reach) : 0
-/** How much of a rush hour it is, 0 to 1: peaks at 9 and 18, an hour and a half either side. */
-export const rushHour = (hours: number) => Math.max(0, 1 - Math.min(Math.abs(hours - 9), Math.abs(hours - 18)) / 1.5)
 
 export function createPlaceSounds(context: AudioContext, output: AudioNode) {
   // The drone: a low fifth, each note two tones a hair apart so it shimmers, breathing slowly.

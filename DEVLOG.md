@@ -10395,3 +10395,38 @@ that name: the shader failed to compile and the lake drew as bare earth until I 
 ### Not verified
 I can't hear the game: the sounds run without errors beside the temple at 18:30 in rain, but their
 levels and character need your ear.
+
+## 2026-11-20: Entry 208, Agara: life under the flyover, night, discovery, rush hour and the police
+
+### Under the flyover and at the bus stop (agaraPlacement.ts)
+An auto stand of four in the shade between the pillars by the junction, a coconut seller's stall at its
+end; seven people waiting at the Agara bus stop (OSM's stop nearest the temple, where buses already pull
+in), and ten more from 7:30 to 10:30 and 16:30 to 19:30. Parked bikes, tea stalls and pillar posters
+under the decks were there already.
+
+### Night
+Street lights along the flyover decks where they're up (every 32 m, alternate sides; heads that glow
+with the street lamps). Temples are floodlit in their own colours, as the statue is.
+
+### Discovery (game/discovery.ts, ui/Discovery.tsx)
+The "Agara / ಅಗರ" card on arriving (again only after leaving by 750 m); a "Namma spots" app in the phone
+with three spots ticked off when found (the statue from up on the flyover, the lake shore between 17:00
+and 19:00, a temple after dark), kept on the device; finding the statue from the deck also nudges
+towards the Camera app.
+
+### Rush hour, surge, police, orders, water (game/rush.ts, traffic/JunctionWatch.tsx)
+- **Jam**: rush hour peaks at 9:00 and 18:00, an hour and a half either side. Within 420 m of the Agara
+  junction traffic's speed is cut by up to 68% and new traffic appears there first. Measured within 250 m
+  of the junction: 21 km/h at 13:00, 12 km/h at 18:00.
+- **Surge**: deliveries handed over in the rush pay up to +30% of base and distance pay on top of the
+  period's share (shown as "Rush-hour surge"); Ravi says so when it starts, if the rider's online.
+- **Traffic police** at the lights nearest the junction (53 m from it), by a kiosk: riding over a stop line
+  there on red at more than 9 km/h is a ₹120 fine (never below an empty wallet), in the ledger, with a
+  message; no second fine for 25 s. Tested: six crossings on green or yellow free, the seventh on red fined.
+- **Local orders**: garlands, tender coconuts, a pooja thali, agarbatti and oil, office lunch boxes.
+- **Water at low spots**: broad puddles along the edges of the roads within 170 m of the junction, on
+  their own dice so the rest of the map's potholes and puddles haven't moved. They fill with the rain
+  like the others.
+
+### Not verified
+The low-spot puddles' count and look in rain; the Namma spots app's layout in the phone (nine apps now).

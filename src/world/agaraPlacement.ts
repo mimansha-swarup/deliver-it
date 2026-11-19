@@ -49,6 +49,8 @@ export type Agara = {
   templeSpawn: { name: string; x: number; z: number; heading: number } | null
   /** The flyover decks near the statue (both carriageways), whose view of him is kept clear of trees. */
   viewDecks: Flyover[]
+  /** The traffic policeman at the junction's lights, set once the lights are placed (World.tsx). */
+  police: { x: number; z: number; rotation: number } | null
   /** The temple's door, where its life gathers. */
   door: { x: number; z: number } | null
   /** The Jagannath temple nearest the statue, for the map. */
@@ -86,7 +88,7 @@ export function planAgara({
   /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
   lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, viewDecks: [], door: null, jagannath: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, viewDecks: [], police: null, door: null, jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))

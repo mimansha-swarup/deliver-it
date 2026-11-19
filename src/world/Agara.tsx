@@ -399,7 +399,18 @@ export function Agara({ agara }: { agara: AgaraPlan }) {
   const details = useMemo(() => {
     const stalls = placeAll(agara.stalls, ({ variation }) => createStallGeometry(variation >= 0.5))
     const footwear = placeAll(agara.footwear, createFootwearGeometry)
-    const parts = [stalls, footwear].filter((part): part is THREE.BufferGeometry => part !== null)
+    // The traffic police's kiosk beside him: a striped drum to stand on, under an umbrella.
+    const kiosk = agara.police
+      ? merge([
+          solid(new THREE.CylinderGeometry(0.75, 0.8, 0.35, 12).translate(0.9, 0.175, 0), '#e9e6dc'),
+          solid(new THREE.CylinderGeometry(0.76, 0.76, 0.12, 12).translate(0.9, 0.2, 0), '#2b3a55'),
+          box([0.06, 2.3, 0.06], [0.9, 1.5, 0], '#4a4d51'),
+          solid(new THREE.ConeGeometry(1.0, 0.4, 10).translate(0.9, 2.75, 0), '#e9e6dc'),
+        ])
+          .rotateY(agara.police.rotation)
+          .translate(agara.police.x, 0, agara.police.z)
+      : null
+    const parts = [stalls, footwear, kiosk].filter((part): part is THREE.BufferGeometry => part !== null)
     return parts.length ? merge(parts) : null
   }, [agara])
   useEffect(() => () => {

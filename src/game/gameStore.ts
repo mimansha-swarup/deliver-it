@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { surgeShare } from './rush'
 import { STATIONS } from '../audio/stations'
 import { applyUpgrades } from '../vehicle/tuning'
 import {
@@ -217,6 +218,8 @@ type GameState = Telemetry & {
   setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
   /** A line from Ravi: a message, a chat line while online, a peek on the phone. */
   raviSays: (text: string) => void
+  /** A fine: taken from the wallet (never below zero), written in the ledger, with word of it. */
+  fine: (label: string, amount: number, message: string) => void
   /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
   customerCancels: () => void
 }
@@ -505,6 +508,7 @@ export const useGameStore = create<GameState>()(
               streak: state.fiveStarStreak,
               nightPay,
               period: dayPeriod(liveSky.hours),
+              surge: surgeShare(liveSky.hours),
               frustration: state.frustration,
               roughness: state.rough,
             }),
@@ -724,6 +728,15 @@ export const useGameStore = create<GameState>()(
   setLastPosition: (lastPosition) => set({ lastPosition }),
   setWaypoint: (waypoint) => set({ waypoint }),
   raviSays: (text) => set((state) => ({ messages: addMessages(state.messages, [text]) })),
+  fine: (label, amount, message) =>
+    set((state) => {
+      const paid = Math.min(state.credits, amount)
+      return {
+        credits: state.credits - paid,
+        ledger: addLedger(state.ledger, state.day, [{ label, amount: -paid, kind: 'expense' }]),
+        messages: addMessages(state.messages, [message]),
+      }
+    }),
   setPlaces: (places) => set({ places }),
   setPhotoMode: (photoMode) => set({ photoMode }),
   extendOffer: (ms) => set((state) => (state.offer ? { offer: { ...state.offer, expiresAt: state.offer.expiresAt + ms } } : state)),

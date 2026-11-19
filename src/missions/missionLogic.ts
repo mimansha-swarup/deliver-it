@@ -29,6 +29,8 @@ export type RideRecord = {
   frustration?: number
   /** How roughly the order was carried, judged at the door. */
   roughness?: number
+  /** The rush-hour surge, as a share of base and distance pay (game/rush.ts). */
+  surge?: number
 }
 
 /**
@@ -40,7 +42,7 @@ export type RideRecord = {
 export function calculateReward(
   seconds: number,
   mission: Pick<Mission, 'kind' | 'tier' | 'dropCount' | 'onTimeSeconds' | 'story'>,
-  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period, frustration, roughness }: RideRecord = {},
+  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period, frustration, roughness, surge = 0 }: RideRecord = {},
 ): Reward {
   const rules = MISSION_RULES
   const { kind, tier, dropCount, onTimeSeconds, story } = mission
@@ -56,8 +58,9 @@ export function calculateReward(
     onTimeCredits: onTime ? rules.onTimeCredits + (rush ? rules.rushExtraCredits : 0) : 0,
     cleanRideCredits: crashes === 0 ? rules.cleanRideCredits : 0,
     nightCredits: nightPay ? Math.round((baseCredits + tier.extraCredits) * rules.nightPayShare) : 0,
-    peakCredits: period ? Math.round((baseCredits + tier.extraCredits) * period.payShare) : 0,
-    peakLabel: period?.label ?? '',
+    // The period's share, and the rush-hour surge on top of it (the jam on Outer Ring Road).
+    peakCredits: Math.round((baseCredits + tier.extraCredits) * ((period?.payShare ?? 0) + surge)),
+    peakLabel: surge > 0 ? 'Rush-hour surge' : (period?.label ?? ''),
     crashes,
     xp: rules.baseXp * dropCount + tier.extraXp + (rush && onTime ? rules.rushExtraXp : 0),
     seconds,

@@ -112,7 +112,11 @@ function walkStretch(graph: RoadGraph, start: number, first: number) {
 }
 
 /** Places the breakers, potholes and puddles. The seed never changes, so they're in the same places every time. */
-export function placeRoadFeatures(graph: RoadGraph): RoadFeatures {
+/**
+ * `lowSpots`: places where water collects in heavy rain (under a flyover, at a junction's dip): the
+ * roads within `reach` of each get broad puddles along their edges, on top of the usual ones.
+ */
+export function placeRoadFeatures(graph: RoadGraph, lowSpots: { x: number; z: number; reach: number }[] = []): RoadFeatures {
   const random = createRandom(20261115)
   const grid = createGrid()
   const breakers: SpeedBreaker[] = []
@@ -214,6 +218,29 @@ export function placeRoadFeatures(graph: RoadGraph): RoadFeatures {
         }
       }
     }
+  }
+
+  // Low spots: their own dice, so the rest of the map's potholes and puddles stay where they were.
+  const lowRandom = createRandom(20261120)
+  for (const spot of lowSpots) {
+    graph.links.forEach((links, from) => {
+      if (Math.hypot(graph.xs[from] - spot.x, graph.zs[from] - spot.z) > spot.reach) return
+      for (const { to, length, roadWidth } of links) {
+        if (to < from || length < 6 || lowRandom() > 0.55) continue
+        const t = 0.2 + lowRandom() * 0.6
+        const dirX = (graph.xs[to] - graph.xs[from]) / length
+        const dirZ = (graph.zs[to] - graph.zs[from]) / length
+        const radius = 1.5 + lowRandom() * 1.1
+        const side = lowRandom() < 0.5 ? -1 : 1
+        const across = side * Math.max(0, roadWidth / 2 - radius * 0.7)
+        const x = graph.xs[from] + dirX * length * t + dirZ * across
+        const z = graph.zs[from] + dirZ * length * t - dirX * across
+        if (nearBreaker(x, z)) continue
+        const puddle = { x, z, radius, rotation: lowRandom() * Math.PI * 2, variation: lowRandom() }
+        puddles.push(puddle)
+        grid.add('puddles', puddle, radius, x, z)
+      }
+    })
   }
 
   return {

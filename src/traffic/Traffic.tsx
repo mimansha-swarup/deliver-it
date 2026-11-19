@@ -10,6 +10,7 @@ import { playImpact, updateTrafficSounds } from '../audio/trafficSounds'
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
+import { JunctionWatch } from './JunctionWatch'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { PAVEMENT_HEIGHT, ROAD_HEIGHT } from '../world/surface'
@@ -1025,6 +1026,7 @@ export function Traffic({
   return (
     <>
       <LodCamera />
+      <JunctionWatch scooter={scooter} world={world} />
       {VEHICLES.map(({ kind, palette }) => {
         const items = inPlay.filter((vehicle) => vehicle.kind === kind)
         if (kind === 'bike') {

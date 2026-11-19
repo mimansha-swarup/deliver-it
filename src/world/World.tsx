@@ -453,7 +453,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const physics = createCrashPhysics(holder.rapier!, collisions)
   lap('parked scooters and physics')
   yield STEP
-  const features = placeRoadFeatures(graph)
+  // Water collects under the Agara flyover by the junction in heavy rain.
+  const features = placeRoadFeatures(graph, agara.spawn ? [{ x: agara.spawn.x, z: agara.spawn.z, reach: 170 }] : [])
   // Main roads are busier and have buses; quiet streets have less (streetPresets.ts).
   const streetAt = (x: number, z: number) => {
     const near = nearestRoadPiece(roadIndex, x, z, 4)
@@ -462,6 +463,25 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt, flyovers.decks)
   // Buses pull up at the shelters, which are at OSM's bus stops (landmarkPlacement.ts).
   setBusStops(traffic, cityLandmarks.stops)
+  // Traffic police at the lights nearest the Agara junction: jumping a red there is a fine (JunctionWatch.tsx).
+  agaraPlaces.police = null
+  agara.police = null
+  if (agara.spawn) {
+    let nearest: { post: (typeof traffic.signals.posts)[number]; distance: number } | null = null
+    for (const post of traffic.signals.posts) {
+      const distance = Math.hypot(post.x - agara.spawn.x, post.z - agara.spawn.z)
+      if (distance < 600 && (!nearest || distance < nearest.distance)) nearest = { post, distance }
+    }
+    if (nearest) {
+      const { post } = nearest
+      // Beside the pole, a step back from the kerb, watching the stop line.
+      const x = post.x + Math.cos(post.rotation) * 1.1
+      const z = post.z - Math.sin(post.rotation) * 1.1
+      agaraPlaces.police = { x, z, junction: post.junction }
+      agara.police = { x, z, rotation: post.rotation }
+      worldSurface.report.agara = { ...(worldSurface.report.agara ?? {}), policeMetresFromJunction: Math.round(nearest.distance) }
+    }
+  }
   if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic })
   lap('road features and traffic')
   yield STEP
@@ -494,6 +514,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
   // The sellers and devotees at Agara's temple door stand with the rest.
   shopPeople.standing.push(...agara.people)
+  // The traffic policeman at the junction's lights, facing the traffic he watches.
+  if (agara.police) shopPeople.standing.push({ x: agara.police.x, z: agara.police.z, heading: agara.police.rotation, body: 0, tint: 0.92, skin: 0.8, idle: IDLE_POSE.weight, phase: 1.3 })
   // Kids out playing on the sports pitches, which get their courts, hoops, nets and stumps (pitches.ts).
   for (const [i, { x, z, heading }] of planPitches(surfaceMap.pitches, collisions).entries())
     shopPeople.standing.push({ x, z, heading, body: 1, tint: (i * 0.61) % 1, skin: 0.72 + ((i * 0.17) % 0.33), idle: i % 3 === 0 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 3.1 })
