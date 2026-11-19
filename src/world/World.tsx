@@ -41,6 +41,7 @@ import { planAgara } from './agaraPlacement'
 import { planLakeLife } from './lakePlacement'
 import { LakeLife } from './LakeLife'
 import { mapMarkers } from '../game/mapMarkers'
+import { agaraPlaces } from '../game/agaraPlaces'
 import { Agara } from './Agara'
 import { Fences } from './Fences'
 import { buildStreetEdges } from './streetEdgeGeometry'
@@ -297,6 +298,13 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   worldSurface.report.lake = lakeLife.report
   const agara = planAgara({ worship, decks: flyoverDecks, surface: surfaceMap, roads: roadIndex, collisions, stops: cityLandmarks.stops, lake: lakeMiddle })
   worldSurface.report.agara = agara.report
+  // For sounds, the title card and the spots list: where things are (game/agaraPlaces.ts).
+  agaraPlaces.statue = agara.statue
+  agaraPlaces.temple = agara.door
+  agaraPlaces.jagannath = agara.jagannath
+  agaraPlaces.junction = agara.spawn
+  agaraPlaces.lake = lakeLife.birds
+  agaraPlaces.isUnderDeck = (x, z) => surfaceMap.isOverhead(x, z)
   // On the maps: the statue and the Jagannath temple.
   mapMarkers.list = [
     ...(agara.statue ? [{ x: agara.statue.x, z: agara.statue.z, text: 'Anjaneya Statue', color: '#e8862a' }] : []),

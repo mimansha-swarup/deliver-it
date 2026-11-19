@@ -55,6 +55,8 @@ export type BoundaryLoop = {
 }
 
 export type BoundaryReport = {
+  /** Temple gateways with a railing across them: their grounds aren't ridden in. */
+  templeGatesBarred: number
   loops: number
   panels: number
   gates: number
@@ -137,6 +139,7 @@ function pillar(at: GroundPoint, toward: GroundPoint, variation: number): FenceR
 
 export class BoundaryPlanner {
   readonly report: BoundaryReport = {
+    templeGatesBarred: 0,
     loops: 0,
     panels: 0,
     gates: 0,
@@ -300,7 +303,17 @@ export class BoundaryPlanner {
     for (const [end, toward] of ends) pillars.push(pillar(end, toward, variation))
     this.report.gates += openings.length
     for (const run of pillars) addWall(this.collisions, run.from, run.to, PILLAR)
-    return [...runs, ...pillars]
+    // A temple's grounds aren't for riding in: a steel railing stands across each gateway (people
+    // step round it), and it's solid.
+    const barred: FenceRun[] = []
+    if (kind === 'templeWall') {
+      for (const [from, to] of openings) {
+        barred.push({ from, to, kind: 'steelRailing', variation })
+        addWall(this.collisions, from, to, 0.2)
+        this.report.templeGatesBarred++
+      }
+    }
+    return [...runs, ...pillars, ...barred]
   }
 
   /** A point moved straight away from the nearest road until it's behind the footpath, or null. */

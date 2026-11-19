@@ -27,8 +27,6 @@ export const PLINTH = 10
 const NEAR_FLYOVER = 400
 /** The plinth is put on open ground within this far of the temple, the nearest spot that takes it. */
 const STATUE_REACH = 60
-/** Day 1 is a Monday, so day 6 is the first Saturday. */
-export const isSaturday = (day: number) => (((day - 1) % 7) + 7) % 7 === 5
 
 export type Agara = {
   statue: { x: number; z: number; rotation: number } | null
@@ -47,6 +45,8 @@ export type Agara = {
   templeSpawn: { name: string; x: number; z: number; heading: number } | null
   /** The flyover decks near the statue (both carriageways), whose view of him is kept clear of trees. */
   viewDecks: Flyover[]
+  /** The temple's door, where its life gathers. */
+  door: { x: number; z: number } | null
   /** The Jagannath temple nearest the statue, for the map. */
   jagannath: { x: number; z: number; name: string } | null
   report: Record<string, number>
@@ -82,7 +82,7 @@ export function planAgara({
   /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
   lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, templeSpawn: null, viewDecks: [], jagannath: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, templeSpawn: null, viewDecks: [], door: null, jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
@@ -210,6 +210,7 @@ export function planAgara({
   const doorX = inside[0] + frontX * out
   const doorZ = inside[1] + frontZ * out
   const facingOut = Math.atan2(frontX, frontZ)
+  agara.door = { x: doorX, z: doorZ }
   const free = (x: number, z: number, radius: number) => {
     const at = surface.at(x, z)
     return at !== Surface.Road && at !== Surface.Building && at !== Surface.Water && !isNearBuilding(collisions, x, z, radius)

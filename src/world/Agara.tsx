@@ -3,7 +3,8 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
-import { isSaturday, PLINTH, STATUE_HEIGHT, type Agara as AgaraPlan } from './agaraPlacement'
+import { isFestivalDay, isSaturday } from '../game/agaraPlaces'
+import { PLINTH, STATUE_HEIGHT, type Agara as AgaraPlan } from './agaraPlacement'
 import { ShopPeople } from './ShopPeople'
 import { box, colored, merge } from './simpleShapes'
 import { StiltParking } from './StiltParking'
@@ -431,7 +432,7 @@ export function Agara({ agara }: { agara: AgaraPlan }) {
       )}
       {details && <mesh geometry={details} material={plain} castShadow receiveShadow />}
       <StiltParking vehicles={agara.autos} carModels={AUTO_ONLY} drawDistance={120} />
-      {isSaturday(day) && agara.crowd.length > 0 && <ShopPeople people={crowd} />}
+      {(isSaturday(day) || isFestivalDay(day)) && agara.crowd.length > 0 && <ShopPeople people={crowd} />}
     </>
   )
 }

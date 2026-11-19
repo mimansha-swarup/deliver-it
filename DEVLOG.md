@@ -10372,3 +10372,26 @@ kalashas at the corners.
 ### A mistake caught
 My first reflection code called GLSL's `reflect` where the water's shader already has a variable of
 that name: the shader failed to compile and the lake drew as bare earth until I looked across it.
+
+## 2026-11-20: Entry 207, the temples' surroundings and the sounds of places
+
+### What I did
+- **Sounds of places** (audio/placeSounds.ts; made in code like all the game's sound, no recordings):
+  - Temple bells within 170 m of the Anjaneya and Jagannath temples: a struck bell every 5 to 12 s, every
+    1 to 3.5 s at the aarti (6 to 8 and 18 to 20), the Anjaneya bell the deeper; a soft low drone within
+    70 m. Both fade with distance; silent from 21:30 to 5:00.
+  - Horns at the Agara junction within 230 m: short impatient blasts every 3.5 to 9 s, every 0.8 to 2.6 s
+    at rush hour (peaks at 9:00 and 18:00), far fewer at night.
+  - Rain on the flyover: up on a deck, the hiss of rain on open concrete; under one, the rain drumming
+    on the deck overhead and drips from its edge.
+- **Where things are** for code outside the world: game/agaraPlaces.ts (temple door, statue, Jagannath
+  temple, junction, lake, whether a deck is overhead), and the calendar: Saturdays, and festival days
+  (every ninth day from day 4).
+- **Crowds**: the Saturday crowd at the Anjaneya temple's door also gathers on festival days.
+- **Temple grounds aren't ridden in**: every temple compound's gateway has a solid steel railing across
+  it (13 on the map). The statue's temple is a solid wall, and neither it nor the people at the door are
+  crash bodies: the door's sellers and devotees are the shops' standing people, which nothing knocks over.
+
+### Not verified
+I can't hear the game: the sounds run without errors beside the temple at 18:30 in rain, but their
+levels and character need your ear.

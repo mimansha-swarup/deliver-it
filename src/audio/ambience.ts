@@ -54,7 +54,7 @@ const SKID_VOLUME = 0.7
 const SKID_START = 1.2
 const SKID_FULL = 5
 
-function noiseLoop(context: AudioContext, filterType: BiquadFilterType, frequency: number, q = 0.7) {
+export function noiseLoop(context: AudioContext, filterType: BiquadFilterType, frequency: number, q = 0.7) {
   const source = context.createBufferSource()
   source.buffer = getNoise(context)
   source.loop = true

@@ -8,6 +8,7 @@ import { useDriveInput } from '../vehicle/useDriveInput'
 import { createAmbience, playSplash, playThud } from './ambience'
 import { getAudio } from './audioEngine'
 import { createEngineVoice, type EngineVoice } from './engines'
+import { createPlaceSounds } from './placeSounds'
 
 /** How quickly revs follow the throttle, per second. Revving up is quicker than dropping. */
 const REV_UP = 4
@@ -24,6 +25,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const input = useDriveInput()
   const engine = useRef<EngineVoice | null>(null)
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
+  const places = useRef<ReturnType<typeof createPlaceSounds> | null>(null)
   const revs = useRef(0)
   const crashes = useRef(0)
   const bumps = useRef(0)
@@ -43,6 +45,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     const dt = Math.min(delta, 0.1)
     engine.current ??= createEngineVoice(audio.context, audio.sfx, 'scooter')
     ambience.current ??= createAmbience(audio.context, audio.sfx)
+    places.current ??= createPlaceSounds(audio.context, audio.sfx)
 
     const state = scooter.current
     const speed = getTravelSpeed(state)
@@ -59,6 +62,12 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
 
     ambience.current.update(
       { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0 },
+      dt,
+    )
+
+    // Temple bells, the junction's horns, rain on and under the flyover (placeSounds.ts).
+    places.current.update(
+      { x: state.x, z: state.z, height: Math.min(state.frontWheel.height, state.rearWheel.height), rain: liveSky.rain, night: liveSky.look.night, hours: liveSky.hours },
       dt,
     )
 
