@@ -4700,3 +4700,40 @@ body,
 .hud-fuel-note[data-state='overdue'] {
   color: #ff8d82;
 }
+
+/* Kavya's college fund, in the Wallet (game/family.ts). */
+.fund-bar {
+  display: block;
+  height: 8px;
+  margin: 6px 0 8px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 12%);
+  overflow: hidden;
+}
+.fund-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f6b32b, #3ddc97);
+}
+.fund-buttons {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+.fund-buttons button {
+  flex: 1;
+  padding: 7px 4px;
+  border: 0;
+  border-radius: 8px;
+  color: #0f1115;
+  background: #3ddc97;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fund-buttons button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

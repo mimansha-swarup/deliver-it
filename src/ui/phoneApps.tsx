@@ -25,6 +25,7 @@ import { KeyList } from './HelpOverlay'
 import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 import { CARGO } from '../missions/cargo'
+import { currentGoal, FAMILY_THREAD, FUND_GOALS, useFamily } from '../game/family'
 import { energyOf, fillPrice, fuelLevel, serviceState, UPKEEP, useUpkeep } from '../game/upkeep'
 import { DEBUG_SAVE } from '../game/saveKeys'
 import { DebugPanel } from './DebugPanel'
@@ -423,14 +424,18 @@ function MessagesApp({ nav }: { nav: PhoneNav }) {
   useEffect(() => {
     if (thread.current) thread.current.scrollTop = thread.current.scrollHeight
   }, [nav.thread, chat, messages])
-  const customers = [...new Set(chat.filter((line) => line.from === 'customer').map((line) => line.name))].reverse()
-  const threads = [RAVI_THREAD, ...customers]
+  const family = useFamily((state) => state.lines)
+  const customers = [...new Set(chat.filter((line) => line.from === 'customer' && line.name !== FAMILY_THREAD).map((line) => line.name))].reverse()
+  // Ravi, home (once the family has written), then whoever else has.
+  const threads = [RAVI_THREAD, ...(family.length > 0 ? [FAMILY_THREAD] : []), ...customers]
 
   if (nav.thread) {
     const lines =
       nav.thread === RAVI_THREAD
         ? [...messages].slice(0, 15).reverse().map((message) => ({ id: message.id, text: message.text, urgent: false, mine: false }))
-        : chat.filter((line) => line.from === 'customer' && line.name === nav.thread).map((line) => ({ id: line.id, text: line.text, urgent: !!line.urgent, mine: false }))
+        : nav.thread === FAMILY_THREAD
+          ? family.map((line) => ({ id: line.id, text: `${line.from}: ${line.text}`, urgent: false, mine: false }))
+          : chat.filter((line) => line.from === 'customer' && line.name === nav.thread).map((line) => ({ id: line.id, text: line.text, urgent: !!line.urgent, mine: false }))
     return (
       <div className="app">
         <header className="app-bar app-bar-chat">
@@ -457,7 +462,11 @@ function MessagesApp({ nav }: { nav: PhoneNav }) {
       <ul className="app-body app-list app-threads">
         {threads.map((thread) => {
           const last =
-            thread === RAVI_THREAD ? messages[0]?.text : [...chat].reverse().find((line) => line.from === 'customer' && line.name === thread)?.text
+            thread === RAVI_THREAD
+              ? messages[0]?.text
+              : thread === FAMILY_THREAD
+                ? `${family[family.length - 1]?.from}: ${family[family.length - 1]?.text}`
+                : [...chat].reverse().find((line) => line.from === 'customer' && line.name === thread)?.text
           const unread = nav.unread(thread)
           return (
             <li key={thread}>
@@ -545,6 +554,50 @@ function MusicApp({ nav }: { nav: PhoneNav }) {
 }
 
 /** Wallet: the balance, and today's money in and out. */
+/** Kavya's college fund (game/family.ts): what's saved, what it's for now, and sending money home. */
+function CollegeFund() {
+  const saved = useFamily((state) => state.saved)
+  const introduced = useFamily((state) => state.introduced)
+  const credits = useGameStore((state) => state.credits)
+  const [note, setNote] = useState('')
+  if (!introduced) return null
+  const goal = currentGoal(saved)
+  const from = [...FUND_GOALS].reverse().find(({ at }) => at <= saved)?.at ?? 0
+  const share = goal ? (saved - from) / (goal.at - from) : 1
+  const send = (amount: number) => setNote(useFamily.getState().send(amount) ?? `₹${amount} sent home.`)
+  // Round sums, and "all but a little": never the last rupees needed for petrol.
+  const spare = Math.max(0, credits - 150)
+  return (
+    <section className="app-card fund-card">
+      <p className="app-card-title">Kavya’s college fund</p>
+      <p className="app-big">₹{saved.toLocaleString('en-IN')}</p>
+      {goal ? (
+        <>
+          <p className="app-line">
+            Now: {goal.what.toLowerCase()} · ₹{(goal.at - saved).toLocaleString('en-IN')} to go
+          </p>
+          <span className="fund-bar" aria-hidden="true">
+            <span style={{ width: `${Math.round(share * 100)}%` }} />
+          </span>
+          <p className="fund-buttons">
+            {[100, 500].map((amount) => (
+              <button key={amount} type="button" disabled={credits < amount} onClick={(event) => { send(amount); event.currentTarget.blur() }}>
+                Send ₹{amount}
+              </button>
+            ))}
+            <button type="button" disabled={spare < 50} onClick={(event) => { send(Math.min(spare, goal.at - saved)); event.currentTarget.blur() }}>
+              Send ₹{Math.min(spare, goal.at - saved)}
+            </button>
+          </p>
+        </>
+      ) : (
+        <p className="app-line">Every fee is paid. She’s in her second semester, and she stood second in class.</p>
+      )}
+      <p className="app-line app-muted">{note || 'Your sister’s fees, sent home from this wallet. No deadline: when you can.'}</p>
+    </section>
+  )
+}
+
 /** What the wallet will be asked for next: each EMI and its day, a service that's due, a tank that's low. */
 function ComingUp() {
   const emis = useFleet((state) => state.emis)
@@ -608,6 +661,7 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
             <dd>{sum(['expense'])}</dd>
           </dl>
         </section>
+        <CollegeFund />
         <ComingUp />
         <section className="app-card">
           <p className="app-card-title">Recent</p>

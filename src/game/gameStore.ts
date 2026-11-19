@@ -224,7 +224,8 @@ type GameState = Telemetry & {
   endDay: () => void
   setHome: (home: { x: number; z: number }) => void
   setLastPosition: (position: { x: number; z: number; heading: number }) => void
-  postChat: (from: ChatLine['from'], name: string, text: string, urgent?: boolean) => void
+  /** `always`: posted off duty too (the family's group), not only while online. */
+  postChat: (from: ChatLine['from'], name: string, text: string, urgent?: boolean, always?: boolean) => void
   setPlaces: (places: GameState['places']) => void
   setPhotoMode: (on: boolean) => void
   /** Moves an offer's deadline on, as photo mode does for the time it was paused. */
@@ -818,8 +819,8 @@ export const useGameStore = create<GameState>()(
         messages: addMessages(state.messages, [`${customer} cancelled, maga: kept waiting too long. −${CANCEL_PENALTY.credits} credits, and it counts as ${CANCEL_PENALTY.stars}★. Next one, bega!`]),
       }
     }),
-  postChat: (from, name, text, urgent = false) =>
-    set((state) => (state.duty === 'online' ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now(), urgent }].slice(-CHAT_KEPT) } : state)),
+  postChat: (from, name, text, urgent = false, always = false) =>
+    set((state) => (state.duty === 'online' || always ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now(), urgent }].slice(-CHAT_KEPT) } : state)),
 
   setTelemetry: (telemetry) => set(telemetry),
   setAtBunk: (atBunk) => set({ atBunk }),
