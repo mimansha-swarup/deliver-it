@@ -39,6 +39,8 @@ import { eateries } from '../game/eateries'
 import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
 import { SocietyGate } from './SocietyGate'
+import { EvChargers } from './EvChargers'
+import { chargerSpot } from './fuelStationData'
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
@@ -65,7 +67,7 @@ import { CityLandmarks } from './CityLandmarks'
 import { StoryProps } from './StoryProps'
 import { lonLatToWorld, PLAY_AREA, type GroundPoint } from './worldUtils'
 import { SurfaceDebug } from '../dev/SurfaceDebug'
-import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate, darkStoreSpawn } from './homeStart'
+import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpBunk, petrolPumpSpawn, startAtGate, darkStoreSpawn } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
 import { clearOverheads, keepViewClear } from './overheadClearance'
@@ -277,6 +279,12 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const sites = [...findConstructionSites(data, collisions), ...infill.sites]
   // Petrol bunks take their forecourts before trees and lamps do, and their pillars and pumps are solid.
   const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions, infill.pumps)
+  // An EV charger at each bunk, solid like the pumps (EvChargers.tsx).
+  for (const station of fuel) {
+    const charger = chargerSpot(station)
+    addPost(collisions, charger.x, charger.z, 0.32)
+  }
+  if (isDebug() && fuel.length > 0) Object.assign(window, { __bunk: petrolPumpBunk(fuel), __charger: chargerSpot(petrolPumpBunk(fuel)) })
   // The riders' bay at each dark store: on its footpath, short of the kerb.
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
   const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions, clearIndex)
@@ -735,7 +743,7 @@ export function World() {
         <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
         <Part name="shopPeople"><ShopPeople people={shopPeople} /></Part>
         <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
-        <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /></Part>
+        <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /><EvChargers stations={fuel} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
         <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
         <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /><Festival festival={agara.festival} traffic={traffic} collisions={collisions} graph={graph} /></Part>

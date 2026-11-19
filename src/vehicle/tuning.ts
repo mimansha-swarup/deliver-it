@@ -36,6 +36,8 @@ export const tuning = {
   response: 8,
   coasting: SCOOTER.coasting,
   nitro: true,
+  /** A share of the top speed it can reach now: 1 ordinarily; less with an empty tank or an overdue service (game/upkeep.ts); 0 broken down. */
+  limp: 1,
   /** How wet the road is, from 0 to 1. Set from the sky each frame. */
   wetness: 0,
   tyreLevel: 0,

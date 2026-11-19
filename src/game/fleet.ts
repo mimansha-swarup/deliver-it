@@ -7,6 +7,7 @@ import { orderGate, useGameStore } from './gameStore'
 import { livePlayer, liveSky } from './livePlayer'
 import { levelFromXp } from './progression'
 import { saveKey } from './saveKeys'
+import { useUpkeep } from './upkeep'
 
 /*
  * GaadiGo (a made-up vehicle marketplace): renting and buying the vehicles in vehicleCatalog.ts.
@@ -289,15 +290,9 @@ export const useFleet = create<Fleet>()(
           lastSpeed = speed
           const elapsed = lastHours === null ? 0 : Math.max(0, liveSky.totalHours - lastHours)
           lastHours = liveSky.totalHours
-          // Running cost, by the kilometre, in ten-rupee steps.
+          // Running costs are the tank's now: it empties with the kilometres, and filling it is what's paid for (upkeep.ts).
           const spec = VEHICLES[game().vehicleId] ?? VEHICLES.scooter
-          let uncharged = get().uncharged + moved * spec.costPerKm / 1000
-          if (uncharged >= 10) {
-            const due = Math.floor(uncharged / 10) * 10
-            game().fine(`Running cost · ${spec.name}`, due, '')
-            uncharged -= due
-          }
-          if (uncharged !== get().uncharged) set({ uncharged })
+          useUpkeep.getState().drive(spec.id, moved, tickSeconds())
 
           // A rental running late: one reminder as its time runs out.
           const before = get().rental
@@ -316,18 +311,24 @@ export const useFleet = create<Fleet>()(
         },
 
         newDay: (day) => {
+          // A night at home charges the electrics.
+          useUpkeep.getState().overnight()
           const kept: Emi[] = []
           let owned = get().owned
           for (const emi of get().emis) {
             if (day < emi.nextDueDay) {
               kept.push(emi)
+              // The day before it's due, a reminder, with what's in the wallet against it.
+              if (day === emi.nextDueDay - 1) say(`GaadiGo: EMI of ₹${emi.weekly} for the ${VEHICLES[emi.id].name} is due tomorrow. Wallet: ₹${game().credits}${game().credits < emi.weekly ? ', which is short' : ''}.`)
               continue
             }
             const spec = VEHICLES[emi.id]
             if (game().spend(`GaadiGo EMI · ${spec.name}`, emi.weekly)) {
               const weeksLeft = emi.weeksLeft - 1
-              if (weeksLeft > 0) kept.push({ ...emi, weeksLeft, nextDueDay: emi.nextDueDay + FLEET_RULES.daysPerWeek, missed: 0 })
-              else say(`GaadiGo: last EMI paid. The ${spec.name} is all yours.`)
+              if (weeksLeft > 0) {
+                kept.push({ ...emi, weeksLeft, nextDueDay: emi.nextDueDay + FLEET_RULES.daysPerWeek, missed: 0 })
+                say(`GaadiGo: this week's EMI of ₹${emi.weekly} for the ${spec.name} is paid from your wallet. ${weeksLeft} to go; next on day ${emi.nextDueDay + FLEET_RULES.daysPerWeek}.`)
+              } else say(`GaadiGo: last EMI paid. The ${spec.name} is all yours.`)
               continue
             }
             if (emi.missed === 0) {
@@ -359,6 +360,15 @@ orderRules.canOffer = (type) => carries(type) || cheapestFor(type) !== null
 orderGate.allows = (type) => {
   const coming = useFleet.getState().delivery?.id ?? useFleet.getState().rental?.id
   return carries(type) || (coming !== undefined && VEHICLES[coming].unlocks.includes(type))
+}
+
+/** Real seconds since the last tick (capped: a hidden tab doesn't count). */
+let lastTickAt = 0
+function tickSeconds(): number {
+  const now = performance.now()
+  const seconds = lastTickAt ? Math.min(5, (now - lastTickAt) / 1000) : 0
+  lastTickAt = now
+  return seconds
 }
 
 /** The rider's speed at the last tick, and the game clock then. */

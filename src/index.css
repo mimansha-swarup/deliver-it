@@ -4649,3 +4649,54 @@ body,
   color: #0f1115;
   background: #bfe6ff;
 }
+
+/* The tank or the battery, on the speed card (game/upkeep.ts). */
+.hud-fuel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #c9c6bc;
+}
+.hud-fuel-bar {
+  flex: 0 0 64px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(244 241 232 / 18%);
+  overflow: hidden;
+}
+.hud-fuel-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #f4f1e8;
+  transition: width 0.3s linear;
+}
+.hud-fuel[data-low='true'] .hud-fuel-bar span {
+  background: #ff6b5e;
+}
+.hud-fuel[data-low='true'] .hud-fuel-value {
+  color: #ff8d82;
+  font-weight: 700;
+}
+.hud-fuel[data-filling='true'] .hud-fuel-bar span {
+  background: #3ddc97;
+}
+.hud-fuel-value {
+  min-width: 2.6em;
+  font-variant-numeric: tabular-nums;
+}
+.hud-fuel-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: #ffb02e;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
+.hud-fuel-note[data-state='overdue'] {
+  color: #ff8d82;
+}

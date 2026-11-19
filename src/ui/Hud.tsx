@@ -4,6 +4,7 @@ import { useGameStore } from '../game/gameStore'
 import type { Reward } from '../game/gameTypes'
 import { averageRating } from '../missions/orderStory'
 import { SCOOTER } from '../vehicle/vehicleConfig'
+import { energyOf, fuelLevel, serviceState, UPKEEP, useUpkeep } from '../game/upkeep'
 
 /** How long the bump warning stays up, in milliseconds. */
 const KNOCK_NOTICE_TIME = 1600
@@ -108,6 +109,27 @@ function NitroGauge({ nitro, burning }: { nitro: number; burning: boolean }) {
   )
 }
 
+/** The tank or the battery, for anything that has one: how full, and a word when it's filling or low. */
+function FuelGauge() {
+  const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
+  const level = useUpkeep((state) => fuelLevel(state.fuel, spec.id))
+  const filling = useUpkeep((state) => state.filling?.id === spec.id)
+  const service = useUpkeep((state) => serviceState(state.sinceService[spec.id] ?? 0))
+  const energy = energyOf(spec)
+  if (energy === 'none') return service === 'ok' ? null : <p className="hud-fuel-note" data-state={service}>Service {service}</p>
+  const percent = Math.round(level * 100)
+  return (
+    <div className="hud-fuel" data-low={level < UPKEEP.lowAt} data-filling={filling} title={energy === 'charge' ? 'Battery: charge at a bunk\'s EV charger, or overnight at home' : 'Fuel: fill up at any petrol bunk'}>
+      <span className="hud-fuel-label">{energy === 'charge' ? 'Battery' : spec.drive.startsWith('Diesel') ? 'Diesel' : 'Petrol'}</span>
+      <span className="hud-fuel-bar">
+        <span style={{ width: `${percent}%` }} />
+      </span>
+      <span className="hud-fuel-value">{filling ? (energy === 'charge' ? 'Charging' : 'Filling') : level <= 0 ? 'Empty' : `${percent}%`}</span>
+      {service !== 'ok' && <span className="hud-fuel-note" data-state={service}>Service {service}</span>}
+    </div>
+  )
+}
+
 function Speedometer() {
   const speedKmh = useGameStore((state) => state.speedKmh)
   const drifting = useGameStore((state) => state.drifting)
@@ -121,7 +143,7 @@ function Speedometer() {
 
   return (
     <section className="hud-card hud-speed" data-vehicle={spec.id}>
-      {atBunk && (
+      {atBunk && spec.feel.nitro && (
         <p className="hud-refill" role="status">
           {nitro >= 1 ? 'Nitro full' : `Filling nitro · ${atBunk}`}
         </p>
@@ -134,6 +156,7 @@ function Speedometer() {
         <span className="hud-speed-scale-fill" style={{ width: `${share * 100}%` }} />
       </span>
       <p className="hud-speed-vehicle">{spec.name} · {spec.drive} · top {spec.topSpeed}</p>
+      <FuelGauge />
       {spec.feel.nitro && <NitroGauge nitro={nitro} burning={nitroOn} />}
     </section>
   )

@@ -469,3 +469,24 @@ export function tyreShopVisitors(shop: TyreShop): { vehicles: StiltVehicle[]; me
     mechanic: { x: mx, z: mz, heading: Math.atan2(-station.outX, -station.outZ) },
   }
 }
+
+/**
+ * Where a bunk's EV charger stands: just past the canopy's end, on the end away from its yard and
+ * office, level with the pumps. An electric pulls up beside it.
+ */
+export function chargerSpot(station: FuelStation): { x: number; z: number; rotation: number } {
+  const end = (station.yard > 0 ? -station.yardSide : 1) * (station.length / 2 + 1.1)
+  return { x: station.x + station.alongX * end, z: station.z + station.alongZ * end, rotation: Math.atan2(-station.outX, -station.outZ) }
+}
+
+/** How near a charger an electric must stop to plug in, in metres. */
+const CHARGER_REACH = 4.2
+
+/** The bunk whose EV charger is in reach of this spot, or null. */
+export function chargerAt(stations: FuelStation[], x: number, z: number): FuelStation | null {
+  for (const station of stations) {
+    const spot = chargerSpot(station)
+    if (Math.hypot(spot.x - x, spot.z - z) <= CHARGER_REACH) return station
+  }
+  return null
+}

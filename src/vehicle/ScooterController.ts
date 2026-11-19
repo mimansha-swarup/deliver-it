@@ -655,7 +655,7 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
  */
 function updateNitro(state: ScooterState, input: DriveInput, dt: number) {
   const wanted = input.nitro && input.forward && !input.handbrake && state.speed > 0
-  if (!wanted || !tuning.nitro) state.nitroOn = false
+  if (!wanted || !tuning.nitro || tuning.limp < 0.5) state.nitroOn = false
   else if (!state.nitroOn && state.nitro >= SCOOTER.nitroMinToStart) state.nitroOn = true
 
   if (state.nitroOn) {
@@ -669,7 +669,8 @@ function updateNitro(state: ScooterState, input: DriveInput, dt: number) {
 
 /** How far a drift boost and nitro lift the speed limit, together. */
 function speedLimit(state: ScooterState): number {
-  return tuning.maxSpeed + (state.boostLeft > 0 ? SCOOTER.boostSpeed : 0) + (state.nitroOn ? SCOOTER.nitroSpeed : 0)
+  // An empty tank crawls; a breakdown doesn't go at all (game/upkeep.ts, game/breakdowns.ts).
+  return (tuning.maxSpeed + (state.boostLeft > 0 ? SCOOTER.boostSpeed : 0) + (state.nitroOn ? SCOOTER.nitroSpeed : 0)) * tuning.limp
 }
 
 /** The engine's pull at this speed: strongest from a standstill, falling off evenly towards top speed. Boosts add to it. */

@@ -54,13 +54,18 @@ export function startAtGate(gate: Gate, roads: RoadIndex, facing: GroundPoint): 
   return { name: 'Home', x: x + Math.cos(heading) * left, z: z - Math.sin(heading) * left, heading }
 }
 
+/** The bunk nearest the middle of the map: the one `?spawn=petrol-pump` starts at. */
+export function petrolPumpBunk(stations: FuelStation[]): FuelStation {
+  const middle = [(PLAY_AREA.minX + PLAY_AREA.maxX) / 2, (PLAY_AREA.minZ + PLAY_AREA.maxZ) / 2]
+  return [...stations].sort((a, b) => Math.hypot(a.x - middle[0], a.z - middle[1]) - Math.hypot(b.x - middle[0], b.z - middle[1]))[0]
+}
+
 /**
  * Debug start (`?spawn=petrol-pump`): on the road at a petrol bunk's forecourt, facing its canopy,
  * at the bunk nearest the middle of the map.
  */
 export function petrolPumpSpawn(stations: FuelStation[]): Spawn | null {
-  const middle = [(PLAY_AREA.minX + PLAY_AREA.maxX) / 2, (PLAY_AREA.minZ + PLAY_AREA.maxZ) / 2]
-  const station = [...stations].sort((a, b) => Math.hypot(a.x - middle[0], a.z - middle[1]) - Math.hypot(b.x - middle[0], b.z - middle[1]))[0]
+  const station = stations.length > 0 ? petrolPumpBunk(stations) : null
   if (!station) return null
   const back = station.front + 3
   return { name: 'Petrol bunk', x: station.x - station.outX * back, z: station.z - station.outZ * back, heading: Math.atan2(station.outX, station.outZ) }

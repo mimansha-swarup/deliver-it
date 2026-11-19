@@ -25,6 +25,7 @@ import { KeyList } from './HelpOverlay'
 import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 import { CARGO } from '../missions/cargo'
+import { energyOf, fillPrice, fuelLevel, serviceState, UPKEEP, useUpkeep } from '../game/upkeep'
 import { DEBUG_SAVE } from '../game/saveKeys'
 import { DebugPanel } from './DebugPanel'
 
@@ -544,6 +545,42 @@ function MusicApp({ nav }: { nav: PhoneNav }) {
 }
 
 /** Wallet: the balance, and today's money in and out. */
+/** What the wallet will be asked for next: each EMI and its day, a service that's due, a tank that's low. */
+function ComingUp() {
+  const emis = useFleet((state) => state.emis)
+  const rental = useFleet((state) => state.rental)
+  const day = useGameStore((state) => state.day)
+  const vehicleId = useGameStore((state) => state.vehicleId)
+  const spec = VEHICLES[vehicleId] ?? VEHICLES.scooter
+  const km = useUpkeep((state) => state.sinceService[vehicleId] ?? 0)
+  const level = useUpkeep((state) => fuelLevel(state.fuel, vehicleId))
+  const lines: { label: string; when: string; amount: number }[] = emis.map((emi) => ({
+    label: `EMI · ${VEHICLES[emi.id].name} (${emi.weeksLeft} left)`,
+    when: emi.nextDueDay <= day ? 'today' : emi.nextDueDay === day + 1 ? 'tomorrow' : `day ${emi.nextDueDay}`,
+    amount: emi.weekly,
+  }))
+  if (serviceState(km) !== 'ok') lines.push({ label: `Service · ${spec.name}`, when: serviceState(km) === 'due' ? 'due' : 'overdue', amount: UPKEEP.serviceCost[vehicleId] })
+  if (energyOf(spec) !== 'none' && level < 0.5) lines.push({ label: `${energyOf(spec) === 'charge' ? 'Charge' : 'Fuel'} · ${spec.name}`, when: `${Math.round(level * 100)}% left`, amount: fillPrice(spec, level) })
+  if (rental && rental.hoursLeft <= 0) lines.push({ label: `Late fees · ${VEHICLES[rental.id].name}`, when: 'running', amount: Math.round(Math.max(1, Math.ceil(-rental.hoursLeft)) * VEHICLES[rental.id].rentHour * FLEET_RULES.lateRate) })
+  return (
+    <section className="app-card">
+      <p className="app-card-title">Coming up</p>
+      {lines.length === 0 && <p className="app-line app-muted">Nothing due: no EMIs, tank fine, service fine.</p>}
+      <ul className="app-list">
+        {lines.map(({ label, when, amount }) => (
+          <li key={label}>
+            <span>
+              {label}
+              <small>{when}</small>
+            </span>
+            <span className="app-list-right" data-negative="true">−{amount}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function WalletApp({ nav }: { nav: PhoneNav }) {
   const credits = useGameStore((state) => state.credits)
   const ledger = useGameStore((state) => state.ledger)
@@ -571,6 +608,7 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
             <dd>{sum(['expense'])}</dd>
           </dl>
         </section>
+        <ComingUp />
         <section className="app-card">
           <p className="app-card-title">Recent</p>
           {ledger.length === 0 && <p className="app-line app-muted">Nothing yet</p>}
@@ -594,6 +632,43 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
   )
 }
 
+/** The vehicle in use: its tank, the kilometres since its last service, and the service itself, done at the dark store. */
+function ServiceCard({ canService }: { canService: boolean }) {
+  const vehicleId = useGameStore((state) => state.vehicleId)
+  const spec = VEHICLES[vehicleId] ?? VEHICLES.scooter
+  const km = useUpkeep((state) => state.sinceService[vehicleId] ?? 0)
+  const level = useUpkeep((state) => fuelLevel(state.fuel, vehicleId))
+  const [refused, setRefused] = useState('')
+  const state = serviceState(km)
+  const energy = energyOf(spec)
+  return (
+    <section className="app-card">
+      <p className="app-card-title">Upkeep · {spec.name}</p>
+      {energy !== 'none' && (
+        <p className="app-line">
+          {energy === 'charge' ? 'Battery' : 'Tank'}: {Math.round(level * 100)}% · about {Math.round(level * UPKEEP.rangeKm[vehicleId])} km left.{' '}
+          <span className="app-muted">{energy === 'charge' ? 'Charge at a bunk’s EV charger, or overnight at home.' : 'Fill up at any petrol bunk.'}</span>
+        </p>
+      )}
+      <p className="app-line" data-negative={state === 'overdue'}>
+        Service: {km.toFixed(1)} km since the last. {state === 'ok' ? `Due at ${UPKEEP.serviceEveryKm} km.` : state === 'due' ? 'Due now.' : 'Overdue: it will break down.'}
+      </p>
+      <button
+        type="button"
+        className="app-wide-button"
+        disabled={!canService || km < 1}
+        onClick={(event) => {
+          setRefused(useUpkeep.getState().service(vehicleId) ?? '')
+          event.currentTarget.blur()
+        }}
+      >
+        {canService ? `Service it · ₹${UPKEEP.serviceCost[vehicleId]}` : `Service at the dark store · ₹${UPKEEP.serviceCost[vehicleId]}`}
+      </button>
+      {refused && <p className="app-line app-muted">{refused}</p>}
+    </section>
+  )
+}
+
 /** Garage: anywhere to look; buying only stopped at the dark store. */
 function GarageApp({ nav }: { nav: PhoneNav }) {
   const atStore = useGameStore((state) => state.atStore)
@@ -601,7 +676,8 @@ function GarageApp({ nav }: { nav: PhoneNav }) {
     <div className="app">
       <AppBar title="Garage" nav={nav} />
       <div className="app-body">
-        {!atStore && <p className="app-note">Looking only: stop at the dark store to buy.</p>}
+        {!atStore && <p className="app-note">Looking only: stop at the dark store to buy, or to service.</p>}
+        <ServiceCard canService={atStore} />
         <Garage onClose={() => nav.go('home')} canBuy={atStore} />
       </div>
     </div>
