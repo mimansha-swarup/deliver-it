@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
+import { useGameStore } from '../game/gameStore'
+import { QUALITY_PRESETS } from '../game/qualitySettings'
+import { ROAD_TEXTURES } from './assetUrls'
+import { patchAsphalt } from './groundShaders'
+import { useCompressedTextures } from './ktx2'
+import { prepareSurfaceTextures } from './surfaceMaterial'
 import { isInsideBounds } from './worldUtils'
 import { PropInstances } from './RoadsideProps'
 import { StiltParking } from './StiltParking'
@@ -322,7 +328,6 @@ function MetroTrains({ metro }: { metro: Metro }) {
 
 // ---- Flyovers ----
 
-const ASPHALT = '#4e4f57'
 /** The deck's underside, in shade: darker than the girders, which catch the light bounced off the road. */
 const SOFFIT = '#5d5952'
 const GIRDER = '#b4afa5'
@@ -350,7 +355,7 @@ function createDeckGeometry(deck: Flyover) {
     const pitch = Math.atan2(by - ay, flat)
     const yaw = Math.atan2(bx - ax, bz - az)
     const place = (geometry: THREE.BufferGeometry) => parts.push(geometry.rotateX(-pitch).rotateY(yaw).translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2))
-    place(box([deck.width, 0.5, length], [0, -0.25, 0], CONCRETE))
+    place(box([deck.width, 0.5, length], [0, -0.3, 0], CONCRETE))
     // Underneath, where it can be ridden under: a darker soffit, girders along it, a cross beam at
     // each joint and a drainpipe along the outer girder, so it doesn't read as one flat slab.
     if (Math.min(ay, by) >= RIDE_UNDER - 0.5) {
@@ -371,8 +376,6 @@ function createDeckGeometry(deck: Flyover) {
     if (Math.min(ay, by) < RIDE_UNDER && fill > 0.05) {
       parts.push(box([deck.width - 0.1, fill, Math.max(0.5, flat)], [0, fill / 2, 0], CONCRETE_DARK).rotateY(yaw).translate((ax + bx) / 2, 0, (az + bz) / 2))
     }
-    place(box([deck.width - 0.7, 0.05, length], [0, 0.025, 0], ASPHALT))
-    for (const side of [-1, 1]) place(box([0.35, 0.95, length], [side * (deck.width / 2 - 0.17), 0.47, 0], CONCRETE_DARK))
   }
   return parts
 }
@@ -533,7 +536,172 @@ function createRampBarrier({ x, z, rotation, width }: Flyovers['barriers'][numbe
   return parts.map((part) => part.rotateY(rotation).translate(x, 0, z))
 }
 
+/**
+ * A deck's top as one continuous ribbon, every point of its path at that point's height, so the
+ * surface has no steps: the road's asphalt (uv in metres, and the asphalt shader's `aAcross`,
+ * `aHalf` and `aKerb`), lane markings over it, and a concrete crash barrier along each edge, all
+ * following the same heights the scooter rides on.
+ */
+function createDeckSurfaces(decks: Flyover[]) {
+  const asphalt = { position: [] as number[], normal: [] as number[], uv: [] as number[], across: [] as number[], half: [] as number[], kerb: [] as number[], index: [] as number[] }
+  const solids: THREE.BufferGeometry[] = []
+  for (const deck of decks) {
+    const { points, at } = deck.path
+    if (points.length < 2) continue
+    const half = deck.width / 2 - BARRIER.width
+    // Directions at each point: the average of the segments either side, so the ribbon bends smoothly.
+    const sides = points.map((_, i) => {
+      const [ax, az] = points[Math.max(0, i - 1)]
+      const [bx, bz] = points[Math.min(points.length - 1, i + 1)]
+      const length = Math.hypot(bx - ax, bz - az) || 1
+      return [(bz - az) / length, -(bx - ax) / length]
+    })
+    const inMap = (i: number) => isInsideBounds(points[i][0], points[i][1], -300)
+    const first = asphalt.position.length / 3
+    let count = 0
+    for (let i = 0; i < points.length; i++) {
+      const [x, z] = points[i]
+      const [sx, sz] = sides[i]
+      const y = deck.heights[i] + 0.04
+      for (const side of [-1, 1]) {
+        asphalt.position.push(x + sx * half * side, y, z + sz * half * side)
+        asphalt.normal.push(0, 1, 0)
+        asphalt.uv.push(half * side, at[i])
+        asphalt.across.push(half * side)
+        asphalt.half.push(half)
+        asphalt.kerb.push(1, 1)
+      }
+      if (i > 0 && (inMap(i) || inMap(i - 1))) {
+        const a = first + (i - 1) * 2
+        const b = first + i * 2
+        // Wound to face up (seen from above).
+        asphalt.index.push(a, b, a + 1, a + 1, b, b + 1)
+      }
+      count++
+    }
+    void count
+
+    // Markings: dashed lane lines (one per 3.5 m lane, a solid centre line on two-way decks) and edge lines.
+    const lanes = Math.max(1, Math.round((half * 2) / 3.5))
+    const lines: { offset: number; dashed: boolean }[] = [
+      { offset: -half + 0.25, dashed: false },
+      { offset: half - 0.25, dashed: false },
+    ]
+    for (let lane = 1; lane < lanes; lane++) {
+      const offset = -half + (lane * half * 2) / lanes
+      lines.push({ offset, dashed: !(!deck.oneWay && lane * 2 === lanes) })
+    }
+    for (let i = 1; i < points.length; i++) {
+      if (!inMap(i) && !inMap(i - 1)) continue
+      for (const { offset, dashed } of lines) {
+        // Dashes 3 m on, 5 m off, by distance along the deck.
+        const from = at[i - 1]
+        const to = at[i]
+        const pieces: [number, number][] = []
+        if (!dashed) pieces.push([from, to])
+        else for (let d = Math.floor(from / 8) * 8; d < to; d += 8) pieces.push([Math.max(from, d), Math.min(to, d + 3)])
+        for (const [p0, p1] of pieces) {
+          if (p1 - p0 < 0.05) continue
+          const quad = (p: number) => {
+            const t = (p - from) / (to - from || 1)
+            const x = points[i - 1][0] + (points[i][0] - points[i - 1][0]) * t
+            const z = points[i - 1][1] + (points[i][1] - points[i - 1][1]) * t
+            const y = deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t + 0.06
+            const sx = sides[i - 1][0] + (sides[i][0] - sides[i - 1][0]) * t
+            const sz = sides[i - 1][1] + (sides[i][1] - sides[i - 1][1]) * t
+            return [x + sx * offset, y, z + sz * offset, sx, sz] as const
+          }
+          const [ax, ay, az, asx, asz] = quad(p0)
+          const [bx, by, bz, bsx, bsz] = quad(p1)
+          const w = 0.07
+          const g = new THREE.BufferGeometry()
+          g.setAttribute('position', new THREE.Float32BufferAttribute([
+            ax - asx * w, ay, az - asz * w, bx + bsx * w, by, bz + bsz * w, ax + asx * w, ay, az + asz * w,
+            ax - asx * w, ay, az - asz * w, bx - bsx * w, by, bz - bsz * w, bx + bsx * w, by, bz + bsz * w,
+          ], 3))
+          g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3))
+          solids.push(colored(g, offset === -half + 0.25 || offset === half - 0.25 ? '#d8d3c4' : dashed ? '#d8d3c4' : '#d9b23a'))
+        }
+      }
+    }
+
+    // The crash barriers: a continuous low wall along each edge, following the heights.
+    for (const side of [-1, 1]) {
+      const pos: number[] = []
+      for (let i = 1; i < points.length; i++) {
+        if (!inMap(i) && !inMap(i - 1)) continue
+        const corner = (k: number, out: number, up: number) => {
+          const [x, z] = points[k]
+          const [sx, sz] = sides[k]
+          const o = side * (deck.width / 2 - out)
+          return [x + sx * o, deck.heights[k] + up, z + sz * o]
+        }
+        // Inner face, top and outer face, each a quad between points i - 1 and i.
+        const faces: [number, number, number, number][] = [
+          [BARRIER.width, 0, BARRIER.width, BARRIER.height],
+          [BARRIER.width, BARRIER.height, 0, BARRIER.height],
+          [0, BARRIER.height, 0, -0.5],
+        ]
+        for (const [o0, u0, o1, u1] of faces) {
+          const a0 = corner(i - 1, o0, u0)
+          const a1 = corner(i - 1, o1, u1)
+          const b0 = corner(i, o0, u0)
+          const b1 = corner(i, o1, u1)
+          // Faces outwards from the barrier on the right; mirrored, the other way round on the left.
+          if (side > 0) pos.push(...a0, ...b0, ...a1, ...a1, ...b0, ...b1)
+          else pos.push(...a0, ...a1, ...b0, ...a1, ...b1, ...b0)
+        }
+      }
+      if (pos.length === 0) continue
+      const g = new THREE.BufferGeometry()
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+      g.computeVertexNormals()
+      solids.push(colored(g, CONCRETE_DARK))
+    }
+  }
+  const surface = new THREE.BufferGeometry()
+  surface.setAttribute('position', new THREE.Float32BufferAttribute(asphalt.position, 3))
+  surface.setAttribute('normal', new THREE.Float32BufferAttribute(asphalt.normal, 3))
+  surface.setAttribute('uv', new THREE.Float32BufferAttribute(asphalt.uv, 2))
+  surface.setAttribute('aAcross', new THREE.Float32BufferAttribute(asphalt.across, 1))
+  surface.setAttribute('aHalf', new THREE.Float32BufferAttribute(asphalt.half, 1))
+  surface.setAttribute('aKerb', new THREE.Float32BufferAttribute(asphalt.kerb, 2))
+  surface.setIndex(asphalt.index)
+  surface.computeBoundingSphere()
+  return { surface, details: solids.length ? merge(solids) : null }
+}
+
+/** The crash barriers along a deck's edges: how thick and high, in metres. */
+const BARRIER = { width: 0.35, height: 0.95 }
+
+/** Metres per repeat of the road photo: the same as the streets' (StreetEdges.tsx), as they share it. */
+const DECK_ASPHALT_TILE = 6
+const prepareDeckAsphalt = (maps: THREE.Texture[]) => prepareSurfaceTextures(maps, DECK_ASPHALT_TILE)
+
 function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
+  const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const roadMaps = useCompressedTextures(ROAD_TEXTURES, prepareDeckAsphalt)
+  const deckTop = useMemo(() => createDeckSurfaces(flyovers.decks), [flyovers])
+  useEffect(() => {
+    // Debug: the decks, for scripts that look at or ride them.
+    if (isDebug()) (window as unknown as { __deliverItFlyovers?: Flyovers }).__deliverItFlyovers = flyovers
+  }, [flyovers])
+  const asphalt = useMemo(() => {
+    // As the streets' asphalt (StreetEdges.tsx): the photo's grain under the palette's colour, tyre
+    // tracks, a gutter by each barrier.
+    const material = new THREE.MeshStandardMaterial({
+      map: roadMaps[0],
+      normalMap: surfaces === 'bumps' ? roadMaps[1] : null,
+      roughness: 0.92,
+    })
+    patchAsphalt(material)
+    return material
+  }, [roadMaps, surfaces])
+  useEffect(() => () => {
+    deckTop.surface.dispose()
+    deckTop.details?.dispose()
+  }, [deckTop])
+  useEffect(() => () => asphalt.dispose(), [asphalt])
   const structure = useMemo(() => {
     const parts = [...flyovers.decks.flatMap(createDeckGeometry), ...flyovers.pillars.flatMap(createFlyoverPillar), ...flyovers.barriers.flatMap(createRampBarrier)]
     return parts.length ? merge(parts) : null
@@ -548,6 +716,8 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   return (
     <>
       {structure && <mesh geometry={structure} material={material} castShadow receiveShadow />}
+      <mesh geometry={deckTop.surface} material={asphalt} receiveShadow />
+      {deckTop.details && <mesh geometry={deckTop.details} material={material} castShadow receiveShadow />}
       {posters && (
         <mesh geometry={posters}>
           <meshStandardMaterial map={atlas} roughness={0.85} polygonOffset polygonOffsetFactor={-2} />

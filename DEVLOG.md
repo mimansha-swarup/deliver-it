@@ -10171,3 +10171,20 @@ full (one copy dissolving, its pixels shaded then thrown away), and cast two sha
 ### Performance
 Riding Sarjapur Road on Low with the CPU slowed 4×, back to back with the build from before the tree change:
 47 fps against 44: the same (this Mac was busy, load average 4).
+
+## 2026-11-19: Entry 198, flyover decks as one smooth road
+
+### What I did
+- **One continuous surface** (Transit.tsx `createDeckSurfaces`). The deck top was a box per 8 m
+  segment, each tilted to its own slope, so at every joint the surface stepped. It's now one ribbon
+  through every point of the deck's path at that point's height, sampled every 4 m (was 8). The
+  scooter rides the same heights (`heightOnFlyover` interpolates between the same points), so what's
+  drawn and what's ridden match.
+- **Smooth ramps**: each ramp is an S-curve (smoothstep) instead of a straight slope: level where it
+  leaves the road and where it meets the deck, steepest halfway. On the 130 m ramps that's about 8%
+  at most. Some short OSM deck pieces (88 m, so a 44 m ramp) reach 23%.
+- **Textured the whole way, both directions**: the streets' asphalt (the same photo and shader,
+  tyre tracks and gutters), white edge lines, dashed lane lines, and a continuous concrete crash
+  barrier along each edge, all following the ramp's heights up and down. The concrete deck body stays
+  underneath, girders and all.
+- Debug: `window.__deliverItFlyovers` lists the decks (with ?debug).

@@ -396,7 +396,7 @@ const PILLAR_GROUND = new Set<Surface>([Surface.Median, Surface.Open, Surface.Fo
 /** Below this height the deck can't be ridden under: a solid ramp, walled each side, in metres. */
 export const RIDE_UNDER = 3.6
 /** The decks are resampled every this many metres, so ramps slope smoothly and stand on the ground. */
-const DECK_STEP = 8
+const DECK_STEP = 4
 /** The ground kept clear either side of a deck, past its edges, in metres. */
 const FOOTPRINT_MARGIN = 1.5
 
@@ -427,10 +427,17 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
     const startsLow = (ends.get(endKey(line[0])) ?? 0) < 2
     const endsLow = (ends.get(endKey(line[line.length - 1])) ?? 0) < 2
     const ramp = Math.min(RAMP, path.length / 2)
+    // An S-curve up each ramp: level where it leaves the road and where it meets the deck, steepest
+    // halfway (1.5 times the average: about 8% on the 6.8 m flyovers), so riding over the top and the
+    // foot is smooth. The riding (heightOnFlyover) and the drawing both use these heights.
+    const curve = (t: number) => {
+      const u = Math.max(0, Math.min(1, t))
+      return u * u * (3 - 2 * u)
+    }
     const heights = path.at.map((s) => {
       let height = top
-      if (startsLow) height = Math.min(height, (top * s) / ramp)
-      if (endsLow) height = Math.min(height, (top * (path.length - s)) / ramp)
+      if (startsLow) height = Math.min(height, top * curve(s / ramp))
+      if (endsLow) height = Math.min(height, top * curve((path.length - s) / ramp))
       return height
     })
     decks.push({ name: road.properties.name ?? 'Flyover', path, heights, width: Math.max(7, getRoadWidth(road)), oneWay: road.properties.oneway === 'yes', startsLow, endsLow })
