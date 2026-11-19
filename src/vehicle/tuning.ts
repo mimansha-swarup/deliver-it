@@ -1,4 +1,5 @@
 import type { UpgradeLevels } from '../game/garage'
+import type { VehicleSpec } from './vehicleCatalog'
 import { SCOOTER } from './vehicleConfig'
 
 /** What each upgrade level adds. */
@@ -20,17 +21,27 @@ export const tuning = {
   topEndAcceleration: SCOOTER.topEndAcceleration,
   grip: SCOOTER.grip,
   braking: SCOOTER.braking,
+  /** How quickly it turns and how far it leans, against the scooter's: the vehicle's own (vehicleCatalog.ts). */
+  turn: 1,
+  lean: 1,
   /** How wet the road is, from 0 to 1. Set from the sky each frame. */
   wetness: 0,
   tyreLevel: 0,
 }
 
-export function applyUpgrades({ engine, tyres, brakes }: UpgradeLevels) {
-  tuning.maxSpeed = SCOOTER.maxSpeed + engine * ENGINE_SPEED_STEP
-  tuning.acceleration = SCOOTER.acceleration * (1 + engine * ENGINE_PULL_STEP)
-  tuning.topEndAcceleration = SCOOTER.topEndAcceleration * (1 + engine * ENGINE_PULL_STEP)
-  tuning.grip = SCOOTER.grip * (1 + tyres * TYRE_GRIP_STEP)
-  tuning.braking = SCOOTER.braking * (1 + brakes * BRAKE_STEP)
+/**
+ * Sets the handling: the vehicle in use, and on the rider's own scooter the Garage's upgrades on top
+ * (they're that scooter's parts, so a rented van doesn't get them).
+ */
+export function applyVehicle(spec: VehicleSpec, upgrades: UpgradeLevels) {
+  const { engine, tyres, brakes } = spec.id === 'scooter' ? upgrades : { engine: 0, tyres: 0, brakes: 0 }
+  tuning.maxSpeed = spec.topSpeed / 3.6 + engine * ENGINE_SPEED_STEP
+  tuning.acceleration = SCOOTER.acceleration * spec.pull * (1 + engine * ENGINE_PULL_STEP)
+  tuning.topEndAcceleration = SCOOTER.topEndAcceleration * spec.pull * (1 + engine * ENGINE_PULL_STEP)
+  tuning.grip = SCOOTER.grip * spec.grip * (1 + tyres * TYRE_GRIP_STEP)
+  tuning.braking = SCOOTER.braking * spec.brake * (1 + brakes * BRAKE_STEP)
+  tuning.turn = spec.turn
+  tuning.lean = spec.lean
   tuning.tyreLevel = tyres
 }
 

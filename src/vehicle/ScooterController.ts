@@ -485,7 +485,7 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   // A little tighter still at walking and turning speeds, below about 20 km/h, for junctions.
   const slowTurn = 1 + SCOOTER.slowTurnBoost * Math.max(0, 1 - absoluteSpeed / SCOOTER.slowTurnSpeed)
   const turnRate =
-    (SCOOTER.turnRateLow + (SCOOTER.turnRateHigh - SCOOTER.turnRateLow) * speedRatio) * slowTurn
+    (SCOOTER.turnRateLow + (SCOOTER.turnRateHigh - SCOOTER.turnRateLow) * speedRatio) * slowTurn * tuning.turn
 
   // Steering further into a slide fades out as it nears the limit. A slip to the
   // right means the scooter has turned left, so that's when steering left is "further".

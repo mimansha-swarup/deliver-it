@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { surgeShare } from './rush'
 import { STATIONS } from '../audio/stations'
-import { applyUpgrades } from '../vehicle/tuning'
+import { applyVehicle } from '../vehicle/tuning'
 import {
   HELMETS,
   MAX_UPGRADE_LEVEL,
@@ -12,6 +12,7 @@ import {
   type UpgradeLevels,
 } from './garage'
 import { persist } from 'zustand/middleware'
+import { liveVehicle, VEHICLES, type VehicleId } from '../vehicle/vehicleCatalog'
 import { calculateReward } from '../missions/missionLogic'
 import { FRUSTRATION } from '../missions/customerChat'
 import { RATINGS_KEPT } from '../missions/orderStory'
@@ -121,6 +122,8 @@ type GameState = Telemetry & {
   hornsOn: boolean
   /** The Garage: upgrade levels, the paint and helmet in use, and the colours owned. */
   upgrades: UpgradeLevels
+  /** The vehicle in use (vehicle/vehicleCatalog.ts): the rider's own scooter, or one from GaadiGo. */
+  vehicleId: VehicleId
   paintId: string
   helmetId: string
   ownedPaints: string[]
@@ -436,6 +439,7 @@ export const useGameStore = create<GameState>()(
       hornsOn: true,
       atStore: false,
       upgrades: { engine: 0, tyres: 0, brakes: 0 },
+      vehicleId: 'scooter',
       paintId: PAINTS[0].id,
       helmetId: HELMETS[0].id,
       ownedPaints: [PAINTS[0].id],
@@ -832,6 +836,7 @@ export const useGameStore = create<GameState>()(
         musicOn: state.musicOn,
         hornsOn: state.hornsOn,
         upgrades: state.upgrades,
+        vehicleId: state.vehicleId,
         paintId: state.paintId,
         helmetId: state.helmetId,
         ownedPaints: state.ownedPaints,
@@ -853,7 +858,12 @@ export const useGameStore = create<GameState>()(
 )
 
 // The scooter's handling follows the upgrades: now, after a saved game loads, and after every purchase.
-applyUpgrades(useGameStore.getState().upgrades)
+const syncVehicle = (state: { vehicleId: VehicleId; upgrades: UpgradeLevels }) => {
+  liveVehicle.spec = VEHICLES[state.vehicleId] ?? VEHICLES.scooter
+  if (!liveVehicle.spec.cockpit) liveVehicle.cockpit = false
+  applyVehicle(liveVehicle.spec, state.upgrades)
+}
+syncVehicle(useGameStore.getState())
 useGameStore.subscribe((state, previous) => {
-  if (state.upgrades !== previous.upgrades) applyUpgrades(state.upgrades)
+  if (state.upgrades !== previous.upgrades || state.vehicleId !== previous.vehicleId) syncVehicle(state)
 })

@@ -20,6 +20,7 @@ import {
   getModel,
   paintModel,
   TRAFFIC_MODELS_URL,
+  YAMAHA_MODEL_URL,
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
 import { water } from '../world/roadFeatures'
@@ -28,6 +29,8 @@ import { BRAND_DYE, createBoxLogoTexture } from './brandPrint'
 import { Rider, STEERING_Z } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
+import { createBicycleGeometry, createModelBody } from './vehicleBodies'
+import { VEHICLES } from './vehicleCatalog'
 import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { useDriveInput } from './useDriveInput'
@@ -331,7 +334,19 @@ export function Scooter({
 
   // The paint bought at the Garage. Changing it repaints a fresh copy of the model.
   const paintId = useGameStore((state) => state.paintId)
-  const paint = findColour(PAINTS, paintId).color
+  // The vehicle in use (vehicleCatalog.ts): the scooter's own rig, or another body in its place.
+  const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
+  const paint = spec.paint ?? findColour(PAINTS, paintId).color
+  const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
+  const otherBody = useMemo(() => {
+    if (spec.body.rig === 'bicycle') return createBicycleGeometry(paint)
+    if (spec.body.rig === 'model') return createModelBody(spec.body.file === 'yamaha' ? yamaha : scene, spec.body, paint)
+    return null
+  }, [spec, paint, scene, yamaha])
+  useEffect(() => () => otherBody?.dispose(), [otherBody])
+  const ownRig = spec.body.rig === 'scooter'
+  // The rider is seen on two wheels, and not inside a van, a car or the three-wheeler's cab.
+  const riderSeen = spec.body.rig !== 'model' || spec.body.riderSeat !== null
   // The box is split off the model: it's Deliver It marigold plastic, with the logo on its back and sides.
   const { parts, boxBounds } = useMemo(() => {
     const painted = paintModel(getModel(scene, 'delivery'), paint)
@@ -407,7 +422,7 @@ export function Scooter({
     // Leans about its middle, then lifts by however far the lowest point went into the ground. Riding,
     // that's the edge of a tyre's rounded tread. On its side after a crash, it's the side of the body,
     // and the rider too if they came down with it.
-    lean.current.rotation.z = -state.lean
+    lean.current.rotation.z = -state.lean * tuning.lean
     lean.current.position.y = 0
     lean.current.updateMatrix()
     let lowest = lowestProbe(scooterProbes, lean.current.matrix)
@@ -431,14 +446,17 @@ export function Scooter({
         <group position={[0, 0, -axleMiddle]}>
           <BlobShadow />
           <group ref={lean}>
-            <Wheel
-              spinRef={rearWheel}
-              position={rearAxle}
-              geometry={wheelGeometry}
-              material={materials.wheel}
-            />
+            {otherBody && <mesh geometry={otherBody} material={materials.bike} />}
+            <group visible={ownRig}>
+              <Wheel
+                spinRef={rearWheel}
+                position={rearAxle}
+                geometry={wheelGeometry}
+                material={materials.wheel}
+              />
+            </group>
             {/* The front wheel turns with the bars, around the steering axis. */}
-            <group ref={wheelSteering} position={[0, 0, STEERING_Z]}>
+            <group ref={wheelSteering} position={[0, 0, STEERING_Z]} visible={ownRig}>
               <group position={[0, 0, -STEERING_Z]}>
                 <Wheel
                   spinRef={frontWheel}
@@ -451,14 +469,16 @@ export function Scooter({
 
             {/* Everything the suspension carries, which pitches under braking and power. */}
             <group ref={body}>
-              <mesh geometry={parts.body} material={materials.bike} />
-              <mesh geometry={parts.box} material={materials.box} />
-              <BoxLogos bounds={boxBounds} />
-              <mesh position={[0, 0.72, -0.9]} material={materials.tail}>
-                <boxGeometry args={[0.16, 0.05, 0.03]} />
-              </mesh>
-              <NitroFlame scooter={scooterState} />
-              <group ref={steering} position={[0, 0, STEERING_Z]}>
+              <group visible={ownRig}>
+                <mesh geometry={parts.body} material={materials.bike} />
+                <mesh geometry={parts.box} material={materials.box} />
+                <BoxLogos bounds={boxBounds} />
+                <mesh position={[0, 0.72, -0.9]} material={materials.tail}>
+                  <boxGeometry args={[0.16, 0.05, 0.03]} />
+                </mesh>
+                <NitroFlame scooter={scooterState} />
+              </group>
+              <group ref={steering} position={[0, 0, STEERING_Z]} visible={ownRig}>
                 <group position={[0, 0, -STEERING_Z]}>
                   <mesh geometry={parts.front} material={materials.bike} />
                   <mesh position={[0, 0.91, 0.62]} scale={[1, 1, 0.4]} material={materials.headlight}>
@@ -466,7 +486,7 @@ export function Scooter({
                   </mesh>
                 </group>
               </group>
-              <group ref={riderRoot} matrixAutoUpdate={false}>
+              <group ref={riderRoot} matrixAutoUpdate={false} visible={riderSeen}>
                 <Rider
                   scooter={scooterState}
                   steerAngle={MAX_FRONT_WHEEL_ANGLE}

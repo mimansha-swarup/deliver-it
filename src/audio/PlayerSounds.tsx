@@ -9,6 +9,7 @@ import { createAmbience, playSplash, playThud } from './ambience'
 import { getAudio } from './audioEngine'
 import { createEngineVoice, type EngineVoice } from './engines'
 import { createPlaceSounds } from './placeSounds'
+import { liveVehicle } from '../vehicle/vehicleCatalog'
 
 /** How quickly revs follow the throttle, per second. Revving up is quicker than dropping. */
 const REV_UP = 4
@@ -26,6 +27,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const engine = useRef<EngineVoice | null>(null)
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
   const places = useRef<ReturnType<typeof createPlaceSounds> | null>(null)
+  const engineOf = useRef<string | null>(null)
   const revs = useRef(0)
   const crashes = useRef(0)
   const bumps = useRef(0)
@@ -43,7 +45,14 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     const audio = getAudio()
     if (!audio || !useGameStore.getState().started) return
     const dt = Math.min(delta, 0.1)
-    engine.current ??= createEngineVoice(audio.context, audio.sfx, 'scooter')
+    // The vehicle's own engine (vehicleCatalog.ts): a new voice when the vehicle changes.
+    const vehicle = liveVehicle.spec
+    if (engineOf.current !== vehicle.engine) {
+      engine.current?.dispose()
+      engine.current = null
+      engineOf.current = vehicle.engine
+    }
+    engine.current ??= createEngineVoice(audio.context, audio.sfx, vehicle.engine)
     ambience.current ??= createAmbience(audio.context, audio.sfx)
     places.current ??= createPlaceSounds(audio.context, audio.sfx)
 
@@ -58,7 +67,8 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     const rate = wanted > revs.current ? REV_UP : REV_DOWN
     revs.current += (wanted - revs.current) * (1 - Math.exp(-rate * dt))
     // A crash stalls the engine until the rider is back on.
-    engine.current.update(revs.current, riding ? throttle : 0, riding ? 1 : 0)
+    // An electric motor is a quiet whine, and a bicycle makes no engine sound at all.
+    engine.current.update(revs.current, riding ? throttle : 0, riding ? vehicle.engineVolume : 0)
 
     ambience.current.update(
       { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0 },

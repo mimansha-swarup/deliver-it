@@ -1,5 +1,6 @@
 import { isDebug } from '../dev/spawn'
-import { useRef, type RefObject } from 'react'
+import { liveVehicle } from '../vehicle/vehicleCatalog'
+import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { PerspectiveCamera, Vector3 } from 'three'
 import { liveShot } from '../game/livePlayer'
@@ -68,15 +69,16 @@ function findClearDistance(
   z: number,
   forwardX: number,
   forwardZ: number,
+  reach = DISTANCE_BEHIND,
 ): number {
-  for (let distance = MIN_DISTANCE; distance < DISTANCE_BEHIND; distance += PROBE_STEP) {
+  for (let distance = MIN_DISTANCE; distance < reach; distance += PROBE_STEP) {
     const probeX = x - forwardX * distance
     const probeZ = z - forwardZ * distance
     if (isNearBuilding(collisions, probeX, probeZ, WALL_CLEARANCE)) {
       return Math.max(MIN_DISTANCE, distance - PROBE_STEP)
     }
   }
-  return DISTANCE_BEHIND
+  return reach
 }
 
 /**
@@ -107,6 +109,16 @@ export function FollowCamera({
   const onRider = useRef(0)
   const sway = useRef(0)
 
+  // V swaps between the chase view and the driver's seat, in a vehicle that has one.
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyV' || event.repeat || !liveVehicle.spec.cockpit) return
+      liveVehicle.cockpit = !liveVehicle.cockpit
+    }
+    window.addEventListener('keydown', down)
+    return () => window.removeEventListener('keydown', down)
+  }, [])
+
   useFrame(({ camera, clock }, delta) => {
     const state = scooter.current
     introStart.current ??= new Vector3().copy(camera.position)
@@ -136,7 +148,9 @@ export function FollowCamera({
     const height = scooterLevel(state)
     level.current += (height - level.current) * (1 - Math.exp(-8 * delta))
     const up = height > UP_ON_DECK
-    const clearDistance = findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ)
+    // The vehicle's own chase view: a van is followed from further back and higher than a scooter.
+    const view = liveVehicle.spec.camera
+    const clearDistance = findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, DISTANCE_BEHIND * view.distance)
     const distance =
       clearDistance < cameraDistance.current
         ? clearDistance // Snap in, or the wall would be visible for a moment.
@@ -144,7 +158,7 @@ export function FollowCamera({
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
 
-    camera.position.set(focusX - forwardX * distance, HEIGHT + level.current, focusZ - forwardZ * distance)
+    camera.position.set(focusX - forwardX * distance, HEIGHT * view.height + level.current, focusZ - forwardZ * distance)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -161,7 +175,7 @@ export function FollowCamera({
     // On the rider, look at them rather than ahead of them.
     const lookAhead = LOOK_AHEAD * (1 - follow)
     let lookX = focusX + forwardX * lookAhead
-    let lookY: number = LOOK_HEIGHT + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT) * follow + level.current
+    let lookY: number = LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow + level.current
     let lookZ = focusZ + forwardZ * lookAhead
 
     // Eases across to a set shot and back, so that it never cuts.
@@ -178,6 +192,15 @@ export function FollowCamera({
     }
 
     camera.lookAt(lookX, lookY, lookZ)
+    // From the driver's seat, where the vehicle has one (V): the eye's place in the vehicle, looking
+    // down the road. Not during a set shot, or while the rider is off after a crash.
+    const seat = liveVehicle.spec.cockpit
+    if (seat && liveVehicle.cockpit && amount < 0.001 && follow < 0.01 && introTime.current >= INTRO_TIME) {
+      const aheadX = Math.sin(state.heading)
+      const aheadZ = Math.cos(state.heading)
+      camera.position.set(state.x + aheadX * seat[2] + aheadZ * seat[0], level.current + seat[1], state.z + aheadZ * seat[2] - aheadX * seat[0])
+      camera.lookAt(camera.position.x + aheadX * 20, level.current + seat[1] - 1.2, camera.position.z + aheadZ * 20)
+    }
     // A gentle roll into turns, with the scooter's lean: none in a set shot or while the rider is off.
     const swayTarget = Math.max(-SWAY_MAX, Math.min(SWAY_MAX, state.lean * SWAY_SHARE)) * (1 - follow) * (1 - amount)
     sway.current += (swayTarget - sway.current) * (1 - Math.exp(-SWAY_RESPONSE * delta))
