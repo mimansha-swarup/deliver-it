@@ -16,7 +16,7 @@ import { Buildings } from './Buildings'
 import { Cables } from './Cables'
 import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
-import { addPost, addWall, createCollisionWorld, isNearBuilding } from './collision'
+import { addPost, addWall, createCollisionWorld, isNearBuilding, removePost } from './collision'
 import { DarkStores } from './DarkStoreBuilding'
 import { addDarkStorePosts, findDarkStores } from './darkStore'
 import { GrassField } from './GrassField'
@@ -38,6 +38,8 @@ import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
 import { planAgara } from './agaraPlacement'
+import { planLakeLife } from './lakePlacement'
+import { LakeLife } from './LakeLife'
 import { mapMarkers } from '../game/mapMarkers'
 import { Agara } from './Agara'
 import { Fences } from './Fences'
@@ -290,6 +292,9 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const lakeMiddle: GroundPoint | null = lakeRows.length
     ? [PLAY_AREA.minX + lakeRows.reduce((sum, [, first, last]) => sum + (first + last) / 2, 0) / lakeRows.length, PLAY_AREA.minZ + lakeRows.reduce((sum, [row]) => sum + row, 0) / lakeRows.length]
     : null
+  // Agara Lake's shore: the path round it, benches, the morning's joggers and dog walkers, birds (lakePlacement.ts).
+  const lakeLife = planLakeLife({ middle: lakeMiddle, surface: surfaceMap, collisions })
+  worldSurface.report.lake = lakeLife.report
   const agara = planAgara({ worship, decks: flyoverDecks, surface: surfaceMap, roads: roadIndex, collisions, stops: cityLandmarks.stops, lake: lakeMiddle })
   worldSurface.report.agara = agara.report
   // On the maps: the statue and the Jagannath temple.
@@ -332,6 +337,19 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Hedges inside the compound walls join the median shrubs, drawn together.
   props.bushes.push(...houses.hedges)
   const benches = plantParks(data, collisions, props)
+  benches.push(...lakeLife.benches)
+  // No tree stands on the lake's path (its ground is paved; the parks' planting doesn't ask).
+  if (lakeMiddle && lakeLife.birds) {
+    const reach = lakeLife.birds.reach + 40
+    const onPath = (x: number, z: number) => Math.hypot(x - lakeMiddle[0], z - lakeMiddle[1]) < reach && [[0, 0], [1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]].some(([dx, dz]) => surfaceMap.at(x + dx, z + dz) === Surface.Paved)
+    const kept = props.trees.filter((tree) => {
+      if (!onPath(tree.x, tree.z)) return true
+      removePost(collisions, tree.x, tree.z)
+      return false
+    })
+    worldSurface.report.lake = { ...lakeLife.report, treesOffPath: props.trees.length - kept.length }
+    props.trees.splice(0, props.trees.length, ...kept)
+  }
   // Trees placed by where they grow: palms and ashokas behind compound gates, a peepal or banyan
   // by each temple, a big tree on some junction corners (treeSpecies.ts).
   const junctions = graph.links.flatMap((links, node) => {
@@ -367,11 +385,13 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     story.pots.push({ x: piece.x, z: piece.z, rotation: piece.rotation, variation: potRandom() })
     addPotPlants(story, piece.x, piece.z, piece.rotation, potRandom)
   }
+  // The dogs out with the lake's morning walkers sit with the street's.
+  story.dog.push(...lakeLife.dogs)
   kit.splice(0, kit.length, ...kit.filter(({ piece }) => piece !== 'Prop_Planter_Single'))
   // The plants in the pots are small leafy bushes, drawn with the hedges in the tree style.
   props.bushes.push(...story.potPlants)
   if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
-  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItWorship: worship, __deliverItFlyovers: flyovers, __deliverItAgara: agara, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
+  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItWorship: worship, __deliverItFlyovers: flyovers, __deliverItAgara: agara, __deliverItLake: lakeLife, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   yield STEP
@@ -506,7 +526,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   lap('spawn and landmarks')
   yield STEP
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, deckCollisions: decks.collisionsAt }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, deckCollisions: decks.collisionsAt }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -625,7 +645,7 @@ export function World() {
   startWorld(data)
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, deckCollisions } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, deckCollisions } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -670,7 +690,7 @@ export function World() {
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
         <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
-        <Part name="agara"><Agara agara={agara} /></Part>
+        <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>

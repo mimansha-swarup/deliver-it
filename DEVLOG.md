@@ -10353,3 +10353,22 @@ kalashas at the corners.
   Nila Chakra as an eight-spoked wheel on its stem; a long red pennant edged in yellow on a pole.
 - The hall in front: a pyramid of eight red-edged tiers in two groups under a bell, amalaka and pot.
 - At ground level: a framed door up three steps between two lions, and the Aruna Stambha before it.
+
+## 2026-11-20: Entry 206, Agara Lake's shore
+
+### What I did
+- **A walking path all round the lake** (lakePlacement.ts, LakeLife.tsx): 1.5 km of packed red earth
+  between stone edgings, 12 m back from the water, in seven runs (it breaks where the shore has no room).
+  Its ground is paved on the surface map, so nothing is planted on it; trees already on it are taken out.
+- **23 benches** on its outer side, facing the water, with the parks' benches.
+- **Mornings (5:30 to 9:30)**: 14 joggers and 10 walkers to and fro on the path, and six people stopped
+  with their dogs. **Dusk (16:30 to 19:00)**: eight walkers. They're the shops' people (same shader and
+  reach; Low draws half the walkers).
+- **Birds**: three loose flocks wheeling over the water by day, 36 in all (14 on Low), two flapping
+  triangles and a body each, one draw call, only from within 500 m of the shore.
+- **Golden-hour reflections**: the water takes the sun's path, a tight glint and a soft sheen round
+  it broken by the ripples, long when the sun is low. It uses the scene's own sun (direction and colour).
+
+### A mistake caught
+My first reflection code called GLSL's `reflect` where the water's shader already has a variable of
+that name: the shader failed to compile and the lake drew as bare earth until I looked across it.

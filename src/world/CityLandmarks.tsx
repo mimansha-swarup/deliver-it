@@ -57,6 +57,19 @@ function createWaterMaterial(): THREE.MeshStandardMaterial {
         float broad = sin(vWater.x * 0.045 + 1.7) * sin(vWater.y * 0.06);
         float reflect = pow(1.0 - facing, 3.0) * (0.55 + 0.25 * ripple) * (0.85 + 0.15 * broad);
         outgoingLight = mix(outgoingLight * (0.9 + 0.1 * broad), uSky * 0.8, clamp(reflect, 0.0, 0.8));
+        // The sun's path on the water: a broken streak of its own colour towards it, long and bright
+        // when it's low (golden hour), a small glint when it's high.
+        #if NUM_DIR_LIGHTS > 0
+          vec3 toEye = normalize(vViewPosition);
+          vec3 rippled = normalize(normal + vec3(ripple * 0.05, 0.0, sin(vWater.y * 3.7 + vWater.x * 1.9) * 0.05));
+          // The sun's direction mirrored in the water (written out: "reflect" is a variable here).
+          vec3 sunDir = directionalLights[0].direction;
+          vec3 mirrored = 2.0 * dot(rippled, sunDir) * rippled - sunDir;
+          float towardsSun = max(dot(mirrored, toEye), 0.0);
+          // A tight glint, and a broad soft sheen round it, both broken up by the ripples.
+          float glint = pow(towardsSun, 140.0) * 1.6 + pow(towardsSun, 14.0) * 0.28;
+          outgoingLight += directionalLights[0].color * glint * (0.55 + 0.45 * ripple);
+        #endif
         #include <opaque_fragment>`,
       )
   }
