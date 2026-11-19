@@ -10584,3 +10584,32 @@ No frame over 20 ms in any run.
 ### Left
 The bodies are blocks, tubes and rounded lumps: distinct in outline, simple close up. The windows have
 frames and no glass. A car's collision size is still the scooter's. Crash poses still assume the scooter.
+
+## 2026-11-20: Entry 213, cabs at their real size, crashes without ejection, glass
+
+### What I did
+- **Real footprints for the cab vehicles** (vehicleCatalog.ts `size`, ScooterController.ts
+  `handleCollisions`): the three-wheeler (1.4 × 3.1 m), car (1.6 × 3.7 m) and van (1.8 × 4.4 m) are circles
+  of their half width along their length, each kept out of everything solid: walls, poles, parked
+  vehicles, barricades. A gap narrower than the vehicle doesn't let it through. Two-wheelers stay the
+  slim circle they were. Traffic sees the same size: it queues behind a van's tail and leaves a van's
+  width (`touchRider`, `findGapAhead`).
+- **Crashes in a cab**: nobody is thrown. A hard knock is a jolt (the camera shakes, 65% of the speed
+  goes), counts as a crash (a rental's damage charge, unless insured; the thud) and leaves a dent on the
+  body, up to six. No second knock for 0.9 s.
+- **Two-wheeler crashes**: each lies on its own shape (the probes that keep it out of the ground come from
+  its own body and bars, not the old scooter model's), and the rider comes off from, and gets back to,
+  that vehicle's seat.
+- **Glass** in the car's and van's windows and the three-wheeler's screen: tinted, a little reflective,
+  the driver seen through it.
+
+### Tested
+Beside a wall 0.7 m away: the scooter stays at 0.7 m, the car is held to 0.85 m, the van to 0.95 m. Into a
+wall at 40 km/h: car and van one crash each, the driver still in the seat, the nose at the wall; the
+scooter's rider is thrown as before. In motion, by screenshot: the bicycle pedalled, the car driven and
+steered, the E1, and the handover from ride in to the old scooter ridden away.
+
+### Not done
+Height isn't checked against anything: nothing on the map is lower than a van (the lowest deck that can
+be ridden under is 3.6 m). The surface map isn't asked about width (a van can still put a wheel on a
+footpath's kerb as a scooter can). Dents are dark scuffs, not bent panels.

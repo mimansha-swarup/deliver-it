@@ -328,6 +328,16 @@ export function Scooter({
   const steered = useRef<(Group | null)[]>([])
   const column = useRef<Group>(null)
   const crank = useRef<Group>(null)
+  const dents = useRef<(THREE.Mesh | null)[]>([])
+  const glass = useMemo(() => new THREE.MeshStandardMaterial({ color: '#31454f', transparent: true, opacity: 0.4, roughness: 0.06, metalness: 0.3, envMap: reflection, envMapIntensity: 1.2, depthWrite: false }), [reflection])
+  useEffect(() => () => glass.dispose(), [glass])
+  // Where dents show on a cab: the front corners, the nose, the sides, in the order they come.
+  const dentSpots = useMemo((): [number, number, number][] => {
+    const { width, length } = spec.size
+    const w = width / 2
+    const l = length / 2
+    return [[w * 0.7, 0.62, l - 0.04], [-w * 0.75, 0.6, l - 0.04], [0.1, 0.7, l - 0.02], [w - 0.02, 0.7, l * 0.35], [-w + 0.02, 0.66, l * 0.2], [w * 0.5, 0.56, -l + 0.04]]
+  }, [spec])
   // Only the rider's own scooter carries the Deliver It box (and has the nitro's flame).
   const ownScooter = spec.id === 'scooter'
   // The box is split off the model: it's Deliver It marigold plastic, with the logo on its back and sides.
@@ -356,10 +366,13 @@ export function Scooter({
     [materials, parts],
   )
 
-  const scooterProbes = useMemo(
-    () => createScooterProbes([parts.body, parts.front], [frontAxle, rearAxle], frontAxle[1]),
-    [parts, frontAxle, rearAxle],
-  )
+  // What touches the ground when it's on its side after a crash: this vehicle's own shape, so a bicycle
+  // lies as a bicycle does and the Vega on its tank and bars.
+  const scooterProbes = useMemo(() => {
+    const front = built.wheels.find(({ steers }) => steers)?.at ?? frontAxle
+    const rear = built.wheels.find(({ steers }) => !steers)?.at ?? rearAxle
+    return createScooterProbes([built.body, ...(built.column ? [built.column.geometry] : [])], [front, rear], front[1])
+  }, [built, frontAxle, rearAxle])
   const riderProbes = useMemo(() => createRiderProbes(), [])
   // Where the axles are, from the model, for tilting the scooter as its wheels ride over a kerb.
   const wheelbase = frontAxle[2] - rearAxle[2]
@@ -421,6 +434,10 @@ export function Scooter({
       if (input.current.forward && state.speed > 0.2) crank.current.rotation.x += (state.speed / 0.34 / 2.8) * Math.min(delta, 0.05)
       liveSeat.crank = crank.current.rotation.x
     }
+    // Knocks it has taken show: a dent for each, up to all of them.
+    dents.current.forEach((dent, index) => {
+      if (dent) dent.visible = index < tuning.dents
+    })
     // From the driver's seat the driver themself isn't drawn: the camera is where their head is.
     riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null)
   })
@@ -451,6 +468,15 @@ export function Scooter({
             {/* Everything the suspension carries, which pitches under braking and power. */}
             <group ref={body}>
               <mesh geometry={built.body} material={materials.bike} />
+              {built.glass && <mesh geometry={built.glass} material={glass} renderOrder={2} />}
+              {spec.size.cab &&
+                dentSpots.map((at, index) => (
+                  // A dent: a dark, crumpled scuff on the panel.
+                  <mesh key={index} ref={(mesh) => { dents.current[index] = mesh }} position={at} rotation={[index * 0.7, index * 1.3, index * 0.4]} scale={[1, 0.7, 0.35]} visible={false}>
+                    <icosahedronGeometry args={[0.16, 0]} />
+                    <meshStandardMaterial color="#2a2a2c" roughness={0.9} flatShading />
+                  </mesh>
+                ))}
               {/* What turns with the bars, about the column: the fork, the bars, and the front wheel on it. */}
               {built.column && (
                 <group ref={column} position={[built.column.pivot[0], 0, built.column.pivot[1]]}>

@@ -38,6 +38,8 @@ export type ScooterState = {
   /** How full the nitro tank is, from 0 to 1, and whether it's burning. */
   nitro: number
   nitroOn: boolean
+  /** Seconds until a cab can be jolted again (see `startCrash`). */
+  joltLeft?: number
   /** How much of the engine's pull is on, 0 to 1: it follows the throttle at the vehicle's own rate (tuning.ts). */
   drive?: number
   /** Tilt in radians. Positive leans left. */
@@ -369,9 +371,26 @@ function stepThrownRider(state: ScooterState, collisions: CollisionWorld, surfac
  * `travelX` and `travelZ` are the speed just before the hit, which is what the
  * rider carries on with if they're thrown off.
  */
+/** A knock in a cab: no other for this long (s), and this share of the speed is left after it. */
+const JOLT_GAP = 0.9
+const JOLT_KEEPS = 0.35
+
 function startCrash(state: ScooterState, side: number, strength: number, travelX: number, travelZ: number) {
   state.impact = Math.max(state.impact, Math.min(strength / 12, 1))
   if (state.crashLeft > 0) return
+  // Inside a cab (a car, a van, the three-wheeler) nobody's thrown: a jolt, the speed knocked off it,
+  // a dent, and on it goes. It still counts as a crash (a rental's damage, the thud).
+  if (tuning.cab) {
+    if ((state.joltLeft ?? 0) > 0) return
+    state.joltLeft = JOLT_GAP
+    state.crashCount++
+    tuning.dents++
+    state.impact = Math.max(state.impact, 0.55 + Math.min(strength / 20, 0.45))
+    state.velocityX *= JOLT_KEEPS
+    state.velocityZ *= JOLT_KEEPS
+    state.drifting = false
+    return
+  }
 
   state.crashLeft = SCOOTER.crashTime
   state.crashSide = side >= 0 ? 1 : -1
@@ -608,10 +627,31 @@ function updateVelocity(state: ScooterState, input: DriveInput, dt: number) {
  * heading into the wall. A glancing hit also swings the scooter along the wall,
  * or it would keep pointing into it and lose speed on every frame.
  */
+const footprintProbe = { x: 0, z: 0 }
+
 function handleCollisions(state: ScooterState, collisions: CollisionWorld, dt: number) {
   const beforeX = state.x
   const beforeZ = state.z
-  pushOutOfBuildings(collisions, state, SCOOTER.collisionRadius)
+  if (state.joltLeft) state.joltLeft = Math.max(0, state.joltLeft - dt)
+  // Its real footprint: circles of its half width along its length (one, for a two-wheeler), each
+  // kept out of everything solid. A gap narrower than a van doesn't let a van through.
+  const reach = tuning.halfLength - tuning.radius
+  if (reach <= 0.05) pushOutOfBuildings(collisions, state, tuning.radius)
+  else {
+    const forwardX = Math.sin(state.heading)
+    const forwardZ = Math.cos(state.heading)
+    const steps = Math.max(2, Math.ceil((reach * 2) / (tuning.radius * 1.1)))
+    for (let i = 0; i <= steps; i++) {
+      const along = -reach + (2 * reach * i) / steps
+      footprintProbe.x = state.x + forwardX * along
+      footprintProbe.z = state.z + forwardZ * along
+      const probeX = footprintProbe.x
+      const probeZ = footprintProbe.z
+      pushOutOfBuildings(collisions, footprintProbe, tuning.radius)
+      state.x += footprintProbe.x - probeX
+      state.z += footprintProbe.z - probeZ
+    }
+  }
   reactToPush(state, state.x - beforeX, state.z - beforeZ, dt)
 }
 

@@ -25,6 +25,14 @@ export const tuning = {
   turn: 1,
   lean: 1,
   /** How fast the drive follows the throttle (per second), how hard it slows off it (m/s²), and whether it has nitro. */
+  /**
+   * Its size on the road (vehicleCatalog.ts): half its width, half its length, and whether the rider
+   * is inside a cab. `dents`: knocks it has taken since it was taken out, which show on it.
+   */
+  radius: SCOOTER.collisionRadius,
+  halfLength: SCOOTER.collisionRadius,
+  cab: false,
+  dents: 0,
   response: 8,
   coasting: SCOOTER.coasting,
   nitro: true,
@@ -42,6 +50,11 @@ export function applyVehicle(spec: VehicleSpec, upgrades: UpgradeLevels) {
   tuning.maxSpeed = spec.topSpeed / 3.6 + engine * ENGINE_SPEED_STEP
   tuning.acceleration = SCOOTER.acceleration * spec.pull * (1 + engine * ENGINE_PULL_STEP)
   tuning.topEndAcceleration = SCOOTER.topEndAcceleration * spec.feel.topEnd * (1 + engine * ENGINE_PULL_STEP)
+  // A two-wheeler stays the slim circle it always was (it leans and threads gaps); a cab is its real width and length.
+  tuning.radius = spec.size.cab ? spec.size.width / 2 : SCOOTER.collisionRadius
+  tuning.halfLength = spec.size.cab ? spec.size.length / 2 : SCOOTER.collisionRadius
+  tuning.cab = spec.size.cab
+  tuning.dents = 0
   tuning.response = spec.feel.response
   tuning.coasting = spec.feel.coast
   tuning.nitro = spec.feel.nitro

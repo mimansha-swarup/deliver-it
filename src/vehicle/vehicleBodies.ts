@@ -82,6 +82,8 @@ export type BuiltVehicle = {
   /** `steers`: a front wheel. With a column it turns about that; without, about its own middle (a car's). */
   wheels: { geometry: THREE.BufferGeometry; at: [number, number, number]; steers: boolean }[]
   crank: { geometry: THREE.BufferGeometry; at: [number, number, number] } | null
+  /** Window glass, drawn tinted and see-through: a cab's screens and side windows. Null with none. */
+  glass: THREE.BufferGeometry | null
   /** How far the front wheels turn at full lock, in radians. */
   lock: number
 }
@@ -91,6 +93,7 @@ export function disposeBuilt(built: BuiltVehicle) {
   built.column?.geometry.dispose()
   built.wheels.forEach(({ geometry }) => geometry.dispose())
   built.crank?.geometry.dispose()
+  built.glass?.dispose()
 }
 
 const STEEL = '#8f9499'
@@ -156,6 +159,7 @@ function createScooter(paint: string): BuiltVehicle {
       { geometry: wheelShape(radius, 0.09, STEEL), at: front, steers: true },
     ],
     crank: null,
+    glass: null,
     lock: 0.5,
   }
 }
@@ -204,6 +208,7 @@ function createBicycle(paint: string): BuiltVehicle {
       { geometry: wheelShape(wheel, 0.045, STEEL, 6), at: front, steers: true },
     ],
     crank: { geometry: cranks, at: crank },
+    glass: null,
     lock: 0.6,
   }
 }
@@ -260,6 +265,7 @@ function createElectricScooter(paint: string): BuiltVehicle {
       { geometry: wheelShape(radius, 0.09, STEEL), at: front, steers: true },
     ],
     crank: null,
+    glass: null,
     lock: 0.5,
   }
 }
@@ -320,6 +326,7 @@ function createMotorbike(paint: string): BuiltVehicle {
       { geometry: wheelShape(radius, 0.09, STEEL, 5), at: front, steers: true },
     ],
     crank: null,
+    glass: null,
     lock: 0.45,
   }
 }
@@ -373,9 +380,14 @@ function createCargoTrike(paint: string): BuiltVehicle {
       { geometry: wheelShape(radius, 0.13, STEEL), at: [0.62, radius, -1.0], steers: false },
     ],
     crank: null,
+    // The cab's big screen.
+    glass: pane([1.06, 0.86, 0.02], [0, 1.28, 0.9], [-0.2, 0, 0]),
     lock: 0.55,
   }
 }
+
+/** A pane of glass: a thin sheet, its colour left to the glass material. */
+const pane = (size: [number, number, number], at: [number, number, number], turn: [number, number, number] = [0, 0, 0]) => boxAt(size, at, '#ffffff', turn)
 
 /** A steering wheel on its column, at the driver's hands: a ring tilted back, a hub and a spoke. */
 const steeringWheel = (x: number, y: number, z: number) => [
@@ -435,6 +447,12 @@ function createCar(paint: string): BuiltVehicle {
       { geometry: wheel(), at: [0.72, radius, -1.12], steers: false },
     ],
     crank: null,
+    // The screen, the side windows and the back window, in the frames.
+    glass: join([
+      pane([1.42, 0.64, 0.02], [0, 1.15, 0.5], [-0.42, 0, 0]),
+      pane([1.4, 0.56, 0.02], [0, 1.15, -1.52], [0.25, 0, 0]),
+      ...[-1, 1].flatMap((side) => [pane([0.02, 0.5, 0.78], [side * 0.76, 1.16, 0.06]), pane([0.02, 0.5, 1.05], [side * 0.76, 1.16, -0.92])]),
+    ]),
     lock: 0.5,
   }
 }
@@ -490,6 +508,8 @@ function createVan(paint: string): BuiltVehicle {
       { geometry: wheel(), at: [0.78, radius, -1.3], steers: false },
     ],
     crank: null,
+    // The cab's screen and door windows.
+    glass: join([pane([1.62, 0.78, 0.02], [0, 1.5, 2.1], [-0.12, 0, 0]), ...[-1, 1].map((side) => pane([0.02, 0.72, 1.02], [side * 0.85, 1.5, 1.55]))]),
     lock: 0.5,
   }
 }
@@ -518,6 +538,8 @@ export function createBuiltStill(kind: BuiltKind, paint: string): THREE.BufferGe
     ...(built.column ? [built.column.geometry] : []),
     ...built.wheels.map(({ geometry, at }) => geometry.translate(...at)),
     ...(built.crank ? [built.crank.geometry.translate(...built.crank.at)] : []),
+    // Standing or ridden by someone else, its glass is just dark.
+    ...(built.glass ? [tint(built.glass, '#22303a')] : []),
     ...(kind === 'scooter' ? [boxAt([0.5, 0.4, 0.45], [0, 1.01, -0.725], '#f2b82a')] : []),
   ]
   return join(parts)

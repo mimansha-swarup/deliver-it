@@ -1,4 +1,5 @@
 import type { CrashPhysics, CrashShape, CrashSurface, Quaternion, Tumbler } from '../physics/crashPhysics'
+import { tuning } from '../vehicle/tuning'
 import { addDeckLanes, deckHeightOn, UP_ON_DECK_TRAFFIC } from './deckLanes'
 import type { Flyover } from '../world/transitPlacement'
 import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics'
@@ -996,7 +997,8 @@ function findGapAhead(
     }
   }
 
-  check(rider.x, rider.z, RIDER_HALF_LENGTH, SCOOTER.collisionRadius, true)
+  // The rider's vehicle at its real size: traffic queues behind a van's tail, and leaves a van's width.
+  check(rider.x, rider.z, Math.max(RIDER_HALF_LENGTH, tuning.halfLength), tuning.radius, true)
   // Nobody drives over someone lying in the road. Stuck behind them, they lean on the horn.
   for (const body of downed) {
     if (body.lying) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, true)
@@ -1517,8 +1519,22 @@ function throwFor(
   }
 }
 
+/** Where a vehicle touches the rider's own vehicle, at its real size: circles of its half width along its length. */
+function touchRider(vehicle: Vehicle, rider: ScooterState) {
+  const reach = tuning.halfLength - tuning.radius
+  if (reach <= 0.05) return touchVehicle(vehicle, rider.x, rider.z, tuning.radius)
+  const forwardX = Math.sin(rider.heading)
+  const forwardZ = Math.cos(rider.heading)
+  let deepest: ReturnType<typeof touchVehicle> = null
+  for (const along of [-reach, 0, reach]) {
+    const touch = touchVehicle(vehicle, rider.x + forwardX * along, rider.z + forwardZ * along, tuning.radius)
+    if (touch && (!deepest || touch.overlap > deepest.overlap)) deepest = touch
+  }
+  return deepest
+}
+
 function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt: number) {
-  const touch = touchVehicle(vehicle, rider.x, rider.z, SCOOTER.collisionRadius)
+  const touch = touchRider(vehicle, rider)
   if (!touch) return
 
   const { normalX, normalZ, overlap } = touch
@@ -1561,7 +1577,7 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt
  * (Rapier pushes the body; this stops the scooter, which Rapier doesn't move.)
  */
 function blockRider(vehicle: Vehicle, rider: ScooterState, dt: number) {
-  const touch = touchVehicle(vehicle, rider.x, rider.z, SCOOTER.collisionRadius)
+  const touch = touchRider(vehicle, rider)
   if (!touch) return
   const velocity = vehicle.body?.linvel() ?? { x: 0, z: 0 }
   const hit = resolveHit(
