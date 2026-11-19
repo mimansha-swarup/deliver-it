@@ -10020,3 +10020,22 @@ At 8 Mbit/s it's the download itself: 11 MB at about 1 MB/s, about 9 MB on a hos
 .wasm. Under 8 s there needs a faster connection, some time on the title screen first (everything
 downloads from the moment the page opens), or fewer bytes: the city kit model (1.2 MB, and nothing
 of it is drawn on Low since its planters became pots) and the physics engine are the big ones.
+
+## 2026-11-19: Entry 190, the viaduct's detail
+
+### What I did (CityLandmarks.tsx)
+- **Under the deck**: two box girders along each span and cross beams at its ends, bearing pads on
+  the pillar caps, and a rain stain down the deck's sides under each parapet.
+- **Pillars**: a darker plinth and grime at the foot, and a **drainpipe** down one face from the
+  deck, with clamps, bending out at the bottom.
+- **Lights**: lamp posts on the parapets every 18 m, staggered, their arms over the tracks, and
+  fixtures under both girders every 10 m, seen from the street. Both glow after dusk (no real lights,
+  so no cost per light).
+- **Pillar numbers**: "P-101" onwards, painted white on dark blue on both faces across the road,
+  from one picture for all of them.
+- **Posters** on two in three pillars, both sides, from the posters' picture.
+
+All of it is in the deck's merged mesh, the pillars' instanced shape, or three new meshes (lamp heads,
+numbers, posters) for the whole line.
+
+Screenshots: `world-pass.local/shots/viaduct-10` (day), `viaduct-night2` (night).

@@ -4,7 +4,8 @@ import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import type { BusStop, Landmarks } from './landmarkPlacement'
 import { PropInstances } from './RoadsideProps'
-import { box, merge } from './simpleShapes'
+import { box, colored, merge } from './simpleShapes'
+import { createPosterAtlas, POSTER_ASPECT, POSTER_COLUMNS, POSTER_COUNT, POSTER_ROWS } from './posters'
 import { PLAY_AREA } from './worldUtils'
 
 /*
@@ -36,6 +37,8 @@ function createLakeGeometry(rows: Landmarks['lake']): THREE.BufferGeometry {
 }
 
 const skyUniform = { value: new THREE.Color() }
+/** The deck lamps' heads, shared, lit at dusk (see CityLandmarks' frame). */
+const lampMaterial = new THREE.MeshStandardMaterial({ color: '#d8d2c2', emissive: '#ffe2a8', emissiveIntensity: 0, roughness: 0.6 })
 
 function createWaterMaterial(): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({ color: WATER, roughness: 0.12, metalness: 0.05 })
@@ -60,10 +63,42 @@ function createWaterMaterial(): THREE.MeshStandardMaterial {
   return material
 }
 
-/** A metro pillar with its cap, along +z (the road), the cap across it. */
+/**
+ * A metro pillar with its cap, along +z (the road), the cap across it: grime at the foot, a darker
+ * plinth, the bearing pads the girders sit on, and a drainpipe from the deck down one face, bending
+ * out at the bottom into the median.
+ */
 function createPillar() {
-  return merge([box([1.8, DECK.bottom - 1.4, 1.8], [0, (DECK.bottom - 1.4) / 2, 0], CONCRETE), box([7, 1.4, 2.4], [0, DECK.bottom - 0.7, 0], CONCRETE_DARK)])
+  const column = DECK.bottom - 1.4
+  const pipe = (height: number, at: [number, number, number]) => {
+    const geometry = new THREE.CylinderGeometry(0.11, 0.11, height, 6).toNonIndexed()
+    geometry.translate(...at)
+    return colored(geometry, '#2f3133')
+  }
+  return merge([
+    box([1.8, column, 1.8], [0, column / 2, 0], CONCRETE),
+    box([1.84, 0.9, 1.84], [0, 0.45, 0], '#8e877d'),
+    box([1.83, 2.2, 1.83], [0, 1.1, 0], '#a49d92'),
+    box([7, 1.4, 2.4], [0, DECK.bottom - 0.7, 0], CONCRETE_DARK),
+    ...[-2.6, 2.6].map((x) => box([1.0, 0.25, 1.4], [x, DECK.bottom + 0.12, 0], '#5d5f61')),
+    // The drainpipe: down the face, a clamp every few metres, and out at the foot.
+    pipe(DECK.bottom - 0.6, [0.62, (DECK.bottom - 0.6) / 2 + 0.3, 0.98]),
+    ...[2.5, 5.5, 8.5].map((y) => box([0.3, 0.08, 0.12], [0.62, y, 0.93], '#3b3d3f')),
+    box([0.22, 0.22, 0.7], [0.62, 0.3, 1.25], '#2f3133'),
+  ])
 }
+
+/** Two box girders under each span, and the cross beams at its ends: the deck's underside. */
+function girders(length: number) {
+  const depth = 1.3
+  return [
+    ...[-2.4, 2.4].map((x) => box([1.6, depth, length + 0.6], [x, DECK.bottom - depth / 2, 0], '#a8a399')),
+    ...[-1, 1].map((end) => box([DECK.width - 1, depth - 0.2, 0.5], [0, DECK.bottom - depth / 2 + 0.1, end * (length / 2 - 0.4)], '#9a958b')),
+  ]
+}
+
+/** Lamps on the deck's parapets, every this many metres, staggered side to side. */
+const DECK_LAMP_EVERY = 18
 
 /** The viaduct's deck between pillars, with a parapet each side. */
 function createDeck(spans: Landmarks['spans']) {
@@ -78,8 +113,97 @@ function createDeck(spans: Landmarks['spans']) {
     }
     place(box([DECK.width, DECK.thickness, length + 1], [0, DECK.bottom + DECK.thickness / 2, 0], CONCRETE))
     for (const side of [-1, 1]) place(box([0.3, DECK.parapet, length + 1], [(side * (DECK.width - 0.3)) / 2, DECK.bottom + DECK.thickness + DECK.parapet / 2, 0], CONCRETE_DARK))
+    for (const girder of girders(length)) place(girder)
+    // A rain stain under each parapet, where the water runs over.
+    for (const side of [-1, 1]) place(box([0.02, 0.9, length + 1], [(side * DECK.width) / 2 + side * 0.011, DECK.bottom + 0.7, 0], '#8a857c'))
+    // Lamp posts on the parapets, their arms over the tracks.
+    for (let at = -length / 2 + DECK_LAMP_EVERY / 2; at < length / 2; at += DECK_LAMP_EVERY) {
+      const side = Math.round((at + length) / DECK_LAMP_EVERY) % 2 === 0 ? 1 : -1
+      const x = (side * (DECK.width - 0.3)) / 2
+      const top = DECK.bottom + DECK.thickness + DECK.parapet
+      place(box([0.12, 6.5, 0.12], [x, top + 3.25, at], '#5b5f63'))
+      place(box([1.6, 0.1, 0.1], [x - side * 0.8, top + 6.45, at], '#5b5f63'))
+    }
   }
   return parts.length ? merge(parts) : null
+}
+
+/** The lamps' heads on the deck (see createDeck), as one shape that glows after dark. */
+function createDeckLampHeads(spans: Landmarks['spans']) {
+  const parts: THREE.BufferGeometry[] = []
+  for (const { from, to } of spans) {
+    const length = Math.hypot(to[0] - from[0], to[1] - from[1])
+    const angle = Math.atan2(to[0] - from[0], to[1] - from[1])
+    for (let at = -length / 2 + DECK_LAMP_EVERY / 2; at < length / 2; at += DECK_LAMP_EVERY) {
+      const side = Math.round((at + length) / DECK_LAMP_EVERY) % 2 === 0 ? 1 : -1
+      const x = (side * (DECK.width - 0.3)) / 2 - side * 1.5
+      const head = box([0.5, 0.14, 0.26], [x, DECK.bottom + DECK.thickness + DECK.parapet + 6.36, at], '#fff1cc')
+      parts.push(head.rotateY(angle).translate((from[0] + to[0]) / 2, 0, (from[1] + to[1]) / 2))
+    }
+    // Lights under the deck, on both girders, lighting the median below: seen from the street.
+    for (let at = -length / 2 + 6; at < length / 2 - 3; at += 10) {
+      for (const x of [-2.4, 2.4]) {
+        const fixture = box([0.6, 0.08, 0.25], [x, DECK.bottom - 1.34, at], '#fff1cc')
+        parts.push(fixture.rotateY(angle).translate((from[0] + to[0]) / 2, 0, (from[1] + to[1]) / 2))
+      }
+    }
+  }
+  return parts.length ? merge(parts) : null
+}
+
+/** Each pillar's number, as painted on it: "P-" and its place along the line, white on dark blue, in one picture. */
+const PLATE = { width: 128, height: 64, columns: 8 }
+function createPillarNumbers(pillars: Landmarks['pillars']) {
+  const rows = Math.max(1, Math.ceil(pillars.length / PLATE.columns))
+  const canvas = document.createElement('canvas')
+  canvas.width = PLATE.width * PLATE.columns
+  canvas.height = PLATE.height * rows
+  const context = canvas.getContext('2d')!
+  // Numbered in order along the line: the pillars are in the order they were placed along Hosur Road.
+  pillars.forEach((_, i) => {
+    const left = (i % PLATE.columns) * PLATE.width
+    const top = Math.floor(i / PLATE.columns) * PLATE.height
+    context.fillStyle = '#1f3a6b'
+    context.fillRect(left + 4, top + 4, PLATE.width - 8, PLATE.height - 8)
+    context.fillStyle = '#f2efe6'
+    context.font = `800 34px system-ui, sans-serif`
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(`P-${101 + i}`, left + PLATE.width / 2, top + PLATE.height / 2 + 1)
+  })
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  const planes = pillars.flatMap((pillar, i) => {
+    const column = i % PLATE.columns
+    const row = Math.floor(i / PLATE.columns)
+    // On both faces across the road, about 3.5 m up.
+    return [1, -1].map((face) => {
+      const plane = new THREE.PlaneGeometry(0.8, 0.4).toNonIndexed()
+      const uv = plane.getAttribute('uv') as THREE.BufferAttribute
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, (column + uv.getX(k)) / PLATE.columns, 1 - (row + 1 - uv.getY(k)) / rows)
+      return plane.rotateY(face > 0 ? 0 : Math.PI).translate(0, 3.6, face * 0.925).rotateY(pillar.rotation).translate(pillar.x, 0, pillar.z)
+    })
+  })
+  return { texture, geometry: merge(planes) }
+}
+
+/** Posters pasted on the pillars' sides, from the posters' picture (posters.ts): on two in three pillars. */
+function createPillarPosters(pillars: Landmarks['pillars']) {
+  const planes: THREE.BufferGeometry[] = []
+  pillars.forEach((pillar, i) => {
+    if (i % 3 === 2) return
+    for (const face of [1, -1]) {
+      const index = (i * 2 + (face > 0 ? 0 : 1)) % POSTER_COUNT
+      const column = index % POSTER_COLUMNS
+      const row = Math.floor(index / POSTER_COLUMNS)
+      const plane = new THREE.PlaneGeometry(1.25, 1.25 / POSTER_ASPECT).toNonIndexed()
+      const uv = plane.getAttribute('uv') as THREE.BufferAttribute
+      for (let k = 0; k < uv.count; k++) uv.setXY(k, (column + uv.getX(k)) / POSTER_COLUMNS, 1 - (row + 1 - uv.getY(k)) / POSTER_ROWS)
+      planes.push(plane.rotateY(face > 0 ? Math.PI / 2 : -Math.PI / 2).translate(face * 0.925, 1.75, 0).rotateY(pillar.rotation).translate(pillar.x, 0, pillar.z))
+    }
+  })
+  return planes.length ? merge(planes) : null
 }
 
 /** A bus shelter `length` long along x, its open front to +z: posts, a sloping roof, a back panel, a bench and an ad panel. */
@@ -234,6 +358,16 @@ export function CityLandmarks({ landmarks }: { landmarks: Landmarks }) {
   const water = useMemo(() => createWaterMaterial(), [])
   const deck = useMemo(() => createDeck(landmarks.spans), [landmarks])
   const pillar = useMemo(() => createPillar(), [])
+  const lampHeads = useMemo(() => createDeckLampHeads(landmarks.spans), [landmarks])
+  const numbers = useMemo(() => (landmarks.pillars.length ? createPillarNumbers(landmarks.pillars) : null), [landmarks])
+  const posters = useMemo(() => createPillarPosters(landmarks.pillars), [landmarks])
+  const posterAtlas = useMemo(() => createPosterAtlas(), [])
+  useEffect(
+    () => () => {
+      for (const thing of [lampHeads, numbers?.geometry, numbers?.texture, posters, posterAtlas]) thing?.dispose()
+    },
+    [lampHeads, numbers, posters, posterAtlas],
+  )
   const shelter = useMemo(() => createShelter(6), [])
   const bigShelter = useMemo(() => createShelter(12), [])
   const deckMaterial = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), [])
@@ -245,12 +379,25 @@ export function CityLandmarks({ landmarks }: { landmarks: Landmarks }) {
   )
   useFrame(() => {
     skyUniform.value.setRGB(...liveSky.look.horizon, THREE.SRGBColorSpace)
+    // The deck's lamps come on at dusk.
+    lampMaterial.emissiveIntensity = liveSky.look.night * 2.2
   })
   return (
     <>
       {lake && <mesh geometry={lake} material={water} receiveShadow />}
       {deck && <mesh geometry={deck} material={deckMaterial} castShadow receiveShadow />}
       <PropInstances props={landmarks.pillars} geometry={pillar} sizeRange={0} vertexColors to={600} />
+      {lampHeads && <mesh geometry={lampHeads} material={lampMaterial} />}
+      {numbers && (
+        <mesh geometry={numbers.geometry}>
+          <meshStandardMaterial map={numbers.texture} roughness={0.8} polygonOffset polygonOffsetFactor={-2} />
+        </mesh>
+      )}
+      {posters && (
+        <mesh geometry={posters}>
+          <meshStandardMaterial map={posterAtlas} roughness={0.85} polygonOffset polygonOffsetFactor={-2} />
+        </mesh>
+      )}
       <PropInstances props={landmarks.shelters} geometry={shelter} sizeRange={0} vertexColors />
       <PropInstances props={landmarks.bigShelters} geometry={bigShelter} sizeRange={0} vertexColors />
       {landmarks.stops.length > 0 && <StopBoards stops={landmarks.stops} />}
