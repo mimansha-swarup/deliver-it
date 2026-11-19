@@ -92,6 +92,8 @@ export const SCOOTER = {
    * A tyre rolls up a step over a little forward travel: this much height per
    * metre. A 13 cm kerb takes about a quarter of a metre, as a real wheel does.
    */
+  /** A tyre on the ground follows it down slopes no steeper than this (drop per metre travelled); steeper is an edge it falls off. */
+  stickSlope: 0.3,
   climbPerMetre: 0.55,
   /** Even at a crawl, a tyre gets up a step this fast, in metres per second. */
   climbAtCrawl: 0.3,

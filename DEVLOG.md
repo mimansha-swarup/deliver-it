@@ -10261,3 +10261,23 @@ by the setback, but a sign or hoarding near a deck's edge isn't checked against 
 ### Not known
 The real statue's colours: I haven't a reference here, so it's painted stone with gilt. Easy to change
 (Agara.tsx, the colours at the top).
+
+## 2026-11-19: Entry 202, down the flyover's ramp without the bumps
+
+### What was wrong
+Coming down a ramp still bumped, though the deck is one smooth surface now. It was the wheels, not the
+road: going down, a tyre fell under gravity from rest every step (`followGround`), caught the road up,
+"landed" at over the jolt speed, lost a little speed, and started again. Up the ramp it rolled; down it
+was a staircase.
+
+### What I did
+A tyre that's on the ground stays on it down any slope gentler than 0.3 m a metre (`stickSlope`,
+vehicleConfig.ts). An edge (a kerb, a pothole's lip) is far steeper, so it's still a drop and a
+landing, and a breaker taken fast still throws the wheel up (it's rising then, not on the ground).
+
+### Measured (down the Agara flyover's ramp, throttle held)
+| | Before | Now |
+| --- | --- | --- |
+| Jolts down one ramp | 139 | 0 |
+| Frames with a wheel falling | 382 of 820 | 0 |
+| Top speed | 51 km/h | 56 km/h (the jolts no longer take speed off) |

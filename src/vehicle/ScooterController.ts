@@ -683,8 +683,8 @@ function updatePosition(state: ScooterState, collisions: CollisionWorld, dt: num
  * landed, in m/s, if it came down this step (0 otherwise). Going up a step or a
  * hump, it rolls up over a little forward travel, as a round wheel meets an
  * edge, and keeps some of that upward speed: off the top of a breaker taken
- * fast, it leaves the ground for a moment. Going down, it falls under gravity,
- * so riding off a kerb is a little drop and a landing rather than a snap.
+ * fast, it leaves the ground for a moment. Going down an edge, it falls under gravity,
+ * so riding off a kerb is a little drop and a landing rather than a snap; down a slope it rolls.
  */
 function followGround(wheel: WheelContact, ground: number, travelled: number, dt: number): number {
   if (ground > wheel.height) {
@@ -692,6 +692,15 @@ function followGround(wheel: WheelContact, ground: number, travelled: number, dt
     wheel.height += climb
     // The suspension soaks up most of the push; the rest carries the wheel on upwards.
     wheel.fall = Math.min(wheel.fall, -Math.min(SCOOTER.maxLaunch, (climb / dt) * SCOOTER.launchShare))
+    return 0
+  }
+  // Rolling down a slope (a flyover's ramp, a breaker's far side taken gently), a tyre on the ground
+  // stays on it. Without this it fell from rest each step, caught the road up and landed hard, over
+  // and over: a smooth ramp rode like a staircase on the way down. A real edge (a kerb) is far
+  // steeper than `stickSlope`, so it's still a drop and a landing.
+  const drop = wheel.height - ground
+  if (wheel.fall === 0 && drop > 0 && drop <= travelled * SCOOTER.stickSlope) {
+    wheel.height = ground
     return 0
   }
   wheel.fall += 9.81 * dt
