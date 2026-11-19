@@ -1,5 +1,6 @@
 import { CHAPTER_ONE, DAILY_BONUS, DAILY_GOALS, DISPATCHER, isChapterDone } from '../game/career'
 import { useGameStore } from '../game/gameStore'
+import { DailyChallenge } from './ScoreCard'
 
 /** How many of Ravi's messages the Career tab shows. */
 const MESSAGES_SHOWN = 4
@@ -56,9 +57,12 @@ export function TodaySheet() {
 
   if (!daily) {
     return (
-      <section className="phone-sheet">
-        <p className="phone-objective">Today's challenges start when you set off.</p>
-      </section>
+      <>
+        <DailyChallenge />
+        <section className="phone-sheet">
+          <p className="phone-objective">Today's challenges start when you set off.</p>
+        </section>
+      </>
     )
   }
 
@@ -67,9 +71,11 @@ export function TodaySheet() {
   const bonus = DAILY_BONUS.credits + Math.min((continues - 1) * DAILY_BONUS.perStreakDay, DAILY_BONUS.maxStreakBonus)
 
   return (
+    <>
+    <DailyChallenge />
     <section className="phone-sheet phone-today">
       <p className="phone-sheet-top">
-        <span className="phone-objective">Daily challenges</span>
+        <span className="phone-objective">Three small goals</span>
         <span className="today-streak">{streak.days > 0 ? `${streak.days}-day streak` : 'No streak yet'}</span>
       </p>
       <ul className="today-goals">
@@ -95,5 +101,6 @@ export function TodaySheet() {
           : `Finish all three: +${bonus} credits, +${DAILY_BONUS.xp} XP`}
       </p>
     </section>
+    </>
   )
 }
