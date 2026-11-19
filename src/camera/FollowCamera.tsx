@@ -9,6 +9,7 @@ import { getTravelSpeed, scooterLevel } from '../vehicle/ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
+import { liveLook, settleLook, useMouseLook } from './mouseLook'
 
 /*
  * Low and close: just over the rider's helmet and a few metres back, so buildings and trees
@@ -109,6 +110,8 @@ export function FollowCamera({
   const onRider = useRef(0)
   const sway = useRef(0)
 
+  useMouseLook()
+
   // V swaps between the chase view and the driver's seat, in a vehicle that has one.
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -142,8 +145,10 @@ export function FollowCamera({
     const heading = previous + (targetHeading - previous) * (1 - Math.exp(-TURN_RESPONSE * delta))
     cameraHeading.current = heading
 
-    const forwardX = Math.sin(heading)
-    const forwardZ = Math.cos(heading)
+    // Mouse-look turns the view round the rider from there, and comes back behind them while riding.
+    settleLook(travelSpeed, riderOff, delta)
+    const forwardX = Math.sin(heading + liveLook.yaw)
+    const forwardZ = Math.cos(heading + liveLook.yaw)
 
     const height = scooterLevel(state)
     level.current += (height - level.current) * (1 - Math.exp(-8 * delta))
@@ -158,7 +163,11 @@ export function FollowCamera({
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
 
-    camera.position.set(focusX - forwardX * distance, HEIGHT * view.height + level.current, focusZ - forwardZ * distance)
+    // Tilting the look up swings the camera higher over the rider; down, lower behind them.
+    const tilt = liveLook.pitch
+    const back = distance * (tilt > 0 ? Math.cos(tilt * 0.9) : 1)
+    const lift = tilt > 0 ? Math.sin(tilt) * distance * 1.6 : tilt * 4
+    camera.position.set(focusX - forwardX * back, Math.max(0.5, HEIGHT * view.height + lift) + level.current, focusZ - forwardZ * back)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -175,7 +184,7 @@ export function FollowCamera({
     // On the rider, look at them rather than ahead of them.
     const lookAhead = LOOK_AHEAD * (1 - follow)
     let lookX = focusX + forwardX * lookAhead
-    let lookY: number = LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow + level.current
+    let lookY: number = LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow + level.current + (tilt < 0 ? -tilt * 9 : 0)
     let lookZ = focusZ + forwardZ * lookAhead
 
     // Eases across to a set shot and back, so that it never cuts.
@@ -199,7 +208,10 @@ export function FollowCamera({
       const aheadX = Math.sin(state.heading)
       const aheadZ = Math.cos(state.heading)
       camera.position.set(state.x + aheadX * seat[2] + aheadZ * seat[0], level.current + seat[1], state.z + aheadZ * seat[2] - aheadX * seat[0])
-      camera.lookAt(camera.position.x + aheadX * 20, level.current + seat[1] - 1.2, camera.position.z + aheadZ * 20)
+      // The mouse turns the driver's head.
+      const lookAtX = Math.sin(state.heading + liveLook.yaw)
+      const lookAtZ = Math.cos(state.heading + liveLook.yaw)
+      camera.lookAt(camera.position.x + lookAtX * 20, level.current + seat[1] - 1.2 - liveLook.pitch * 14, camera.position.z + lookAtZ * 20)
     }
     // A gentle roll into turns, with the scooter's lean: none in a set shot or while the rider is off.
     const swayTarget = Math.max(-SWAY_MAX, Math.min(SWAY_MAX, state.lean * SWAY_SHARE)) * (1 - follow) * (1 - amount)
