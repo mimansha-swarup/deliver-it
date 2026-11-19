@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type Ref, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -20,17 +20,17 @@ import {
   getModel,
   paintModel,
   TRAFFIC_MODELS_URL,
-  YAMAHA_MODEL_URL,
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
 import { water } from '../world/roadFeatures'
 import type { Surface } from '../world/surface'
 import { BRAND_DYE, createBoxLogoTexture } from './brandPrint'
-import { Rider, STEERING_Z } from './Rider'
+import { Rider } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
-import { createBuiltVehicle, createModelBody, disposeBuilt } from './vehicleBodies'
-import { VEHICLES } from './vehicleCatalog'
+import { liveSeat } from './riderSeat'
+import { createBuiltVehicle, disposeBuilt } from './vehicleBodies'
+import { liveVehicle, VEHICLES } from './vehicleCatalog'
 import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { useDriveInput } from './useDriveInput'
@@ -182,23 +182,6 @@ function updateLights(materials: Materials, braking: boolean) {
   materials.bike.envMapIntensity = look.ambientIntensity * 0.9
 }
 
-function Wheel({
-  spinRef,
-  position,
-  geometry,
-  material,
-}: {
-  spinRef: Ref<Group>
-  position: [number, number, number]
-  geometry: THREE.BufferGeometry
-  material: THREE.Material
-}) {
-  return (
-    <group ref={spinRef} position={position}>
-      <mesh geometry={geometry} material={material} castShadow />
-    </group>
-  )
-}
 
 type WheelData = { wheelPositions: [number, number, number][] }
 
@@ -337,17 +320,16 @@ export function Scooter({
   // The vehicle in use (vehicleCatalog.ts): the scooter's own rig, or another body in its place.
   const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
   const paint = spec.paint ?? findColour(PAINTS, paintId).color
-  const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
-  const otherBody = useMemo(() => (spec.body.rig === 'model' ? createModelBody(spec.body.file === 'yamaha' ? yamaha : scene, spec.body, paint) : null), [spec, paint, scene, yamaha])
-  useEffect(() => () => otherBody?.dispose(), [otherBody])
-  // A vehicle built in pieces (vehicleBodies.ts): its wheels spin, and a bicycle's cranks go round.
-  const built = useMemo(() => (spec.body.rig === 'built' ? createBuiltVehicle(spec.body.kind, paint) : null), [spec, paint])
-  useEffect(() => () => { if (built) disposeBuilt(built) }, [built])
+  // Every vehicle is built in pieces (vehicleBodies.ts): its wheels spin, the front ones steer, the
+  // bars turn about the column, and a bicycle's cranks go round.
+  const built = useMemo(() => createBuiltVehicle(spec.body, paint), [spec, paint])
+  useEffect(() => () => disposeBuilt(built), [built])
   const builtWheels = useRef<(Group | null)[]>([])
+  const steered = useRef<(Group | null)[]>([])
+  const column = useRef<Group>(null)
   const crank = useRef<Group>(null)
-  const ownRig = spec.body.rig === 'scooter'
-  // The rider is seen on two wheels, and not inside a van, a car or the three-wheeler's cab.
-  const riderSeen = spec.body.rig === 'scooter' || (spec.body.rig === 'built' ? spec.body.riderSeen : spec.body.riderSeat !== null)
+  // Only the rider's own scooter carries the Deliver It box (and has the nitro's flame).
+  const ownScooter = spec.id === 'scooter'
   // The box is split off the model: it's Deliver It marigold plastic, with the logo on its back and sides.
   const { parts, boxBounds } = useMemo(() => {
     const painted = paintModel(getModel(scene, 'delivery'), paint)
@@ -361,7 +343,6 @@ export function Scooter({
     if (lightest > 0) for (let i = 0; i < colors.count; i++) colors.setXYZ(i, colors.getX(i) / lightest, colors.getY(i) / lightest, colors.getZ(i) / lightest)
     return { parts: { body: scooter, box, front: paintModel(getModel(scene, 'delivery-front'), paint) }, boxBounds: bounds }
   }, [scene, paint])
-  const wheelGeometry = useMemo(() => getModel(scene, 'delivery-wheel'), [scene])
   const [frontAxle, rearAxle] = useMemo(() => {
     const { wheelPositions } = scene.getObjectByName('delivery')?.userData as WheelData
     return [...wheelPositions].sort((a, b) => b[2] - a[2])
@@ -388,10 +369,6 @@ export function Scooter({
   const lean = useRef<Group>(null)
   const body = useRef<Group>(null)
   const riderRoot = useRef<Group>(null)
-  const steering = useRef<Group>(null)
-  const wheelSteering = useRef<Group>(null)
-  const frontWheel = useRef<Group>(null)
-  const rearWheel = useRef<Group>(null)
 
   useFrame((_, delta) => {
     const state = scooterState.current
@@ -434,13 +411,18 @@ export function Scooter({
     lean.current.position.y = -lowest
 
     placeRider(riderRoot.current, body.current, ref.current, state, riderProbes)
-    if (steering.current) steering.current.rotation.y = state.steer * MAX_FRONT_WHEEL_ANGLE
-    if (wheelSteering.current) wheelSteering.current.rotation.y = state.steer * MAX_FRONT_WHEEL_ANGLE
+    // The bars and the front wheel (or a car's two front wheels) turn with the steering; every wheel spins.
+    const turned = state.steer * built.lock
+    if (column.current) column.current.rotation.y = turned
+    for (const wheel of steered.current) if (wheel) wheel.rotation.y = turned
     for (const wheel of builtWheels.current) if (wheel) wheel.rotation.x = state.wheelSpin
     // Pedalled round with the throttle, a turn of the cranks to about three of the wheels; still when coasting.
-    if (crank.current && input.current.forward && state.speed > 0.2) crank.current.rotation.x += (state.speed / 0.34 / 2.8) * Math.min(delta, 0.05)
-    if (frontWheel.current) frontWheel.current.rotation.x = state.wheelSpin
-    if (rearWheel.current) rearWheel.current.rotation.x = state.wheelSpin
+    if (crank.current) {
+      if (input.current.forward && state.speed > 0.2) crank.current.rotation.x += (state.speed / 0.34 / 2.8) * Math.min(delta, 0.05)
+      liveSeat.crank = crank.current.rotation.x
+    }
+    // From the driver's seat the driver themself isn't drawn: the camera is where their head is.
+    riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null)
   })
 
   return (
@@ -450,62 +432,48 @@ export function Scooter({
         <group position={[0, 0, -axleMiddle]}>
           <BlobShadow />
           <group ref={lean}>
-            {otherBody && <mesh geometry={otherBody} material={materials.bike} />}
-            {built && (
-              <>
-                <mesh geometry={built.body} material={materials.bike} />
-                {built.wheels.map(({ geometry, at }, index) => (
-                  <group key={index} position={at} ref={(group) => { builtWheels.current[index] = group }}>
+            {built.wheels.map(({ geometry, at, steers }, index) =>
+              steers && built.column ? null : (
+                // A wheel on its axle: one that steers (a car's) turns about its own middle first.
+                <group key={index} position={at} ref={(group) => { steered.current[index] = steers ? group : null }}>
+                  <group ref={(group) => { builtWheels.current[index] = group }}>
                     <mesh geometry={geometry} material={materials.bike} />
                   </group>
-                ))}
-                {built.crank && (
-                  <group ref={crank} position={built.crank.at}>
-                    <mesh geometry={built.crank.geometry} material={materials.bike} />
-                  </group>
-                )}
-              </>
+                </group>
+              ),
             )}
-            <group visible={ownRig}>
-              <Wheel
-                spinRef={rearWheel}
-                position={rearAxle}
-                geometry={wheelGeometry}
-                material={materials.wheel}
-              />
-            </group>
-            {/* The front wheel turns with the bars, around the steering axis. */}
-            <group ref={wheelSteering} position={[0, 0, STEERING_Z]} visible={ownRig}>
-              <group position={[0, 0, -STEERING_Z]}>
-                <Wheel
-                  spinRef={frontWheel}
-                  position={frontAxle}
-                  geometry={wheelGeometry}
-                  material={materials.wheel}
-                />
+            {built.crank && (
+              <group ref={crank} position={built.crank.at}>
+                <mesh geometry={built.crank.geometry} material={materials.bike} />
               </group>
-            </group>
+            )}
 
             {/* Everything the suspension carries, which pitches under braking and power. */}
             <group ref={body}>
-              <group visible={ownRig}>
-                <mesh geometry={parts.body} material={materials.bike} />
-                <mesh geometry={parts.box} material={materials.box} />
-                <BoxLogos bounds={boxBounds} />
-                <mesh position={[0, 0.72, -0.9]} material={materials.tail}>
-                  <boxGeometry args={[0.16, 0.05, 0.03]} />
-                </mesh>
-                <NitroFlame scooter={scooterState} />
-              </group>
-              <group ref={steering} position={[0, 0, STEERING_Z]} visible={ownRig}>
-                <group position={[0, 0, -STEERING_Z]}>
-                  <mesh geometry={parts.front} material={materials.bike} />
-                  <mesh position={[0, 0.91, 0.62]} scale={[1, 1, 0.4]} material={materials.headlight}>
-                    <sphereGeometry args={[0.07, 14, 12]} />
-                  </mesh>
+              <mesh geometry={built.body} material={materials.bike} />
+              {/* What turns with the bars, about the column: the fork, the bars, and the front wheel on it. */}
+              {built.column && (
+                <group ref={column} position={[built.column.pivot[0], 0, built.column.pivot[1]]}>
+                  <group position={[-built.column.pivot[0], 0, -built.column.pivot[1]]}>
+                    <mesh geometry={built.column.geometry} material={materials.bike} />
+                    {built.wheels.map(({ geometry, at, steers }, index) =>
+                      steers ? (
+                        <group key={index} position={at} ref={(group) => { builtWheels.current[index] = group }}>
+                          <mesh geometry={geometry} material={materials.bike} />
+                        </group>
+                      ) : null,
+                    )}
+                  </group>
                 </group>
-              </group>
-              <group ref={riderRoot} matrixAutoUpdate={false} visible={riderSeen}>
+              )}
+              {ownScooter && (
+                <>
+                  <mesh geometry={parts.box} material={materials.box} />
+                  <BoxLogos bounds={boxBounds} />
+                  <NitroFlame scooter={scooterState} />
+                </>
+              )}
+              <group ref={riderRoot} matrixAutoUpdate={false}>
                 <Rider
                   scooter={scooterState}
                   steerAngle={MAX_FRONT_WHEEL_ANGLE}

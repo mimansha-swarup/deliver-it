@@ -8,7 +8,10 @@ import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { HIP, JOG, type Probe } from './riderShape'
 import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
+import { liveSeat } from './riderSeat'
 import { tuning } from './tuning'
+import { BICYCLE_BRACKET, BICYCLE_CRANK } from './vehicleBodies'
+import { liveVehicle } from './vehicleCatalog'
 import { BRAND_DYE, BRAND_INK, createHelmetDecalTexture, createJacketPrintTexture } from './brandPrint'
 
 /*
@@ -30,12 +33,7 @@ const PRINT_WRAP = 1.9
 const PRINT_HEIGHT = 0.22
 const PRINT_LIFT = 0.008
 
-/** How far the rider's back leans forward when sitting still, in radians. */
-const SIT_LEAN = 0.5
-/** Where each hand grips, measured from the steering column. */
-const GRIP = new THREE.Vector3(0.38, 1.05, -0.18)
 export const STEERING_Z = 0.45
-const FOOT_REST = new THREE.Vector3(0.17, 0.42, -0.08)
 /**
  * Where the left foot lands when the scooter stops: the ankle, on tiptoe, a
  * little back from the footboard. A real-sized leg doesn't reach the ground
@@ -55,6 +53,7 @@ const toRider = new THREE.Matrix4()
 const shoulder = new THREE.Vector3()
 const hand = new THREE.Vector3()
 const foot = new THREE.Vector3()
+const footGround = new THREE.Vector3()
 const elbow = new THREE.Vector3()
 const offHand = new THREE.Vector3()
 const limpHand = new THREE.Vector3()
@@ -94,11 +93,13 @@ function jogFoot(step: FootStep, stride: number, sign: number) {
  * forth against the legs while jogging, or flings out when limp.
  */
 function handTarget(sign: number, steerAngle: number, off: number, limp: number, jog: number, step: FootStep, shoulderAt: THREE.Vector3, armLength: number) {
-  const x = sign * GRIP.x
+  // The vehicle's own bars or wheel (vehicleCatalog.ts' seat): the grips swing about its column.
+  const { grip, column, side } = liveVehicle.spec.seat
+  const x = sign * grip[0]
   hand.set(
-    x * Math.cos(steerAngle) + GRIP.z * Math.sin(steerAngle),
-    GRIP.y,
-    STEERING_Z - x * Math.sin(steerAngle) + GRIP.z * Math.cos(steerAngle),
+    side + x * Math.cos(steerAngle) + grip[2] * Math.sin(steerAngle),
+    grip[1],
+    column - x * Math.sin(steerAngle) + grip[2] * Math.cos(steerAngle),
   )
   if (off > 0) {
     const swing = (-step.forward / JOG.reach) * ARM_SWING
@@ -224,7 +225,9 @@ export function Rider({
     const steer = state.steer * steerAngle
     const crouch = Math.min(speed / tuning.maxSpeed, 1) * (state.boostLeft > 0 || state.nitroOn ? 1 : 0.45)
 
-    const wantsFoot = speed < FOOT_DOWN_SPEED && state.crashLeft === 0 ? 1 : 0
+    // How the rider sits on this vehicle (vehicleCatalog.ts' seat).
+    const seat = liveVehicle.spec.seat
+    const wantsFoot = seat.footDown && speed < FOOT_DOWN_SPEED && state.crashLeft === 0 ? 1 : 0
     footDown.current += (wantsFoot - footDown.current) * (1 - Math.exp(-FOOT_RESPONSE * delta))
 
     const { off, limp, stride, pace } = state.rider
@@ -234,12 +237,18 @@ export function Rider({
     jogFoot(rightStep, stride, -1)
     const bob = -(JOG.crouch + JOG.sink * Math.max(leftStep.load, rightStep.load)) * jog * off
     // Leans into a bend harder than the scooter. Off it, they stand up straight, or lean into a jog.
-    const torso = (SIT_LEAN + crouch * 0.16) * (1 - off) + (0.05 + 0.2 * jog) * off
+    const torso = (seat.lean + crouch * (seat.footDown ? 0.16 : 0)) * (1 - off) + (0.05 + 0.2 * jog) * off
     // Stopped, the hips shift over to the side the foot goes down on.
     const shift = footDown.current * (1 - off)
 
     // The body first: everything else is worked out in its frame.
-    group.position.set(HIP.x + FOOT_DOWN_HIP_SHIFT.x * shift, HIP.y + bob + FOOT_DOWN_HIP_SHIFT.y * shift, HIP.z)
+    // On the vehicle the hips are on its seat; off it (a crash), they're where the scooter's are, as the fall and the jog back expect.
+    const on = 1 - off
+    group.position.set(
+      HIP.x + (seat.hip[0] + seat.side - HIP.x) * on + FOOT_DOWN_HIP_SHIFT.x * shift,
+      HIP.y + (seat.hip[1] - HIP.y) * on + bob + FOOT_DOWN_HIP_SHIFT.y * shift,
+      HIP.z + (seat.hip[2] - HIP.z) * on,
+    )
     group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off))
     group.updateMatrix()
     // The model's own space: the body group's, with the hips raised to where the model has them.
@@ -256,8 +265,15 @@ export function Rider({
       probes[6 + index].point.copy(hand)
     }
     for (const [index, sign] of [[0, 1], [1, -1]] as const) {
-      if (sign > 0) foot.copy(FOOT_REST).lerp(FOOT_DOWN, footDown.current)
-      else foot.set(-FOOT_REST.x, FOOT_REST.y, FOOT_REST.z)
+      if (seat.pedals) {
+        // On the pedals, going round with the cranks: the right foot half a turn from the left.
+        const angle = liveSeat.crank + (sign > 0 ? Math.PI : 0)
+        foot.set(sign * seat.foot[0], BICYCLE_BRACKET[1] - Math.cos(angle) * BICYCLE_CRANK + 0.1, BICYCLE_BRACKET[2] - Math.sin(angle) * BICYCLE_CRANK)
+      } else foot.set(seat.side + sign * seat.foot[0], seat.foot[1], seat.foot[2])
+      // A foot down at a stop, on the left: beside where it rests, on the ground.
+      if (sign > 0 && footDown.current > 0) {
+        foot.lerp(footGround.set(seat.foot[0] + 0.17, FOOT_DOWN.y, seat.hip[2] + 0.12), footDown.current)
+      }
       placeOffFoot(foot, sign, off, limp, jog, sign > 0 ? leftStep : rightStep)
       poseLimb(index === 0 ? pose.leftLeg : pose.rightLeg, joints.hips[index], foot, size.thigh, size.shin, size.legRest, sign, true, elbow, toModel, toRider)
       probes[8 + index].point.copy(elbow)

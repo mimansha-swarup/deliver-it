@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { MARKET, VEHICLES, type OrderType, type VehicleId, type VehicleSpec } from '../vehicle/vehicleCatalog'
 import { orderRules } from '../missions/orderStory'
+import { Surface, worldSurface } from '../world/surfaceMap'
 import { orderGate, useGameStore } from './gameStore'
 import { livePlayer, liveSky } from './livePlayer'
 import { levelFromXp } from './progression'
@@ -118,6 +119,36 @@ export function atHub(): boolean {
   return store !== undefined && Math.hypot(store.x - livePlayer.x, store.z - livePlayer.z) < FLEET_RULES.hubRange
 }
 
+/**
+ * Where a delivery parks: on the road, at the kerb. Looking left of the rider first (traffic keeps
+ * left, so that's the kerb side), the furthest out that's still road within a lane's width; then
+ * right; then just behind or ahead; and, with the rider off the road altogether, the nearest road.
+ */
+function roadSpotNear(x: number, z: number, dirX: number, dirZ: number): [number, number] {
+  const map = worldSurface.map
+  if (!map) return [x + dirZ * 2.2, z - dirX * 2.2]
+  const isRoad = (px: number, pz: number) => map.at(px, pz) === Surface.Road
+  // Room for the vehicle's width: the spot and half a metre either side of it are all road.
+  const fits = (px: number, pz: number) => isRoad(px, pz) && isRoad(px + dirZ * 0.5, pz - dirX * 0.5) && isRoad(px - dirZ * 0.5, pz + dirX * 0.5)
+  for (const side of [1, -1]) {
+    for (const out of [3.2, 2.6, 2.0, 1.5]) {
+      const px = x + dirZ * out * side
+      const pz = z - dirX * out * side
+      if (fits(px, pz)) return [px, pz]
+    }
+  }
+  for (const along of [-4, 5, -7, 8]) if (fits(x + dirX * along, z + dirZ * along)) return [x + dirX * along, z + dirZ * along]
+  for (let reach = 3; reach <= 30; reach += 3) {
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2
+      const px = x + Math.cos(angle) * reach
+      const pz = z + Math.sin(angle) * reach
+      if (fits(px, pz)) return [px, pz]
+    }
+  }
+  return [x, z]
+}
+
 /** Whether the vehicle in use carries a kind of order. */
 export function carries(type: OrderType): boolean {
   return (VEHICLES[useGameStore.getState().vehicleId] ?? VEHICLES.scooter).unlocks.includes(type)
@@ -158,10 +189,11 @@ export const useFleet = create<Fleet>()(
         if (!game().spend('GaadiGo delivery fee', FLEET_RULES.deliveryFee)) return `Delivery is ₹${FLEET_RULES.deliveryFee}: not enough in the wallet.`
         const [low, high] = FLEET_RULES.deliveryMinutes
         const minutes = low + Math.random() * (high - low)
-        // Brought to the rider's left (the kerb side), a couple of metres off, facing the way they face.
+        // Brought to the road beside the rider, at the kerb, facing the way they face: never onto the footpath.
         const dirX = Math.sin(livePlayer.heading)
         const dirZ = Math.cos(livePlayer.heading)
-        set({ delivery: { id, x: livePlayer.x + dirZ * 2.2, z: livePlayer.z - dirX * 2.2, dirX, dirZ, arrivesAt: liveSky.totalHours + minutes / 60, rental, own, here: false, handing: null } })
+        const spot = roadSpotNear(livePlayer.x, livePlayer.z, dirX, dirZ)
+        set({ delivery: { id, x: spot[0], z: spot[1], dirX, dirZ, arrivesAt: liveSky.totalHours + minutes / 60, rental, own, here: false, handing: null } })
         say(`GaadiGo: your ${VEHICLES[id].name} is on its way, about ${Math.round(minutes)} min. Wait where you are.`)
         return null
       }

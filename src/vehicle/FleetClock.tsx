@@ -6,10 +6,11 @@ import { useFleet } from '../game/fleet'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { IDLE_POSE } from '../traffic/gait'
-import { TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from '../traffic/modelFiles'
+import { getModel, paintModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { ShopPeople } from '../world/ShopPeople'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
-import { createBuiltStill, createModelBody } from './vehicleBodies'
+import { createRiderModel, createSeatedRiderGeometry } from './riderModel'
+import { createBuiltStill } from './vehicleBodies'
 import { VEHICLES, type VehicleId } from './vehicleCatalog'
 
 /*
@@ -30,13 +31,11 @@ const HANDOVER_TIME = 2.6
 
 const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.15 })
 const keyMaterial = new THREE.MeshStandardMaterial({ color: '#d9a93a', roughness: 0.4, metalness: 0.6 })
-const riderMaterial = new THREE.MeshStandardMaterial({ color: '#19a974', roughness: 0.85 })
-const helmetMaterial = new THREE.MeshStandardMaterial({ color: '#26282c', roughness: 0.5 })
 
 /** Eases in and out. */
 const ease = (t: number) => t * t * (3 - 2 * t)
-/** Whether someone riding a vehicle is seen on it (two wheels) or is inside it. */
-const ridesOpen = (id: VehicleId) => id === 'scooter' || id === 'bicycle' || id === 'ev' || id === 'bike'
+/** The delivery person: GaadiGo's green jacket. */
+const DELIVERY_LOOK = { jacket: '#19a974', glove: '#1c1d20', trousers: '#3a3d42', shoe: '#17171a' }
 
 export function FleetClock({ scooter }: { scooter: RefObject<ScooterState> }) {
   const delivery = useFleet((state) => state.delivery)
@@ -79,7 +78,7 @@ export function FleetClock({ scooter }: { scooter: RefObject<ScooterState> }) {
         const back = RIDE_IN.from * (1 - t) * (1 - t)
         coming.current.position.set(delivery.x - delivery.dirX * back, 0.02, delivery.z - delivery.dirZ * back)
         coming.current.rotation.y = Math.atan2(delivery.dirX, delivery.dirZ)
-        if (comingRider.current) comingRider.current.visible = t < 1 && ridesOpen(delivery.id)
+        if (comingRider.current) comingRider.current.visible = t < 1
         if (t >= 1 && !delivery.here) useFleet.getState().markHere()
       }
       // The keys: carried over by the delivery person, then held out to the rider.
@@ -121,22 +120,33 @@ export function FleetClock({ scooter }: { scooter: RefObject<ScooterState> }) {
   })
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
-  const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
-  /** A vehicle as one still shape, wheels and all. */
+  /** A vehicle as one still shape, wheels and all, and the delivery person seated on it or in it. */
   const bodies = useMemo(() => {
+    const person = createRiderModel(getModel(scene, 'man'), DELIVERY_LOOK)
     const build = (id: VehicleId) => {
       const spec = VEHICLES[id]
-      const paint = spec.paint ?? '#17181b'
-      if (spec.body.rig === 'built') return createBuiltStill(spec.body.kind, paint)
-      if (spec.body.rig === 'model') return createModelBody(spec.body.file === 'yamaha' ? yamaha : scene, spec.body, paint)
-      // The scooter's rig, standing: the same model traffic's parked scooters use.
-      return createModelBody(scene, { rig: 'model', file: 'traffic', model: 'delivery', scale: 1, riderSeat: null }, paint)
+      const { seat } = spec
+      // The same character as the rider and the street's people, posed to this vehicle's seat, bars and pegs.
+      const seated = createSeatedRiderGeometry(
+        person,
+        DELIVERY_LOOK,
+        { hip: new THREE.Vector3(...seat.hip), lean: seat.lean, hands: new THREE.Vector3(seat.grip[0], seat.grip[1], seat.column + seat.grip[2]), feet: new THREE.Vector3(...seat.foot) },
+        '#26282c',
+      )
+      const dressed = paintModel(seated, DELIVERY_LOOK.jacket)
+      seated.dispose()
+      dressed.translate(seat.side, 0, 0)
+      return { vehicle: createBuiltStill(spec.body, spec.paint ?? '#17181b'), rider: dressed }
     }
-    return { coming: delivery ? build(delivery.id) : null, going: leaving ? build(leaving.id) : null }
-  }, [delivery?.id, leaving?.id, scene, yamaha]) // eslint-disable-line react-hooks/exhaustive-deps
+    const built = { coming: delivery ? build(delivery.id) : null, going: leaving ? build(leaving.id) : null }
+    person.geometry.dispose()
+    return built
+  }, [delivery?.id, leaving?.id, scene]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => {
-    bodies.coming?.dispose()
-    bodies.going?.dispose()
+    for (const built of [bodies.coming, bodies.going]) {
+      built?.vehicle.dispose()
+      built?.rider.dispose()
+    }
   }, [bodies])
 
   // The delivery person on foot: standing by the vehicle once it's there, then walking the keys over.
@@ -150,28 +160,16 @@ export function FleetClock({ scooter }: { scooter: RefObject<ScooterState> }) {
     return { standing: [], walkers: [{ from: beside, to, body: 0 as const, tint: 0.15, skin: 0.8, speed: Math.max(0.8, distance / (HANDOVER_TIME * 0.85)), start: 0, pause: 30 }] }
   }, [delivery])
 
-  /** Someone riding a two-wheeler, simply: a body leaning to the bars and a helmet. */
-  const rider = (
-    <>
-      <mesh material={riderMaterial} position={[0, 1.12, -0.18]} rotation={[0.35, 0, 0]}>
-        <boxGeometry args={[0.38, 0.56, 0.26]} />
-      </mesh>
-      <mesh material={riderMaterial} position={[0, 0.86, 0]}>
-        <boxGeometry args={[0.34, 0.16, 0.44]} />
-      </mesh>
-      <mesh material={helmetMaterial} position={[0, 1.52, -0.04]}>
-        <sphereGeometry args={[0.15, 10, 8]} />
-      </mesh>
-    </>
-  )
-
   return (
     <>
       {delivery && bodies.coming && (
         <>
           <group ref={coming} visible={false}>
-            <mesh geometry={bodies.coming} material={material} castShadow />
-            <group ref={comingRider}>{rider}</group>
+            <mesh geometry={bodies.coming.vehicle} material={material} castShadow />
+            {/* Riding it in; once it's parked they're on foot beside it. */}
+            <group ref={comingRider}>
+              <mesh geometry={bodies.coming.rider} material={material} />
+            </group>
           </group>
           <mesh ref={keys} material={keyMaterial} visible={false}>
             <torusGeometry args={[0.05, 0.014, 6, 12]} />
@@ -182,8 +180,8 @@ export function FleetClock({ scooter }: { scooter: RefObject<ScooterState> }) {
       )}
       {leaving && bodies.going && (
         <group ref={going}>
-          <mesh geometry={bodies.going} material={material} castShadow />
-          {ridesOpen(leaving.id) && rider}
+          <mesh geometry={bodies.going.vehicle} material={material} castShadow />
+          <mesh geometry={bodies.going.rider} material={material} />
         </group>
       )}
     </>

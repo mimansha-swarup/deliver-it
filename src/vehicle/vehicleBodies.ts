@@ -1,8 +1,5 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { paintModel } from '../traffic/modelFiles'
-import { createParkedCarGeometry } from '../traffic/vehicleShapes'
-import type { VehicleSpec } from './vehicleCatalog'
 
 /*
  * The bodies of the vehicles that aren't the scooter's own rig (vehicleCatalog.ts): a model from
@@ -73,25 +70,100 @@ function join(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 /**
- * A vehicle built here, in pieces that move: the body; its wheels, each at its axle, which spin
- * with the road; and, on the bicycle, the cranks and pedals, which go round as it's pedalled.
+ * A vehicle built here, in pieces that move: the body; the parts that turn with the bars or the
+ * steering (fork, handlebars, front mudguard) about the steering column; its wheels, each at its
+ * axle, which spin with the road and, at the front, steer; and, on the bicycle, the cranks and
+ * pedals, which go round as it's pedalled.
  */
 export type BuiltVehicle = {
   body: THREE.BufferGeometry
-  wheels: { geometry: THREE.BufferGeometry; at: [number, number, number] }[]
+  /** What turns with the bars, in the vehicle's own space, and where the column stands (x, z). Null on four wheels. */
+  column: { geometry: THREE.BufferGeometry; pivot: [number, number] } | null
+  /** `steers`: a front wheel. With a column it turns about that; without, about its own middle (a car's). */
+  wheels: { geometry: THREE.BufferGeometry; at: [number, number, number]; steers: boolean }[]
   crank: { geometry: THREE.BufferGeometry; at: [number, number, number] } | null
+  /** How far the front wheels turn at full lock, in radians. */
+  lock: number
 }
 
 export function disposeBuilt(built: BuiltVehicle) {
   built.body.dispose()
+  built.column?.geometry.dispose()
   built.wheels.forEach(({ geometry }) => geometry.dispose())
   built.crank?.geometry.dispose()
+}
+
+const STEEL = '#8f9499'
+const DARK = '#1d2024'
+const SEAT = '#2a211c'
+const LAMP = '#f1ead0'
+const TAIL = '#d3262b'
+const WHITE = '#e9e7e1'
+
+/** A mudguard: part of a hoop over a wheel at `at`. */
+const mudguard = (at: [number, number, number], radius: number, color: string, arc = 0.7, start = -0.35) =>
+  tint(new THREE.TorusGeometry(radius, 0.016, 4, 14, Math.PI * arc).rotateY(Math.PI / 2).rotateX(Math.PI * start).translate(...at), color)
+
+/**
+ * The Deliver It scooter, its front to +z: a Bengaluru family scooter. A step-through frame with a
+ * flat footboard, a wide front apron, the handlebar cowl with a small round headlamp, a long seat
+ * over rounded side panels, and a rack at the back for the yellow box (drawn by Scooter.tsx, with its logos).
+ */
+function createScooter(paint: string): BuiltVehicle {
+  const radius = 0.24
+  const rear: [number, number, number] = [0, radius, -0.62]
+  const front: [number, number, number] = [0, radius, 0.66]
+  const parts: THREE.BufferGeometry[] = []
+  // The footboard, flat and low, and the tunnel-free floor under it.
+  parts.push(boxAt([0.42, 0.05, 0.46], [0, 0.31, 0.1], DARK))
+  parts.push(lump([0.4, 0.2, 0.62], [0, 0.24, 0.08], paint))
+  // The apron: wide, upright, curving back at the top to the column; a dark inner shield with a hook.
+  parts.push(lump([0.46, 0.66, 0.15], [0, 0.63, 0.4], paint, -0.16))
+  parts.push(boxAt([0.36, 0.5, 0.03], [0, 0.6, 0.325], DARK, [-0.16, 0, 0]))
+  parts.push(lump([0.2, 0.2, 0.3], [0, 0.42, 0.52], paint, 0.5))
+  // The body: round side panels swelling over the back wheel, and the long seat on them.
+  parts.push(lump([0.5, 0.46, 1.0], [0, 0.5, -0.45], paint))
+  parts.push(lump([0.36, 0.3, 0.5], [0, 0.6, -0.08], paint))
+  parts.push(lump([0.34, 0.11, 0.78], [0, 0.77, -0.36], SEAT))
+  for (const side of [-1, 1]) parts.push(lump([0.04, 0.16, 0.5], [side * 0.245, 0.48, -0.5], '#b8bcc0'))
+  parts.push(boxAt([0.22, 0.07, 0.03], [0, 0.6, -0.945], TAIL))
+  parts.push(boxAt([0.2, 0.1, 0.02], [0, 0.44, -0.95], WHITE))
+  // The grab rail and the rack the box stands on.
+  parts.push(tube([-0.17, 0.74, -0.72], [-0.17, 0.8, -0.95], 0.014, STEEL), tube([0.17, 0.74, -0.72], [0.17, 0.8, -0.95], 0.014, STEEL), tube([-0.17, 0.8, -0.95], [0.17, 0.8, -0.95], 0.014, STEEL))
+  parts.push(boxAt([0.4, 0.02, 0.44], [0, 0.8, -0.73], '#3a3d42'))
+  // The engine and the exhaust, on the right, beside the back wheel.
+  parts.push(lump([0.2, 0.2, 0.34], [-0.05, 0.3, -0.4], '#4a4d51'))
+  parts.push(tube([-0.19, 0.26, -0.3], [-0.2, 0.3, -0.86], 0.045, STEEL))
+  const column = join([
+    // The cowl with its small round headlamp, the bars, grips and mirrors.
+    lump([0.44, 0.18, 0.22], [0, 1.0, 0.4], paint),
+    lump([0.13, 0.13, 0.07], [0, 0.99, 0.51], LAMP),
+    tube([-0.33, 1.02, 0.37], [0.33, 1.02, 0.37], 0.016, DARK),
+    ...[-1, 1].flatMap((side) => [
+      tube([side * 0.22, 1.02, 0.37], [side * 0.34, 1.02, 0.37], 0.022, '#3a3d42'),
+      tube([side * 0.2, 1.04, 0.38], [side * 0.3, 1.22, 0.36], 0.007, DARK),
+      lump([0.11, 0.07, 0.02], [side * 0.31, 1.24, 0.36], DARK),
+      tube([side * 0.07, 0.9, 0.44], [side * 0.07, radius, 0.66], 0.02, DARK),
+    ]),
+    tube([0, 0.7, 0.42], [0, 0.94, 0.4], 0.035, DARK),
+    lump([0.17, 0.13, 0.52], [0, 0.5, 0.66], paint),
+  ])
+  return {
+    body: join(parts),
+    column: { geometry: column, pivot: [0, 0.42] },
+    wheels: [
+      { geometry: wheelShape(radius, 0.1, STEEL), at: rear, steers: false },
+      { geometry: wheelShape(radius, 0.09, STEEL), at: front, steers: true },
+    ],
+    crank: null,
+    lock: 0.5,
+  }
 }
 
 /**
  * A city bicycle, its front to +z: a diamond frame in the vehicle's paint, a saddle, swept
  * handlebars, mudguards, and a carrier with a crate on the back for the parcel. Spoked wheels
- * that turn, and cranks and pedals that go round.
+ * that turn, a fork and bars that steer, and cranks and pedals that go round.
  */
 function createBicycle(paint: string): BuiltVehicle {
   const wheel = 0.34
@@ -100,29 +172,45 @@ function createBicycle(paint: string): BuiltVehicle {
   const crank: [number, number, number] = [0, 0.3, -0.02]
   const seat: [number, number, number] = [0, 0.86, -0.22]
   const head: [number, number, number] = [0, 0.92, 0.38]
-  const steel = '#8f9499'
   const parts: THREE.BufferGeometry[] = []
   parts.push(tube(crank, seat, 0.022, paint), tube(seat, head, 0.02, paint), tube(crank, head, 0.024, paint))
-  parts.push(tube(rear, crank, 0.016, paint), tube(rear, seat, 0.014, paint), tube(head, front, 0.02, paint))
-  parts.push(tube([0, 0.86, -0.22], [0, 0.98, -0.25], 0.016, steel))
-  parts.push(lump([0.17, 0.06, 0.28], [0, 1.0, -0.26], '#2a211c'))
-  parts.push(tube(head, [0, 1.06, 0.36], 0.016, steel), tube([-0.27, 1.06, 0.3], [0.27, 1.06, 0.3], 0.014, steel))
-  for (const side of [-1, 1]) parts.push(tube([side * 0.27, 1.06, 0.3], [side * 0.29, 1.05, 0.18], 0.017, '#2a211c'))
-  // Mudguards over both wheels, the carrier over the back one and the crate on it, a lamp at the front.
-  for (const at of [rear, front]) parts.push(tint(new THREE.TorusGeometry(wheel + 0.03, 0.012, 4, 14, Math.PI * 0.7).rotateY(Math.PI / 2).rotateX(-Math.PI * 0.35).translate(...at), paint))
-  parts.push(boxAt([0.2, 0.02, 0.42], [0, 0.74, -0.6], steel))
+  parts.push(tube(rear, crank, 0.016, paint), tube(rear, seat, 0.014, paint))
+  parts.push(tube([0, 0.86, -0.22], [0, 0.98, -0.25], 0.016, STEEL))
+  parts.push(lump([0.17, 0.06, 0.28], [0, 1.0, -0.26], SEAT))
+  parts.push(mudguard(rear, wheel + 0.03, paint))
+  parts.push(boxAt([0.2, 0.02, 0.42], [0, 0.74, -0.6], STEEL))
   parts.push(boxAt([0.34, 0.26, 0.36], [0, 0.88, -0.62], '#f2b82a'))
-  parts.push(lump([0.07, 0.07, 0.06], [0, 0.96, 0.46], '#f1ead0'))
+  const column = join([
+    tube(head, front, 0.02, paint),
+    tube(head, [0, 1.06, 0.36], 0.016, STEEL),
+    tube([-0.27, 1.06, 0.3], [0.27, 1.06, 0.3], 0.014, STEEL),
+    ...[-1, 1].map((side) => tube([side * 0.27, 1.06, 0.3], [side * 0.29, 1.05, 0.18], 0.017, SEAT)),
+    mudguard(front, wheel + 0.03, paint),
+    lump([0.07, 0.07, 0.06], [0, 0.96, 0.46], LAMP),
+  ])
   // The cranks, one each side and opposite, with their pedals, about the bottom bracket.
   const cranks = join([
-    tint(new THREE.CylinderGeometry(0.085, 0.085, 0.015, 14).rotateZ(Math.PI / 2).translate(0.05, 0, 0), steel),
-    tube([0.07, 0, 0], [0.07, -0.17, 0], 0.012, steel),
-    tube([-0.07, 0, 0], [-0.07, 0.17, 0], 0.012, steel),
-    boxAt([0.1, 0.02, 0.07], [0.13, -0.17, 0], '#1c1c1e'),
-    boxAt([0.1, 0.02, 0.07], [-0.13, 0.17, 0], '#1c1c1e'),
+    tint(new THREE.CylinderGeometry(0.085, 0.085, 0.015, 14).rotateZ(Math.PI / 2).translate(0.05, 0, 0), STEEL),
+    tube([0.07, 0, 0], [0.07, -BICYCLE_CRANK, 0], 0.012, STEEL),
+    tube([-0.07, 0, 0], [-0.07, BICYCLE_CRANK, 0], 0.012, STEEL),
+    boxAt([0.1, 0.02, 0.07], [0.13, -BICYCLE_CRANK, 0], '#1c1c1e'),
+    boxAt([0.1, 0.02, 0.07], [-0.13, BICYCLE_CRANK, 0], '#1c1c1e'),
   ])
-  return { body: join(parts), wheels: [rear, front].map((at) => ({ geometry: wheelShape(wheel, 0.045, steel, 6), at })), crank: { geometry: cranks, at: crank } }
+  return {
+    body: join(parts),
+    column: { geometry: column, pivot: [0, 0.4] },
+    wheels: [
+      { geometry: wheelShape(wheel, 0.045, STEEL, 6), at: rear, steers: false },
+      { geometry: wheelShape(wheel, 0.045, STEEL, 6), at: front, steers: true },
+    ],
+    crank: { geometry: cranks, at: crank },
+    lock: 0.6,
+  }
 }
+
+/** The bicycle's crank length, and where its bottom bracket is: the rider's feet go round on these (Rider.tsx). */
+export const BICYCLE_CRANK = 0.17
+export const BICYCLE_BRACKET: [number, number, number] = [0, 0.3, -0.02]
 
 /**
  * The Minchu E1, its front to +z: a slim electric scooter, nothing like the petrol one's round
@@ -132,117 +220,305 @@ function createBicycle(paint: string): BuiltVehicle {
  */
 function createElectricScooter(paint: string): BuiltVehicle {
   const white = '#eef0ee'
-  const dark = '#1d2024'
   const radius = 0.25
   const rear: [number, number, number] = [0, radius, -0.62]
   const front: [number, number, number] = [0, radius, 0.66]
   const parts: THREE.BufferGeometry[] = []
-  // Floor and the battery under it.
-  parts.push(boxAt([0.36, 0.05, 0.56], [0, 0.31, 0.06], dark))
+  parts.push(boxAt([0.36, 0.05, 0.56], [0, 0.31, 0.06], DARK))
   parts.push(lump([0.34, 0.14, 0.7], [0, 0.24, 0.02], paint))
-  // The apron: narrow, tall, leaning back, the paint a blade down its face; the column and bars above.
+  // The apron: narrow, tall, leaning back, the paint a blade down its face, a ring of light on it.
   parts.push(lump([0.3, 0.72, 0.13], [0, 0.66, 0.44], white, -0.24))
   parts.push(boxAt([0.07, 0.6, 0.03], [0, 0.66, 0.515], paint, [-0.24, 0, 0]))
-  parts.push(tube([0, 0.9, 0.38], [0, 1.03, 0.34], 0.035, dark))
-  parts.push(tube([-0.3, 1.03, 0.33], [0.3, 1.03, 0.33], 0.016, dark))
-  for (const side of [-1, 1]) parts.push(tube([side * 0.2, 1.03, 0.33], [side * 0.31, 1.03, 0.33], 0.022, '#3a3d42'))
-  parts.push(boxAt([0.2, 0.09, 0.03], [0, 1.08, 0.37], dark, [-0.5, 0, 0]))
-  // The headlamp: a ring of light, and a strip under it.
   parts.push(tint(new THREE.TorusGeometry(0.07, 0.014, 6, 20).rotateX(-0.24).translate(0, 0.9, 0.5), '#eaf6ff'))
   parts.push(boxAt([0.22, 0.015, 0.02], [0, 0.78, 0.535], '#eaf6ff', [-0.24, 0, 0]))
-  // Front fork and a close mudguard.
-  for (const side of [-1, 1]) parts.push(tube([side * 0.07, 0.86, 0.46], [side * 0.07, radius, 0.66], 0.018, dark))
-  parts.push(tint(new THREE.TorusGeometry(radius + 0.025, 0.02, 4, 12, Math.PI * 0.6).rotateY(Math.PI / 2).rotateX(-Math.PI * 0.3).translate(...front), white))
   // The seat on its battery box, and the tail swept up to a light bar.
   parts.push(lump([0.3, 0.3, 0.62], [0, 0.56, -0.36], white))
-  parts.push(lump([0.27, 0.08, 0.66], [0, 0.76, -0.34], dark))
+  parts.push(lump([0.27, 0.08, 0.66], [0, 0.76, -0.34], DARK))
   parts.push(lump([0.22, 0.14, 0.34], [0, 0.66, -0.72], paint, 0.35))
-  parts.push(boxAt([0.2, 0.025, 0.02], [0, 0.71, -0.895], '#d3262b'))
+  parts.push(boxAt([0.2, 0.025, 0.02], [0, 0.71, -0.895], TAIL))
   // A single swingarm, and the rack with its insulated bag.
-  parts.push(tube([0.11, 0.36, -0.2], [0.11, radius, -0.62], 0.028, dark))
+  parts.push(tube([0.11, 0.36, -0.2], [0.11, radius, -0.62], 0.028, DARK))
   parts.push(boxAt([0.26, 0.02, 0.3], [0, 0.82, -0.78], '#3a3d42'))
-  parts.push(boxAt([0.36, 0.34, 0.34], [0, 1.0, -0.78], dark))
+  parts.push(boxAt([0.36, 0.34, 0.34], [0, 1.0, -0.78], DARK))
   parts.push(boxAt([0.37, 0.07, 0.35], [0, 1.0, -0.78], paint))
+  const column = join([
+    tube([0, 0.9, 0.38], [0, 1.03, 0.34], 0.035, DARK),
+    tube([-0.3, 1.03, 0.33], [0.3, 1.03, 0.33], 0.016, DARK),
+    ...[-1, 1].flatMap((side) => [
+      tube([side * 0.2, 1.03, 0.33], [side * 0.31, 1.03, 0.33], 0.022, '#3a3d42'),
+      tube([side * 0.07, 0.86, 0.46], [side * 0.07, radius, 0.66], 0.018, DARK),
+    ]),
+    boxAt([0.2, 0.09, 0.03], [0, 1.08, 0.37], DARK, [-0.5, 0, 0]),
+    mudguard(front, radius + 0.025, white, 0.6, -0.3),
+  ])
   return {
     body: join(parts),
+    column: { geometry: column, pivot: [0, 0.44] },
     // The back wheel is nearly all hub: that's the motor.
     wheels: [
-      { geometry: join([wheelShape(radius, 0.1, paint), tint(new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, 0.11, 16).rotateZ(Math.PI / 2), '#3a3d42')]), at: rear },
-      { geometry: wheelShape(radius, 0.09, '#8f9499'), at: front },
+      { geometry: join([wheelShape(radius, 0.1, paint), tint(new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, 0.11, 16).rotateZ(Math.PI / 2), '#3a3d42')]), at: rear, steers: false },
+      { geometry: wheelShape(radius, 0.09, STEEL), at: front, steers: true },
     ],
     crank: null,
+    lock: 0.5,
+  }
+}
+
+/**
+ * The Vega 150, its front to +z: a commuter motorbike. Bigger wheels, the engine in the open
+ * under a long tank in the paint, a flat bench seat, a chrome exhaust down the right, a round
+ * headlamp in a small cowl on long forks, wide bars with mirrors, twin shocks at the back.
+ */
+function createMotorbike(paint: string): BuiltVehicle {
+  const radius = 0.31
+  const rear: [number, number, number] = [0, radius, -0.7]
+  const front: [number, number, number] = [0, radius, 0.74]
+  const chrome = '#c4c8cc'
+  const parts: THREE.BufferGeometry[] = []
+  // The frame's spine and cradle, the engine in it, its cylinder leaning forward.
+  parts.push(tube([0, 0.9, 0.42], [0, 0.78, -0.3], 0.03, DARK), tube([0, 0.86, 0.4], [0, 0.3, 0.22], 0.026, DARK), tube([0, 0.3, 0.22], [0, 0.34, -0.3], 0.026, DARK), tube([0, 0.34, -0.3], [0, 0.78, -0.3], 0.026, DARK))
+  parts.push(lump([0.3, 0.26, 0.42], [0, 0.4, -0.02], '#4a4d51'))
+  parts.push(lump([0.2, 0.3, 0.2], [0, 0.6, 0.08], '#6d7074', -0.3))
+  for (let fin = 0; fin < 4; fin++) parts.push(boxAt([0.24, 0.012, 0.24], [0, 0.52 + fin * 0.05, 0.06 + fin * 0.015], '#8f9499', [-0.3, 0, 0]))
+  // The tank, long and humped, with knee dents in a second colour; the seat; side panels; the tail.
+  parts.push(lump([0.36, 0.28, 0.6], [0, 0.9, 0.12], paint))
+  for (const side of [-1, 1]) parts.push(lump([0.03, 0.14, 0.3], [side * 0.17, 0.86, 0.04], WHITE))
+  parts.push(lump([0.3, 0.1, 0.8], [0, 0.87, -0.5], SEAT))
+  for (const side of [-1, 1]) parts.push(lump([0.04, 0.2, 0.3], [side * 0.15, 0.66, -0.34], paint))
+  parts.push(lump([0.26, 0.14, 0.34], [0, 0.84, -0.9], paint, 0.25))
+  parts.push(boxAt([0.16, 0.06, 0.03], [0, 0.82, -1.07], TAIL))
+  parts.push(tube([-0.13, 0.86, -0.82], [-0.13, 0.94, -1.06], 0.012, STEEL), tube([0.13, 0.86, -0.82], [0.13, 0.94, -1.06], 0.012, STEEL), tube([-0.13, 0.94, -1.06], [0.13, 0.94, -1.06], 0.012, STEEL))
+  // Swingarm, twin shocks, the back mudguard, the chain's guard, and the exhaust down the right.
+  for (const side of [-1, 1]) {
+    parts.push(tube([side * 0.1, 0.36, -0.28], [side * 0.1, radius, -0.7], 0.022, DARK))
+    parts.push(tube([side * 0.13, 0.74, -0.56], [side * 0.12, radius + 0.04, -0.7], 0.022, chrome))
+    parts.push(boxAt([0.05, 0.03, 0.07], [side * 0.19, 0.36, -0.18], DARK))
+  }
+  parts.push(mudguard(rear, radius + 0.04, paint, 0.55, -0.1))
+  parts.push(boxAt([0.03, 0.08, 0.42], [0.12, 0.42, -0.48], DARK))
+  parts.push(tube([-0.1, 0.5, 0.14], [-0.17, 0.3, 0.02], 0.03, chrome), tube([-0.17, 0.3, 0.02], [-0.19, 0.36, -0.92], 0.05, chrome))
+  const column = join([
+    ...[-1, 1].flatMap((side) => [
+      tube([side * 0.1, 1.0, 0.4], [side * 0.09, radius, 0.74], 0.024, chrome),
+      tube([side * 0.26, 1.08, 0.34], [side * 0.37, 1.08, 0.32], 0.022, '#3a3d42'),
+      tube([side * 0.2, 1.08, 0.36], [side * 0.3, 1.26, 0.34], 0.007, DARK),
+      lump([0.1, 0.07, 0.02], [side * 0.31, 1.28, 0.34], DARK),
+    ]),
+    boxAt([0.26, 0.04, 0.06], [0, 1.0, 0.4], DARK),
+    tube([-0.36, 1.08, 0.34], [0.36, 1.08, 0.34], 0.015, chrome),
+    // The headlamp, round, in a small cowl of the paint, with the clocks behind it.
+    lump([0.2, 0.2, 0.14], [0, 0.94, 0.56], paint),
+    lump([0.16, 0.16, 0.06], [0, 0.94, 0.63], LAMP),
+    lump([0.14, 0.07, 0.06], [0, 1.05, 0.46], DARK, -0.6),
+    mudguard(front, radius + 0.035, paint, 0.5, -0.32),
+  ])
+  return {
+    body: join(parts),
+    column: { geometry: column, pivot: [0, 0.46] },
+    wheels: [
+      { geometry: wheelShape(radius, 0.11, STEEL, 5), at: rear, steers: false },
+      { geometry: wheelShape(radius, 0.09, STEEL, 5), at: front, steers: true },
+    ],
+    crank: null,
+    lock: 0.45,
   }
 }
 
 /**
  * The Bhaara E-Cargo, its front to +z: an electric cargo three-wheeler. One wheel under a short
- * cab with a big windscreen and open sides, and behind it a tall load box on two wheels, in white
- * with a band of the vehicle's paint.
+ * cab with a big open screen and open sides (the driver's seen at the bars), and behind it a tall
+ * load box on two wheels, in white with a band of the vehicle's paint.
  */
 function createCargoTrike(paint: string): BuiltVehicle {
-  const white = '#e9e7e1'
-  const dark = '#1d2024'
-  const glass = '#22303a'
   const radius = 0.24
   const parts: THREE.BufferGeometry[] = []
-  // The chassis rail and the cab's floor.
-  parts.push(boxAt([1.2, 0.1, 2.9], [0, 0.34, -0.15], dark))
-  // The cab: a nose over the front wheel, the screen, the roof on four posts, a bench inside.
+  parts.push(boxAt([1.2, 0.1, 2.9], [0, 0.34, -0.15], DARK))
+  // The cab: a nose over the front wheel, the roof on four posts, a bench inside. No glass: the driver's seen.
   parts.push(lump([0.9, 0.5, 0.7], [0, 0.62, 1.05], paint))
   parts.push(boxAt([1.16, 0.5, 0.5], [0, 0.6, 0.72], paint))
-  parts.push(boxAt([1.06, 0.72, 0.04], [0, 1.25, 0.86], glass, [-0.2, 0, 0]))
-  parts.push(boxAt([1.2, 0.07, 1.05], [0, 1.68, 0.45], white))
+  parts.push(boxAt([1.2, 0.07, 1.05], [0, 1.72, 0.45], WHITE))
   for (const side of [-1, 1]) {
-    parts.push(boxAt([0.06, 0.86, 0.06], [side * 0.56, 1.25, 0.9], white, [-0.2, 0, 0]))
-    parts.push(boxAt([0.06, 0.82, 0.06], [side * 0.56, 1.27, -0.02], white))
+    parts.push(boxAt([0.06, 0.92, 0.06], [side * 0.56, 1.28, 0.9], WHITE, [-0.2, 0, 0]))
+    parts.push(boxAt([0.06, 0.86, 0.06], [side * 0.56, 1.29, -0.02], WHITE))
     parts.push(boxAt([0.05, 0.36, 0.86], [side * 0.58, 0.72, 0.42], paint))
-    parts.push(lump([0.1, 0.1, 0.05], [side * 0.36, 0.72, 1.36], '#f1ead0'))
+    parts.push(lump([0.1, 0.1, 0.05], [side * 0.36, 0.72, 1.36], LAMP))
   }
-  parts.push(boxAt([0.9, 0.12, 0.4], [0, 0.72, 0.12], dark))
-  parts.push(boxAt([0.9, 0.5, 0.08], [0, 1.0, -0.08], dark))
-  parts.push(tube([0, 0.86, 0.72], [0, 1.02, 0.6], 0.02, dark))
-  parts.push(tint(new THREE.TorusGeometry(0.13, 0.015, 5, 14).rotateX(-0.9).translate(0, 1.04, 0.58), dark))
-  parts.push(boxAt([1.24, 0.12, 0.08], [0, 0.42, 1.36], dark))
+  parts.push(boxAt([1.1, 0.05, 0.05], [0, 1.66, 0.96], WHITE))
+  parts.push(boxAt([0.9, 0.1, 0.4], [0, 0.7, 0.1], SEAT))
+  parts.push(boxAt([0.9, 0.5, 0.08], [0, 1.0, -0.1], SEAT))
+  parts.push(boxAt([1.24, 0.12, 0.08], [0, 0.42, 1.36], DARK))
   // The load box: tall and square, its doors at the back, a band of paint round it.
-  parts.push(boxAt([1.36, 1.3, 1.62], [0, 1.08, -0.92], white))
+  parts.push(boxAt([1.36, 1.3, 1.62], [0, 1.08, -0.92], WHITE))
   parts.push(boxAt([1.38, 0.2, 1.64], [0, 0.72, -0.92], paint))
   parts.push(boxAt([1.38, 0.04, 1.64], [0, 1.72, -0.92], '#cfcdc6'))
   parts.push(boxAt([0.02, 1.2, 0.02], [0, 1.1, -1.735], '#9a9892'))
   for (const side of [-1, 1]) {
     parts.push(boxAt([0.05, 0.16, 0.03], [side * 0.12, 1.05, -1.74], '#6d7074'))
-    parts.push(boxAt([0.16, 0.08, 0.03], [side * 0.52, 0.5, -1.74], '#d3262b'))
-    // Wheel arches.
-    parts.push(boxAt([0.14, 0.08, 0.66], [side * 0.69, 0.56, -1.0], dark))
+    parts.push(boxAt([0.16, 0.08, 0.03], [side * 0.52, 0.5, -1.74], TAIL))
+    parts.push(boxAt([0.14, 0.08, 0.66], [side * 0.69, 0.56, -1.0], DARK))
   }
+  // Scooter-style bars on a column, as these have, turning the one front wheel.
+  const column = join([
+    tube([0, 0.5, 1.02], [0, 1.12, 0.66], 0.03, DARK),
+    tube([-0.3, 1.13, 0.64], [0.3, 1.13, 0.64], 0.016, DARK),
+    ...[-1, 1].map((side) => tube([side * 0.2, 1.13, 0.64], [side * 0.31, 1.13, 0.64], 0.022, '#3a3d42')),
+    lump([0.2, 0.1, 0.1], [0, 1.15, 0.68], DARK),
+  ])
   return {
     body: join(parts),
+    column: { geometry: column, pivot: [0, 0.86] },
     wheels: [
-      { geometry: wheelShape(radius, 0.12, '#8f9499'), at: [0, radius, 1.08] },
-      { geometry: wheelShape(radius, 0.13, '#8f9499'), at: [-0.62, radius, -1.0] },
-      { geometry: wheelShape(radius, 0.13, '#8f9499'), at: [0.62, radius, -1.0] },
+      { geometry: wheelShape(radius, 0.12, STEEL), at: [0, radius, 1.08], steers: true },
+      { geometry: wheelShape(radius, 0.13, STEEL), at: [-0.62, radius, -1.0], steers: false },
+      { geometry: wheelShape(radius, 0.13, STEEL), at: [0.62, radius, -1.0], steers: false },
     ],
     crank: null,
+    lock: 0.55,
   }
 }
 
-export type BuiltKind = 'bicycle' | 'ev' | 'trike'
+/** A steering wheel on its column, at the driver's hands: a ring tilted back, a hub and a spoke. */
+const steeringWheel = (x: number, y: number, z: number) => [
+  tint(new THREE.TorusGeometry(0.17, 0.016, 6, 16).rotateX(-0.45).translate(x, y, z), DARK),
+  tube([x, y, z], [x, y - 0.16, z + 0.3], 0.022, DARK),
+  boxAt([0.3, 0.025, 0.03], [x, y, z], DARK, [-0.45, 0, 0]),
+]
+
+/**
+ * The Oota Hatch, its front to +z: a small catering hatchback. A short bonnet, a tall cabin with
+ * open window frames (the driver's seen at the wheel, on the right as in India), a hatch at the back,
+ * and an insulated food carrier on the roof.
+ */
+function createCar(paint: string): BuiltVehicle {
+  const radius = 0.28
+  const half = 0.8
+  const parts: THREE.BufferGeometry[] = []
+  // The shell below the windows, the bonnet and nose, bumpers and lamps.
+  parts.push(boxAt([half * 2, 0.5, 3.3], [0, 0.6, -0.05], paint))
+  parts.push(lump([half * 2 - 0.06, 0.42, 0.8], [0, 0.66, 1.5], paint))
+  parts.push(boxAt([half * 2 - 0.1, 0.12, 0.95], [0, 0.88, 1.1], paint, [0.1, 0, 0]))
+  parts.push(boxAt([half * 2 + 0.04, 0.16, 0.12], [0, 0.42, 1.82], DARK), boxAt([half * 2 + 0.04, 0.16, 0.12], [0, 0.42, -1.72], DARK))
+  parts.push(boxAt([half * 2 - 0.3, 0.14, 0.05], [0, 0.62, 1.88], DARK))
+  for (const side of [-1, 1]) {
+    parts.push(lump([0.3, 0.16, 0.1], [side * 0.56, 0.74, 1.8], LAMP))
+    parts.push(boxAt([0.12, 0.3, 0.05], [side * 0.7, 0.92, -1.72], TAIL))
+    // The pillars: screen, middle and back, and the sill and roof rail between them. No glass.
+    parts.push(boxAt([0.07, 0.66, 0.07], [side * (half - 0.07), 1.15, 0.5], paint, [-0.42, 0, 0]))
+    parts.push(boxAt([0.07, 0.56, 0.09], [side * (half - 0.05), 1.14, -0.35], paint))
+    parts.push(boxAt([0.07, 0.6, 0.1], [side * (half - 0.05), 1.14, -1.5], paint, [0.25, 0, 0]))
+    parts.push(boxAt([0.07, 0.05, 1.95], [side * (half - 0.06), 1.42, -0.55], paint))
+    parts.push(lump([0.1, 0.07, 0.14], [side * (half + 0.06), 0.98, 0.52], paint))
+  }
+  parts.push(boxAt([half * 2 - 0.12, 0.06, 1.95], [0, 1.45, -0.55], paint))
+  parts.push(boxAt([half * 2 - 0.1, 0.34, 0.08], [0, 0.98, -1.68], paint))
+  parts.push(boxAt([0.44, 0.11, 0.02], [0, 0.62, -1.79], WHITE))
+  // Inside: the dash, the wheel on the right, two seats and a bench.
+  parts.push(boxAt([half * 2 - 0.2, 0.2, 0.3], [0, 0.92, 0.55], DARK))
+  parts.push(...steeringWheel(-0.36, 1.02, 0.38))
+  for (const side of [-1, 1]) {
+    parts.push(boxAt([0.46, 0.1, 0.46], [side * 0.36, 0.56, -0.1], SEAT))
+    parts.push(boxAt([0.44, 0.6, 0.1], [side * 0.36, 0.9, -0.34], SEAT, [0.15, 0, 0]))
+  }
+  parts.push(boxAt([1.3, 0.5, 0.1], [0, 0.86, -1.1], SEAT))
+  // The food carrier on the roof.
+  parts.push(boxAt([0.9, 0.04, 0.8], [0, 1.5, -0.5], STEEL))
+  parts.push(boxAt([0.7, 0.3, 0.6], [0, 1.67, -0.5], '#f2b82a'))
+  parts.push(boxAt([0.71, 0.06, 0.61], [0, 1.72, -0.5], DARK))
+  const wheel = () => wheelShape(radius, 0.18, STEEL)
+  return {
+    body: join(parts),
+    column: null,
+    wheels: [
+      { geometry: wheel(), at: [-0.72, radius, 1.12], steers: true },
+      { geometry: wheel(), at: [0.72, radius, 1.12], steers: true },
+      { geometry: wheel(), at: [-0.72, radius, -1.12], steers: false },
+      { geometry: wheel(), at: [0.72, radius, -1.12], steers: false },
+    ],
+    crank: null,
+    lock: 0.5,
+  }
+}
+
+/**
+ * The Saagane Loadstar, its front to +z: a cab-over cargo van. A flat-fronted cab with open
+ * window frames high over the front wheels (the driver's seen at the wheel, on the right), and a
+ * long, tall load body in white behind it, with a band of the paint and two doors at the back.
+ */
+function createVan(paint: string): BuiltVehicle {
+  const radius = 0.32
+  const half = 0.88
+  const parts: THREE.BufferGeometry[] = []
+  parts.push(boxAt([half * 2 - 0.1, 0.14, 4.3], [0, 0.48, 0], DARK))
+  // The cab: its flat front and doors below the windows, pillars and roof above. No glass.
+  parts.push(boxAt([half * 2, 0.62, 0.1], [0, 0.82, 2.13], paint))
+  parts.push(boxAt([half * 2 - 0.2, 0.16, 0.06], [0, 0.72, 2.2], DARK))
+  parts.push(boxAt([half * 2 + 0.04, 0.2, 0.14], [0, 0.46, 2.16], DARK))
+  for (const side of [-1, 1]) {
+    parts.push(boxAt([0.08, 0.62, 1.2], [side * (half - 0.04), 0.82, 1.55], paint))
+    parts.push(boxAt([0.08, 0.78, 0.08], [side * (half - 0.04), 1.5, 2.1], paint, [-0.12, 0, 0]))
+    parts.push(boxAt([0.08, 0.74, 0.1], [side * (half - 0.04), 1.5, 1.0], paint))
+    parts.push(lump([0.3, 0.2, 0.08], [side * 0.6, 0.86, 2.19], LAMP))
+    parts.push(lump([0.1, 0.24, 0.16], [side * (half + 0.1), 1.4, 2.0], DARK))
+  }
+  parts.push(boxAt([half * 2, 0.08, 1.3], [0, 1.9, 1.5], paint))
+  parts.push(boxAt([half * 2 - 0.2, 0.22, 0.34], [0, 1.12, 1.9], DARK))
+  parts.push(...steeringWheel(-0.42, 1.26, 1.72))
+  for (const side of [-1, 1]) {
+    parts.push(boxAt([0.5, 0.12, 0.5], [side * 0.42, 0.86, 1.25], SEAT))
+    parts.push(boxAt([0.48, 0.62, 0.1], [side * 0.42, 1.2, 1.0], SEAT))
+  }
+  // The load body: long and tall, a band of paint along it, two doors and their bars at the back.
+  parts.push(boxAt([half * 2, 1.6, 3.05], [0, 1.34, -0.6], WHITE))
+  parts.push(boxAt([half * 2 + 0.02, 0.22, 3.07], [0, 0.9, -0.6], paint))
+  parts.push(boxAt([half * 2 + 0.02, 0.05, 3.07], [0, 2.13, -0.6], '#cfcdc6'))
+  parts.push(boxAt([0.02, 1.5, 0.02], [0, 1.36, -2.135], '#9a9892'))
+  for (const side of [-1, 1]) {
+    parts.push(boxAt([0.04, 1.3, 0.03], [side * 0.14, 1.36, -2.14], '#6d7074'))
+    parts.push(boxAt([0.14, 0.28, 0.03], [side * (half - 0.1), 0.72, -2.14], TAIL))
+    parts.push(boxAt([0.16, 0.1, 0.84], [side * (half - 0.06), 0.72, -1.3], DARK))
+  }
+  parts.push(boxAt([half * 2 + 0.04, 0.16, 0.12], [0, 0.44, -2.14], DARK))
+  parts.push(boxAt([0.46, 0.11, 0.02], [0, 0.62, -2.21], WHITE))
+  const wheel = () => wheelShape(radius, 0.2, STEEL)
+  return {
+    body: join(parts),
+    column: null,
+    wheels: [
+      { geometry: wheel(), at: [-0.78, radius, 1.5], steers: true },
+      { geometry: wheel(), at: [0.78, radius, 1.5], steers: true },
+      { geometry: wheel(), at: [-0.78, radius, -1.3], steers: false },
+      { geometry: wheel(), at: [0.78, radius, -1.3], steers: false },
+    ],
+    crank: null,
+    lock: 0.5,
+  }
+}
+
+export type BuiltKind = 'scooter' | 'bicycle' | 'ev' | 'bike' | 'trike' | 'car' | 'van'
+
+const BUILDERS: Record<BuiltKind, (paint: string) => BuiltVehicle> = {
+  scooter: createScooter,
+  bicycle: createBicycle,
+  ev: createElectricScooter,
+  bike: createMotorbike,
+  trike: createCargoTrike,
+  car: createCar,
+  van: createVan,
+}
 
 export function createBuiltVehicle(kind: BuiltKind, paint: string): BuiltVehicle {
-  return kind === 'bicycle' ? createBicycle(paint) : kind === 'ev' ? createElectricScooter(paint) : createCargoTrike(paint)
+  return BUILDERS[kind](paint)
 }
 
-/** A built vehicle as one still shape, wheels and all: standing at a delivery, or ridden up to it. */
+/** A built vehicle as one still shape, wheels and all: standing at a delivery, or ridden up to it. The scooter gets its yellow box. */
 export function createBuiltStill(kind: BuiltKind, paint: string): THREE.BufferGeometry {
   const built = createBuiltVehicle(kind, paint)
-  const parts = [built.body, ...built.wheels.map(({ geometry, at }) => geometry.translate(...at)), ...(built.crank ? [built.crank.geometry.translate(...built.crank.at)] : [])]
+  const parts = [
+    built.body,
+    ...(built.column ? [built.column.geometry] : []),
+    ...built.wheels.map(({ geometry, at }) => geometry.translate(...at)),
+    ...(built.crank ? [built.crank.geometry.translate(...built.crank.at)] : []),
+    ...(kind === 'scooter' ? [boxAt([0.5, 0.4, 0.45], [0, 1.01, -0.725], '#f2b82a')] : []),
+  ]
   return join(parts)
-}
-
-/** A model's body, wheels and all, painted and scaled: for the motorbike, three-wheeler, van and car. */
-export function createModelBody(scene: THREE.Group, body: Extract<VehicleSpec['body'], { rig: 'model' }>, paint: string): THREE.BufferGeometry {
-  const whole = createParkedCarGeometry(scene, body.model)
-  const painted = paintModel(whole, paint)
-  whole.dispose()
-  painted.scale(body.scale, body.scale, body.scale)
-  return painted
 }
