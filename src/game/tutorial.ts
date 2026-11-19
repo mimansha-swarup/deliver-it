@@ -7,7 +7,7 @@ import { saveKey } from './saveKeys'
  * it's on now (not saved: a reload mid-tutorial starts it again from the top).
  */
 
-export const TUTORIAL_STEPS = ['ride', 'brake', 'online', 'accept', 'pickup', 'map', 'deliver', 'extras', 'offline'] as const
+export const TUTORIAL_STEPS = ['ride', 'brake', 'online', 'accept', 'pickup', 'map', 'deliver', 'gaadigo', 'offline'] as const
 export type TutorialStep = (typeof TUTORIAL_STEPS)[number]
 
 type TutorialState = {

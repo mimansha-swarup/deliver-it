@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useGameStore } from '../game/gameStore'
-import { isKey, keyFor, useKeys } from '../game/keyBindings'
+import { keyFor, useKeys } from '../game/keyBindings'
 import { livePlayer } from '../game/livePlayer'
 import { TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
 import { useUi } from './uiState'
@@ -9,8 +9,9 @@ import { useUi } from './uiState'
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
  * what to do now, with the keys as they're set. Each step finishes when the rider has done it (the
  * director below watches for that), or with Skip. Riding and steering, a breaker taken slowly,
- * going online in the Deliver It app, accepting the order, riding to the dark store, the full map,
- * delivering, a few optional tricks, and going offline for the shift summary.
+ * going online in the Deliver It app, accepting the order, picking up at the dark store, the full map,
+ * delivering, GaadiGo (the other vehicles), and going offline for the shift summary. Every step can
+ * be skipped, the whole of it too, and Settings on the phone plays it again.
  */
 
 type StepText = { ravi: () => string; card: () => string; optional?: boolean }
@@ -44,10 +45,9 @@ const STEPS: Record<TutorialStep, StepText> = {
     ravi: () => "Now take it to the customer. They'll rate you: on time and a smooth ride gets the best tip.",
     card: () => 'Deliver to the customer: follow the green arrow, stop in the ring. Then see their rating and tip.',
   },
-  extras: {
-    ravi: () => `Sakkath! A few tricks, if you like: hold ${keyFor('handbrake')} while turning to drift, ${keyFor('nitro')} for nitro, ${keyFor('horn')} for the horn, ${keyFor('radio')} for the radio.`,
-    card: () => `Optional: try two of drift (${keyFor('handbrake')} while turning), nitro (${keyFor('nitro')}), horn (${keyFor('horn')}), radio (${keyFor('radio')}).`,
-    optional: true,
+  gaadigo: {
+    ravi: () => `Sakkath! One more thing: GaadiGo, on your phone (${keyFor('phone')}). It rents and sells other vehicles: a cycle, an electric scooter, later a van for the big orders. Open it and have a look.`,
+    card: () => `Open the phone (${keyFor('phone')}), unlock (Enter), and open GaadiGo: other vehicles to rent or buy, brought to you.`,
   },
   offline: {
     ravi: () => `Last one: go offline with ${keyFor('online')} to end your shift and see how it went.`,
@@ -75,7 +75,6 @@ function TutorialDirector() {
     let fastSince = 0
     let rewardSeen = false
     let summarySeen = false
-    const tricks = new Set<string>()
     let done = false
     const finish = (line?: string) => {
       if (done) return
@@ -130,10 +129,8 @@ function TutorialDirector() {
           if (state.lastReward) rewardSeen = true
           else if (rewardSeen) finish()
           break
-        case 'extras':
-          if (state.drifting) tricks.add('drift')
-          if (state.nitroOn) tricks.add('nitro')
-          if (tricks.size >= 2) finish('Ha, a natural!')
+        case 'gaadigo':
+          if (useUi.getState().phoneApp === 'gaadigo') finish(`That's your fleet. Tricks for the road: hold ${keyFor('handbrake')} in a turn to drift, ${keyFor('nitro')} for nitro, ${keyFor('horn')} for the horn. ${keyFor('help')} shows every control.`)
           break
         case 'offline':
           if (state.shiftSummary) summarySeen = true
@@ -142,16 +139,8 @@ function TutorialDirector() {
       }
     }
     const timer = window.setInterval(check, POLL_MS)
-    // The horn and the radio count as tricks too.
-    const onKey = (event: KeyboardEvent) => {
-      if (step !== 'extras') return
-      if (isKey('horn', event.code)) tricks.add('horn')
-      if (isKey('radio', event.code)) tricks.add('radio')
-    }
-    window.addEventListener('keydown', onKey)
     return () => {
       window.clearInterval(timer)
-      window.removeEventListener('keydown', onKey)
     }
   }, [step, next])
 
