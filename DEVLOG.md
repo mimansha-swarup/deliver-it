@@ -10613,3 +10613,38 @@ steered, the E1, and the handover from ride in to the old scooter ridden away.
 Height isn't checked against anything: nothing on the map is lower than a van (the lowest deck that can
 be ridden under is 3.6 m). The surface map isn't asked about width (a van can still put a wheel on a
 footpath's kerb as a scooter can). Dents are dark scuffs, not bent panels.
+
+## 2026-11-20: Entry 214, the overnight run: on foot, the doorstep, order types, upkeep, sound and life, sharing
+
+Branch `overnight-1`, one commit an item. The full account, with what was skipped and why, the
+decisions made, and the measurements by phase, is in [MORNING_REPORT.md](MORNING_REPORT.md).
+
+### What changed, in short
+- **Testing tools**: `?debug=1` uses its own "-debug" copy of every save (game/saveKeys.ts), with a panel
+  in the phone's Settings for level, rating, credits and every vehicle. New spawns: `agara-flyover-top`,
+  `dark-store`, `gated-society`. `?event=bus|dig|wedding|cow` stages a city event just ahead.
+- **The save** is `deliver-it-progress` (moved across once from the old name).
+- **Clarity**: an objective line (one instruction, always), context prompts (game/prompts.ts), mouse-look,
+  the help overlay's mouse and on-foot keys, a GaadiGo step in the tutorial.
+- **On foot** (ScooterController.ts `stepOnFoot`, vehicle/OnFoot.tsx): F gets off and on; W/S walk, A/D
+  turn, the nitro key runs. Orders no longer finish by stopping in a ring: the rider walks into the dark
+  store (a room: game/rooms.ts, world/Rooms.tsx) for the bag, and to the customer's real door
+  (game/doorsteps.ts; missions/Errand.tsx): the bell, a short scene, the hand-over; flats by lift or
+  stairs; the gated society past its guard. Chai stalls and darshinis can be walked into.
+- **Orders and money**: cargo types with a condition meter (missions/cargo.ts); a tank or battery per
+  vehicle, filled at bunks and their new EV chargers, servicing, breakdowns (game/upkeep.ts); the
+  college fund and the family's chat (game/family.ts).
+- **Sound and life**: sounds by area (audio/areaSounds.ts), three original stations and RJ Manju
+  (audio/rj.ts; the YouTube playlist of real songs is gone), city events (world/CityEvents.tsx), police
+  at six junctions with helmet checks (game/police.ts).
+- **Replay**: a daily challenge with a score card to share (game/today.ts, ui/scoreCardImage.ts),
+  achievements (game/achievements.ts), eight Namma spots.
+
+### Performance (riding 6 s, 17:30, production build, this Mac)
+High 111 fps on Sarjapur Road and 100 on 13th Cross, worst frame 17 to 18 ms; Low 120 on both; load
+4.5 to 5 s. No change from before the run within the noise: the rooms draw only while the rider is in
+one, and everything else added is a handful of small meshes.
+
+### Not verified
+Nothing here was listened to: the new sounds, the RJ's voice and every volume need an ear. The walking
+was driven by script, not by hand. See the report for the rest.

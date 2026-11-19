@@ -87,8 +87,13 @@ function TutorialDirector() {
     const offerNow = () => {
       const state = useGameStore.getState()
       if (state.duty !== 'online' || state.mission || state.offer) return
-      state.makeOffer()
-      useGameStore.getState().extendOffer(10 * 60 * 1000)
+      // A simple one to learn on: a plain parcel to a house's gate, not a flat up a lift or the gated society.
+      if (!state.planner) return
+      let mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
+      for (let tries = 0; tries < 20 && (mission.door.kind === 'flat' || mission.door.kind === 'society' || mission.story.cargo !== 'parcel' || mission.door.scene !== 'plain'); tries++) {
+        mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
+      }
+      useGameStore.setState({ offer: { mission, expiresAt: performance.now() + 10 * 60 * 1000 } })
     }
 
     const check = () => {
