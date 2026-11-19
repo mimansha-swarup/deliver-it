@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NAMMA_SPOTS, useDiscovery } from '../game/discovery'
+import { atHub, downPayment, FLEET_RULES, locked, rentPrice, useFleet, weeklyEmi } from '../game/fleet'
+import { MARKET, ORDER_TYPE_NAMES, VEHICLES, type VehicleId } from '../vehicle/vehicleCatalog'
 import { keyFor } from '../game/keyBindings'
 import { useGameStore } from '../game/gameStore'
 import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
@@ -628,6 +630,122 @@ function CameraApp({ nav }: { nav: PhoneNav }) {
   )
 }
 
+const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
+
+/**
+ * GaadiGo (made up): the vehicle marketplace (game/fleet.ts). A catalogue of what each vehicle does and
+ * costs; rent or buy one, delivered to where you are or picked up free at the hub; your rental, to end
+ * it; your Garage, to take your own vehicles out; your EMIs.
+ */
+function GaadiGoApp({ nav }: { nav: PhoneNav }) {
+  const fleet = useFleet()
+  const vehicleId = useGameStore((state) => state.vehicleId)
+  const credits = useGameStore((state) => state.credits)
+  const [open, setOpen] = useState<VehicleId | null>(null)
+  const [insured, setInsured] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const act = (result: string | null, done: string) => setNote(result ?? done)
+  const hub = atHub()
+  const how = hub ? 'hub' : 'deliver'
+  const howText = hub ? 'Free pickup: you are at the hub' : `Delivered to you (${rupees(FLEET_RULES.deliveryFee)}, 1 to 3 min)`
+
+  return (
+    <div className="app">
+      <AppBar title="GaadiGo" nav={nav} />
+      <div className="app-body">
+        <p className="app-line">Wallet {rupees(credits)} · riding the {VEHICLES[vehicleId].name}</p>
+        {note && <p className="app-line"><strong>{note}</strong></p>}
+
+        {fleet.rental && (
+          <section className="app-card">
+            <p className="app-card-title">Your rental: {VEHICLES[fleet.rental.id].name}</p>
+            <p className="app-line">
+              {fleet.rental.hoursLeft > 0 ? `${fleet.rental.hoursLeft.toFixed(1)} h left` : `${Math.ceil(-fleet.rental.hoursLeft)} h late: fees running`}
+              {fleet.rental.insured ? ' · insured' : ` · ${fleet.rental.crashes} crash${fleet.rental.crashes === 1 ? '' : 'es'} (${rupees(FLEET_RULES.damagePerCrash)} each)`}
+            </p>
+            <button type="button" className="app-wide-button" onClick={() => act(fleet.endRental(), 'Rental ended. It has been collected.')}>
+              End rental (park first)
+            </button>
+          </section>
+        )}
+        {fleet.delivery && (
+          <section className="app-card">
+            <p className="app-card-title">On its way: {VEHICLES[fleet.delivery.id].name}</p>
+            <p className="app-line">It comes to where you ordered it. Pull up beside it and stop for the handover.</p>
+          </section>
+        )}
+
+        <p className="app-card-title">Catalogue · {howText}</p>
+        {MARKET.map((id) => {
+          const spec = VEHICLES[id]
+          const why = locked(spec)
+          const owned = fleet.owned.includes(id)
+          return (
+            <section className="app-card" key={id}>
+              <button type="button" className="app-wide-button" onClick={() => setOpen(open === id ? null : id)}>
+                {spec.name} · {spec.kind}
+              </button>
+              <p className="app-line">{spec.blurb}</p>
+              <p className="app-line">
+                {spec.topSpeed} km/h · carries {spec.capacity} · {spec.costPerKm === 0 ? 'free to run' : `${rupees(spec.costPerKm)}/km`} · rent {rupees(spec.rentHour)}/h
+              </p>
+              {open === id && (
+                <>
+                  <p className="app-line">Handling: turns ×{spec.turn.toFixed(2)}, grip ×{spec.grip.toFixed(2)}, brakes ×{spec.brake.toFixed(2)}, pull ×{spec.pull.toFixed(2)} (against your scooter)</p>
+                  <p className="app-line">Unlocks: {spec.unlocks.map((type) => ORDER_TYPE_NAMES[type]).join('; ')}</p>
+                  <p className="app-line">Needs level {spec.minLevel}{spec.minRating > 0 ? ` and ${spec.minRating.toFixed(1)}★` : ''}{spec.cockpit ? " · driver's-seat view (V)" : ''}</p>
+                  {why ? (
+                    <p className="app-line"><strong>Locked: {why}</strong></p>
+                  ) : owned ? (
+                    <p className="app-line"><strong>Yours. Take it out from the Garage below.</strong></p>
+                  ) : (
+                    <>
+                      <label className="app-line">
+                        <input type="checkbox" checked={insured} onChange={(event) => setInsured(event.target.checked)} /> Rental insurance (+15%): no damage charges
+                      </label>
+                      <button type="button" className="app-wide-button" onClick={() => act(fleet.rent(id, 'hour', insured, how), hub ? 'Rented. Ride safe.' : 'Rented. It is on its way.')}>
+                        Rent 1 hour · {rupees(rentPrice(spec, 'hour', insured))}
+                      </button>
+                      <button type="button" className="app-wide-button" onClick={() => act(fleet.rent(id, 'day', insured, how), hub ? 'Rented for the day.' : 'Rented for the day. It is on its way.')}>
+                        Rent 1 day · {rupees(rentPrice(spec, 'day', insured))}
+                      </button>
+                      <button type="button" className="app-wide-button" onClick={() => act(fleet.buy(id, 'full', how), hub ? 'Bought. It is yours.' : 'Bought. It is on its way.')}>
+                        Buy · {rupees(spec.price)}
+                      </button>
+                      <button type="button" className="app-wide-button" onClick={() => act(fleet.buy(id, 'emi', how), hub ? 'Bought on EMI.' : 'Bought on EMI. It is on its way.')}>
+                        Buy on EMI · {rupees(downPayment(spec))} now, then {rupees(weeklyEmi(spec))} × {FLEET_RULES.emiWeeks} weeks
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </section>
+          )
+        })}
+
+        <p className="app-card-title">Your Garage</p>
+        {(['scooter', ...fleet.owned] as VehicleId[]).map((id) => (
+          <section className="app-card" key={id}>
+            <p className="app-line">{VEHICLES[id].name}{vehicleId === id ? ' · in use' : ''}</p>
+            {vehicleId !== id && (
+              <button type="button" className="app-wide-button" onClick={() => act(fleet.takeOut(id, how), hub ? 'Swapped at the hub.' : 'It is on its way.')}>
+                Take it out · {hub ? 'free at the hub' : `delivered, ${rupees(FLEET_RULES.deliveryFee)}`}
+              </button>
+            )}
+          </section>
+        ))}
+
+        {fleet.emis.length > 0 && <p className="app-card-title">Your EMIs (weekly, from the Wallet)</p>}
+        {fleet.emis.map((emi) => (
+          <section className="app-card" key={emi.id}>
+            <p className="app-line">{VEHICLES[emi.id].name}: {rupees(emi.weekly)} a week, {emi.weeksLeft} to go, next on day {emi.nextDueDay}{emi.missed > 0 ? ' · MISSED: pay by then or it is taken back' : ''}</p>
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Namma spots: views worth finding round Agara, ticked off once seen (game/discovery.ts). */
 function SpotsApp({ nav }: { nav: PhoneNav }) {
   const found = useDiscovery((state) => state.found)
@@ -709,6 +827,8 @@ export function PhoneApp({ app, nav }: { app: AppId; nav: PhoneNav }) {
       return <GarageApp nav={nav} />
     case 'camera':
       return <CameraApp nav={nav} />
+    case 'gaadigo':
+      return <GaadiGoApp nav={nav} />
     case 'spots':
       return <SpotsApp nav={nav} />
     case 'settings':

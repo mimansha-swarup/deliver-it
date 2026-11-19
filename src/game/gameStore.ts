@@ -221,6 +221,10 @@ type GameState = Telemetry & {
   setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
   /** A line from Ravi: a message, a chat line while online, a peek on the phone. */
   raviSays: (text: string) => void
+  /** Pays for something if the wallet has it: written in the ledger. False (and nothing taken) if it hasn't. */
+  spend: (label: string, amount: number) => boolean
+  /** Changes the vehicle in use (GaadiGo's handovers, game/fleet.ts). */
+  setVehicle: (vehicleId: VehicleId) => void
   /** A fine: taken from the wallet (never below zero), written in the ledger, with word of it. */
   fine: (label: string, amount: number, message: string) => void
   /** The customer has had enough and cancels: no pay, and it counts as a 1★ rating. */
@@ -732,13 +736,20 @@ export const useGameStore = create<GameState>()(
   setLastPosition: (lastPosition) => set({ lastPosition }),
   setWaypoint: (waypoint) => set({ waypoint }),
   raviSays: (text) => set((state) => ({ messages: addMessages(state.messages, [text]) })),
+  spend: (label, amount) => {
+    if (useGameStore.getState().credits < amount) return false
+    set((state) => ({ credits: state.credits - amount, ledger: addLedger(state.ledger, state.day, [{ label, amount: -amount, kind: 'expense' }]) }))
+    return true
+  },
+  setVehicle: (vehicleId) => set({ vehicleId }),
   fine: (label, amount, message) =>
     set((state) => {
       const paid = Math.min(state.credits, amount)
       return {
         credits: state.credits - paid,
         ledger: addLedger(state.ledger, state.day, [{ label, amount: -paid, kind: 'expense' }]),
-        messages: addMessages(state.messages, [message]),
+        // A charge with nothing to say (a running cost) is only written in the ledger.
+        messages: message ? addMessages(state.messages, [message]) : state.messages,
       }
     }),
   setPlaces: (places) => set({ places }),
