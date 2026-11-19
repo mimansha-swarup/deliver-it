@@ -22,7 +22,7 @@ type GameFile = { url: string; kb: number; kind: 'data' | 'model' | 'image' }
 const GAME_FILES: GameFile[] = [
   // Gzipped: 1 MB (packedData.ts). A host without the gzipped copy sends 14.3 MB, and the bar stops at this.
   { url: MAP_URL, kb: 1010, kind: 'data' },
-  { url: '/models/traffic.glb', kb: 1094, kind: 'model' },
+  { url: '/models/traffic.glb', kb: 1322, kind: 'model' },
   { url: '/models/city-kit.glb', kb: 1242, kind: 'model' },
   { url: '/models/yamaha.glb', kb: 120, kind: 'model' },
   // Photos the game draws onto canvases (facades, shop boards) stay JPEG.

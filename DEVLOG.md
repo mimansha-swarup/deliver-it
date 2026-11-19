@@ -10281,3 +10281,22 @@ landing, and a breaker taken fast still throws the wheel up (it's rising then, n
 | Jolts down one ramp | 139 | 0 |
 | Frames with a wheel falling | 382 of 820 | 0 |
 | Top speed | 51 km/h | 56 km/h (the jolts no longer take speed off) |
+
+## 2026-11-20: Entry 203, the crumpled cars were the detailed models
+
+### What was wrong
+"Close-up traffic shows the low-detail model" was never the switching: a sedan 3 m from the camera was
+on its detailed model, and the detailed model was crumpled. The bake shrink-wrapped each car into a
+new skin on a 1.5 cm grid, snapped it back onto the panels and simplified that: dented bonnets,
+wrinkled doors, paint smeared into trim. The auto, the one vehicle baked without the wrap, looked right.
+
+### What I did
+The four cars' near versions are simplified straight from the original models (prepare_traffic_models.mjs,
+`nearTriangles`): 22,000 triangles each, the SUV 30,000 (its grille alone is 70,000 in the original,
+and with less its windscreen glass merged into the paint round it). They keep the original's smooth
+panels, normals and each material's exact edge. Far versions are unchanged (still from the wrap).
+traffic.glb 1.1 → 1.3 MB compressed.
+
+### Left
+The SUV's windscreen is a little unevenly shaded close up, and the cars' wheels (still wrapped, about
+530 triangles) are angular at 3 m.

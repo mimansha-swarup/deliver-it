@@ -49,6 +49,7 @@ const VEHICLES = [
     folder: '2022_maruti_suzuki_swift_dzire',
     length: 4.2,
     triangles: 14000,
+    nearTriangles: 22000,
     wrapCell: 0.015,
     dropMaterial: /seats_|speedometer|sidewall/,
     dropNode: /^(movsteer|seats_|sidewall|dashboard|speedometer)/,
@@ -59,6 +60,7 @@ const VEHICLES = [
     folder: '2020_maruti_suzuki_alto_800',
     length: 3.6,
     triangles: 14000,
+    nearTriangles: 22000,
     wrapCell: 0.015,
     dropMaterial: /seat|^dash|^mate|steering|dore2/,
     dropNode: /^(dash|mate|steering)/,
@@ -69,6 +71,10 @@ const VEHICLES = [
     folder: '2022_mahindra_scorpio-n',
     length: 4.6,
     triangles: 14000,
+    // More than the others: its grille alone is 70,000 triangles in the original, and with less the
+    // windscreen's glass merged into the paint round it in patches.
+    nearTriangles: 30000,
+    nearColorWeight: 0.6,
     wrapCell: 0.015,
     dropMaterial: /_int_|sunroof_m/,
     dropNode: /^movsteer/,
@@ -79,6 +85,7 @@ const VEHICLES = [
     folder: 'renault_triber',
     length: 4,
     triangles: 14000,
+    nearTriangles: 22000,
     wrapCell: 0.015,
     dropMaterial: /seat|^dash|^int\.|roof_int|misc|glossy|^mate|^sell/,
     dropNode: /^(int|prtseat|dashmax|roof int|seat\d|mate)\b/,
@@ -816,6 +823,8 @@ const FAR_SHAPE_ERROR = 0.12
  * shrink-wrap leaves: without it, the hatchback stopped at 18,000 triangles whatever the
  * error allowed; with it, 6,200 at a smaller error than before.
  */
+/** Straight from the original model: its shape kept closely, its normals (the panels' creases) counting for more. */
+const DIRECT_SIMPLIFY = { maxError: 0.06, colorWeight: 0.2, normalWeight: 0.3, flags: ['Prune', 'Permissive'] }
 const NEAR_SIMPLIFY = { maxError: 0.03, colorWeight: 0.12, normalWeight: 0.05, flags: ['Prune', 'Permissive'] }
 /** Wheels are small, and an error limit is a share of the shape's own size, so theirs is looser. */
 const FAR_WHEEL_ERROR = 0.3
@@ -1333,8 +1342,14 @@ async function main() {
       if (broken.length) console.log(spec.name, 'has bad numbers in', broken)
       const welded = weld(spec.wrapCell ? shrinkWrap(baked, spec.wrapCell) : baked)
       if (spec.wrapCell) settlePaint(welded)
-      const { result, error } = simplify(welded, spec.triangles, specs === VEHICLES && spec.name !== 'delivery' ? NEAR_SIMPLIFY : {})
-      if (spec.wrapCell) smoothNormals(result, CREASE)
+      // A car's near version is simplified straight from the original model, not from the wrap: the
+      // wrap's skin, snapped back onto the panels from a grid, came out dented and wrinkled close up,
+      // and smeared paint into trim. The original keeps its smooth panels, its own normals and each
+      // material's exact edge. (The far version still comes from the wrap: one skin, no insides.)
+      const { result, error } = spec.nearTriangles
+        ? simplify(weld(baked), spec.nearTriangles, { ...DIRECT_SIMPLIFY, colorWeight: spec.nearColorWeight ?? DIRECT_SIMPLIFY.colorWeight })
+        : simplify(welded, spec.triangles, specs === VEHICLES && spec.name !== 'delivery' ? NEAR_SIMPLIFY : {})
+      if (spec.wrapCell && !spec.nearTriangles) smoothNormals(result, CREASE)
       const size = getBounds(result).getSize(new THREE.Vector3())
       console.log(
         spec.name.padEnd(10),
