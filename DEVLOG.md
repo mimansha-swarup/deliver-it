@@ -10070,3 +10070,12 @@ at golden hour. Ramps keep their solid body. Screenshot: `world-pass.local/shots
 Sarjapur Road High 115 fps (worst 25 ms), Low 120 (10 ms); Hosur Road High 97 (42 ms), Low 120
 (10 ms). Synced frame on Sarjapur Road: High 11.9 ms, Low 6.9 ms, Low with the CPU 4× slower 13.2 ms,
 as before.
+
+## 2026-11-19: Entry 193, no freeze in the first second of riding
+
+The freeze (about 400 ms, 1 s into the ride) was the traffic's shaders compiling: the traffic was
+built 0.6 s after the ride started, to keep the loading screen's fade smooth, so the prewarm never
+saw it, and a CPU profile of the first 2 s of riding showed 303 ms in compiling shaders. The traffic
+is built during loading now (Player.tsx), so the prewarm covers it. Four spawns, riding at 17:30:
+no frame over 50 ms after the ride starts (one of 51 ms on Hosur Road). Play to riding 4.9 to 5.1 s
+here (about 0.25 s more: the traffic's building moved into loading).

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { Group } from 'three'
 import { FollowCamera } from '../camera/FollowCamera'
 import { TitleCamera } from '../camera/TitleCamera'
@@ -85,17 +85,11 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
   )
 }
 
-/** Waits this long after the ride starts, so the loading screen has faded before traffic is built, in milliseconds. */
-const TRAFFIC_DELAY = 600
-
-/** Shows its children only once the ride has started, a moment after. */
+/**
+ * The traffic is built during loading, with the rest of the world, so the prewarm (World.tsx) draws
+ * it too. It used to be built 0.6 s into the ride, so as not to hold up the loading screen's fade, and
+ * its shaders then compiled in the first second of riding: a 400 ms freeze.
+ */
 function AfterRideStarts({ children }: { children: ReactNode }) {
-  const started = useGameStore((state) => state.started)
-  const [ready, setReady] = useState(false)
-  useEffect(() => {
-    if (!started) return
-    const timer = setTimeout(() => setReady(true), TRAFFIC_DELAY)
-    return () => clearTimeout(timer)
-  }, [started])
-  return ready ? children : null
+  return children
 }
