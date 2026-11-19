@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
-import { liveSky } from '../game/livePlayer'
+import { liveSky, livePlayer } from '../game/livePlayer'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { tuning } from '../vehicle/tuning'
 import { useDriveInput } from '../vehicle/useDriveInput'
@@ -9,6 +9,7 @@ import { createAmbience, playSplash, playThud } from './ambience'
 import { getAudio } from './audioEngine'
 import { createEngineVoice, type EngineVoice } from './engines'
 import { createPlaceSounds } from './placeSounds'
+import { createAreaSounds } from './areaSounds'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 
 /** How quickly revs follow the throttle, per second. Revving up is quicker than dropping. */
@@ -41,6 +42,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const engine = useRef<EngineVoice | null>(null)
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
   const places = useRef<ReturnType<typeof createPlaceSounds> | null>(null)
+  const area = useRef<ReturnType<typeof createAreaSounds> | null>(null)
   const engineOf = useRef<string | null>(null)
   const untilTick = useRef(0)
   const revs = useRef(0)
@@ -70,6 +72,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     engine.current ??= createEngineVoice(audio.context, audio.sfx, vehicle.engine)
     ambience.current ??= createAmbience(audio.context, audio.sfx)
     places.current ??= createPlaceSounds(audio.context, audio.sfx)
+    area.current ??= createAreaSounds(audio.context, audio.sfx)
 
     const state = scooter.current
     const speed = getTravelSpeed(state)
@@ -106,6 +109,9 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
       { x: state.x, z: state.z, height: Math.min(state.frontWheel.height, state.rearWheel.height), rain: liveSky.rain, night: liveSky.look.night, hours: liveSky.hours },
       dt,
     )
+
+    // The sounds of where the rider is: the street's traffic, a signal's horns, a shop's radio, a vendor, a temple, the lake, rain on what's around (areaSounds.ts).
+    area.current.update({ x: livePlayer.x, z: livePlayer.z, night: liveSky.look.night, rain: liveSky.rain, hours: liveSky.hours, speed, indoors: livePlayer.indoors }, dt)
 
     if (state.crashCount !== crashes.current) {
       crashes.current = state.crashCount

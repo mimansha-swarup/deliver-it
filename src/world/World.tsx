@@ -36,6 +36,7 @@ import { teleportSpots } from '../dev/teleportSpots'
 import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev/spawn'
 import { doorsteps } from '../game/doorsteps'
 import { eateries } from '../game/eateries'
+import { areaAt, setAreas } from '../game/areas'
 import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
 import { SocietyGate } from './SocietyGate'
@@ -573,6 +574,19 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
       const street = near ? data.roads[near.piece.road].properties.name : undefined
       return { x, z, name: street ? `Chai stall · ${street}` : 'Chai stall' }
     })
+  // What kind of place each spot is, for the sounds that belong to places (game/areas.ts).
+  setAreas({
+    signals: signalNodes.map((node) => ({ x: graph.xs[node], z: graph.zs[node] })),
+    shops: shopFronts.map(({ x, z }) => ({ x, z })),
+    // The Agara temples have their own bells (placeSounds.ts).
+    temples: worship
+      .map(({ outline }) => ({ x: outline.reduce((sum, [px]) => sum + px, 0) / outline.length, z: outline.reduce((sum, [, pz]) => sum + pz, 0) / outline.length }))
+      .filter(({ x, z }) => ![agaraPlaces.temple, agaraPlaces.jagannath].some((own) => own && Math.hypot(own.x - x, own.z - z) < 90)),
+    vendors: life.carts.map(({ x, z }) => ({ x, z })),
+    water: agaraPlaces.lake ? [agaraPlaces.lake] : [],
+    streetAt: (x, z) => streetAt(x, z)?.name ?? null,
+  })
+  if (isDebug()) Object.assign(window, { __areaAt: areaAt })
   // Chai stalls and darshinis can be walked into, to eat and rest (game/eateries.ts): worth getting off for.
   eateries.list = shopFronts
     .filter(({ type }) => type === 'chai' || type === 'darshini')
