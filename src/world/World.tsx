@@ -38,6 +38,7 @@ import { doorsteps } from '../game/doorsteps'
 import { eateries } from '../game/eateries'
 import { areaAt, setAreas } from '../game/areas'
 import { POLICE, policePosts } from '../game/police'
+import { spotPlaces } from '../game/discovery'
 import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
 import { SocietyGate } from './SocietyGate'
@@ -338,6 +339,10 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   for (const stop of cityLandmarks.stops) for (const route of stop.routes) routeCounts.set(route, (routeCounts.get(route) ?? 0) + 1)
   const busStand = planBusStand({ data, surface: surfaceMap, roads: roadIndex, collisions, routes: [...routeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([route]) => route).slice(0, 12) })
   worldSurface.report.busStand = { placed: busStand ? 1 : 0 }
+  // Two of the Namma spots are simply places: the bus stand, and under any metro station (game/discovery.ts).
+  spotPlaces.busstand = busStand ? { x: busStand.x, z: busStand.z } : null
+  spotPlaces.metro = metro.stations.map(({ x, z }) => ({ x, z }))
+  if (isDebug()) Object.assign(window, { __spots: spotPlaces })
   if (isDebug()) (window as unknown as { __deliverItLandmarks?: unknown }).__deliverItLandmarks = cityLandmarks
   lap(`sites, fuel and worship: ${fuel.length} bunks, ${fuel.filter(({ yard }) => yard > 0).length} with a yard, ${tyreShops.length} tyre shops`)
   yield STEP

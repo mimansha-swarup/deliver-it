@@ -4884,3 +4884,48 @@ body,
   color: #c9c6bc;
   font-size: 13px;
 }
+
+/* The Namma spots collection, and the awards, on the phone. */
+.spots-grid {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.spots-grid li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 6%);
+}
+.spots-grid li[data-found='true'] {
+  background: linear-gradient(120deg, rgb(246 179 43 / 26%), rgb(255 255 255 / 6%));
+}
+.spots-number {
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #c9c6bc;
+  background: rgb(255 255 255 / 12%);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 26px;
+  text-align: center;
+}
+.spots-grid li[data-found='true'] .spots-number {
+  color: #2a1300;
+  background: #f6b32b;
+}
+.spots-text {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.spots-text small {
+  color: #c9c6bc;
+  font-size: 12px;
+  line-height: 1.3;
+}

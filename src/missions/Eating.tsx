@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import { playPing } from '../audio/uiSounds'
 import { eateryAt, FRESH, MEALS } from '../game/eateries'
 import { useGameStore } from '../game/gameStore'
+import { discover } from '../game/discovery'
 import { clearSpots, setSpot } from '../game/interact'
 import { liveSky } from '../game/livePlayer'
 import { goThrough, liveRoom } from '../game/rooms'
@@ -73,6 +74,7 @@ export function Eating({ scooter }: { scooter: RefObject<ScooterState> }) {
         }
         playPing('message')
         game.postChat('customer', 'Counter', meal.said)
+        discover('adda')
         // A few minutes go by at the table.
         goThrough(meal.having, () => {
           liveSky.setHoursTo = (liveSky.hours + meal.minutes / 60) % 24

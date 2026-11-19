@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { agaraPlaces } from '../game/agaraPlaces'
-import { NAMMA_SPOTS, useDiscovery, type SpotId } from '../game/discovery'
+import { discover, NAMMA_SPOTS, spotPlaces, useDiscovery, type SpotId } from '../game/discovery'
+import { areaAt } from '../game/areas'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 
@@ -47,6 +48,13 @@ export function Discovery() {
       if (livePlayer.height > DECK_HEIGHT && near(statue, STATUE_VIEW)) found('statue', 'Worth a picture: open the Camera app in your phone.')
       if (atLake && liveSky.hours >= 17 && liveSky.hours < 19) found('lake', 'Ticked off in Namma spots, in your phone.')
       if (liveSky.look.night > 0.6 && (near(temple, TEMPLE_NEAR) || near(jagannath, TEMPLE_NEAR) || near(statue, TEMPLE_NEAR))) found('temple', 'Ticked off in Namma spots, in your phone.')
+      // The spots that are simply places, and the shop street once its lights are on.
+      if (near(spotPlaces.busstand, 45)) discover('busstand')
+      if (spotPlaces.metro.some((station) => near(station, 38))) discover('metro')
+      if (liveSky.look.night > 0.6) {
+        const area = areaAt(livePlayer.x, livePlayer.z)
+        if (area.street === 'shop' && area.shops >= 0.9) discover('shops')
+      }
     }, 400)
     return () => clearInterval(timer)
   }, [])

@@ -7,6 +7,7 @@ import { liveMission } from '../game/livePlayer'
 import { theItem } from '../game/objective'
 import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
 import { doorsteps, errandLive, useGuard } from '../game/doorsteps'
+import { discover } from '../game/discovery'
 import type { DoorPlan } from '../game/gameTypes'
 import { playBarks, playDoorbell, playLift, playPen, playStairs } from '../audio/doorSounds'
 import { setStep } from '../ui/uiState'
@@ -229,6 +230,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
             window.setTimeout(() => {
               stage.current = { ...stage.current, step: 'approach' }
               errandLive.cleared = true
+              discover('society')
               security(`Go ahead: floor ${door.floor}. Your vehicle stays outside the gate.`)
               useGuard.setState({ card: null })
               liveRoom.frozen = false

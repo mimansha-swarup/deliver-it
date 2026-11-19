@@ -25,6 +25,7 @@ import { KeyList } from './HelpOverlay'
 import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 import { CARGO } from '../missions/cargo'
+import { ACHIEVEMENTS, useAchievements } from '../game/achievements'
 import { RJ_NAME, useOnAir } from '../audio/rj'
 import { currentGoal, FAMILY_THREAD, FUND_GOALS, useFamily } from '../game/family'
 import { energyOf, fillPrice, fuelLevel, serviceState, UPKEEP, useUpkeep } from '../game/upkeep'
@@ -903,13 +904,56 @@ function SpotsApp({ nav }: { nav: PhoneNav }) {
     <div className="app">
       <AppBar title="Namma spots" nav={nav} />
       <div className="app-body">
-        <p className="app-line">Our spots: {count} of {NAMMA_SPOTS.length} found.</p>
-        {NAMMA_SPOTS.map(({ id, name, how }) => (
-          <section className="app-card" key={id}>
-            <p className="app-card-title">{found[id] ? '✓ ' : '○ '}{name}</p>
-            <p className="app-line">{found[id] ? 'Found.' : how}</p>
-          </section>
-        ))}
+        <section className="app-card">
+          <p className="app-card-title">Our spots · {count} of {NAMMA_SPOTS.length}</p>
+          <span className="fund-bar" aria-hidden="true">
+            <span style={{ width: `${Math.round((count / NAMMA_SPOTS.length) * 100)}%` }} />
+          </span>
+          <p className="app-line app-muted">{count === NAMMA_SPOTS.length ? 'Every one found. Namma ooru, namma spots!' : 'Places worth finding in HSR. Each shows its card the first time you get there.'}</p>
+        </section>
+        <ul className="spots-grid">
+          {NAMMA_SPOTS.map(({ id, name, how, found: said }, index) => (
+            <li key={id} data-found={found[id]}>
+              <span className="spots-number" aria-hidden="true">{found[id] ? '✓' : index + 1}</span>
+              <span className="spots-text">
+                <strong>{found[id] ? name : name.replace(/[A-Za-z]/g, (letter, at: number) => (at === 0 ? letter : '·'))}</strong>
+                <small>{found[id] ? said : how}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** Awards: every achievement, the ones unlocked with their day, the rest with how to earn them. */
+function AwardsApp({ nav }: { nav: PhoneNav }) {
+  const unlocked = useAchievements((state) => state.unlocked)
+  const deliveries = useAchievements((state) => state.deliveries)
+  const count = ACHIEVEMENTS.filter(({ id }) => unlocked[id] !== undefined).length
+  return (
+    <div className="app">
+      <AppBar title="Awards" nav={nav} />
+      <div className="app-body">
+        <section className="app-card">
+          <p className="app-card-title">Achievements · {count} of {ACHIEVEMENTS.length}</p>
+          <span className="fund-bar" aria-hidden="true">
+            <span style={{ width: `${Math.round((count / ACHIEVEMENTS.length) * 100)}%` }} />
+          </span>
+          <p className="app-line app-muted">{deliveries} order{deliveries === 1 ? '' : 's'} delivered in all.</p>
+        </section>
+        <ul className="spots-grid">
+          {ACHIEVEMENTS.map(({ id, name, how }) => (
+            <li key={id} data-found={unlocked[id] !== undefined}>
+              <span className="spots-number" aria-hidden="true">{unlocked[id] !== undefined ? '★' : '·'}</span>
+              <span className="spots-text">
+                <strong>{name}</strong>
+                <small>{unlocked[id] !== undefined ? `Unlocked on day ${unlocked[id]}. ${how}` : how}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )
@@ -981,6 +1025,8 @@ export function PhoneApp({ app, nav }: { app: AppId; nav: PhoneNav }) {
       return <GaadiGoApp nav={nav} />
     case 'spots':
       return <SpotsApp nav={nav} />
+    case 'awards':
+      return <AwardsApp nav={nav} />
     case 'settings':
       return <SettingsApp nav={nav} />
   }

@@ -1,6 +1,6 @@
 /* The phone's apps, by id, with their icons, and what an app can ask of the phone. */
 
-export type AppId = 'deliver' | 'messages' | 'maps' | 'music' | 'wallet' | 'garage' | 'camera' | 'spots' | 'gaadigo' | 'settings'
+export type AppId = 'deliver' | 'messages' | 'maps' | 'music' | 'wallet' | 'garage' | 'camera' | 'spots' | 'awards' | 'gaadigo' | 'settings'
 
 /** What an app can ask of the phone: go to another app or home, open a chat, or put the phone away. */
 export type PhoneNav = {
@@ -23,6 +23,7 @@ export const APPS: { id: AppId; name: string; color: string; glyph: string }[] =
   { id: 'camera', name: 'Camera', color: '#9aa3ad', glyph: 'M4 8h4l2-2h4l2 2h4v11H4zM12 11a3 3 0 1 0 0 6 3 3 0 0 0 0-6z' },
   { id: 'gaadigo', name: 'GaadiGo', color: '#19a974', glyph: 'M3 15l2-6h10l3 3h3v3h-2a2 2 0 0 1-4 0H9a2 2 0 0 1-4 0zM7 11l-1 2h8v-2z' },
   { id: 'spots', name: 'Namma spots', color: '#e8862a', glyph: 'M12 3l2.6 5.6 6 .7-4.5 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6L3.4 9.3l6-.7z' },
+  { id: 'awards', name: 'Awards', color: '#d9a520', glyph: 'M7 3h10v5a5 5 0 0 1-10 0zM7 5H4a3 3 0 0 0 3 4M17 5h3a3 3 0 0 1-3 4M12 13v4M8 21h8M9 17h6v4H9z' },
   { id: 'settings', name: 'Settings', color: '#6b7280', glyph: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2' },
 ]
 
