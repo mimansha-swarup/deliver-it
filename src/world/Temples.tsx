@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { liveSky } from '../game/livePlayer'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { ChunkedMesh } from './ChunkedMesh'
 import { chunkKey } from './chunks'
@@ -391,6 +393,15 @@ function buildSite(site: WorshipSite): THREE.BufferGeometry[] {
   return parts
 }
 
+const templeFlood = { value: 0 }
+const templeMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide })
+templeMaterial.onBeforeCompile = (shader) => {
+  shader.uniforms.uFlood = templeFlood
+  shader.fragmentShader = shader.fragmentShader
+    .replace('void main() {', 'uniform float uFlood;\nvoid main() {')
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.86, 0.66) * uFlood;')
+}
+
 export function Temples({ sites }: { sites: WorshipSite[] }) {
   const geometries = useMemo(() => {
     const chunks = new Map<number, THREE.BufferGeometry[]>()
@@ -413,6 +424,9 @@ export function Temples({ sites }: { sites: WorshipSite[] }) {
       return merged
     })
   }, [sites])
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }), [])
-  return <ChunkedMesh geometries={geometries} material={material} castShadow />
+  // After dark the temples are floodlit: their own paint lit warm, rising with the street lamps.
+  useFrame(() => {
+    templeFlood.value = liveSky.look.night * 0.32
+  })
+  return <ChunkedMesh geometries={geometries} material={templeMaterial} castShadow />
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
-import { livePlayer } from '../game/livePlayer'
+import { livePlayer, liveSky } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { ROAD_TEXTURES } from './assetUrls'
@@ -668,6 +668,33 @@ function createDeckSurfaces(decks: Flyover[]) {
       solids.push(colored(g, CONCRETE_DARK))
     }
   }
+  // Street lights along the decks where they're up off the ground: a post on alternate barriers
+  // every DECK_LIGHT_EVERY metres, with an arm over the road and a head that glows after dark.
+  const heads: THREE.BufferGeometry[] = []
+  for (const deck of decks) {
+    const { points, at } = deck.path
+    let next = DECK_LIGHT_EVERY / 2
+    let lamp = 0
+    for (let i = 1; i < points.length - 1; i++) {
+      if (at[i] < next) continue
+      next = at[i] + DECK_LIGHT_EVERY
+      if (deck.heights[i] < RIDE_UNDER || !isInsideBounds(points[i][0], points[i][1], 4)) continue
+      const [x, z] = points[i]
+      const [bx, bz] = points[i + 1]
+      const length = Math.hypot(bx - x, bz - z) || 1
+      const dirX = (bx - x) / length
+      const dirZ = (bz - z) / length
+      const side = lamp++ % 2 === 0 ? 1 : -1
+      const turn = Math.atan2(dirX, dirZ)
+      const base = deck.heights[i] + BARRIER.height
+      const out = side * (deck.width / 2 - BARRIER.width / 2)
+      const place = (geometry: THREE.BufferGeometry) => geometry.rotateY(turn).translate(x, 0, z)
+      solids.push(place(box([0.12, DECK_LIGHT_HEIGHT, 0.12], [out, base + DECK_LIGHT_HEIGHT / 2, 0], '#6d7074')))
+      solids.push(place(box([1.5, 0.08, 0.08], [out - side * 0.75, base + DECK_LIGHT_HEIGHT, 0], '#6d7074')))
+      heads.push(place(box([0.55, 0.12, 0.26], [out - side * 1.4, base + DECK_LIGHT_HEIGHT - 0.08, 0], '#fff1cc')))
+    }
+  }
+
   const surface = new THREE.BufferGeometry()
   surface.setAttribute('position', new THREE.Float32BufferAttribute(asphalt.position, 3))
   surface.setAttribute('normal', new THREE.Float32BufferAttribute(asphalt.normal, 3))
@@ -677,8 +704,14 @@ function createDeckSurfaces(decks: Flyover[]) {
   surface.setAttribute('aKerb', new THREE.Float32BufferAttribute(asphalt.kerb, 2))
   surface.setIndex(asphalt.index)
   surface.computeBoundingSphere()
-  return { surface, details: solids.length ? merge(solids) : null }
+  return { surface, details: solids.length ? merge(solids) : null, lights: heads.length ? merge(heads) : null, lightCount: heads.length }
 }
+
+/** A street light on the decks every this many metres, on posts this tall above the barrier. */
+const DECK_LIGHT_EVERY = 32
+const DECK_LIGHT_HEIGHT = 6.2
+/** The decks' lamp heads, lit at dusk with the street lamps: one material, brightened by the frame loop. */
+const deckLightMaterial = new THREE.MeshStandardMaterial({ color: '#d8d2c2', emissive: '#ffe2a8', emissiveIntensity: 0, roughness: 0.6 })
 
 /** The crash barriers along a deck's edges: how thick and high, in metres. */
 const BARRIER = { width: 0.35, height: 0.95 }
@@ -705,8 +738,13 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   useEffect(() => () => {
     deckTop.surface.dispose()
     deckTop.details?.dispose()
+    deckTop.lights?.dispose()
   }, [deckTop])
   useEffect(() => () => asphalt.dispose(), [asphalt])
+  // The decks' lamps come on at dusk.
+  useFrame(() => {
+    deckLightMaterial.emissiveIntensity = liveSky.look.night * 2.4
+  })
   const structure = useMemo(() => {
     const parts = [...flyovers.decks.flatMap(createDeckGeometry), ...flyovers.pillars.flatMap(createFlyoverPillar), ...flyovers.barriers.flatMap(createRampBarrier)]
     return parts.length ? merge(parts) : null
@@ -723,6 +761,7 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
       {structure && <mesh geometry={structure} material={material} castShadow receiveShadow />}
       <mesh geometry={deckTop.surface} material={asphalt} receiveShadow />
       {deckTop.details && <mesh geometry={deckTop.details} material={material} castShadow receiveShadow />}
+      {deckTop.lights && <mesh geometry={deckTop.lights} material={deckLightMaterial} />}
       {posters && (
         <mesh geometry={posters}>
           <meshStandardMaterial map={atlas} roughness={0.85} polygonOffset polygonOffsetFactor={-2} />
