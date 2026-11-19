@@ -17,6 +17,20 @@ const REV_DOWN = 2.5
 /** Holding the throttle while stopped, the engine revs this high, from 0 to 1. */
 const STANDING_REV = 0.55
 
+/** One tick of a bicycle's chain or freewheel: a few milliseconds of a bright, hollow note. */
+function chainTick(context: AudioContext, output: AudioNode, volume: number, pitch: number) {
+  const start = context.currentTime + 0.005
+  const tone = context.createOscillator()
+  tone.type = 'square'
+  tone.frequency.value = pitch * (0.92 + Math.random() * 0.16)
+  const level = context.createGain()
+  level.gain.setValueAtTime(volume, start)
+  level.gain.exponentialRampToValueAtTime(0.0001, start + 0.018)
+  tone.connect(level).connect(output)
+  tone.start(start)
+  tone.stop(start + 0.03)
+}
+
 /**
  * Sounds that follow the rider: the scooter's engine, tyre skid, crash thuds,
  * and the neighbourhood around them. They start once sound is allowed, after
@@ -28,6 +42,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
   const places = useRef<ReturnType<typeof createPlaceSounds> | null>(null)
   const engineOf = useRef<string | null>(null)
+  const untilTick = useRef(0)
   const revs = useRef(0)
   const crashes = useRef(0)
   const bumps = useRef(0)
@@ -74,6 +89,17 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
       { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0 },
       dt,
     )
+
+    // A bicycle's own sound: the chain ticking over as it's pedalled, the freewheel's quicker, lighter
+    // tick when it's coasting.
+    if (vehicle.id === 'bicycle' && riding && speed > 0.6) {
+      untilTick.current -= dt
+      if (untilTick.current <= 0) {
+        const pedalling = throttle > 0
+        untilTick.current = pedalling ? 1 / Math.max(2, speed * 1.6) : 1 / Math.max(6, speed * 4.5)
+        chainTick(audio.context, audio.sfx, pedalling ? 0.05 : 0.028, pedalling ? 1500 : 3200)
+      }
+    }
 
     // Temple bells, the junction's horns, rain on and under the flyover (placeSounds.ts).
     places.current.update(

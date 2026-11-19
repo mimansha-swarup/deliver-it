@@ -1,4 +1,5 @@
 import { livePlayer } from '../game/livePlayer'
+import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { getAudio } from './audioEngine'
 import type { VehicleKind } from '../traffic/trafficLogic'
 
@@ -131,6 +132,30 @@ export function playHorn(voice: HornVoice, x: number, z: number, listener: Liste
 }
 
 /** The rider's own horn, which sounds from right where they are. */
+/** The rider's horn: the vehicle's own (vehicleCatalog.ts). A bicycle has a bell. */
 export function honkPlayerHorn() {
-  playHorn('scooter', livePlayer.x, livePlayer.z, livePlayer)
+  const horn = liveVehicle.spec.horn
+  if (horn === 'bell') ringBell()
+  else playHorn(horn, livePlayer.x, livePlayer.z, livePlayer)
+}
+
+/** A bicycle bell: "tring-tring", two bright strikes that ring on. */
+function ringBell() {
+  const buses = getAudio()
+  if (!buses) return
+  const { context, sfx } = buses
+  for (const [at, pitch] of [[0, 2350], [0.16, 2500]] as const) {
+    const start = context.currentTime + 0.01 + at
+    for (const [ratio, share, ring] of [[1, 1, 0.9], [2.7, 0.45, 0.5], [5.2, 0.2, 0.25]] as const) {
+      const tone = context.createOscillator()
+      tone.frequency.value = pitch * ratio
+      const level = context.createGain()
+      level.gain.setValueAtTime(0, start)
+      level.gain.linearRampToValueAtTime(0.16 * share, start + 0.004)
+      level.gain.exponentialRampToValueAtTime(0.0001, start + ring)
+      tone.connect(level).connect(sfx)
+      tone.start(start)
+      tone.stop(start + ring + 0.05)
+    }
+  }
 }

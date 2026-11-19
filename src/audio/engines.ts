@@ -7,7 +7,7 @@ import { getNoise } from './instruments'
  * an octave down for body, filtered noise for the rasp, and a lowpass filter
  * that opens up under throttle, the way an engine gets brighter when you open it up.
  */
-export type EngineKind = 'scooter' | 'car' | 'suv' | 'auto' | 'bike'
+export type EngineKind = 'scooter' | 'car' | 'suv' | 'auto' | 'bike' | 'ev' | 'evCargo' | 'thumper' | 'diesel' | 'silent'
 
 type Profile = {
   /** Firing rate at idle and at full revs, in hertz. */
@@ -33,6 +33,16 @@ const PROFILES: Record<EngineKind, Profile> = {
   auto: { idleHz: 28, topHz: 55, wave: 'square', dullHz: 600, brightHz: 1300, rasp: 0.35, loudness: 0.4 },
   // A commuter motorbike: higher and sharper.
   bike: { idleHz: 45, topHz: 125, wave: 'sawtooth', dullHz: 600, brightHz: 2100, rasp: 0.14, loudness: 0.4 },
+  // An electric scooter's motor: no firing at all, a clean whine that climbs a long way with speed.
+  ev: { idleHz: 260, topHz: 1500, wave: 'triangle', dullHz: 2600, brightHz: 5200, rasp: 0.012, loudness: 0.16 },
+  // An electric cargo three-wheeler: the same whine an octave down, with the gearbox's grind in it.
+  evCargo: { idleHz: 130, topHz: 620, wave: 'sawtooth', dullHz: 900, brightHz: 2200, rasp: 0.06, loudness: 0.2 },
+  // A 150 cc single: a slow, heavy thump at idle that hardens into a bark.
+  thumper: { idleHz: 17, topHz: 92, wave: 'square', dullHz: 340, brightHz: 1700, rasp: 0.2, loudness: 0.55 },
+  // A loaded van's diesel: low, clattering, never high.
+  diesel: { idleHz: 19, topHz: 48, wave: 'sawtooth', dullHz: 260, brightHz: 720, rasp: 0.3, loudness: 0.6 },
+  // Nothing: a bicycle. Its chain and freewheel are PlayerSounds' ticks.
+  silent: { idleHz: 40, topHz: 60, wave: 'sine', dullHz: 200, brightHz: 300, rasp: 0, loudness: 0 },
 }
 
 /** How quickly the sound follows the engine, in seconds. Small, so revs sound smooth. */
