@@ -41,8 +41,12 @@ export type Agara = {
   people: ShopPerson[]
   /** The Saturday crowd. */
   crowd: ShopPerson[]
-  /** Where `?spawn=agara-flyover` starts: the foot of the flyover's ramp, heading up it. */
+  /** Where `?spawn=agara-flyover` starts: on the road at the Agara junction, on the flyover's approach, facing up the ramp. */
   spawn: { name: string; x: number; z: number; heading: number } | null
+  /** Where `?spawn=agara-temple` starts: on the road outside the temple's door. */
+  templeSpawn: { name: string; x: number; z: number; heading: number } | null
+  /** The Jagannath temple nearest the statue, for the map. */
+  jagannath: { x: number; z: number; name: string } | null
   report: Record<string, number>
   /** The temple the statue stands by, as OSM names it. */
   temple: string
@@ -65,6 +69,7 @@ export function planAgara({
   roads,
   collisions,
   stops,
+  lake,
 }: {
   worship: WorshipSite[]
   decks: Flyover[]
@@ -72,8 +77,10 @@ export function planAgara({
   roads: RoadIndex
   collisions: CollisionWorld
   stops: BusStop[]
+  /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
+  lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, templeSpawn: null, jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
@@ -97,17 +104,52 @@ export function planAgara({
   agara.temple = site.name ?? ''
   agara.report.metresFromFlyover = Math.round(best.distance)
 
-  // The start for `?spawn=agara-flyover`: the foot of this deck's ramp, in its left lane, heading up.
+  // The start for `?spawn=agara-flyover`: on the ground road leading to a ramp's foot, in the left
+  // lane, facing up the ramp. The decks are one way, so a deck's start is its approach. Of the ring
+  // road's ramps near the temple, the one nearest Agara Lake: the Agara junction's.
   {
-    const { points } = deck.path
-    const from = deck.startsLow ? 0 : points.length - 1
-    const to = deck.startsLow ? 3 : points.length - 4
-    const [ax, az] = points[from]
-    const [bx, bz] = points[Math.max(0, Math.min(points.length - 1, to))]
-    const length = Math.hypot(bx - ax, bz - az) || 1
-    const fx = (bx - ax) / length
-    const fz = (bz - az) / length
-    agara.spawn = { name: 'Agara flyover', x: ax - fx * 12 + fz * 1.5, z: az - fz * 12 - fx * 1.5, heading: Math.atan2(fx, fz) }
+    let approach: { deck: Flyover; distance: number } | null = null
+    for (const candidate of ringRoad) {
+      if (!candidate.startsLow) continue
+      if (!candidate.path.points.some(([px, pz]) => Math.hypot(px - cx, pz - cz) < NEAR_FLYOVER * 1.5)) continue
+      const [fx, fz] = candidate.path.points[0]
+      const distance = lake ? Math.hypot(fx - lake[0], fz - lake[1]) : Math.hypot(fx - cx, fz - cz)
+      if (!approach || distance < approach.distance) approach = { deck: candidate, distance }
+    }
+    if (approach) {
+      const { points } = approach.deck.path
+      const [ax, az] = points[0]
+      const [bx, bz] = points[Math.min(points.length - 1, 4)]
+      const length = Math.hypot(bx - ax, bz - az) || 1
+      const fx = (bx - ax) / length
+      const fz = (bz - az) / length
+      // Back along the approach, on a road running the ramp's way, in its left lane, clear of anything solid.
+      for (const back of [35, 25, 45, 15, 60]) {
+        const px = ax - fx * back
+        const pz = az - fz * back
+        const near = nearestRoadPiece(roads, px, pz, 12)
+        if (!near) continue
+        const { start, end, width } = near.piece
+        const pieceLength = Math.hypot(end[0] - start[0], end[1] - start[1]) || 1
+        let dirX = (end[0] - start[0]) / pieceLength
+        let dirZ = (end[1] - start[1]) / pieceLength
+        const same = dirX * fx + dirZ * fz
+        if (Math.abs(same) < 0.8) continue
+        if (same < 0) {
+          dirX = -dirX
+          dirZ = -dirZ
+        }
+        const along = (px - start[0]) * dirX + (pz - start[1]) * dirZ
+        const left = Math.min(width / 4, 1.8)
+        const x = start[0] + dirX * along + dirZ * left
+        const z = start[1] + dirZ * along - dirX * left
+        if (surface.at(x, z) !== Surface.Road || isNearBuilding(collisions, x, z, 1.2)) continue
+        agara.spawn = { name: 'Agara flyover', x, z, heading: Math.atan2(dirX, dirZ) }
+        break
+      }
+      // No road found leading to it: on the ramp's own foot, which is road.
+      if (!agara.spawn) agara.spawn = { name: 'Agara flyover', x: ax + fx * 6, z: az + fz * 6, heading: Math.atan2(fx, fz) }
+    }
   }
 
   // The statue: on the nearest open ground to the temple that takes the plinth whole, clear of everything.
@@ -214,14 +256,35 @@ export function planAgara({
     const inZ = (doorZ - onZ) / toDoor
     // Keeping left: on the door's side of the road, traffic runs with the door on its left.
     const forward = inX * dirZ - inZ * dirX > 0 ? 1 : -1
+    // `?spawn=agara-temple`: in the lane on the door's side, a little short of the door, the temple ahead on the left.
+    {
+      const lane = Math.min(width / 4, 1.8)
+      const x = onX + inX * lane - dirX * forward * 14
+      const z = onZ + inZ * lane - dirZ * forward * 14
+      if (surface.at(x, z) === Surface.Road && !isNearBuilding(collisions, x, z, 1.2)) agara.templeSpawn = { name: site.name ?? 'Agara temple', x, z, heading: Math.atan2(dirX * forward, dirZ * forward) }
+    }
     for (let i = 0; i < 3; i++) {
-      const x = onX + inX * (width / 2 - 1.1) + dirX * (6 + i * 3.3)
-      const z = onZ + inZ * (width / 2 - 1.1) + dirZ * (6 + i * 3.3)
+      // Past the door, the way the traffic on this side runs: ahead of anyone arriving, not among them.
+      const x = onX + inX * (width / 2 - 1.1) + dirX * forward * (6 + i * 3.3)
+      const z = onZ + inZ * (width / 2 - 1.1) + dirZ * forward * (6 + i * 3.3)
       if (surface.at(x, z) !== Surface.Road || isNearBuilding(collisions, x, z, 1.1)) continue
       agara.autos.push({ x, z, rotation: Math.atan2(dirX * forward, dirZ * forward), variation: (i * 0.37 + 0.2) % 1, car: true, model: 0 })
       addPost(collisions, x, z, 1)
     }
   }
+
+  // The Jagannath temple nearest the statue (Odisha style, worship.ts' `kalinga`), for the map.
+  let jagannathDistance = Infinity
+  for (const other of worship) {
+    if (other.faith !== 'kalinga' || other.outline.length === 0) continue
+    const [ox, oz] = centreOf(other.outline)
+    const distance = Math.hypot(ox - cx, oz - cz)
+    if (distance < jagannathDistance) {
+      jagannathDistance = distance
+      agara.jagannath = { x: ox, z: oz, name: other.name ?? 'Jagannath Temple' }
+    }
+  }
+  if (agara.jagannath) agara.report.jagannathMetresFromTemple = Math.round(jagannathDistance)
 
   // The nearest bus stop OSM has, for the report: the stops themselves are placed by landmarkPlacement.ts.
   let stopDistance = Infinity

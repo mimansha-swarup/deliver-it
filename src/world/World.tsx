@@ -38,6 +38,7 @@ import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
 import { planAgara } from './agaraPlacement'
+import { mapMarkers } from '../game/mapMarkers'
 import { Agara } from './Agara'
 import { Fences } from './Fences'
 import { buildStreetEdges } from './streetEdgeGeometry'
@@ -53,7 +54,7 @@ import { addPotPlants, placeStoryProps } from './storyPlacement'
 import { placeLandmarks } from './landmarkPlacement'
 import { CityLandmarks } from './CityLandmarks'
 import { StoryProps } from './StoryProps'
-import { lonLatToWorld } from './worldUtils'
+import { lonLatToWorld, PLAY_AREA, type GroundPoint } from './worldUtils'
 import { SurfaceDebug } from '../dev/SurfaceDebug'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
@@ -285,8 +286,17 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const flyovers = planFlyovers({ decks: flyoverDecks, surface: surfaceMap, collisions })
   worldSurface.report.flyovers = flyovers.report
   // Agara's Abhaya Anjaneya statue by the flyover, and the life at its temple's door (agaraPlacement.ts).
-  const agara = planAgara({ worship, decks: flyoverDecks, surface: surfaceMap, roads: roadIndex, collisions, stops: cityLandmarks.stops })
+  const lakeRows = cityLandmarks.lake
+  const lakeMiddle: GroundPoint | null = lakeRows.length
+    ? [PLAY_AREA.minX + lakeRows.reduce((sum, [, first, last]) => sum + (first + last) / 2, 0) / lakeRows.length, PLAY_AREA.minZ + lakeRows.reduce((sum, [row]) => sum + row, 0) / lakeRows.length]
+    : null
+  const agara = planAgara({ worship, decks: flyoverDecks, surface: surfaceMap, roads: roadIndex, collisions, stops: cityLandmarks.stops, lake: lakeMiddle })
   worldSurface.report.agara = agara.report
+  // On the maps: the statue and the Jagannath temple.
+  mapMarkers.list = [
+    ...(agara.statue ? [{ x: agara.statue.x, z: agara.statue.z, text: 'Anjaneya Statue', color: '#e8862a' }] : []),
+    ...(agara.jagannath ? [{ x: agara.jagannath.x, z: agara.jagannath.z, text: 'Jagannath Temple', color: '#d9a93a' }] : []),
+  ]
   // HSR Layout's bus stand by the BDA Complex, its bays showing the routes most stops have.
   const routeCounts = new Map<string, number>()
   for (const stop of cityLandmarks.stops) for (const route of stop.routes) routeCounts.set(route, (routeCounts.get(route) ?? 0) + 1)
@@ -382,7 +392,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const spawnSlug = requestedSpawn()
   const saved = forcedTutorial() ? null : useGameStore.getState().lastPosition
   const spawn =
-    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
+    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug === 'agara-temple' ? agara.templeSpawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
     (saved ? { name: 'Where you left off', ...saved } : null) ??
     homeStart
   // Not where the ride starts, so the scooter never starts inside a parked car.

@@ -126,7 +126,8 @@ const VEHICLES = [
     name: 'auto',
     folder: 'autorikshaw_-_indian_tuk_tuk',
     length: 2.6,
-    triangles: 5000,
+    // All of the original's (about 7,500): cut to 5,000, its hood came out faceted beside the rider in a jam.
+    triangles: 8000,
     noPaint: true,
     // It has no named lights to tell its front by, so this is set by hand.
     reverse: true,
@@ -746,6 +747,8 @@ function smoothNormals(soup, crease) {
  */
 function simplify(soup, triangles, { maxError = MAX_SHAPE_ERROR, colorWeight = 0.4, normalWeight = 0.08, sloppy = false, flags = ['Prune'] } = {}) {
   const count = soup.count
+  // Never more than it has: the simplifier won't take a target above the source.
+  triangles = Math.min(triangles, soup.indices.length / 3)
   const positions = new Float32Array(soup.positions)
   // Whether a corner is paint counts most: merged across a paint edge, a triangle is half body
   // colour and half trim, and window frames, arches and grilles came out ragged and speckled.

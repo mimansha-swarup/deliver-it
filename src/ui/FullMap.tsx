@@ -8,7 +8,8 @@ import { loadMapData } from '../world/mapData'
 import { findNearestNode } from '../world/roadGraph'
 import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from '../world/worldUtils'
 import { createMapLabels, drawMapLabels } from './mapLabels'
-import { createMapImage, currentTarget, drawPin, fitCanvas, GROUND_COLOR, IMAGE_SCALE, PLAYER_COLOR } from './mapDrawing'
+import { createMapImage, currentTarget, drawPin, fitCanvas, GROUND_COLOR, IMAGE_SCALE, PLAYER_COLOR, drawLandmarkDot } from './mapDrawing'
+import { mapMarkers } from '../game/mapMarkers'
 import { setMapOpen, useUi } from './uiState'
 
 /*
@@ -48,7 +49,11 @@ function MapCanvas() {
   const data = use(loadMapData())
   const canvas = useRef<HTMLCanvasElement>(null)
   const mapImage = useMemo(() => createMapImage(data), [data])
-  const labels = useMemo(() => createMapLabels(data), [data])
+  const labels = useMemo(() => {
+    const mapLabels = createMapLabels(data)
+    for (const marker of mapMarkers.list) mapLabels.shops.unshift({ x: marker.x, z: marker.z, text: marker.text, color: marker.color })
+    return mapLabels
+  }, [data])
   // Starts centred on the rider, zoomed to see the neighbourhood.
   const camera = useRef<Camera>({ zoom: 2, centreX: livePlayer.x, centreZ: livePlayer.z })
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null)
@@ -117,7 +122,11 @@ function MapCanvas() {
         bounds: [4, 4, width - 4, height - 4],
       })
 
-      // Dark stores, home, the stop, and the rider on top.
+      // Landmarks, dark stores, home, the stop, and the rider on top.
+      for (const marker of mapMarkers.list) {
+        const [x, y] = project(marker.x, marker.z)
+        drawLandmarkDot(context, x, y, marker.color)
+      }
       const { planner, home } = useGameStore.getState()
       for (const store of planner?.stores ?? []) {
         const [x, y] = project(store.x, store.z)

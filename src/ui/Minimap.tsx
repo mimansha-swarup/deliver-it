@@ -6,7 +6,8 @@ import { livePlayer, liveRoute } from '../game/livePlayer'
 import { loadMapData } from '../world/mapData'
 import { createMapLabels, CURRENT_ROAD_HEIGHT, drawCurrentRoad, drawMapLabels, findCurrentRoad } from './mapLabels'
 import { PLAY_AREA } from '../world/worldUtils'
-import { CURRENT_ROAD_EVERY, EDGE_MARGIN, GROUND_COLOR, IMAGE_SCALE, LAYOUT_RESPONSE, TURN_RESPONSE, createMapImage, currentTarget, drawPlayer, drawRoute, drawTarget, fitCanvas, toScreen, type View } from './mapDrawing'
+import { CURRENT_ROAD_EVERY, EDGE_MARGIN, GROUND_COLOR, IMAGE_SCALE, LAYOUT_RESPONSE, TURN_RESPONSE, createMapImage, currentTarget, drawPlayer, drawRoute, drawTarget, fitCanvas, toScreen, type View, drawLandmarkDot } from './mapDrawing'
+import { mapMarkers } from '../game/mapMarkers'
 
 /** The minimap is redrawn at most this often, in milliseconds (about 30 a second). */
 const MAP_FRAME_MS = 32
@@ -33,6 +34,8 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
     for (const store of stores ?? []) {
       mapLabels.shops.unshift({ x: store.x, z: store.z, text: 'Dark store', color: MISSION_RULES.pickupColor })
     }
+    // Landmarks (the Anjaneya statue, the Jagannath temple): first, so their names win a crowded spot.
+    for (const marker of mapMarkers.list) mapLabels.shops.unshift({ x: marker.x, z: marker.z, text: marker.text, color: marker.color })
     return mapLabels
   }, [data, stores])
   const scale = useRef(online ? MINIMAP_SCALE.online : MINIMAP_SCALE.off)
@@ -111,6 +114,10 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
         bounds: [radius * 0.3, radius * 0.3, width - radius * 0.3, height - radius * 0.45],
         keepClear: [view.riderX, view.riderY, 14],
       })
+      for (const marker of mapMarkers.list) {
+        const [screenX, screenY] = toScreen(view, marker.x, marker.z)
+        drawLandmarkDot(context, view.riderX + screenX, view.riderY + screenY, marker.color)
+      }
       drawTarget(context, view, time)
       drawPlayer(context, view)
       if (currentRoad) drawCurrentRoad(context, currentRoad, width / 2, height - CURRENT_ROAD_HEIGHT - 10)

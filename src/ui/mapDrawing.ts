@@ -199,6 +199,21 @@ export function drawBadge(context: CanvasRenderingContext2D, x: number, y: numbe
 }
 
 /** A map pin: a badge on a point, with the point exactly on the stop. */
+/** A landmark's mark: a diamond in its colour, ringed so it shows on any ground. */
+export function drawLandmarkDot(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  context.fillStyle = color
+  context.strokeStyle = '#0f1115'
+  context.lineWidth = 2
+  context.beginPath()
+  context.moveTo(x, y - 7)
+  context.lineTo(x + 6, y)
+  context.lineTo(x, y + 7)
+  context.lineTo(x - 6, y)
+  context.closePath()
+  context.fill()
+  context.stroke()
+}
+
 export function drawPin(context: CanvasRenderingContext2D, x: number, y: number, color: string, pickup: boolean) {
   context.fillStyle = color
   context.strokeStyle = '#000000'
