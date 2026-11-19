@@ -25,6 +25,8 @@ export const MISSION_RULES = {
   /** How often an order is a rush or a double drop, once unlocked. */
   rushChance: 0.25,
   doubleChance: 0.2,
+  /** How often an order is for the gated society (past its guard), when it's in reach. */
+  societyChance: 0.12,
   /** A double drop's second customer is this far from the first by road, in metres. */
   secondDropMin: 120,
   secondDropMax: 500,

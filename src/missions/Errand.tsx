@@ -6,9 +6,9 @@ import { clearSpots, setInterest, setSpot } from '../game/interact'
 import { liveMission } from '../game/livePlayer'
 import { theItem } from '../game/objective'
 import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
-import { errandLive } from '../game/doorsteps'
+import { doorsteps, errandLive, useGuard } from '../game/doorsteps'
 import type { DoorPlan } from '../game/gameTypes'
-import { playBarks, playDoorbell, playLift, playStairs } from '../audio/doorSounds'
+import { playBarks, playDoorbell, playLift, playPen, playStairs } from '../audio/doorSounds'
 import { setStep } from '../ui/uiState'
 import { isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
@@ -104,7 +104,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           run: () => {
             useGameStore.getState().collectOrder()
             playPing('message')
-            useGameStore.getState().postChat('dispatch', 'Dark store', `${mission.story.item} for ${mission.story.customer}. Jopana, maga!`)
+            useGameStore.getState().postChat('customer', 'Dark store', `${mission.story.item} for ${mission.story.customer}. Jopana, maga!`)
           },
         })
         setStep(`Collect ${theItem(mission.story.item)} from the counter`)
@@ -200,6 +200,43 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
 
     // A flat: in at the building's door, up by the lift or the stairs, along the corridor to their door.
     const name = door.building
+    // In the gated society the guard comes first: the order's OTP, then a line in the visitors' register.
+    const society = doorsteps.society
+    if (door.kind === 'society' && society && !errandLive.cleared && afoot && !liveRoom.kind) {
+      const asked = stage.current.step !== 'approach'
+      const security = (text: string) => useGameStore.getState().postChat('customer', `Security · ${society.name}`, text)
+      setSpot('errand:guard', {
+        x: society.guard.x,
+        z: society.guard.z,
+        radius: 3,
+        priority: 3,
+        text: asked ? 'Sign the register' : 'Show the OTP',
+        run: () => {
+          const card = { otp: door.otp, flat: door.flat, society: society.name, time: useGameStore.getState().skyTime }
+          liveRoom.frozen = true
+          if (!asked) {
+            security(`Delivery? OTP please, for flat ${door.flat}.`)
+            useGuard.setState({ card: { step: 'otp', ...card } })
+            window.setTimeout(() => {
+              stage.current = { ...stage.current, step: 'rung' }
+              security('Okay, it matches. Sign the register.')
+              useGuard.setState({ card: null })
+              liveRoom.frozen = false
+            }, 2300)
+          } else {
+            playPen()
+            useGuard.setState({ card: { step: 'register', ...card } })
+            window.setTimeout(() => {
+              stage.current = { ...stage.current, step: 'approach' }
+              errandLive.cleared = true
+              security(`Go ahead: floor ${door.floor}. Your vehicle stays outside the gate.`)
+              useGuard.setState({ card: null })
+              liveRoom.frozen = false
+            }, 2000)
+          }
+        },
+      })
+    } else setSpot('errand:guard', null)
     if (!liveRoom.kind) {
       setSpot('errand:bell', null)
       setSpot('errand:hand', null)
@@ -215,11 +252,11 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
         radius: DOOR_REACH,
         text: 'Go in',
         run: () => {
-          if (blocked) useGameStore.getState().postChat('dispatch', 'Security', 'Hello! Delivery? Come to the gate first: OTP and the register.', true)
+          if (blocked) useGameStore.getState().postChat('customer', `Security · ${name}`, 'Hello! Delivery? Come to the gate first: OTP and the register.', true)
           else enterRoom('lobby', door, { x: door.outX, z: door.outZ }, name, name)
         },
       })
-      setStep(away > PARK_RANGE * 1.5 ? `Get back on your ${vehicleWord()}` : blocked ? `Show the guard at ${name}’s gate your OTP` : `Walk in to ${name}: flat ${door.flat}, floor ${door.floor}`)
+      setStep(away > PARK_RANGE * 1.5 ? `Get back on your ${vehicleWord()}` : blocked ? (stage.current.step === 'approach' ? `Show the guard at ${name}’s gate your OTP: ${door.otp}` : 'Sign the visitors’ register') : `Walk in to ${name}: flat ${door.flat}, floor ${door.floor}`)
       return
     }
     setSpot('errand:lobby', null)

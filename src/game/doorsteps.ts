@@ -1,3 +1,4 @@
+import { create } from 'zustand'
 import type { DoorScene } from './gameTypes'
 
 /*
@@ -65,3 +66,6 @@ export const errandLive = {
   /** The society's guard has seen the OTP and the register is signed. */
   cleared: false,
 }
+
+/** What the guard's card shows while the rider is at the society's gate: the OTP being read out, then the register being signed. */
+export const useGuard = create<{ card: { step: 'otp' | 'register'; otp: string; flat: string; society: string; time: string } | null }>(() => ({ card: null }))

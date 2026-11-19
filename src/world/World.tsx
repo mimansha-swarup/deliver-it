@@ -35,6 +35,8 @@ import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from
 import { teleportSpots } from '../dev/teleportSpots'
 import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev/spawn'
 import { doorsteps } from '../game/doorsteps'
+import { planSociety } from './society'
+import { SocietyGate } from './SocietyGate'
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
@@ -263,6 +265,10 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const houses = planHouseKit(data.buildings, data.roads, collisions, stores)
   // Front doors, for deliveries to the door (game/doorsteps.ts).
   doorsteps.doors = houses.doors
+  // The gated society: the biggest gated block of flats, with a guard at its gate (society.ts).
+  const society = planSociety(houses.doors, collisions)
+  doorsteps.society = society
+  if (isDebug()) Object.assign(window, { __society: society })
   lap('house kit')
   yield STEP
   // Building sites take open plots before trees and lamps do, and are solid to them.
@@ -435,7 +441,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const spawnSlug = requestedSpawn()
   const saved = forcedTutorial() ? null : useGameStore.getState().lastPosition
   const spawn =
-    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'dark-store' ? darkStoreSpawn(stores[0], graph) : spawnSlug === 'agara-flyover-top' ? agara.topSpawn : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug === 'agara-temple' ? agara.templeSpawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
+    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'dark-store' ? darkStoreSpawn(stores[0], graph) : spawnSlug === 'gated-society' ? (society ? { ...startAtGate({ x: society.gate.x, z: society.gate.z, width: 4.2 }, roadIndex, [society.gate.x + society.alongX * 40, society.gate.z + society.alongZ * 40]), name: society.name } : null) : spawnSlug === 'agara-flyover-top' ? agara.topSpawn : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug === 'agara-temple' ? agara.templeSpawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
     (saved ? { name: 'Where you left off', ...saved } : null) ??
     homeStart
   // Not where the ride starts, so the scooter never starts inside a parked car.
@@ -560,7 +566,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   lap('spawn and landmarks')
   yield STEP
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, deckCollisions: decks.collisionsAt }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, society, deckCollisions: decks.collisionsAt }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -679,7 +685,7 @@ export function World() {
   startWorld(data)
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, deckCollisions } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, society, deckCollisions } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -726,7 +732,7 @@ export function World() {
         <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
         <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /><Festival festival={agara.festival} traffic={traffic} collisions={collisions} graph={graph} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
-        <Part name="fences"><Fences runs={fences} /></Part>
+        <Part name="fences"><Fences runs={fences} />{society && <SocietyGate society={society} />}</Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>
         {isDebug() && <SurfaceDebug surface={surfaceMap} />}
         <Prewarm />

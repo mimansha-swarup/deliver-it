@@ -4523,3 +4523,88 @@ body,
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+
+/* The society guard's card: the OTP read out, then the register signed. Bottom centre, above the prompts. */
+.guard-card {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--edge) + 64px);
+  min-width: 300px;
+  padding: 12px 18px 14px;
+  border-top: 3px solid #3b5ba5;
+  border-radius: 12px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 90%);
+  transform: translateX(-50%);
+  text-align: center;
+  animation: objective-in 0.25s ease both;
+}
+.guard-card p {
+  margin: 0;
+}
+.guard-card-title {
+  color: #9fb4e8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.guard-card-line {
+  margin-top: 4px !important;
+  font-size: 15px;
+}
+.guard-card-otp {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px !important;
+  font-size: 34px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.guard-card-otp span {
+  min-width: 1.1em;
+  padding: 2px 6px;
+  border-radius: 8px;
+  color: #2a1300;
+  background: #f6b32b;
+  opacity: 0;
+  animation: guard-digit 0.3s ease forwards;
+}
+@keyframes guard-digit {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+  }
+}
+.guard-card-register {
+  margin: 8px auto 0;
+  border-collapse: collapse;
+  color: #1c2a6b;
+  background: #f1ede2;
+  font-size: 13px;
+}
+.guard-card-register th,
+.guard-card-register td {
+  padding: 4px 10px;
+  border: 1px solid #b9c3de;
+}
+.guard-card-register th {
+  color: #55607a;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.guard-card-sign {
+  font-family: 'Brush Script MT', 'Segoe Script', cursive;
+  font-size: 18px;
+  clip-path: inset(0 100% 0 0);
+  animation: guard-sign 1.2s 0.3s ease forwards;
+}
+@keyframes guard-sign {
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}

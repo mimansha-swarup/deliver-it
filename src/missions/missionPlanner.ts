@@ -126,8 +126,18 @@ export function createMissionPlanner(
     return { x: graph.xs[node], z: graph.zs[node], rotation: 0, look: random(), tint: random() }
   }
 
+  /** The road point outside the gated society's gate, where its orders stop; -1 with no society. Found once. */
+  let societyAt: number | null = null
+  const societyNode = (): number => {
+    if (societyAt === null) {
+      const society = doorsteps.society
+      societyAt = society ? findNearestNode(graph, society.gate.x + society.door.outX * 5, society.gate.z + society.door.outZ * 5) : -1
+    }
+    return societyAt
+  }
+
   /** Made-up names for blocks of flats, by where they are, so one building keeps its name. */
-  const BUILDINGS = ['Malligai Nilaya', 'Sampige Residency', 'Kaveri Enclave', 'Tunga Heights', 'Nandi Apartments', 'Gulmohar Court', 'Honge Homes', 'Parijata Towers']
+  const BUILDINGS = ['Malligai Nilaya', 'Akshaya Residency', 'Kaveri Enclave', 'Tunga Heights', 'Nandi Apartments', 'Gulmohar Court', 'Honge Homes', 'Parijata Towers']
   const buildingName = (x: number, z: number) => BUILDINGS[Math.abs(Math.round(x * 7 + z * 13)) % BUILDINGS.length]
   const SCENES: DoorScene[] = ['plain', 'plain', 'plain', 'dog', 'outside', 'tryOn']
   const WEARABLE = /saree|blazer|dress|sherwani|sneakers|tee|kurta|jeans|hoodie|shoes|shorts|shirt|kurti|pyjamas/i
@@ -140,7 +150,7 @@ export function createMissionPlanner(
   const findDoor = (node: number, story: OrderStory): { waiting: WaitingCustomer; door: DoorPlan; extraSeconds: number } => {
     const kerb = findWaitingSpot(node)
     const otp = String(1000 + Math.floor(random() * 9000))
-    const found = findDoorstep(graph.xs[node], graph.zs[node])
+    const found = node === societyNode() ? (doorsteps.society?.door ?? null) : findDoorstep(graph.xs[node], graph.zs[node])
     const base = { floor: 0, flat: '', building: '', otp, liftWorks: true, atGate: false }
     if (!found) return { waiting: kerb, door: { kind: 'kerb', x: kerb.x, z: kerb.z, outX: 0, outZ: 1, scene: 'plain', ...base }, extraSeconds: 12 }
     const { outX, outZ } = found
@@ -214,9 +224,14 @@ export function createMissionPlanner(
     // Not every length of trip is always available, so try the others too.
     const wanted = rollTier(level, random)
     const allowed = DELIVERY_TIERS.filter(({ minLevel }) => minLevel <= level)
-    const tier = [wanted, ...allowed].find((option) => customersFor(option).length > 0) ?? wanted
-    const customer = pickRandom(customersFor(tier), random)
+    const rolled = [wanted, ...allowed].find((option) => customersFor(option).length > 0) ?? wanted
+    // Now and then the order is for the gated society, if it's within any trip length the rider may take.
+    const gated = societyNode()
+    const tierFirst = rolled
+    const gatedTier = gated >= 0 && random() < MISSION_RULES.societyChance && isFarFromLast(gated) ? allowed.find(({ minRoute, maxRoute }) => fromStore.distance[gated] >= minRoute && fromStore.distance[gated] <= maxRoute) : undefined
+    const customer = gatedTier ? gated : pickRandom(customersFor(tierFirst), random)
 
+    const tier = gatedTier ?? rolled
     let kind = rollKind(level, random, period)
     const second = kind === 'double' ? findSecondDrop(customer) : null
     if (kind === 'double' && second === null) kind = 'standard'

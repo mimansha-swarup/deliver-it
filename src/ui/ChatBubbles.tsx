@@ -52,7 +52,8 @@ function CustomerChatDirector() {
         state.postChat('dispatch', RAVI, `Order assigned: ${mission.story.item.toLowerCase()} for ${mission.story.customer}. Pick up at ${mission.pickup.name}.`)
         say('accepted')
       }
-      if (phase === 'toCustomer' && previous.phase === 'collecting') say('collected')
+      // Collected at the counter (Errand.tsx): straight from riding to the store to riding to the customer.
+      if (phase === 'toCustomer' && (previous.phase === 'collecting' || previous.phase === 'toPickup') && previous.mission === mission) say('collected')
       if (phase !== 'toPickup' && phase !== 'toCustomer') return
 
       // Nothing about crashes or bumps: the customer can't see the ride, only the parcel at the door.

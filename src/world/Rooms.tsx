@@ -7,6 +7,7 @@ import { liveRoom, ROOM_DEPTH, useRoom, type RoomKind } from '../game/rooms'
 import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { createPerson } from '../traffic/person'
 import { People } from '../traffic/Traffic'
+import type { Pedestrian } from '../traffic/trafficLogic'
 import { SHIRT_COLOR } from '../vehicle/shirtPrint'
 import { planRoom } from './roomShapes'
 
@@ -56,6 +57,14 @@ function drawSign(kind: RoomKind, label: string, floor: number): THREE.CanvasTex
 
 const STAFF_CLOTHES = [SHIRT_COLOR]
 
+/** People standing about a room shift their weight from foot to foot. */
+function shiftWeight(people: Pedestrian[], time: number) {
+  for (const one of people) {
+    one.stride = Math.PI / 2
+    one.walking = 0.08 + Math.sin(time * 1.1 + one.tint * 9) * 0.06
+  }
+}
+
 function RoomSet({ kind, label }: { kind: RoomKind; label: string }) {
   const plan = useMemo(() => planRoom(kind), [kind])
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
@@ -80,11 +89,8 @@ function RoomSet({ kind, label }: { kind: RoomKind; label: string }) {
     const night = liveSky.look.night
     material.color.setRGB(1 - 0.16 * night, 1 - 0.2 * night, 1 - 0.3 * night)
     signMaterial.color.copy(material.color)
-    // People behind a counter shift their weight.
-    for (const one of [...staff, ...others]) {
-      one.stride = Math.PI / 2
-      one.walking = 0.08 + Math.sin(clock.elapsedTime * 1.1 + one.tint * 9) * 0.06
-    }
+    shiftWeight(staff, clock.elapsedTime)
+    shiftWeight(others, clock.elapsedTime)
   })
   const { at, size, turn } = plan.sign
   return (

@@ -31,6 +31,7 @@ import { DutyUi } from './ui/DutyUi'
 import { Objective } from './ui/Objective'
 import { Prompts } from './ui/Prompts'
 import { RoomFade } from './ui/RoomFade'
+import { GuardCard } from './ui/GuardCard'
 import { Tutorial } from './ui/Tutorial'
 import { Minimap } from './ui/Minimap'
 import { FullMap } from './ui/FullMap'
@@ -81,6 +82,7 @@ function RidingUi() {
       <DutyUi />
       <Objective />
       <Prompts />
+      <GuardCard />
       <Tutorial />
       <ChatBubbles />
       <PlayerHorn />
