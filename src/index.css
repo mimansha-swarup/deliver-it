@@ -4608,3 +4608,44 @@ body,
     clip-path: inset(0 0 0 0);
   }
 }
+
+/* What's on board and its state (missions/cargo.ts): under the distance, top centre. */
+.route-cargo {
+  display: grid;
+  gap: 3px;
+  min-width: 108px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 78%);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.route-cargo[data-waiting='true'] {
+  color: #c9c6bc;
+}
+.route-cargo .mood-bar span {
+  background: #3ddc97;
+}
+.route-cargo[data-state='poor'] .mood-bar span {
+  background: #ffb02e;
+}
+.route-cargo[data-state='ruined'] .mood-bar span {
+  background: #ff6b5e;
+}
+.route-cargo[data-state='ruined'] strong {
+  color: #ff8d82;
+}
+.duty-offer-care[data-cargo='medicine'] {
+  color: #0f1115;
+  background: #7fd4ff;
+}
+.duty-offer-care[data-cargo='hot'] {
+  color: #0f1115;
+  background: #ff9a5c;
+}
+.duty-offer-care[data-cargo='frozen'] {
+  color: #0f1115;
+  background: #bfe6ff;
+}

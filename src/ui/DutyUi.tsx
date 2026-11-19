@@ -8,6 +8,7 @@ import { CANCEL_PENALTY, dayPeriod, OFFER_SECONDS, type ShiftGoal, type ShiftSum
 import { liveSky } from '../game/livePlayer'
 import { MISSION_RULES } from '../game/missionConfig'
 import { playPing } from '../audio/uiSounds'
+import { CARGO } from '../missions/cargo'
 
 /*
  * Being on or off duty, on screen: a badge saying which, an order offer to accept or decline, the
@@ -117,7 +118,7 @@ function OfferCard() {
   const { mission } = offer
   const left = Math.max(0, Math.min(OFFER_SECONDS, (offer.expiresAt - now) / 1000))
   const period = dayPeriod(liveSky.hours)
-  const base = MISSION_RULES.baseCredits * mission.dropCount + mission.tier.extraCredits
+  const base = Math.round(MISSION_RULES.baseCredits * mission.dropCount * CARGO[mission.story.cargo].payShare) + mission.tier.extraCredits
   const pay = base + Math.round(base * period.payShare)
   const kind = mission.kind === 'rush' ? 'Rush' : mission.kind === 'double' ? 'Double' : null
   // An order only some vehicles carry: the rider's must, or one is rented for it (GaadiGo, game/fleet.ts).
@@ -143,7 +144,11 @@ function OfferCard() {
         <p className="duty-offer-top">
           <strong>{mission.story.item}</strong>
           {kind && <span className="duty-offer-kind">{kind}</span>}
-          {mission.story.care !== 'none' && <span className="duty-offer-care">{mission.story.care === 'fragile' ? 'Fragile' : 'Event'}</span>}
+          {CARGO[mission.story.cargo].label ? (
+            <span className="duty-offer-care" data-cargo={mission.story.cargo}>{CARGO[mission.story.cargo].label}</span>
+          ) : (
+            mission.story.care !== 'none' && <span className="duty-offer-care">{mission.story.care === 'fragile' ? 'Fragile' : 'Event'}</span>
+          )}
         </p>
         {needs && !fits && (
           <p className="hud-detail">

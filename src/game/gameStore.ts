@@ -57,6 +57,7 @@ import { levelFromXp, UNLOCK_LEVELS, unlocksBetween } from './progression'
 import type { Quality } from './qualitySettings'
 import { migrateSave, saveKey } from './saveKeys'
 import { FRESH } from './eateries'
+import { CARGO, spoil } from '../missions/cargo'
 
 type Telemetry = {
   speedKmh: number
@@ -167,6 +168,8 @@ type GameState = Telemetry & {
   photoMode: boolean
   /** How roughly the current order has been carried (customerChat.ts): judged at the door, not felt as mood. */
   rough: number
+  /** The state of the order on board, from 1 as it left the counter to 0 spoiled (missions/cargo.ts). */
+  condition: number
   /** Deliveries left on which the rider, having eaten and rested, is tipped a little more (game/eateries.ts). Saved. */
   fresh: number
 
@@ -189,6 +192,8 @@ type GameState = Telemetry & {
   recordCrash: () => void
   /** Counts a hard landing while an order is on board. */
   recordKnock: () => void
+  /** Time on board spoils some orders (hot food cools, ice cream melts): `seconds` more, in this much sun and rain. */
+  ageOrder: (seconds: number, sun: number, rain: number) => void
   /** Moves the radio one station along, forwards (1) or back (-1). */
   changeStation: (direction: 1 | -1) => void
   setMusicOn: (on: boolean) => void
@@ -483,6 +488,7 @@ export const useGameStore = create<GameState>()(
       photoMode: false,
       waypoint: null,
       rough: 0,
+      condition: 1,
       fresh: 0,
       frustration: 0,
       graceLeft: 0,
@@ -533,11 +539,13 @@ export const useGameStore = create<GameState>()(
               surge: surgeShare(liveSky.hours),
               frustration: state.frustration,
               roughness: state.rough,
+              condition: state.condition,
             }),
           }
         }),
 
-      collectOrder: () => set((state) => (state.phase === 'toPickup' && state.mission ? { phase: 'toCustomer' } : state)),
+      // Fresh off the counter.
+      collectOrder: () => set((state) => (state.phase === 'toPickup' && state.mission ? { phase: 'toCustomer', condition: 1 } : state)),
 
       finishHandoff: () =>
         set((state) => {
@@ -551,6 +559,7 @@ export const useGameStore = create<GameState>()(
               mission: { ...state.mission, customer: next.customer, waiting: next.waiting, door: next.door, story: next.story, nextDrops: rest },
               // Each customer's order is its own: bumps with the first don't count against the next.
               knocks: 0,
+              condition: 1,
             }
           }
 
@@ -676,7 +685,7 @@ export const useGameStore = create<GameState>()(
         credits = Math.max(0, credits - CANCEL_PENALTY.credits)
         ratings = [...ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT)
         if (shift) shift = { ...shift, cancelled: shift.cancelled + 1, earnings: shift.earnings - CANCEL_PENALTY.credits }
-        Object.assign(changes, { mission: null, phase: 'toPickup', pendingReward: null, seconds: 0, crashes: 0, knocks: 0, rough: 0, frustration: 0, missionNumber: state.missionNumber + 1, fiveStarStreak: 0 })
+        Object.assign(changes, { mission: null, phase: 'toPickup', pendingReward: null, seconds: 0, crashes: 0, knocks: 0, rough: 0, condition: 1, frustration: 0, missionNumber: state.missionNumber + 1, fiveStarStreak: 0 })
       } else if (hasOrderOn(state)) {
         return { askingOffline: true }
       }
@@ -726,6 +735,7 @@ export const useGameStore = create<GameState>()(
         crashes: 0,
         knocks: 0,
         rough: 0,
+        condition: 1,
         frustration: 0,
         answers: [...state.answers, true].slice(-ANSWERS_KEPT),
       }
@@ -815,13 +825,25 @@ export const useGameStore = create<GameState>()(
   setAtBunk: (atBunk) => set({ atBunk }),
   setSky: (skyTime, weather, night) => set({ skyTime, weather, night }),
   // With the customer's order on board, rough riding frustrates them (customerChat.ts).
+  // A crash or a hard bump also damages what's on board, by its kind (missions/cargo.ts).
   recordCrash: () =>
-    set((state) => ({ crashes: state.crashes + 1, rough: state.rough + (state.phase === 'toCustomer' ? FRUSTRATION.crash : 0) })),
+    set((state) => ({
+      crashes: state.crashes + 1,
+      rough: state.rough + (state.phase === 'toCustomer' ? FRUSTRATION.crash : 0),
+      condition: state.phase === 'toCustomer' && state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].crash) : state.condition,
+    })),
   recordKnock: () =>
     set((state) => ({
       knocks: state.knocks + 1,
       rough: state.rough + (state.mission?.story.care === 'fragile' ? FRUSTRATION.fragileKnock : FRUSTRATION.knock),
+      condition: state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].bump) : state.condition,
     })),
+  ageOrder: (seconds, sun, rain) =>
+    set((state) => {
+      if (state.phase !== 'toCustomer' || !state.mission) return state
+      const condition = spoil(state.condition, state.mission.story.cargo, seconds, sun, rain, state.mission.onTimeSeconds)
+      return condition === state.condition ? state : { condition }
+    }),
   changeStation: (direction) =>
     set((state) => {
       const index = STATIONS.findIndex(({ id }) => id === state.stationId)

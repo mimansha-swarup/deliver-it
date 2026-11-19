@@ -63,6 +63,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
   const grace = useRef(0)
   /** Seconds until the dispatcher offers the next order, while online and free. */
   const offerIn = useRef(4)
+  /** Seconds since the order on board was last aged (hot food cooling, ice cream melting). */
+  const aged = useRef(0)
 
   useFrame((_, delta) => {
     const game = useGameStore.getState()
@@ -177,6 +179,13 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
         ? timeFrustration(used, game.mission.story.care, game.mission.story.patience)
         : game.mission ? game.frustration : 0
       fuming.current = riding && frustration >= FRUSTRATION.fumingAt ? fuming.current + TELEMETRY_INTERVAL : 0
+      // What's on board ages: hot food cools, ice cream melts, faster in clear daylight (cargo.ts).
+      // Once a second is plenty: the meter moves a hundredth at a time.
+      aged.current += TELEMETRY_INTERVAL
+      if (aged.current >= 1) {
+        if (game.phase === 'toCustomer' && game.mission) game.ageOrder(aged.current, liveSky.look.shadowSharpness * (1 - liveSky.look.night), liveSky.rain)
+        aged.current = 0
+      }
       const cancelNow = fuming.current >= FRUSTRATION.fumingSeconds
       if (riding && cancelNow) {
         fuming.current = 0

@@ -1,6 +1,7 @@
 import type { PeriodId } from '../game/duty'
 import type { OrderType } from '../vehicle/vehicleCatalog'
 import { roughStars, starsFromFrustration } from './customerChat'
+import { CARGO, conditionStars, type CargoType } from './cargo'
 /**
  * Who an order is for, what's in it, and how they feel when it arrives. The
  * dark store is a fashion one: clothes, shoes and accessories, delivered fast.
@@ -26,6 +27,8 @@ export type OrderStory = {
   note: string
   /** A kind of order only some vehicles carry (vehicleCatalog.ts): bulk needs a cargo vehicle, catering a car or van. */
   needs?: OrderType
+  /** What kind of thing it is to carry (cargo.ts): fragile, hot, frozen, medicine, bulk, or a plain parcel. */
+  cargo: CargoType
 }
 
 /**
@@ -35,7 +38,8 @@ export type OrderStory = {
 export const orderRules: { canOffer: (type: OrderType) => boolean } = { canOffer: () => false }
 
 /** `when`: the times of day it's ordered; left out, any time. */
-type Item = { item: string; care: Care; note: string; when?: PeriodId[]; needs?: OrderType }
+/** `cargo`: its kind to carry, when it isn't a plain parcel; left out, fragile care means fragile cargo and a bulk order bulk. */
+type Item = { item: string; care: Care; note: string; when?: PeriodId[]; needs?: OrderType; cargo?: CargoType }
 
 const ITEMS: Item[] = [
   { item: 'A bottle of perfume', care: 'fragile', note: "It's a gift, and it's glass! Gently over the humps please." },
@@ -67,7 +71,25 @@ const ITEMS: Item[] = [
   { item: 'Agarbatti, camphor and oil', care: 'none', note: "It's Saturday, Hanuman's day. Before the aarti if you can!", when: ['morning', 'evening'] },
   { item: 'Six office lunch boxes', care: 'event', note: 'Team lunch at one sharp. The whole floor is hungry!', when: ['lunch'], needs: 'catering' },
   { item: 'Lunch for the stand-up meeting', care: 'event', note: 'Meeting ends at 1:30 and they eat at their desks. Bega banni!', when: ['lunch'], needs: 'catering' },
-  { item: 'Biryani for forty', care: 'event', note: "It's my daughter's naming ceremony. Hot and on time, please!", when: ['lunch', 'evening'], needs: 'catering' },
+  { item: 'Biryani for forty', care: 'event', note: "It's my daughter's naming ceremony. Hot and on time, please!", when: ['lunch', 'evening'], needs: 'catering', cargo: 'hot' },
+  // Cakes: fragile, and they show every bump.
+  { item: 'A birthday cake', care: 'fragile', note: "It's Chintu's fifth birthday. The icing has his name on it, please keep it flat!", cargo: 'fragile' },
+  { item: 'A box of cupcakes', care: 'fragile', note: 'Twelve cupcakes for the office farewell. No upside-down ones please!', when: ['lunch', 'evening'], cargo: 'fragile' },
+  { item: 'An eggless plum cake', care: 'fragile', note: "For my in-laws' anniversary. Slowly over the humps, maga.", when: ['evening', 'night'], cargo: 'fragile' },
+  // Hot food: it cools from the counter on.
+  { item: 'Masala dosa and filter coffee', care: 'none', note: "Don't let the dosa go soft! Straight here please.", when: ['morning', 'evening'], cargo: 'hot' },
+  { item: 'Two plates of chicken biryani', care: 'none', note: 'Starving since morning. Hot hot please!', when: ['lunch', 'evening', 'night'], cargo: 'hot' },
+  { item: 'Bisi bele bath and vada', care: 'none', note: 'It has "bisi" in the name only. Bring it hot!', when: ['morning', 'lunch'], cargo: 'hot' },
+  { item: 'Gobi manchurian and noodles', care: 'none', note: 'Movie night. If it comes cold I will cry.', when: ['evening', 'night'], cargo: 'hot' },
+  // Ice cream: it melts, faster in the sun.
+  { item: 'A tub of mango ice cream', care: 'none', note: 'Guests are here already. Before it becomes milkshake!', when: ['lunch', 'evening'], cargo: 'frozen' },
+  { item: 'Six kulfi sticks', care: 'none', note: 'For the kids after their match. Bega, it is so hot today!', when: ['lunch', 'evening'], cargo: 'frozen' },
+  { item: 'A family pack of butterscotch', care: 'none', note: 'Sunday special. Please come by the shady road!', cargo: 'frozen' },
+  // Medicine: urgent, and it pays double.
+  { item: 'Fever medicine and a thermometer', care: 'event', note: 'My son has 102. Please come fast, I can\'t leave him.', cargo: 'medicine' },
+  { item: 'An asthma inhaler', care: 'event', note: "Ajji's inhaler is empty. As quick as you safely can!", cargo: 'medicine' },
+  { item: 'Insulin, in a cool pack', care: 'event', note: 'Appa needs it before dinner. Thank you so much.', when: ['evening', 'night'], cargo: 'medicine' },
+  { item: 'ORS and antacid', care: 'event', note: 'Bad chaat yesterday. Urgent urgent!', cargo: 'medicine' },
 ]
 
 /**
@@ -100,9 +122,11 @@ export function createOrderStory(random: () => number, period?: PeriodId): Order
   const timely = period ? ITEMS.filter(({ when }) => !when || when.includes(period)) : ITEMS
   // Orders that need a kind of vehicle are only offered when the rider has, or could rent, one.
   const items = timely.filter(({ needs }) => !needs || orderRules.canOffer(needs))
-  const { item, care, note, needs } = pick(items, random)
+  const { item, care, note, needs, cargo: kind } = pick(items, random)
   const { name, patience } = pick(CUSTOMERS, random)
-  return { customer: name, patience, item, care, note, ...(needs ? { needs } : {}) }
+  const cargo: CargoType = kind ?? (needs === 'bulk' ? 'bulk' : care === 'fragile' ? 'fragile' : 'parcel')
+  // Someone waiting on medicine is short of patience.
+  return { customer: name, patience: cargo === 'medicine' ? patience * 0.8 : patience, item, care, note, cargo, ...(needs ? { needs } : {}) }
 }
 
 /** What carrying an item needs, said on the phone while it's on board. */
@@ -145,13 +169,15 @@ type RatingInput = {
   frustration?: number
   /** How roughly the order was carried (customerChat.ts): seen at the door, it costs stars and tip. */
   roughness?: number
+  /** The state it arrives in, 1 as it left the counter to 0 spoiled (cargo.ts). */
+  condition?: number
 }
 
 /**
  * Starts at 5 stars and takes off for lateness, crashes, and the item's own
  * needs. Never below 1. The tip follows the stars.
  */
-export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration, roughness = 0 }: RatingInput): Rating {
+export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration, roughness = 0, condition = 1 }: RatingInput): Rating {
   let stars = 5
   const lost: string[] = []
   const take = (count: number, reason: string) => {
@@ -176,13 +202,36 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
     if (stars < 5 && lost.length === 0) lost.push('Kept waiting')
   }
 
+  // What it's like when it arrives: a cake dented, food gone cold, ice cream melted (cargo.ts).
+  const state = conditionStars(story.cargo, condition)
+  if (state.stars > 0) {
+    stars = Math.max(1, stars - state.stars)
+    lost.push(state.reason)
+  }
+
   const streakTip = stars === 5 ? Math.min(STREAK_TIP_MAX, streak * STREAK_TIP) : 0
-  const tip = Math.round((TIPS[stars] + streakTip) * (1 - (frustration ?? 0) * 0.5) * (1 - Math.min(1, roughness) * 0.5))
-  return { stars, tip, lost: stars === 5 ? [] : lost, reaction: reactionFor(story, stars, late, knocks, crashes) }
+  const spoilt = CARGO[story.cargo].meter ? Math.max(0, Math.min(1, condition)) : 1
+  const tip = Math.round((TIPS[stars] + streakTip) * (1 - (frustration ?? 0) * 0.5) * (1 - Math.min(1, roughness) * 0.5) * (0.4 + 0.6 * spoilt))
+  const reaction = state.stars > 0 ? conditionReaction(story, condition) : reactionFor(story, stars, late, knocks, crashes)
+  return { stars, tip, lost: stars === 5 ? [] : lost, reaction }
+}
+
+/** What the customer says about an order that arrived the worse for the ride. */
+function conditionReaction(story: OrderStory, condition: number): string {
+  const ruined = condition < 0.25
+  if (story.cargo === 'hot') return ruined ? 'This is stone cold! I could have cooked by now.' : 'Hmm, it has gone a bit cold. I will heat it up, okay.'
+  if (story.cargo === 'frozen') return ruined ? 'Ayyo, it is soup! I ordered ice cream, not milkshake.' : 'It has melted a bit. Straight into the freezer with it.'
+  return ruined ? 'Ayyo! It is completely smashed. What happened on the way?' : 'It got knocked about a bit, no? Okay, it will do.'
 }
 
 function reactionFor(story: OrderStory, stars: number, late: boolean, knocks: number, crashes: number): string {
+  if (story.cargo === 'medicine') {
+    if (stars === 5) return 'You came so fast. Thank you, thank you. God bless you!'
+    return late ? 'We were waiting and waiting. But thank you for coming.' : 'Thank you. That was needed.'
+  }
   if (stars === 5) {
+    if (story.cargo === 'hot') return 'Still piping hot! Super, thank you!'
+    if (story.cargo === 'frozen') return 'Still frozen solid. Sakkath, thank you!'
     if (story.care === 'fragile') return 'Perfect, not a scratch on it. Thank you so much!'
     if (story.care === 'event') return 'Just in time! I look sakkath, thank you!'
     return 'Super fast! Sakkath, thank you!'

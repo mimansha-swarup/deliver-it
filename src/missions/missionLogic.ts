@@ -2,6 +2,7 @@ import type { Mission, MissionPhase, MissionStop, Reward } from '../game/gameTyp
 import { MISSION_RULES } from '../game/missionConfig'
 import { rateDelivery } from './orderStory'
 import type { DayPeriod } from '../game/duty'
+import { CARGO } from './cargo'
 
 /** The stop the player is heading for, or null when there isn't one. */
 export function getCurrentStop(mission: Mission | null, phase: MissionPhase): MissionStop | null {
@@ -31,6 +32,8 @@ export type RideRecord = {
   roughness?: number
   /** The rush-hour surge, as a share of base and distance pay (game/rush.ts). */
   surge?: number
+  /** The state the order arrives in, 1 to 0 (cargo.ts). */
+  condition?: number
 }
 
 /**
@@ -42,14 +45,17 @@ export type RideRecord = {
 export function calculateReward(
   seconds: number,
   mission: Pick<Mission, 'kind' | 'tier' | 'dropCount' | 'onTimeSeconds' | 'story'>,
-  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period, frustration, roughness, surge = 0 }: RideRecord = {},
+  { crashes = 0, knocks = 0, streak = 0, nightPay = false, period, frustration, roughness, surge = 0, condition = 1 }: RideRecord = {},
 ): Reward {
   const rules = MISSION_RULES
   const { kind, tier, dropCount, onTimeSeconds, story } = mission
   const onTime = seconds <= onTimeSeconds
   const rush = kind === 'rush'
-  const baseCredits = rules.baseCredits * dropCount
-  const rating = rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration, roughness })
+  // Medicine pays double; an order that arrives spoiled to nothing is refused, and pays half.
+  const cargo = CARGO[story.cargo]
+  const refused = cargo.meter !== null && condition <= 0
+  const baseCredits = Math.round(rules.baseCredits * dropCount * cargo.payShare * (refused ? 0.5 : 1))
+  const rating = rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration, roughness, condition })
 
   return {
     kind,

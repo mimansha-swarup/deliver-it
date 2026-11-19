@@ -24,6 +24,7 @@ import { setMapOpen } from './uiState'
 import { KeyList } from './HelpOverlay'
 import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
+import { CARGO } from '../missions/cargo'
 import { DEBUG_SAVE } from '../game/saveKeys'
 import { DebugPanel } from './DebugPanel'
 
@@ -156,7 +157,7 @@ function OrderItem({ mission, raised }: { mission: Mission; raised: boolean }) {
       {raised && (
         <>
           <p className="phone-note">“{note}”</p>
-          {care !== 'none' && <p className="phone-care-hint">{CARE_HINTS[care]}</p>}
+          {CARGO[mission.story.cargo].hint ? <p className="phone-care-hint">{CARGO[mission.story.cargo].hint}</p> : care !== 'none' && <p className="phone-care-hint">{CARE_HINTS[care]}</p>}
         </>
       )}
     </>

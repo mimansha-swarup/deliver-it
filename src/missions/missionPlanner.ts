@@ -14,6 +14,7 @@ import {
 import { isInsideBounds } from '../world/worldUtils'
 import { createOrderStory, type OrderStory } from './orderStory'
 import { doorsteps, findDoorstep } from '../game/doorsteps'
+import { CARGO } from './cargo'
 import type { DoorPlan, DoorScene } from '../game/gameTypes'
 
 export type MissionPlanner = {
@@ -271,7 +272,8 @@ export function createMissionPlanner(
       waiting: firstDoor.waiting,
       door: firstDoor.door,
       story,
-      onTimeSeconds: kind === 'rush' ? Math.ceil(normalTime * MISSION_RULES.rushTimeShare) : normalTime,
+      // A rush order's clock is tighter; so is medicine's (cargo.ts).
+      onTimeSeconds: Math.ceil((kind === 'rush' ? normalTime * MISSION_RULES.rushTimeShare : normalTime) * CARGO[story.cargo].timeShare),
       routeLength: Math.round(routeLength),
     }
   }

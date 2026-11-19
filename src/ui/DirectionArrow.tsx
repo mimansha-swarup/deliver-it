@@ -3,6 +3,7 @@ import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveRoute } from '../game/livePlayer'
 import { moodOf } from '../missions/customerChat'
 import { currentTarget } from './mapDrawing'
+import { CARGO, CONDITION } from '../missions/cargo'
 
 /** How quickly the arrow swings to a new direction. Higher is tighter. */
 const TURN_RESPONSE = 9
@@ -56,6 +57,30 @@ function OrderTimer() {
   return (
     <span className="route-timer" data-late={left < 0} data-hurry={left >= 0 && left <= 20}>
       {left < 0 ? `+${formatTime(-left)}` : formatTime(left)}
+    </span>
+  )
+}
+
+/**
+ * What's on board and the state it's in, for orders that can spoil (missions/cargo.ts): a cake's
+ * intactness, how hot the food still is, how frozen the ice cream. Full is as it left the counter.
+ */
+function CargoMeter() {
+  const cargo = useGameStore((state) => state.mission?.story.cargo ?? 'parcel')
+  const condition = useGameStore((state) => state.condition)
+  const onBoard = useGameStore((state) => state.phase === 'toCustomer')
+  const { meter, label } = CARGO[cargo]
+  if (!onBoard) return label ? <span className="route-cargo" data-waiting="true">{label}</span> : null
+  if (!meter) return label ? <span className="route-cargo">{label}</span> : null
+  const state = condition < CONDITION.ruined ? 'ruined' : condition < CONDITION.poor ? 'poor' : 'good'
+  return (
+    <span className="route-cargo" data-state={state} title={CARGO[cargo].hint}>
+      <span className="route-cargo-label">
+        {meter} <strong>{Math.round(condition * 100)}%</strong>
+      </span>
+      <span className="mood-bar" aria-hidden="true">
+        <span style={{ width: `${Math.round(condition * 100)}%` }} />
+      </span>
     </span>
   )
 }
@@ -123,6 +148,7 @@ export function DirectionArrow() {
       </div>
       <div className="route-side route-right">
         {distance > 0 && <span className="route-distance">{formatDistance(distance)}</span>}
+        <CargoMeter />
       </div>
     </div>
   )
