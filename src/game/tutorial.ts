@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { saveKey } from './saveKeys'
 
 /*
  * The tutorial's progress: whether it's been done (the "tutorialDone" flag, saved), and the step
@@ -35,7 +36,7 @@ export const useTutorial = create<TutorialState>()(
       },
       finish: () => set({ step: null, done: true }),
     }),
-    { name: 'deliver-it-tutorial', partialize: (state) => ({ done: state.done }) },
+    { name: saveKey('deliver-it-tutorial'), partialize: (state) => ({ done: state.done }) },
   ),
 )
 

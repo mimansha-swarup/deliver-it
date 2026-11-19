@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { saveKey } from './saveKeys'
 
 /*
  * Discovery: the card that names an area as the rider arrives, and the "Namma spots" (our spots):
@@ -14,7 +15,7 @@ export const NAMMA_SPOTS: { id: SpotId; name: string; how: string }[] = [
   { id: 'temple', name: 'The temple at night', how: 'Visit the Anjaneya or the Jagannath temple after dark, when they are floodlit.' },
 ]
 
-const KEY = 'deliver-it-spots'
+const KEY = saveKey('deliver-it-spots')
 
 function load(): Record<SpotId, boolean> {
   const none = { statue: false, lake: false, temple: false }

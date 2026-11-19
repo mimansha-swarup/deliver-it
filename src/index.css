@@ -4410,3 +4410,26 @@ body,
   opacity: 0.8;
   white-space: nowrap;
 }
+
+/* The debug panel in the phone's Settings (?debug=1). */
+.debug-panel .debug-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.debug-panel input {
+  width: 96px;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font: inherit;
+  text-align: right;
+}
+.debug-panel .app-wide-button {
+  margin-top: 8px;
+}

@@ -24,6 +24,8 @@ import { setMapOpen } from './uiState'
 import { KeyList } from './HelpOverlay'
 import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
+import { DEBUG_SAVE } from '../game/saveKeys'
+import { DebugPanel } from './DebugPanel'
 
 /*
  * The phone's apps (Phone.tsx is the phone itself: lock screen, home screen, status bar).
@@ -805,6 +807,7 @@ function SettingsApp({ nav }: { nav: PhoneNav }) {
           </label>
         </section>
         <SettingsExtras />
+        {DEBUG_SAVE && <DebugPanel />}
       </div>
     </div>
   )

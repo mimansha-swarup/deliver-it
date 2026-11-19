@@ -55,6 +55,7 @@ import {
 import { TOTAL_KB, type LoadProgress } from './preload'
 import { levelFromXp, UNLOCK_LEVELS, unlocksBetween } from './progression'
 import type { Quality } from './qualitySettings'
+import { saveKey } from './saveKeys'
 
 type Telemetry = {
   speedKmh: number
@@ -393,7 +394,7 @@ function tallyDelivery(shift: ShiftStats, reward: Reward, earned: number, onTime
 }
 
 /** Where progress is saved in the browser. */
-const SAVE_KEY = 'slikk-it-progress'
+const SAVE_KEY = saveKey('slikk-it-progress')
 
 /**
  * Whether this is a first visit: no progress saved yet when the page loaded. Read before the

@@ -6,6 +6,7 @@ import { Surface, worldSurface } from '../world/surfaceMap'
 import { orderGate, useGameStore } from './gameStore'
 import { livePlayer, liveSky } from './livePlayer'
 import { levelFromXp } from './progression'
+import { saveKey } from './saveKeys'
 
 /*
  * GaadiGo (a made-up vehicle marketplace): renting and buying the vehicles in vehicleCatalog.ts.
@@ -345,7 +346,7 @@ export const useFleet = create<Fleet>()(
       }
     },
     {
-      name: 'deliver-it-fleet',
+      name: saveKey('deliver-it-fleet'),
       version: 1,
       partialize: (state) => ({ owned: state.owned, rental: state.rental, emis: state.emis, uncharged: state.uncharged }),
     },
