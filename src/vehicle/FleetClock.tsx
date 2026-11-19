@@ -9,7 +9,7 @@ import { IDLE_POSE } from '../traffic/gait'
 import { TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from '../traffic/modelFiles'
 import { ShopPeople } from '../world/ShopPeople'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
-import { createBicycleGeometry, createModelBody } from './vehicleBodies'
+import { createBuiltStill, createModelBody } from './vehicleBodies'
 import { VEHICLES } from './vehicleCatalog'
 
 /*
@@ -61,7 +61,7 @@ export function FleetClock({ scooter }: { scooter: RefObject<ScooterState> }) {
     if (!delivery) return null
     const spec = VEHICLES[delivery.id]
     const paint = spec.paint ?? '#17181b'
-    if (spec.body.rig === 'bicycle') return createBicycleGeometry(paint)
+    if (spec.body.rig === 'built') return createBuiltStill(spec.body.kind, paint)
     if (spec.body.rig === 'model') return createModelBody(spec.body.file === 'yamaha' ? yamaha : scene, spec.body, paint)
     // The scooter's rig, standing: the same model traffic's parked scooters use.
     return createModelBody(scene, { rig: 'model', file: 'traffic', model: 'delivery', scale: 1, riderSeat: null }, paint)

@@ -29,7 +29,7 @@ import { BRAND_DYE, createBoxLogoTexture } from './brandPrint'
 import { Rider, STEERING_Z } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
-import { createBicycleGeometry, createModelBody } from './vehicleBodies'
+import { createBuiltVehicle, createModelBody, disposeBuilt } from './vehicleBodies'
 import { VEHICLES } from './vehicleCatalog'
 import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
@@ -338,15 +338,16 @@ export function Scooter({
   const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
   const paint = spec.paint ?? findColour(PAINTS, paintId).color
   const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
-  const otherBody = useMemo(() => {
-    if (spec.body.rig === 'bicycle') return createBicycleGeometry(paint)
-    if (spec.body.rig === 'model') return createModelBody(spec.body.file === 'yamaha' ? yamaha : scene, spec.body, paint)
-    return null
-  }, [spec, paint, scene, yamaha])
+  const otherBody = useMemo(() => (spec.body.rig === 'model' ? createModelBody(spec.body.file === 'yamaha' ? yamaha : scene, spec.body, paint) : null), [spec, paint, scene, yamaha])
   useEffect(() => () => otherBody?.dispose(), [otherBody])
+  // A vehicle built in pieces (vehicleBodies.ts): its wheels spin, and a bicycle's cranks go round.
+  const built = useMemo(() => (spec.body.rig === 'built' ? createBuiltVehicle(spec.body.kind, paint) : null), [spec, paint])
+  useEffect(() => () => { if (built) disposeBuilt(built) }, [built])
+  const builtWheels = useRef<(Group | null)[]>([])
+  const crank = useRef<Group>(null)
   const ownRig = spec.body.rig === 'scooter'
   // The rider is seen on two wheels, and not inside a van, a car or the three-wheeler's cab.
-  const riderSeen = spec.body.rig !== 'model' || spec.body.riderSeat !== null
+  const riderSeen = spec.body.rig === 'scooter' || (spec.body.rig === 'built' ? spec.body.riderSeen : spec.body.riderSeat !== null)
   // The box is split off the model: it's Deliver It marigold plastic, with the logo on its back and sides.
   const { parts, boxBounds } = useMemo(() => {
     const painted = paintModel(getModel(scene, 'delivery'), paint)
@@ -435,6 +436,9 @@ export function Scooter({
     placeRider(riderRoot.current, body.current, ref.current, state, riderProbes)
     if (steering.current) steering.current.rotation.y = state.steer * MAX_FRONT_WHEEL_ANGLE
     if (wheelSteering.current) wheelSteering.current.rotation.y = state.steer * MAX_FRONT_WHEEL_ANGLE
+    for (const wheel of builtWheels.current) if (wheel) wheel.rotation.x = state.wheelSpin
+    // Pedalled round with the throttle, a turn of the cranks to about three of the wheels; still when coasting.
+    if (crank.current && input.current.forward && state.speed > 0.2) crank.current.rotation.x += (state.speed / 0.34 / 2.8) * Math.min(delta, 0.05)
     if (frontWheel.current) frontWheel.current.rotation.x = state.wheelSpin
     if (rearWheel.current) rearWheel.current.rotation.x = state.wheelSpin
   })
@@ -447,6 +451,21 @@ export function Scooter({
           <BlobShadow />
           <group ref={lean}>
             {otherBody && <mesh geometry={otherBody} material={materials.bike} />}
+            {built && (
+              <>
+                <mesh geometry={built.body} material={materials.bike} />
+                {built.wheels.map(({ geometry, at }, index) => (
+                  <group key={index} position={at} ref={(group) => { builtWheels.current[index] = group }}>
+                    <mesh geometry={geometry} material={materials.bike} />
+                  </group>
+                ))}
+                {built.crank && (
+                  <group ref={crank} position={built.crank.at}>
+                    <mesh geometry={built.crank.geometry} material={materials.bike} />
+                  </group>
+                )}
+              </>
+            )}
             <group visible={ownRig}>
               <Wheel
                 spinRef={rearWheel}

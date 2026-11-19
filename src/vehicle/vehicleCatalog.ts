@@ -74,7 +74,10 @@ export type VehicleSpec = {
    * What's drawn: the scooter's own rig (with the rider), or a body from the models' file, with the
    * rider on it (a motorbike) or inside and unseen (`enclosed`).
    */
-  body: { rig: 'scooter' | 'bicycle' } | { rig: 'model'; file: 'traffic' | 'yamaha'; model: string; scale: number; riderSeat: [number, number, number] | null }
+  body:
+    | { rig: 'scooter' }
+    | { rig: 'built'; kind: 'bicycle' | 'ev' | 'trike'; riderSeen: boolean }
+    | { rig: 'model'; file: 'traffic' | 'yamaha'; model: string; scale: number; riderSeat: [number, number, number] | null }
   /** Paint that replaces the Garage's, for a vehicle that isn't the rider's own scooter. */
   paint: string | null
 }
@@ -90,13 +93,13 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     id: 'bicycle', name: 'Pedalu City', kind: 'Bicycle', blurb: 'Slow, silent, free to run. Squeezes through anything.',
     topSpeed: 24, pull: 0.5, turn: 1.55, grip: 0.9, brake: 0.62, lean: 0.75, feel: { topEnd: 0.35, response: 2.6, coast: 0.8, nitro: false }, drive: 'Pedal', capacity: 1, costPerKm: 0, unlocks: ['parcel', 'eco'],
     minLevel: 1, minRating: 0, rentHour: 15, rentDay: 60, price: 900, engine: 'silent', engineVolume: 0, horn: 'bell',
-    camera: { distance: 0.9, height: 0.95, look: 0.95 }, cockpit: null, body: { rig: 'bicycle' }, paint: '#2f7d55',
+    camera: { distance: 0.9, height: 0.95, look: 0.95 }, cockpit: null, body: { rig: 'built', kind: 'bicycle', riderSeen: true }, paint: '#2f7d55',
   },
   ev: {
     id: 'ev', name: 'Minchu E1', kind: 'Electric scooter', blurb: 'Quick off the line, quiet, a third of the running cost.',
     topSpeed: 52, pull: 1.85, turn: 1.1, grip: 1.05, brake: 1.15, lean: 1, feel: { topEnd: 0.55, response: 22, coast: 3.4, nitro: false }, drive: 'Electric · regen', capacity: 2, costPerKm: 0.5, unlocks: ['parcel', 'eco'],
     minLevel: 2, minRating: 0, rentHour: 35, rentDay: 160, price: 3200, engine: 'ev', engineVolume: 1, horn: 'scooter',
-    camera: { distance: 1, height: 1, look: 1 }, cockpit: null, body: { rig: 'scooter' }, paint: '#1aa7a1',
+    camera: { distance: 1, height: 1, look: 1 }, cockpit: null, body: { rig: 'built', kind: 'ev', riderSeen: true }, paint: '#1aa7a1',
   },
   bike: {
     id: 'bike', name: 'Vega 150', kind: 'Commuter motorbike', blurb: 'Much faster on the main roads. Wider turns, harder to stop.',
@@ -109,8 +112,8 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     id: 'trike', name: 'Bhaara E-Cargo', kind: 'Electric cargo three-wheeler', blurb: 'Carries a lot, never leans, never hurries.',
     topSpeed: 42, pull: 0.6, turn: 0.58, grip: 1.15, brake: 0.55, lean: -0.3, feel: { topEnd: 0.6, response: 2.4, coast: 1.2, nitro: false }, drive: 'Electric · loaded', capacity: 8, costPerKm: 0.9, unlocks: ['parcel', 'eco', 'bulk'],
     minLevel: 5, minRating: 4, rentHour: 80, rentDay: 380, price: 9500, engine: 'evCargo', engineVolume: 1, horn: 'auto',
-    camera: { distance: 1.35, height: 1.25, look: 1.1 }, cockpit: [0, 1.25, 0.95],
-    body: { rig: 'model', file: 'traffic', model: 'auto', scale: 1, riderSeat: null }, paint: '#e9e7e1',
+    camera: { distance: 1.5, height: 1.35, look: 1.15 }, cockpit: [0, 1.3, 0.55],
+    body: { rig: 'built', kind: 'trike', riderSeen: false }, paint: '#2f9e6b',
   },
   van: {
     id: 'van', name: 'Saagane Loadstar', kind: 'Cargo van', blurb: 'The biggest loads on the map. Wide, heavy and thirsty.',
