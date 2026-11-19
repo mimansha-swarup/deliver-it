@@ -1,4 +1,5 @@
 import type { PeriodId } from '../game/duty'
+import type { OrderType } from '../vehicle/vehicleCatalog'
 import { roughStars, starsFromFrustration } from './customerChat'
 /**
  * Who an order is for, what's in it, and how they feel when it arrives. The
@@ -23,10 +24,18 @@ export type OrderStory = {
   care: Care
   /** What the customer wrote when they ordered. */
   note: string
+  /** A kind of order only some vehicles carry (vehicleCatalog.ts): bulk needs a cargo vehicle, catering a car or van. */
+  needs?: OrderType
 }
 
+/**
+ * Whether an order of a kind can be offered at all: set by the fleet (game/fleet.ts) to "the rider's
+ * vehicle carries it, or GaadiGo would rent them one that does". Until then, only everyday parcels.
+ */
+export const orderRules: { canOffer: (type: OrderType) => boolean } = { canOffer: () => false }
+
 /** `when`: the times of day it's ordered; left out, any time. */
-type Item = { item: string; care: Care; note: string; when?: PeriodId[] }
+type Item = { item: string; care: Care; note: string; when?: PeriodId[]; needs?: OrderType }
 
 const ITEMS: Item[] = [
   { item: 'A bottle of perfume', care: 'fragile', note: "It's a gift, and it's glass! Gently over the humps please." },
@@ -51,11 +60,14 @@ const ITEMS: Item[] = [
   { item: 'A leather handbag', care: 'none', note: "Bruno will bark at the gate. He's friendly!" },
   // Local to the temples and offices round Agara.
   { item: 'Jasmine and marigold garlands', care: 'fragile', note: "For the evening pooja. Please don't crush the flowers!", when: ['morning', 'evening'] },
-  { item: 'A dozen tender coconuts', care: 'none', note: 'For the function at home. Heavy, I know. Thank you, maga!', when: ['morning', 'lunch'] },
+  { item: 'A dozen tender coconuts', care: 'none', note: 'For the function at home. Heavy, I know. Thank you, maga!', when: ['morning', 'lunch'], needs: 'bulk' },
+  { item: 'Twenty kilos of rice and dal', care: 'none', note: "For the PG's kitchen. The cook will help you unload.", needs: 'bulk' },
+  { item: 'Four crates of mangoes', care: 'fragile', note: "Season's first Badami! Please don't bruise them.", when: ['morning', 'lunch'], needs: 'bulk' },
   { item: 'A pooja thali set', care: 'fragile', note: 'Brass lamps and a glass of kumkum. Gently over the humps please.', when: ['morning', 'evening'] },
   { item: 'Agarbatti, camphor and oil', care: 'none', note: "It's Saturday, Hanuman's day. Before the aarti if you can!", when: ['morning', 'evening'] },
-  { item: 'Six office lunch boxes', care: 'event', note: 'Team lunch at one sharp. The whole floor is hungry!', when: ['lunch'] },
-  { item: 'Lunch for the stand-up meeting', care: 'event', note: 'Meeting ends at 1:30 and they eat at their desks. Bega banni!', when: ['lunch'] },
+  { item: 'Six office lunch boxes', care: 'event', note: 'Team lunch at one sharp. The whole floor is hungry!', when: ['lunch'], needs: 'catering' },
+  { item: 'Lunch for the stand-up meeting', care: 'event', note: 'Meeting ends at 1:30 and they eat at their desks. Bega banni!', when: ['lunch'], needs: 'catering' },
+  { item: 'Biryani for forty', care: 'event', note: "It's my daughter's naming ceremony. Hot and on time, please!", when: ['lunch', 'evening'], needs: 'catering' },
 ]
 
 /**
@@ -85,10 +97,12 @@ const pick = <T>(items: T[], random: () => number): T => items[Math.floor(random
 
 /** An order, with what's ordered fitting the time of day when `period` is given. */
 export function createOrderStory(random: () => number, period?: PeriodId): OrderStory {
-  const items = period ? ITEMS.filter(({ when }) => !when || when.includes(period)) : ITEMS
-  const { item, care, note } = pick(items, random)
+  const timely = period ? ITEMS.filter(({ when }) => !when || when.includes(period)) : ITEMS
+  // Orders that need a kind of vehicle are only offered when the rider has, or could rent, one.
+  const items = timely.filter(({ needs }) => !needs || orderRules.canOffer(needs))
+  const { item, care, note, needs } = pick(items, random)
   const { name, patience } = pick(CUSTOMERS, random)
-  return { customer: name, patience, item, care, note }
+  return { customer: name, patience, item, care, note, ...(needs ? { needs } : {}) }
 }
 
 /** What carrying an item needs, said on the phone while it's on board. */

@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { MARKET, VEHICLES, type OrderType, type VehicleId, type VehicleSpec } from '../vehicle/vehicleCatalog'
-import { useGameStore } from './gameStore'
+import { orderRules } from '../missions/orderStory'
+import { orderGate, useGameStore } from './gameStore'
 import { livePlayer, liveSky } from './livePlayer'
 import { levelFromXp } from './progression'
 
@@ -93,6 +94,21 @@ export function locked(spec: VehicleSpec): string | null {
 export function atHub(): boolean {
   const store = useGameStore.getState().planner?.stores[0]
   return store !== undefined && Math.hypot(store.x - livePlayer.x, store.z - livePlayer.z) < FLEET_RULES.hubRange
+}
+
+/** Whether the vehicle in use carries a kind of order. */
+export function carries(type: OrderType): boolean {
+  return (VEHICLES[useGameStore.getState().vehicleId] ?? VEHICLES.scooter).unlocks.includes(type)
+}
+
+/**
+ * "Rent one for this order": the cheapest vehicle that carries it, for an hour, brought to the rider.
+ * Null if it's on its way; else why not.
+ */
+export function rentFor(type: OrderType): string | null {
+  const spec = cheapestFor(type)
+  if (!spec) return 'Nothing you can rent carries this yet.'
+  return useFleet.getState().rent(spec.id, 'hour', false, atHub() ? 'hub' : 'deliver')
 }
 
 /** The cheapest vehicle on the market, that the rider may have, which carries a kind of order. */
@@ -262,6 +278,14 @@ export const useFleet = create<Fleet>()(
     },
   ),
 )
+
+// Orders that need a kind of vehicle are offered when the rider's carries it, or GaadiGo would rent one that does.
+orderRules.canOffer = (type) => carries(type) || cheapestFor(type) !== null
+// Accepted on a vehicle that carries it, or with one that does on its way or just rented.
+orderGate.allows = (type) => {
+  const coming = useFleet.getState().delivery?.id ?? useFleet.getState().rental?.id
+  return carries(type) || (coming !== undefined && VEHICLES[coming].unlocks.includes(type))
+}
 
 let arrivedSaid = false
 /** The rider's speed at the last tick, and the game clock then. */

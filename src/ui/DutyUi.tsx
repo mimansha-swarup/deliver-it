@@ -1,4 +1,6 @@
 import { keyFor, useKeyName } from '../game/keyBindings'
+import { carries, cheapestFor, rentFor } from '../game/fleet'
+import { ORDER_TYPE_NAMES } from '../vehicle/vehicleCatalog'
 import { isKey } from '../game/keyBindings'
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
@@ -119,6 +121,10 @@ function OfferCard() {
   const base = MISSION_RULES.baseCredits * mission.dropCount + mission.tier.extraCredits
   const pay = base + Math.round(base * period.payShare)
   const kind = mission.kind === 'rush' ? 'Rush' : mission.kind === 'double' ? 'Double' : null
+  // An order only some vehicles carry: the rider's must, or one is rented for it (GaadiGo, game/fleet.ts).
+  const needs = mission.story.needs
+  const fits = !needs || carries(needs)
+  const rental = needs && !fits ? cheapestFor(needs) : null
 
   return (
     <section className="duty-offer" role="alertdialog" aria-label="New order" data-hurry={left <= OFFER_REMINDER_AT}>
@@ -140,6 +146,27 @@ function OfferCard() {
           {kind && <span className="duty-offer-kind">{kind}</span>}
           {mission.story.care !== 'none' && <span className="duty-offer-care">{mission.story.care === 'fragile' ? 'Fragile' : 'Event'}</span>}
         </p>
+        {needs && !fits && (
+          <p className="hud-detail">
+            Needs: {ORDER_TYPE_NAMES[needs].toLowerCase()}.{' '}
+            {rental ? (
+              <button
+                type="button"
+                className="duty-accept"
+                onClick={(event) => {
+                  const refused = rentFor(needs)
+                  if (refused) useGameStore.getState().raviSays(`GaadiGo: ${refused}`)
+                  else accept()
+                  event.currentTarget.blur()
+                }}
+              >
+                Rent the {rental.name} for this order · ₹{rental.rentHour}
+              </button>
+            ) : (
+              'Nothing you can rent carries it yet.'
+            )}
+          </p>
+        )}
         <p className="hud-detail">
           for {mission.story.customer} · {formatDistance(mission.routeLength)} · <span className="duty-offer-pay">{pay}+ credits</span>
         </p>

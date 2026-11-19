@@ -10455,3 +10455,51 @@ closed street over 15 s.
 ### Not done
 The chariot is drawn along, with no one visibly at the ropes: the crowd stands. The route the GPS draws
 for an order already under way isn't redrawn the moment the street closes.
+
+## 2026-11-20: Entry 210, GaadiGo: a vehicle framework and a marketplace
+
+The brief assumed an on-foot get on/off system and a shared vehicle framework; neither existed (one
+scooter, one controller, the rider off it only in a crash). Agreed scope: build the framework and the
+app; vehicles swap where the rider is parked, with no walking. On-foot is its own piece of work.
+
+### The framework (vehicle/vehicleCatalog.ts)
+Seven vehicles through the one controller, each a row of numbers: the rider's scooter, a bicycle
+(Pedalu City), an electric scooter (Minchu E1), a commuter motorbike (Vega 150), an electric cargo
+three-wheeler (Bhaara E-Cargo), a catering car (Oota Hatch) and a cargo van (Saagane Loadstar). All
+names made up.
+- **Handling** (tuning.ts `applyVehicle`): top speed, pull, turning, grip, braking, lean (none on three or
+  four wheels). The Garage's upgrades are the scooter's parts, so only it gets them.
+- **Body** (vehicleBodies.ts, Scooter.tsx): the scooter's rig; a bicycle built in code; the motorbike,
+  three-wheeler, car and van from the traffic models, in their own paint. The rider shows on two wheels.
+- **Sound**: each vehicle's engine voice; the electric ones a quiet whine, the bicycle silent.
+- **Camera**: further back and higher for bigger vehicles; V gives a driver's-seat view in the
+  three-wheeler, car and van.
+8 s of throttle from rest: bicycle 20 km/h, scooter 50, electric 52, motorbike 79, van 62.
+
+### GaadiGo (game/fleet.ts, the phone app, vehicle/FleetClock.tsx)
+- **Catalogue**: speed, capacity, running cost per km, handling, order types unlocked, level and rating needed.
+- **Rent** by the game hour or day, paid up front, with optional insurance (+15%). **Buy** outright, or a
+  fifth down and eight weekly EMIs (12% interest; a week is seven game days).
+- **Delivery** to where the rider is: ₹40, one to three game minutes, then the vehicle and a delivery
+  person stand there; pulling up and stopping is the handover. **Free pickup** at the hub (the home dark
+  store). The vehicle swapped out goes to the Garage; owned ones are taken out again from the app.
+- **Returns**: end the rental in the app, parked; it's collected and the scooter comes back. Late: 1.5× the
+  hourly rate per hour. Damage: ₹60 a crash unless insured.
+- **Running cost** by the kilometre, in ₹10 steps, in the ledger.
+- **EMIs** from the wallet each week; one missed is a warning with a day's grace, a second and a recovery
+  agent takes the vehicle back.
+- **Orders that need a vehicle**: bulk (cargo three-wheeler or van) and catering (car or van) orders are
+  only offered when the rider's vehicle carries them or one could be rented; the offer then has "Rent the
+  … for this order", which books the cheapest one, delivered, and accepts.
+
+### Tested
+Rent with delivery (₹75 with the fee), handover, a second rental refused, a late return with two crashes
+(₹225), EMI purchase, a weekly payment, a missed one, repossession on the second; an order needing
+catering refused on the scooter and accepted through the offer's rent button.
+
+### Not done
+- Breakdowns (there's no breakdown system to hang "offers a nearby rental" on).
+- A real cockpit: the driver's-seat view is a camera at the driver's eye, with no dashboard or interior.
+- The rider's pose is the scooter's on the motorbike and the bicycle; a car's collision size is still the
+  scooter's; the delivery person appears rather than rides in; the recovery agent is a message.
+- "Eco" and "express" order types are listed on vehicles but no orders use them yet.

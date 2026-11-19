@@ -12,7 +12,7 @@ import {
   type UpgradeLevels,
 } from './garage'
 import { persist } from 'zustand/middleware'
-import { liveVehicle, VEHICLES, type VehicleId } from '../vehicle/vehicleCatalog'
+import { liveVehicle, VEHICLES, type OrderType, type VehicleId } from '../vehicle/vehicleCatalog'
 import { calculateReward } from '../missions/missionLogic'
 import { FRUSTRATION } from '../missions/customerChat'
 import { RATINGS_KEPT } from '../missions/orderStory'
@@ -254,6 +254,9 @@ const CHAT_KEPT = 12
 
 /** `tag`: a message that's replaced, not added to, when sent again, such as the shift's welcome and goal. */
 export type Message = { id: number; text: string; tag?: string }
+
+/** Whether an order needing a kind of vehicle may be accepted now: set by the fleet (game/fleet.ts). */
+export const orderGate: { allows: (type: OrderType) => boolean } = { allows: () => true }
 
 /** How many of Ravi's messages are kept. */
 const MESSAGES_KEPT = 15
@@ -691,6 +694,12 @@ export const useGameStore = create<GameState>()(
   acceptOffer: () =>
     set((state) => {
       if (!state.offer || state.mission) return state
+      // An order that needs a kind of vehicle: only on one that carries it, or with one on its way
+      // (the offer's "Rent one for this order", GaadiGo).
+      const needs = state.offer.mission.story.needs
+      if (needs && !orderGate.allows(needs)) {
+        return { messages: addMessages(state.messages, [`That order needs ${needs === 'bulk' ? 'a cargo vehicle' : needs === 'catering' ? 'a car or a van' : 'another vehicle'}: rent one from the offer, or decline it.`]) }
+      }
       return {
         offer: null,
         mission: state.offer.mission,
