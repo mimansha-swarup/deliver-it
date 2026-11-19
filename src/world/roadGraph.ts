@@ -153,6 +153,20 @@ export function findNearestNode(graph: RoadGraph, x: number, z: number): number 
  * that over without looking at every point: over all of HSR's 34,000 points,
  * scanning them all each time took seconds.
  */
+/**
+ * Roads closed for now (a festival procession): routes go round them. A closed link isn't
+ * impossible, only very long, so a stop on the closed stretch itself can still be reached.
+ * `version` goes up with every change, for whoever keeps routes to know theirs are stale.
+ */
+export const roadClosures = { version: 0, closed: new Set<number>() }
+const CLOSED_COSTS = 4000
+const linkKey = (from: number, to: number) => from * 1_000_000 + to
+
+export function setClosedLinks(pairs: [number, number][]) {
+  roadClosures.closed = new Set(pairs.flatMap(([a, b]) => [linkKey(a, b), linkKey(b, a)]))
+  roadClosures.version++
+}
+
 export function createRouteField(graph: RoadGraph, destination: number): RouteField {
   const count = graph.xs.length
   const distance = new Float64Array(count).fill(Infinity)
@@ -168,7 +182,7 @@ export function createRouteField(graph: RoadGraph, destination: number): RouteFi
     done[current] = 1
 
     for (const { to, length } of graph.links[current]) {
-      const throughCurrent = distance[current] + length
+      const throughCurrent = distance[current] + length + (roadClosures.closed.size > 0 && roadClosures.closed.has(linkKey(current, to)) ? CLOSED_COSTS : 0)
       if (throughCurrent < distance[to]) {
         distance[to] = throughCurrent
         nextNode[to] = current

@@ -9,6 +9,7 @@ import {
   findNearestNode,
   type RoadGraph,
   type RouteField,
+  roadClosures,
 } from '../world/roadGraph'
 import { isInsideBounds } from '../world/worldUtils'
 import { createOrderStory, type OrderStory } from './orderStory'
@@ -67,7 +68,13 @@ export function createMissionPlanner(
   random: () => number = Math.random,
 ): MissionPlanner {
   const routeFields = new Map<number, RouteField>()
+  let closuresSeen = roadClosures.version
   const getRouteField = (node: number): RouteField => {
+    // A road closed or reopened since (roadGraph.ts): every kept route is stale.
+    if (closuresSeen !== roadClosures.version) {
+      routeFields.clear()
+      closuresSeen = roadClosures.version
+    }
     let field = routeFields.get(node)
     if (!field) {
       field = createRouteField(graph, node)

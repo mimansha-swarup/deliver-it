@@ -707,8 +707,11 @@ function advance(mover: Mover, lanes: Lane[], distance: number, random: () => nu
 function pickNext(mover: Mover, lanes: Lane[], random: () => number): number {
   const { next } = lanes[mover.lane]
   if (next.length === 0) return -1
-  if (mover.nextLane === undefined || mover.nextLane < 0 || !next.includes(mover.nextLane)) {
-    mover.nextLane = next[Math.floor(random() * next.length)]
+  if (mover.nextLane === undefined || mover.nextLane < 0 || !next.includes(mover.nextLane) || lanes[mover.nextLane].closed) {
+    // Not onto a closed road, if there's another way on.
+    const open = next.filter((lane) => !lanes[lane].closed)
+    const choices = open.length > 0 ? open : next
+    mover.nextLane = choices[Math.floor(random() * choices.length)]
   }
   return mover.nextLane
 }
@@ -1389,6 +1392,11 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
     vehicle.lane = -1
     return
   }
+  // Onto a closed road with no other way to go (a procession's street): it's taken off the road.
+  if (roadLanes[vehicle.lane].closed) {
+    vehicle.lane = -1
+    return
+  }
 
   // Corners are rounded to about the vehicle's turning circle (see `findCorner`), and it follows that
   // curve. It turns no tighter than a little inside that circle, so the slower it goes, the slower it turns.
@@ -1955,6 +1963,21 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
 
 /** Advances everything. Only the first `vehicleCount` and `pedestrianCount` are in play. */
 /** Moves the traffic's density towards the time of day's, gently, so a change of period isn't a jump. */
+/**
+ * Closes (or reopens) the road lanes a test picks, and takes the traffic on them off the road.
+ * Returns how many lanes it closed.
+ */
+export function closeLanes(world: TrafficWorld, isClosed: ((lane: Lane) => boolean) | null): number {
+  let count = 0
+  world.roadLanes.forEach((lane, index) => {
+    lane.closed = isClosed !== null && isClosed(lane)
+    if (!lane.closed) return
+    count++
+    for (const vehicle of world.vehicles) if (vehicle.lane === index && !vehicle.body) vehicle.lane = -1
+  })
+  return count
+}
+
 /** Sets (or lifts, with null) the rush-hour jam: see `TrafficWorld.jam`. */
 export function setJam(world: TrafficWorld, jam: TrafficWorld['jam']) {
   world.jam = jam
@@ -2021,6 +2044,7 @@ export function stepTraffic(
       const inJam = (lane: Lane) => jam !== null && Math.hypot(lane.startX - jam.x, lane.startZ - jam.z) < jam.reach * 0.6 && random() < jam.amount
       const isFree = (lane: Lane) =>
         (vehicle.kind !== 'bus' || lane.buses === true) &&
+        !lane.closed &&
         (inJam(lane) || random() * MAX_LANE_WEIGHT < (lane.weight ?? 1)) &&
         activeVehicles.every(
           (other) =>

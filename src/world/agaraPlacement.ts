@@ -49,6 +49,11 @@ export type Agara = {
   templeSpawn: { name: string; x: number; z: number; heading: number } | null
   /** The flyover decks near the statue (both carriageways), whose view of him is kept clear of trees. */
   viewDecks: Flyover[]
+  /**
+   * The festival procession's street, outside the Jagannath temple: the closed stretch (a to b, its
+   * width), and the crowd along it. Null if no road runs by the temple.
+   */
+  festival: { ax: number; az: number; bx: number; bz: number; width: number; crowd: ShopPerson[]; road: string } | null
   /** The traffic policeman at the junction's lights, set once the lights are placed (World.tsx). */
   police: { x: number; z: number; rotation: number } | null
   /** The temple's door, where its life gathers. */
@@ -88,7 +93,7 @@ export function planAgara({
   /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
   lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, viewDecks: [], police: null, door: null, jagannath: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, viewDecks: [], festival: null, police: null, door: null, jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
@@ -295,6 +300,41 @@ export function planAgara({
     }
   }
   if (agara.jagannath) agara.report.jagannathMetresFromTemple = Math.round(jagannathDistance)
+
+  // The festival's street: the road nearest the Jagannath temple, up to 45 m either way from the temple.
+  if (agara.jagannath) {
+    const { x: jx, z: jz } = agara.jagannath
+    const by = nearestRoadPiece(roads, jx, jz, 60)
+    if (by) {
+      const { start, end, width } = by.piece
+      const length = Math.hypot(end[0] - start[0], end[1] - start[1]) || 1
+      const dirX = (end[0] - start[0]) / length
+      const dirZ = (end[1] - start[1]) / length
+      const along = Math.max(0, Math.min(length, (jx - start[0]) * dirX + (jz - start[1]) * dirZ))
+      const from = Math.max(0, along - 45)
+      const to = Math.min(length, along + 45)
+      if (to - from > 25) {
+        const festival = { ax: start[0] + dirX * from, az: start[1] + dirZ * from, bx: start[0] + dirX * to, bz: start[1] + dirZ * to, width, crowd: [] as ShopPerson[], road: '' }
+        // The crowd lines both edges of the street, watching the chariot pass.
+        const steps = Math.floor((to - from - 6) / 4.2)
+        for (let k = 0; k <= steps; k++) {
+          for (const side of [-1, 1]) {
+            const s = from + 3 + k * 4.2 + (side > 0 ? 1.4 : 0)
+            const across = side * (width / 2 - 0.5 - ((k * 3) % 2) * 0.5)
+            const x = start[0] + dirX * s + dirZ * across
+            const z = start[1] + dirZ * s - dirX * across
+            if (isNearBuilding(collisions, x, z, 0.35)) continue
+            const i = k * 2 + (side > 0 ? 1 : 0)
+            // Facing the middle of the street.
+            festival.crowd.push({ x, z, heading: Math.atan2(-dirZ * side, dirX * side), body: (i % 2) as 0 | 1, tint: (i * 0.37) % 1, skin: 0.7 + ((i * 0.11) % 0.33), idle: i % 4 === 0 ? IDLE_POSE.phone : i % 2 === 0 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 1.3 })
+          }
+        }
+        agara.festival = festival
+        agara.report.festivalStreetMetres = Math.round(to - from)
+        agara.report.festivalCrowd = festival.crowd.length
+      }
+    }
+  }
 
   // The Agara bus stop: OSM's stop nearest the temple (landmarkPlacement.ts puts its shelter and
   // board up, and buses pull in at it). People wait in front of it all day, and many more at rush hour.

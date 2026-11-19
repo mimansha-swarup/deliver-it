@@ -74,17 +74,27 @@ export function copyCollisionWorld(world: CollisionWorld): CollisionWorld {
 }
 
 /** Adds a thin solid wall from one point to another, such as a compound wall. */
-export function addWall(world: CollisionWorld, [startX, startZ]: GroundPoint, [endX, endZ]: GroundPoint, thickness: number) {
+export function addWall(world: CollisionWorld, [startX, startZ]: GroundPoint, [endX, endZ]: GroundPoint, thickness: number): Footprint | null {
   const length = Math.hypot(endX - startX, endZ - startZ)
-  if (length === 0) return
+  if (length === 0) return null
   const sideX = (-(endZ - startZ) / length) * (thickness / 2)
   const sideZ = ((endX - startX) / length) * (thickness / 2)
-  addFootprint(world, [
+  const footprint: Footprint = [
     [startX + sideX, startZ + sideZ],
     [endX + sideX, endZ + sideZ],
     [endX - sideX, endZ - sideZ],
     [startX - sideX, startZ - sideZ],
-  ])
+  ]
+  addFootprint(world, footprint)
+  return footprint
+}
+
+/** Takes a footprint out again (the very one that was added): a barricade that's only up for a while. */
+export function removeFootprint(world: CollisionWorld, footprint: Footprint) {
+  for (const cell of world.values()) {
+    const index = cell.indexOf(footprint)
+    if (index >= 0) cell.splice(index, 1)
+  }
 }
 
 /** Adds a small solid post, such as a tree trunk or a lamp post. */

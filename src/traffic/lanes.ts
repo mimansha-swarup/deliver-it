@@ -30,6 +30,8 @@ export type Lane = {
    * as `shift`), less a margin. A vehicle there keeps its own left side to the right of it.
    */
   parked?: { from: number; to: number; edge: number }[]
+  /** Closed for now (a procession): no traffic is put on it, and none turns onto it. */
+  closed?: boolean
   /** On a flyover: which deck, and where along it the lane starts and ends (deckLanes.ts). */
   deck?: DeckSpan
 }

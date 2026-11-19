@@ -24,6 +24,7 @@ const JUNCTION_REACH = 230
 const HONK_VOLUME = 0.11
 const HONK_EVERY: [number, number] = [3.5, 9]
 const HONK_EVERY_RUSH: [number, number] = [0.8, 2.6]
+const DRUM_VOLUME = 0.22
 const DECK_RAIN_VOLUME = 0.2
 const UNDER_RAIN_VOLUME = 0.3
 const DECK_DRIP_VOLUME = 0.12
@@ -130,6 +131,22 @@ export function createPlaceSounds(context: AudioContext, output: AudioNode) {
     tone.stop(start + 0.12)
   }
 
+  /** A drum stroke: a low note that drops as it's struck, and dies quickly. */
+  const drum = (volume: number, pitch: number) => {
+    const start = context.currentTime + 0.01
+    const tone = context.createOscillator()
+    tone.frequency.setValueAtTime(pitch * 1.6, start)
+    tone.frequency.exponentialRampToValueAtTime(pitch, start + 0.06)
+    const level = context.createGain()
+    level.gain.setValueAtTime(volume, start)
+    level.gain.exponentialRampToValueAtTime(0.0001, start + 0.22)
+    tone.connect(level).connect(output)
+    tone.start(start)
+    tone.stop(start + 0.25)
+  }
+
+  let untilDrum = 0.4
+  let beat = 0
   let untilBell = 2
   let untilHonk = 2
   let untilDrip = 0.5
@@ -148,10 +165,19 @@ export function createPlaceSounds(context: AudioContext, output: AudioNode) {
       follow(droneLevel.gain, DRONE_VOLUME * drone)
       untilBell -= dt
       if (untilBell <= 0) {
-        const aarti = (hours >= 6 && hours < 8) || (hours >= 18 && hours < 20)
+        const aarti = (hours >= 6 && hours < 8) || (hours >= 18 && hours < 20) || agaraPlaces.festival
         untilBell = between(aarti ? BELL_EVERY_AARTI : BELL_EVERY)
         // The Anjaneya temple's bell is the deeper of the two.
         if (temple > 0.02) bell(BELL_VOLUME * temple * temple, anjaneya >= jagannath ? 410 : 560, Math.random() * 1.2 - 0.6)
+      }
+
+      // The festival's drums by the Jagannath temple: a steady walking beat, every fourth stroke heavier.
+      untilDrum -= dt
+      if (untilDrum <= 0) {
+        untilDrum = 0.42
+        beat = (beat + 1) % 4
+        const festival = agaraPlaces.festival ? nearness(agaraPlaces.jagannath, x, z, 200) : 0
+        if (festival > 0.02) drum(DRUM_VOLUME * festival * (beat === 0 ? 1 : 0.55), beat === 0 ? 78 : 96)
       }
 
       // The junction's horns.

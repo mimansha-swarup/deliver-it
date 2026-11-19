@@ -14,6 +14,8 @@ export const agaraPlaces = {
   junction: null as Spot | null,
   /** The traffic policeman at the junction's lights: where he stands, and which signal junction he watches. */
   police: null as (Spot & { junction: number }) | null,
+  /** Whether the festival procession is on now (Festival.tsx): more bells, and drums. */
+  festival: false,
   /** The lake's middle, and how far out its water reaches. */
   lake: null as (Spot & { reach: number }) | null,
   /** Whether a flyover deck or the viaduct is overhead at a point. */

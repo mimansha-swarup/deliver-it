@@ -10430,3 +10430,28 @@ towards the Camera app.
 
 ### Not verified
 The low-spot puddles' count and look in rain; the Namma spots app's layout in the phone (nine apps now).
+
+## 2026-11-20: Entry 209, a festival procession at the Jagannath temple
+
+### What I did (world/Festival.tsx)
+On festival days (every ninth day from day 4), from 16:00 to 20:00, a chariot is drawn slowly up and down
+the street by the Jagannath temple: a wooden car on six wheels with a pillared stage and a tall canopy of
+red and yellow cloth, a pot and a flag on top, garlands along its edge; twenty people line the street.
+Bells ring at the aarti's pace and there's a walking drum beat within 200 m.
+- **The street is closed while it's on** (50 m by the temple): striped barricades across both ends, solid
+  only for those hours (collision.ts `removeFootprint`); traffic isn't put on its lanes and doesn't turn
+  onto them, and anything with no other way to go is taken off the road (`closeLanes`); routes go round
+  (roadGraph.ts `setClosedLinks`: a closed link costs 4 km, so a stop on the street itself is still
+  reachable, and the mission planner throws away its kept routes when a closure changes). Ravi says so.
+  All of it lifts at 20:00.
+- Nothing in it is a crash body: the chariot and crowd can't be knocked over, and the barricades keep
+  the rider out.
+- `?festival` with `?debug` holds it on for a look.
+
+### Tested (with ?festival)
+Nine lanes closed; the barricade's line is solid and the middle of the street isn't; no vehicle on the
+closed street over 15 s.
+
+### Not done
+The chariot is drawn along, with no one visibly at the ropes: the crowd stands. The route the GPS draws
+for an order already under way isn't redrawn the moment the street closes.

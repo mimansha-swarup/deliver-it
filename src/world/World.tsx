@@ -40,6 +40,7 @@ import { planShopPeople } from './shopPeoplePlacement'
 import { planAgara } from './agaraPlacement'
 import { planLakeLife } from './lakePlacement'
 import { LakeLife } from './LakeLife'
+import { Festival } from './Festival'
 import { mapMarkers } from '../game/mapMarkers'
 import { agaraPlaces } from '../game/agaraPlaces'
 import { Agara } from './Agara'
@@ -720,7 +721,7 @@ export function World() {
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
         <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
-        <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /></Part>
+        <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /><Festival festival={agara.festival} traffic={traffic} collisions={collisions} graph={graph} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>
