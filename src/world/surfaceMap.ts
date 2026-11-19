@@ -34,6 +34,9 @@ export type Surface = (typeof Surface)[keyof typeof Surface]
 
 export const SURFACE_NAMES = ['open ground', 'road', 'median', 'footpath', 'paved', 'building', 'park', 'plot', 'water'] as const
 
+/** What can't stand under a deck: it would come up through it. */
+const TALL = new Set<Placement>(['tree', 'pole', 'building'])
+
 /** What may go where. */
 export type Placement = 'grass' | 'tree' | 'bush' | 'pole' | 'prop' | 'bench' | 'pedestrian' | 'parked' | 'footpathBike' | 'fence' | 'building' | 'decal'
 
@@ -74,6 +77,11 @@ export class SurfaceMap {
   readonly parkingAreas: { outline: GroundPoint[]; angle: number }[] = []
   /** Sports pitches (pitches.ts): maidans are worn down to the earth (groundCover.ts). */
   pitches: Pitch[] = []
+  /**
+   * Cells with a flyover or the metro overhead (transitPlacement.ts): nothing tall stands there,
+   * no tree, lamp post or building, or it would come up through the deck.
+   */
+  readonly overhead = new Uint8Array(this.width * this.depth)
 
   /** The ground at a point. Outside the play area, open ground. */
   at(x: number, z: number): Surface {
@@ -84,7 +92,20 @@ export class SurfaceMap {
   }
 
   allows(x: number, z: number, what: Placement): boolean {
-    return ALLOWED[what].includes(this.at(x, z))
+    if (!ALLOWED[what].includes(this.at(x, z))) return false
+    return !(TALL.has(what) && this.isOverhead(x, z))
+  }
+
+  isOverhead(x: number, z: number): boolean {
+    const column = Math.floor(x - PLAY_AREA.minX)
+    const row = Math.floor(z - PLAY_AREA.minZ)
+    if (column < 0 || row < 0 || column >= this.width || row >= this.depth) return false
+    return this.overhead[row * this.width + column] === 1
+  }
+
+  /** Marks a polygon as under a deck (see `overhead`). */
+  markOverhead(points: GroundPoint[]) {
+    this.fillPolygon(points, 1 as Surface, undefined, this.overhead)
   }
 
   /** Whether every point round a circle allows it: a thing with some size must fit whole. */
@@ -98,7 +119,7 @@ export class SurfaceMap {
   }
 
   /** Fills a polygon (scanline, even-odd), only over cells of the given kinds if `over` is given. */
-  fillPolygon(points: GroundPoint[], kind: Surface, over?: Surface[]) {
+  fillPolygon(points: GroundPoint[], kind: Surface, over?: Surface[], target: Uint8Array = this.cells) {
     if (points.length < 3) return
     let minZ = Infinity
     let maxZ = -Infinity
@@ -125,7 +146,7 @@ export class SurfaceMap {
         if (to < from) continue
         const rowStart = row * this.width
         // Most fills are over anything: a run at a time.
-        if (!over) this.cells.fill(kind, rowStart + from, rowStart + to + 1)
+        if (!over) target.fill(kind, rowStart + from, rowStart + to + 1)
         else for (let column = from; column <= to; column++) this.set(rowStart + column, kind, over)
       }
     }

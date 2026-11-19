@@ -72,7 +72,7 @@ import { findTyreShops, forecourtOutline, FUEL_STATIONS, isOnForecourt, placeFue
 import { IDLE_POSE } from '../traffic/gait'
 import { planPitches } from './pitches'
 import { SportsPitches } from './SportsPitches'
-import { planBusStand, planFlyovers, planMetro } from './transitPlacement'
+import { flyoverFootprints, planBusStand, planFlyoverDecks, planFlyovers, planMetro } from './transitPlacement'
 import { Transit } from './Transit'
 import { fillEmptyPlots } from './infillPlots'
 import { WarmAssets } from './WarmAssets'
@@ -126,7 +126,12 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const roadIndex = indexRoadPieces(roadPieces)
   lap('presets and road index')
   // No building stands on a road or its footpath: trimmed back, made smaller, or replaced by a walled plot.
-  const setback = setBuildingsBack(data, roadIndex)
+  // Flyovers aren't ridden or drawn as ground roads, but their footprint is kept clear all the same:
+  // no building is kept or built under one (they come after the roads, so road numbers stay the same).
+  const clearRoads = [...data.roads, ...data.flyovers]
+  const clearIndex = indexRoadPieces(toRoadPieces(clearRoads))
+  const flyoverDecks = planFlyoverDecks(data)
+  const setback = setBuildingsBack({ ...data, roads: clearRoads }, clearIndex)
   worldSurface.report['buildings set back'] = setback.report
   lap(`building setback: ${JSON.stringify(setback.report)}`)
   // Shops on the ground floor of nearly every building along shop streets and main roads, as on 27th Main.
@@ -137,7 +142,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Military land is walled off first, so nothing is placed through its wall.
   addRestrictedWalls(collisions, data.restricted)
   // Empty plots beside the streets are built on, before anything else looks at the buildings.
-  const infill = fillEmptyPlots(data.buildings, data.roads, roadPieces, roadIndex, collisions, {
+  const infill = fillEmptyPlots(data.buildings, clearRoads, roadPieces, clearIndex, collisions, {
     parks: data.parks,
     areas: data.areas,
     fuel: FUEL_STATIONS,
@@ -171,6 +176,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The ground map: what every spot is (road, footpath, paved, building, park, plot...), which
   // everything placed from here on asks first (surfaceMap.ts).
   const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
+  // Under the flyovers: nothing tall, and no grass (bare earth, groundCover.ts). Not paved: the concrete
+  // shader over that much ground cost about 1.3 ms a frame on High.
+  for (const outline of flyoverFootprints(flyoverDecks)) surfaceMap.markOverhead(outline)
   worldSurface.map = surfaceMap
   // A tyre puncture shop on open ground beside the bunks that have some (fuelStationData.ts).
   const tyreShops = findTyreShops(fuel, (x, z) => surfaceMap.at(x, z) === Surface.Open, collisions)
@@ -182,7 +190,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const metro = planMetro({ data, landmarks: cityLandmarks, surface: surfaceMap, roads: roadIndex, collisions })
   worldSurface.report.metro = metro.report
   // The flyovers, as scenery overhead, with traffic on them and life underneath (transitPlacement.ts).
-  const flyovers = planFlyovers({ data, surface: surfaceMap, collisions })
+  const flyovers = planFlyovers({ decks: flyoverDecks, surface: surfaceMap, collisions })
   worldSurface.report.flyovers = flyovers.report
   // HSR Layout's bus stand by the BDA Complex, its bays showing the routes most stops have.
   const routeCounts = new Map<string, number>()

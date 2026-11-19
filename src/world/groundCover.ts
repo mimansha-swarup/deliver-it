@@ -75,6 +75,9 @@ export function createCoverMask(surface: SurfaceMap): THREE.DataTexture {
   }
   for (let i = 0; i < cover.length; i++) if (wear[i] < 255) cover[i] = (cover[i] * wear[i] + 127) / 255
 
+  // Under a flyover or the metro: no light and no rain reach it, so no grass, only bare earth.
+  for (let i = 0; i < cover.length; i++) if (surface.overhead[i]) cover[i] = 0
+
   // Maidans: a cricket or football ground is worn to the red earth, with dry grass left at its
   // edges, and bare all round the middle where the game is. Courts are drawn over their own ground.
   for (const pitch of surface.pitches) {

@@ -82,7 +82,9 @@ export type Metro = {
 }
 
 /** How long a station is along the line, and its concourse's and platforms' heights, in metres. */
-export const STATION = { length: 76, concourse: 6.4, platform: 14.6, roof: 20.5, minHalfWidth: 12, maxHalfWidth: 19 }
+export const STATION = { length: 76, concourse: 6.4, platform: 14.6, roof: 20.5, minHalfWidth: 12, maxHalfWidth: 19, narrowest: 9 }
+/** Half the viaduct deck's width and a little (landmarkPlacement's deck is 8.6 m wide). */
+const VIADUCT_HALF_WIDTH = 5.3
 /** A flight of stairs climbs this far along the ground to the concourse. */
 export const STAIR_RUN = 11
 
@@ -153,6 +155,8 @@ export function planMetro({
   metro.report.pillarsMeanOffset = ordered.length ? Math.round((ordered.reduce((sum, { off }) => sum + off, 0) / ordered.length) * 10) / 10 : 0
   if (ordered.length < 2) return metro
   metro.path = makePath(ordered.map(({ x, z }): GroundPoint => [x, z]))
+  // Nothing tall under the viaduct's deck.
+  for (const outline of pathFootprint(metro.path, VIADUCT_HALF_WIDTH)) surface.markOverhead(outline)
 
   // ---- Stations: OSM's subway stations near the line ----
   const stationNodes = data.transit.filter(
@@ -161,9 +165,44 @@ export function planMetro({
   const entranceNodes = data.transit.filter((feature) => feature.geometry.type === 'Point' && feature.properties.railway === 'subway_entrance')
   for (const node of stationNodes) {
     const [x, z] = toGround(node.geometry.coordinates as LonLat)
-    const { along, off } = projectOnPath(metro.path, x, z)
-    // On the line, and far enough from its ends for the whole station to stand on pillars.
-    if (off > 60 || along < STATION.length / 2 - 10 || along > metro.path.length - STATION.length / 2 + 10) continue
+    const { along: mapped, off } = projectOnPath(metro.path, x, z)
+    if (off > 60) continue
+    // Where the station stands: as near OSM's spot as it can, slid along the line by up to 64 m to
+    // where the most room is either side, clear of buildings (and far enough from the line's ends).
+    const roomAt = (at: number) => {
+      const p = pointOnPath(metro.path, at)
+      let room = STATION.maxHalfWidth
+      for (const side of [1, -1]) {
+        for (let a = -STATION.length / 2; a <= STATION.length / 2; a += 2) {
+          for (let out = 4; out <= room; out += 0.5) {
+            const px = p.x + p.dirX * a + p.dirZ * out * side
+            const pz = p.z + p.dirZ * a - p.dirX * out * side
+            if (surface.at(px, pz) === Surface.Building || isNearBuilding(collisions, px, pz, 0.3)) {
+              room = Math.min(room, out - 1)
+              break
+            }
+          }
+        }
+      }
+      return room
+    }
+    let along = -1
+    let bestRoom = -Infinity
+    for (const shift of [0, 8, -8, 16, -16, 24, -24, 32, -32, 40, -40, 48, -48, 56, -56, 64, -64]) {
+      const at = mapped + shift
+      if (at < STATION.length / 2 || at > metro.path.length - STATION.length / 2) continue
+      const room = roomAt(at)
+      // Room enough for the platforms' outer walls (8.5 m out) is enough: take the nearest such spot.
+      if (room >= 9.5) {
+        along = at
+        break
+      }
+      if (room > bestRoom) {
+        bestRoom = room
+        along = at
+      }
+    }
+    if (along < 0) continue
     const middle = pointOnPath(metro.path, along)
     if (!isInsideBounds(middle.x, middle.z, 20)) continue
     const station: MetroStation = {
@@ -177,15 +216,31 @@ export function planMetro({
     // Wide enough to reach over the road to the footpaths: where the road ends each side.
     const acrossX = middle.dirZ
     const acrossZ = -middle.dirX
+    // It stops short of buildings, all along its length, so it never stands over a house.
+    let room = STATION.maxHalfWidth
     for (const side of [1, -1]) {
+      let reach = STATION.minHalfWidth
       for (let out = 6; out < STATION.maxHalfWidth + 4; out += 0.5) {
         const ground = surface.at(middle.x + acrossX * out * side, middle.z + acrossZ * out * side)
         if (ground === Surface.Footpath || ground === Surface.Open || ground === Surface.Building) {
-          station.halfWidth = Math.min(STATION.maxHalfWidth, Math.max(station.halfWidth, out + 2))
+          reach = out + 1.5
           break
         }
       }
+      for (let a = -STATION.length / 2; a <= STATION.length / 2; a += 2) {
+        for (let out = 4; out <= reach; out += 0.5) {
+          const px = middle.x + middle.dirX * a + acrossX * out * side
+          const pz = middle.z + middle.dirZ * a + acrossZ * out * side
+          if (surface.at(px, pz) === Surface.Building || isNearBuilding(collisions, px, pz, 0.3)) {
+            reach = Math.min(reach, out - 1)
+            break
+          }
+        }
+      }
+      room = Math.min(room, reach)
+      station.halfWidth = Math.max(station.halfWidth, reach)
     }
+    station.halfWidth = Math.max(STATION.narrowest, Math.min(station.halfWidth, room))
     // Entrances: OSM's near this station, or else one each side, on the footpath. Each flight
     // climbs along the footpath, towards the station's middle, up to the concourse's edge.
     const nearby = entranceNodes
@@ -219,6 +274,19 @@ export function planMetro({
       const footAlong = end * (STATION.length / 2 + STAIR_RUN - 2)
       const fx = middle.x + middle.dirX * footAlong + acrossX * footOut * side
       const fz = middle.z + middle.dirZ * footAlong + acrossZ * footOut * side
+      // The flight, 4.2 m wide, must land on open ground, not on a house.
+      let blocked = false
+      for (let r = 0; r <= STAIR_RUN + 3 && !blocked; r += 1) {
+        for (const edge of [-2.1, 0, 2.1]) {
+          const px = fx - middle.dirX * end * r + acrossX * edge
+          const pz = fz - middle.dirZ * end * r + acrossZ * edge
+          if (surface.at(px, pz) === Surface.Building || isNearBuilding(collisions, px, pz, 0.2)) blocked = true
+        }
+      }
+      if (blocked) {
+        usedSides.set(side, count)
+        continue
+      }
       station.entrances.push({ x: fx, z: fz, climbX: -middle.dirX * end, climbZ: -middle.dirZ * end, side, label })
       // Solid: the flight's side walls.
       const topX = fx - middle.dirX * end * STAIR_RUN
@@ -234,6 +302,7 @@ export function planMetro({
       }
     }
     metro.stations.push(station)
+    for (const outline of pathFootprint(metro.path, station.halfWidth + 0.5, along - STATION.length / 2, along + STATION.length / 2)) surface.markOverhead(outline)
 
     // ---- Below: autos at the kerb by each entrance, bikes and carts in the median ----
     for (const entrance of station.entrances) {
@@ -301,10 +370,15 @@ export type Flyover = {
   heights: number[]
   width: number
   oneWay: boolean
+  /** Whether each end comes down to the ground over a ramp. */
+  startsLow: boolean
+  endsLow: boolean
 }
 
 export type Flyovers = {
   decks: Flyover[]
+  /** Barriers across the foot of each ramp, where a road at ground level meets it. */
+  barriers: { x: number; z: number; rotation: number; width: number }[]
   pillars: { x: number; z: number; rotation: number; height: number; width: number; poster: number }[]
   bikes: StiltVehicle[]
   stalls: { x: number; z: number; rotation: number; variation: number }[]
@@ -319,18 +393,36 @@ const FLYOVER_PILLAR_EVERY = 28
 /** Ground a pillar can stand on. */
 const PILLAR_GROUND = new Set<Surface>([Surface.Median, Surface.Open, Surface.Footpath, Surface.Park, Surface.Plot, Surface.Paved])
 
-export function planFlyovers({ data, surface, collisions }: { data: MapData; surface: SurfaceMap; collisions: CollisionWorld }): Flyovers {
-  const flyovers: Flyovers = { decks: [], pillars: [], bikes: [], stalls: [], report: {} }
-  // Which ends meet another flyover (so stay up) and which meet the ground (so ramp down).
+/** Below this height the deck can't be ridden under: a solid ramp, walled each side, in metres. */
+export const RIDE_UNDER = 3.6
+/** The decks are resampled every this many metres, so ramps slope smoothly and stand on the ground. */
+const DECK_STEP = 8
+/** The ground kept clear either side of a deck, past its edges, in metres. */
+const FOOTPRINT_MARGIN = 1.5
+
+/**
+ * The decks themselves, from the map alone: each flyover's line, resampled, its heights (up at its
+ * layer, down to the ground over a ramp at an end that meets a road at ground level) and width.
+ * Needed before the ground map, which paves their footprint.
+ */
+export function planFlyoverDecks(data: MapData): Flyover[] {
   const endKey = ([x, z]: GroundPoint) => `${Math.round(x)},${Math.round(z)}`
   const ends = new Map<string, number>()
   const lines = data.flyovers.map((road) => road.geometry.coordinates.map(toGround))
   for (const line of lines) for (const end of [line[0], line[line.length - 1]]) ends.set(endKey(end), (ends.get(endKey(end)) ?? 0) + 1)
-
+  const decks: Flyover[] = []
   data.flyovers.forEach((road, i) => {
     const line = lines[i]
     if (line.length < 2 || !line.some(([x, z]) => isInsideBounds(x, z, -150))) return
-    const path = makePath(line)
+    const raw = makePath(line)
+    // Every DECK_STEP metres along it.
+    const steps = Math.max(1, Math.ceil(raw.length / DECK_STEP))
+    const points: GroundPoint[] = []
+    for (let k = 0; k <= steps; k++) {
+      const { x, z } = pointOnPath(raw, (raw.length * k) / steps)
+      points.push([x, z])
+    }
+    const path = makePath(points)
     const top = FLYOVER_HEIGHT[Math.min(2, Math.max(1, Number(road.properties.layer ?? 1)))]
     const startsLow = (ends.get(endKey(line[0])) ?? 0) < 2
     const endsLow = (ends.get(endKey(line[line.length - 1])) ?? 0) < 2
@@ -341,14 +433,74 @@ export function planFlyovers({ data, surface, collisions }: { data: MapData; sur
       if (endsLow) height = Math.min(height, (top * (path.length - s)) / ramp)
       return height
     })
-    const deck: Flyover = { name: road.properties.name ?? 'Flyover', path, heights, width: Math.max(7, getRoadWidth(road)), oneWay: road.properties.oneway === 'yes' }
-    flyovers.decks.push(deck)
+    decks.push({ name: road.properties.name ?? 'Flyover', path, heights, width: Math.max(7, getRoadWidth(road)), oneWay: road.properties.oneway === 'yes', startsLow, endsLow })
+  })
+  return decks
+}
+
+/** A deck's ground footprint, as one rectangle a segment, its width and a margin either side. */
+export function flyoverFootprints(decks: Flyover[]): GroundPoint[][] {
+  const outlines: GroundPoint[][] = []
+  for (const deck of decks) outlines.push(...pathFootprint(deck.path, deck.width / 2 + FOOTPRINT_MARGIN))
+  return outlines
+}
+
+/** Rectangles `half` either side of each segment of a path, a little longer, so they overlap at the joints. */
+function pathFootprint(path: Path, half: number, from = 0, to = path.length): GroundPoint[][] {
+  const outlines: GroundPoint[][] = []
+  const { points } = path
+  for (let i = 1; i < points.length; i++) {
+    if (path.at[i] < from || path.at[i - 1] > to) continue
+    const [ax, az] = points[i - 1]
+    const [bx, bz] = points[i]
+    const length = Math.hypot(bx - ax, bz - az)
+    if (length < 0.1) continue
+    const dx = (bx - ax) / length
+    const dz = (bz - az) / length
+    const sx = dz * half
+    const sz = -dx * half
+    outlines.push([
+      [ax - dx + sx, az - dz + sz],
+      [bx + dx + sx, bz + dz + sz],
+      [bx + dx - sx, bz + dz - sz],
+      [ax - dx - sx, az - dz - sz],
+    ])
+  }
+  return outlines
+}
+
+export function planFlyovers({ decks, surface, collisions }: { decks: Flyover[]; surface: SurfaceMap; collisions: CollisionWorld }): Flyovers {
+  const flyovers: Flyovers = { decks, pillars: [], bikes: [], stalls: [], barriers: [], report: {} }
+
+  for (const deck of decks) {
+    const { path } = deck
+    // Nothing tall under the deck.
+    for (const outline of pathFootprint(path, deck.width / 2 + FOOTPRINT_MARGIN)) surface.markOverhead(outline)
+
+    // The ramps are solid: walled along both edges where the deck is too low to ride under, and a
+    // barrier across the foot, so a road at ground level ends at it rather than running into it.
+    for (let i = 1; i < path.points.length; i++) {
+      if (Math.min(deck.heights[i - 1], deck.heights[i]) >= RIDE_UNDER) continue
+      const [ax, az] = path.points[i - 1]
+      const [bx, bz] = path.points[i]
+      const length = Math.hypot(bx - ax, bz - az) || 1
+      const sx = ((bz - az) / length) * (deck.width / 2)
+      const sz = (-(bx - ax) / length) * (deck.width / 2)
+      for (const side of [1, -1]) addWall(collisions, [ax + sx * side, az + sz * side], [bx + sx * side, bz + sz * side], 0.4)
+    }
+    for (const [low, s] of [[deck.startsLow, 0.5], [deck.endsLow, path.length - 0.5]] as const) {
+      if (!low) continue
+      const { x, z, dirX, dirZ } = pointOnPath(path, s)
+      const half = deck.width / 2
+      addWall(collisions, [x + dirZ * half, z - dirX * half], [x - dirZ * half, z + dirX * half], 0.6)
+      flyovers.barriers.push({ x, z, rotation: Math.atan2(dirX, dirZ), width: deck.width })
+    }
 
     // Pillars along the raised part, where the ground allows; under the highest, life.
     let sinceStall = 60
     for (let s = FLYOVER_PILLAR_EVERY / 2; s < path.length; s += FLYOVER_PILLAR_EVERY) {
       const height = heightOnFlyover(deck, s)
-      if (height < 3.5) continue
+      if (height < RIDE_UNDER) continue
       const { x, z, dirX, dirZ } = pointOnPath(path, s)
       if (!isInsideBounds(x, z, 4)) continue
       const ground = surface.at(x, z)
@@ -357,7 +509,7 @@ export function planFlyovers({ data, surface, collisions }: { data: MapData; sur
         flyovers.pillars.push({ x, z, rotation, height, width: deck.width, poster: flyovers.pillars.length % 3 === 0 ? flyovers.pillars.length % 12 : -1 })
         addPost(collisions, x, z, 1.0)
       }
-      // In the shade either side of every third pillar, on open ground or a median: bikes, now and then a tea stall.
+      // In the shade either side of every third pillar, on open or paved ground or a median: bikes, now and then a tea stall.
       sinceStall += FLYOVER_PILLAR_EVERY
       if (Math.round(s / FLYOVER_PILLAR_EVERY) % 3 !== 0) continue
       for (const side of [-1, 1]) {
@@ -380,12 +532,13 @@ export function planFlyovers({ data, surface, collisions }: { data: MapData; sur
         }
       }
     }
-  })
+  }
   flyovers.report.decks = flyovers.decks.length
   flyovers.report.metres = Math.round(flyovers.decks.reduce((sum, deck) => sum + deck.path.length, 0))
   flyovers.report.pillars = flyovers.pillars.length
   flyovers.report.bikes = flyovers.bikes.length
   flyovers.report.stalls = flyovers.stalls.length
+  flyovers.report.rampBarriers = flyovers.barriers.length
   return flyovers
 }
 

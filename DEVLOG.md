@@ -9897,3 +9897,33 @@ Hosur Road 4.6 s, home 4.6 s. Planning 2.6 s, building the parts 1.3 s, the near
 On a cold first visit add the download, now 1.2 MB of map instead of 15.7 MB.
 
 Screenshots in `world-pass.local/shots/report`.
+
+## 2026-11-19: Entry 185, flyovers and the metro off the houses, ramps solid
+
+### What was wrong
+- **Houses under the flyovers.** Taking the flyovers out of the roads (Entry 183) also took them
+  out of everything that keeps buildings off roads: the setback kept houses standing in their path,
+  and the infill built new ones there, as the ground looked empty.
+- **Grass on the ramps.** Their footprint was open ground on the surface map, so grass and weeds
+  grew there and showed through where the decks come down to the ground.
+- **Riding through them.** Nothing on a ramp was solid.
+- **Stations over houses.** A station reached out to the footpath plus 2 m, measured at its middle only.
+
+### What I did
+- The setback and the infill see the flyovers as roads (`clearRoads` in World.tsx), so nothing is kept
+  or built under one. 1,012 points along the decks: none over a building.
+- **An overhead layer on the surface map** (`overhead`, `markOverhead`): under every flyover and the
+  metro's deck and stations, no tree, lamp post or building can stand, and there's no grass
+  (groundCover.ts): bare earth. I tried paving it in concrete first; over that much ground the concrete
+  shader cost about 1.3 ms a frame on High (62 fps against 110 back to back), so bare earth it is.
+- **Solid ramps** (transitPlacement.ts): decks are resampled every 8 m; where a deck is under 3.6 m,
+  too low to ride under, it's a solid embankment between retaining walls, walled each side, with a
+  row of striped barriers across its foot. Riding at four ramps' feet, the rider stops 1.6 m short
+  of the barrier each time.
+- **Stations keep off buildings**: each slides along the line, up to 64 m from OSM's spot, to the
+  nearest place with room either side, and stops its width short of the buildings all along its
+  length; a stair that would land on a house is left out. Hongasandra (both stairs) and Bommanahalli
+  (one): no building under either.
+
+### Performance (Hosur Road, High, riding; the machine was busy with the hosted game)
+110 to 115 fps, 1 frame over 20 ms, worst 33 to 42 ms, 3.5 ms of work a frame.

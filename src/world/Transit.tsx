@@ -8,7 +8,7 @@ import { StiltParking } from './StiltParking'
 import { box, colored, merge } from './simpleShapes'
 import { createPosterAtlas, POSTER_COLUMNS, POSTER_ROWS } from './posters'
 import { createBusGeometry } from '../traffic/bus'
-import { BUS_STAND, heightOnFlyover, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
+import { BUS_STAND, heightOnFlyover, RIDE_UNDER, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
 
 /*
  * Draws the metro planned in transitPlacement.ts: the tracks and overhead line on the viaduct's deck, the
@@ -341,6 +341,11 @@ function createDeckGeometry(deck: Flyover) {
     const yaw = Math.atan2(bx - ax, bz - az)
     const place = (geometry: THREE.BufferGeometry) => parts.push(geometry.rotateX(-pitch).rotateY(yaw).translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2))
     place(box([deck.width, 1.2, length], [0, -0.6, 0], CONCRETE))
+    // Where it's too low to ride under, the ramp is a solid embankment between retaining walls.
+    const fill = (ay + by) / 2 - 0.9
+    if (Math.min(ay, by) < RIDE_UNDER && fill > 0.05) {
+      parts.push(box([deck.width - 0.1, fill, Math.max(0.5, flat)], [0, fill / 2, 0], CONCRETE_DARK).rotateY(yaw).translate((ax + bx) / 2, 0, (az + bz) / 2))
+    }
     place(box([deck.width - 0.7, 0.05, length], [0, 0.025, 0], ASPHALT))
     for (const side of [-1, 1]) place(box([0.35, 0.95, length], [side * (deck.width / 2 - 0.17), 0.47, 0], CONCRETE_DARK))
   }
@@ -492,9 +497,20 @@ function FlyoverTraffic({ decks }: { decks: Flyover[] }) {
   )
 }
 
+/** A row of striped crash barriers across the foot of a ramp. */
+function createRampBarrier({ x, z, rotation, width }: Flyovers['barriers'][number]) {
+  const parts: THREE.BufferGeometry[] = []
+  const blocks = Math.max(2, Math.round(width / 1.2))
+  for (let i = 0; i < blocks; i++) {
+    const across = (i + 0.5) * (width / blocks) - width / 2
+    parts.push(box([width / blocks - 0.08, 0.85, 0.6], [across, 0.42, 0], i % 2 === 0 ? YELLOW : '#26262a'))
+  }
+  return parts.map((part) => part.rotateY(rotation).translate(x, 0, z))
+}
+
 function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   const structure = useMemo(() => {
-    const parts = [...flyovers.decks.flatMap(createDeckGeometry), ...flyovers.pillars.flatMap(createFlyoverPillar)]
+    const parts = [...flyovers.decks.flatMap(createDeckGeometry), ...flyovers.pillars.flatMap(createFlyoverPillar), ...flyovers.barriers.flatMap(createRampBarrier)]
     return parts.length ? merge(parts) : null
   }, [flyovers])
   const posters = useMemo(() => createPillarPosters(flyovers.pillars), [flyovers])
