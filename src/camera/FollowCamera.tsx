@@ -70,6 +70,8 @@ const FOOT_LOOK_AHEAD = 3
 const FOOT_LOOK_HEIGHT = 1.3
 /** In a room, the camera keeps this far inside its walls and under its ceiling, in metres. */
 const ROOM_MARGIN = 0.35
+/** Nearer the rider than this, in a room, the camera climbs. */
+const ROOM_CLOSE = 1.7
 
 /** Walks backwards from the scooter and returns how far the camera can go. */
 function findClearDistance(
@@ -216,6 +218,9 @@ export function FollowCamera({
     if (indoors) {
       camera.position.x = Math.max(liveRoom.x - ROOM.width / 2 + ROOM_MARGIN, Math.min(liveRoom.x + ROOM.width / 2 - ROOM_MARGIN, camera.position.x))
       camera.position.z = Math.max(liveRoom.z - ROOM.depth / 2 + ROOM_MARGIN, Math.min(liveRoom.z + ROOM.depth / 2 - ROOM_MARGIN, camera.position.z))
+      // Backed against a wall, it rises to look over the rider's helmet rather than sit inside it.
+      const behind = Math.hypot(camera.position.x - focusX, camera.position.z - focusZ)
+      if (behind < ROOM_CLOSE) camera.position.y += (ROOM_CLOSE - behind) * 0.75
       camera.position.y = Math.min(camera.position.y, liveRoom.floorY + ROOM.height - ROOM_MARGIN)
     }
 

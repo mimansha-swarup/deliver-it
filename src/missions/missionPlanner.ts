@@ -13,6 +13,8 @@ import {
 } from '../world/roadGraph'
 import { isInsideBounds } from '../world/worldUtils'
 import { createOrderStory, type OrderStory } from './orderStory'
+import { doorsteps, findDoorstep } from '../game/doorsteps'
+import type { DoorPlan, DoorScene } from '../game/gameTypes'
 
 export type MissionPlanner = {
   collisions: CollisionWorld
@@ -124,6 +126,50 @@ export function createMissionPlanner(
     return { x: graph.xs[node], z: graph.zs[node], rotation: 0, look: random(), tint: random() }
   }
 
+  /** Made-up names for blocks of flats, by where they are, so one building keeps its name. */
+  const BUILDINGS = ['Malligai Nilaya', 'Sampige Residency', 'Kaveri Enclave', 'Tunga Heights', 'Nandi Apartments', 'Gulmohar Court', 'Honge Homes', 'Parijata Towers']
+  const buildingName = (x: number, z: number) => BUILDINGS[Math.abs(Math.round(x * 7 + z * 13)) % BUILDINGS.length]
+  const SCENES: DoorScene[] = ['plain', 'plain', 'plain', 'dog', 'outside', 'tryOn']
+  const WEARABLE = /saree|blazer|dress|sherwani|sneakers|tee|kurta|jeans|hoodie|shoes|shorts|shirt|kurti|pyjamas/i
+
+  /**
+   * Where the order is handed over: the front door nearest the stop on the road (a house's gate or
+   * door, a flat upstairs, or a flat in the gated society), and where the customer comes out to. With
+   * no door near, they wait at the kerb as before.
+   */
+  const findDoor = (node: number, story: OrderStory): { waiting: WaitingCustomer; door: DoorPlan; extraSeconds: number } => {
+    const kerb = findWaitingSpot(node)
+    const otp = String(1000 + Math.floor(random() * 9000))
+    const found = findDoorstep(graph.xs[node], graph.zs[node])
+    const base = { floor: 0, flat: '', building: '', otp, liftWorks: true, atGate: false }
+    if (!found) return { waiting: kerb, door: { kind: 'kerb', x: kerb.x, z: kerb.z, outX: 0, outZ: 1, scene: 'plain', ...base }, extraSeconds: 12 }
+    const { outX, outZ } = found
+    let scene = pickRandom(SCENES, random)
+    // Only clothes and shoes are tried on; Bruno's owner has a dog whatever the dice say.
+    if (scene === 'tryOn' && !WEARABLE.test(story.item)) scene = 'plain'
+    if (/Bruno/.test(story.note)) scene = 'dog'
+    if (found.apartment) {
+      const society = doorsteps.society?.door === found
+      const floor = 1 + Math.floor(random() * Math.max(1, Math.min(found.floors, 6) - 0.001))
+      const flat = `${floor}0${1 + Math.floor(random() * 3)}`
+      const building = society ? (doorsteps.society?.name ?? '') : buildingName(found.x, found.z)
+      return {
+        // Their place upstairs is set when the rider gets to the floor (Errand.tsx): until then, nobody is out.
+        waiting: { ...kerb, x: found.x - outX * 0.2, z: found.z - outZ * 0.2, rotation: Math.atan2(outX, outZ) },
+        door: { kind: society ? 'society' : 'flat', x: found.x, z: found.z, outX, outZ, scene: scene === 'dog' ? 'plain' : scene, ...base, floor, flat, building, liftWorks: random() > 0.25 },
+        extraSeconds: (society ? 75 : 50) + floor * 4,
+      }
+    }
+    // A house: the bell is at its compound gate if it has one, else at the front door. The customer comes to it from inside.
+    const at = found.gate ?? found
+    const inside = found.gate ? 0.9 : -0.25
+    return {
+      waiting: { ...kerb, x: at.x - outX * inside, z: at.z - outZ * inside, rotation: Math.atan2(outX, outZ) },
+      door: { kind: 'house', x: at.x + outX * (found.gate ? 0.7 : 0.9), z: at.z + outZ * (found.gate ? 0.7 : 0.9), outX, outZ, scene, ...base, atGate: found.gate !== null },
+      extraSeconds: 25,
+    }
+  }
+
   const customerStop = (node: number, story: OrderStory) => {
     const road = graph.roadNames[node]
     return createStop(
@@ -177,18 +223,22 @@ export function createMissionPlanner(
     const story = createOrderStory(random, period?.id)
     let secondStory = createOrderStory(random, period?.id)
     if (secondStory.customer === story.customer) secondStory = createOrderStory(random, period?.id)
+    const firstDoor = findDoor(customer, story)
+    const secondDoor = second === null ? null : findDoor(second, secondStory)
     const nextDrops: Drop[] =
-      second === null
+      second === null || !secondDoor
         ? []
-        : [{ customer: customerStop(second, secondStory), waiting: findWaitingSpot(second), story: secondStory }]
+        : [{ customer: customerStop(second, secondStory), waiting: secondDoor.waiting, door: secondDoor.door, story: secondStory }]
     lastCustomer = second ?? customer
 
     let routeLength = fromStore.distance[start] + fromStore.distance[customer]
     if (second !== null) routeLength += getRouteField(customer).distance[second]
+    // The ride, plus the walking at each end: into the dark store and out, and to each door.
+    const walking = MISSION_RULES.pickupWalkSeconds + firstDoor.extraSeconds + (secondDoor?.extraSeconds ?? 0)
     const normalTime = Math.max(
       MISSION_RULES.minOnTimeSeconds,
       Math.ceil(routeLength / MISSION_RULES.onTimeRouteSpeed),
-    )
+    ) + walking
 
     return {
       kind,
@@ -203,7 +253,8 @@ export function createMissionPlanner(
         MISSION_RULES.pickupColor,
       ),
       customer: customerStop(customer, story),
-      waiting: findWaitingSpot(customer),
+      waiting: firstDoor.waiting,
+      door: firstDoor.door,
       story,
       onTimeSeconds: kind === 'rush' ? Math.ceil(normalTime * MISSION_RULES.rushTimeShare) : normalTime,
       routeLength: Math.round(routeLength),

@@ -46,6 +46,33 @@ export type WaitingCustomer = {
   tint: number
 }
 
+/** What happens at the door: nothing special, a dog barks first, "keep it outside", or they try it on. */
+export type DoorScene = 'plain' | 'dog' | 'outside' | 'tryOn'
+
+/**
+ * Where an order is handed over. `kerb`: the customer waits by the road, as when no door is near.
+ * `house`: at the gate or the front door, after ringing the bell. `flat`: up the stairs or the lift
+ * to their floor. `society`: a flat in the gated society, past the guard (the OTP, the register).
+ */
+export type DoorPlan = {
+  kind: 'kerb' | 'house' | 'flat' | 'society'
+  /** Where the bell is rung (a house) or the building is entered (flats), and the way the door faces. */
+  x: number
+  z: number
+  outX: number
+  outZ: number
+  /** Whether the bell is at a compound gate rather than the front door itself. */
+  atGate: boolean
+  /** A flat's floor and number, and its building's name. */
+  floor: number
+  flat: string
+  building: string
+  scene: DoorScene
+  /** The four digits the guard asks for. */
+  otp: string
+  liftWorks: boolean
+}
+
 /**
  * A standard order; a rush order, with a tighter timer and a bigger on-time
  * bonus; or a double drop, with two customers on the one trip.
@@ -53,7 +80,7 @@ export type WaitingCustomer = {
 export type OrderKind = 'standard' | 'rush' | 'double'
 
 /** A customer to deliver to, the person waiting there, and what they ordered. */
-export type Drop = { customer: MissionStop; waiting: WaitingCustomer; story: OrderStory }
+export type Drop = { customer: MissionStop; waiting: WaitingCustomer; story: OrderStory; door: DoorPlan }
 
 export type Mission = {
   kind: OrderKind
@@ -62,6 +89,8 @@ export type Mission = {
   /** The customer being delivered to now. */
   customer: MissionStop
   waiting: WaitingCustomer
+  /** The door it's delivered to (game/doorsteps.ts). */
+  door: DoorPlan
   /** Who the order is for and what's in it. */
   story: OrderStory
   /** Customers still to come after this one, on a double drop. */

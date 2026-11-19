@@ -1,3 +1,4 @@
+import type { Door } from '../game/doorsteps'
 import * as THREE from 'three'
 import { POSTER_ASPECT, POSTER_COLUMNS, POSTER_COUNT, POSTER_ROWS } from './posters'
 import { FLOOR_HEIGHT, getFloors, getKitColor, hashString, hasStilts } from './buildingData'
@@ -516,6 +517,8 @@ export type HouseKit = {
   hedges: Prop[]
   /** Each compound gate: its middle and width, in metres, so the kerb in front can be lowered for vehicles. */
   gates: Gate[]
+  /** Every house's and block of flats' front door, for deliveries (game/doorsteps.ts). */
+  doors: Door[]
 }
 
 /** `house`: a family house's gate, rather than a block of flats' or a school's. */
@@ -572,6 +575,7 @@ export function planHouseKit(
     kolams: plan.kolams,
     hedges: plan.hedges,
     gates: plan.gates,
+    doors: plan.doors,
   }
 }
 
@@ -596,6 +600,7 @@ function dressBuildings(
   const kolams: Prop[] = []
   const hedges: Prop[] = []
   const gates: Gate[] = []
+  const doors: Door[] = []
   // Compound walls go into the collision world only after every house is built, so one
   // house's wall can't make its neighbour think its own walls are hidden.
   const compoundWalls: [GroundPoint, GroundPoint][] = []
@@ -678,6 +683,21 @@ function dressBuildings(
       ? front.length / 2
       : (frontWindows.find((along) => along < balconyFrom || along > balconyTo) ??
         (balconyFrom > DOOR.width + 0.4 ? balconyFrom / 2 : front.length * 0.25))
+    // Where a delivery comes to: just outside the front door (a block of flats' is the middle of its front).
+    const door: Door | null =
+      !isShop && front.exposed
+        ? {
+            x: front.start[0] + front.alongX * doorAlong + front.outX * 0.6,
+            z: front.start[1] + front.alongZ * doorAlong + front.outZ * 0.6,
+            outX: front.outX,
+            outZ: front.outZ,
+            floors,
+            apartment: isApartment,
+            gate: null,
+            area: rectangularity(outline).area,
+          }
+        : null
+    if (door) doors.push(door)
     if (!isShop && !isApartment) {
       box(kit, front, [doorAlong - DOOR.width / 2 - DOOR.frame, doorAlong + DOOR.width / 2 + DOOR.frame], [0, 0.03], [0, DOOR.height + DOOR.frame], DOOR_FRAME_COLOR)
       box(kit, front, [doorAlong - DOOR.width / 2, doorAlong + DOOR.width / 2], [0.03, 0.06], [0, DOOR.height], DOOR_COLOR)
@@ -918,6 +938,7 @@ function dressBuildings(
         width: gateTo - gateFrom,
         house: !isApartment,
       })
+      if (door) door.gate = { x: gates[gates.length - 1].x, z: gates[gates.length - 1].z }
 
       // A poster on the street side of the wall, beside the gate, now and then.
       const wallFace = yard + COMPOUND.thickness + 0.006
@@ -1019,7 +1040,7 @@ function dressBuildings(
     }
   }
 
-  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, hedges, compoundWalls, gates }
+  return { byChunk, tanks, shopUnits, stiltParking, creepers, kolams, hedges, compoundWalls, gates, doors }
 }
 
 type HouseStyle = {

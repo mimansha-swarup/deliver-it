@@ -13,6 +13,8 @@ import { createPerson } from '../traffic/person'
 import type { Pedestrian } from '../traffic/trafficLogic'
 import { isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { liveRoom } from '../game/rooms'
+import { errandLive } from '../game/doorsteps'
+import { PAVEMENT_HEIGHT } from '../world/surface'
 import { ROOM_SPOTS } from '../world/roomShapes'
 import { createPrintTexture, SHIRT_COLOR } from '../vehicle/shirtPrint'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
@@ -240,6 +242,9 @@ function getStandingSpot(boxX: number, boxZ: number, person: Pedestrian): [numbe
 }
 
 const HELD = { forward: 0.34, height: 1.06 }
+/** How long a customer is inside trying something on, in seconds, and what they say going in. */
+const TRY_ON_SECONDS = 3.8
+const TRYING_LINES = ['Wait, wait! Trying them on. One minute!', 'Hold on, let me try it. If it doesn’t fit you take it back, okay?', 'One second, I’ll just check the size!']
 
 /** Where the parcel is before it's handed over: on top of the vehicle's box, or held in front of the rider on foot. */
 function carrier(state: ScooterState): { x: number; y: number; z: number } {
@@ -305,6 +310,9 @@ export function Handoff({
 
   const shownPhase = useRef<MissionPhase>('toPickup')
   const shownWaiting = useRef<WaitingCustomer | null>(null)
+  const shownAt = useRef<typeof errandLive.customerAt>(null)
+  const saidTrying = useRef(0)
+  const confettiDone = useRef(0)
   const phaseTime = useRef(0)
   const arrivedAt = useRef<number | null>(null)
   const confettiAge = useRef(Infinity)
@@ -333,12 +341,20 @@ export function Handoff({
     const customer = customers[0]
     const parcelMesh = parcel.current
 
-    // A new order means a new person waiting somewhere else.
+    // A new order means a new person waiting somewhere else: at the order's own spot (a gate, a front
+    // door, the kerb), or where the errand has put them (outside their flat, upstairs).
     const waiting = game.mission?.waiting ?? null
-    if (waiting !== shownWaiting.current) {
+    const moved = errandLive.customerAt
+    if (waiting !== shownWaiting.current || moved !== shownAt.current) {
       shownWaiting.current = waiting
-      if (waiting) placeCustomer(customer, waiting)
+      shownAt.current = moved
+      if (waiting) placeCustomer(customer, moved ? { ...waiting, x: moved.x, z: moved.z, rotation: moved.rotation } : waiting)
+      // Upstairs they stand on that floor, not on the street's footpath.
+      customer.deck = moved?.floorY != null ? 1 : undefined
     }
+    const home = moved ?? waiting
+    const floor = moved?.floorY != null ? moved.floorY - PAVEMENT_HEIGHT : 0
+    const scene = errandLive.scene
 
     if (game.phase !== shownPhase.current) {
       shownPhase.current = game.phase
@@ -390,8 +406,8 @@ export function Handoff({
     staff.forEach((member, index) => {
       if (index === active && game.phase === 'collecting') return
       const store = stores[index]
-      const home = walkTo(member, store.staffX, store.staffZ, STROLL_SPEED, dt)
-      if (home) {
+      const atPost = walkTo(member, store.staffX, store.staffZ, STROLL_SPEED, dt)
+      if (atPost) {
         const riderHeading = Math.atan2(state.x - member.x, state.z - member.z)
         const nearby = Math.hypot(state.x - member.x, state.z - member.z) < WATCH_RANGE
         turnTowards(member, nearby ? riderHeading : store.rotation, dt)
@@ -399,9 +415,10 @@ export function Handoff({
     })
 
     // --- At the customer's ---
+    // Seen once they've come to the door (the bell, Errand.tsx); never, when they asked for it to be left outside.
     const waitingForRider = game.phase === 'toCustomer'
-    const onShow = waitingForRider || game.phase === 'handingOver' || game.phase === 'delivered'
-    setLift(customer, onShow ? 0 : HIDDEN_LIFT)
+    const onShow = (waitingForRider || game.phase === 'handingOver' || game.phase === 'delivered') && errandLive.customerOut && scene !== 'outside'
+    setLift(customer, onShow ? floor : HIDDEN_LIFT)
 
     // Waving: as the rider comes near, and while the parcel reaches them, then not on the way home.
     const riderDistance = Math.hypot(state.x - customer.x, state.z - customer.z)
@@ -416,7 +433,20 @@ export function Handoff({
       if (nearby && waiting) turnTowards(customer, heading, dt)
     }
 
-    if (game.phase === 'handingOver') {
+    if (game.phase === 'handingOver' && scene === 'outside' && home) {
+      // "Keep it outside": the parcel is set down at the door, and that's that.
+      const since = phaseTime.current
+      const down = new THREE.Vector3(home.x, floor + PAVEMENT_HEIGHT + 0.14, home.z)
+      if (since < TIMES.lift + TIMES.flight) {
+        const progress = since / (TIMES.lift + TIMES.flight)
+        const eased = progress * progress * (3 - 2 * progress)
+        parcelAt = boxTop.clone().lerp(down, eased)
+        parcelAt.y += Math.sin(progress * Math.PI) * 0.25
+      } else {
+        parcelAt = down
+        if (since >= TIMES.lift + TIMES.flight + 0.9) game.finishHandoff()
+      }
+    } else if (game.phase === 'handingOver') {
       const [spotX, spotZ] = getStandingSpot(boxX, boxZ, customer)
       const distance = Math.hypot(spotX - customer.x, spotZ - customer.z)
       const speed = Math.max(WALK_SPEED, distance / LONGEST_WALK)
@@ -443,14 +473,29 @@ export function Handoff({
           parcelSpin = (1 - eased) * SPIN
         } else {
           parcelAt = hands
-          const joy = since - TIMES.lift - TIMES.flight
-
-          if (confettiAge.current === Infinity) {
-            confettiAge.current = 0
-            burstConfetti(confetti, hands.x, hands.y + 0.3, hands.z)
+          // "Wait, trying them on": they take it inside for a moment before the verdict.
+          const trying = scene === 'tryOn' ? TRY_ON_SECONDS : 0
+          const joy = since - TIMES.lift - TIMES.flight - trying
+          if (joy < 0) {
+            if (saidTrying.current !== game.missionNumber && joy > -trying + 0.3) {
+              saidTrying.current = game.missionNumber
+              game.postChat('customer', game.mission?.story.customer ?? 'Customer', TRYING_LINES[Math.floor(Math.random() * TRYING_LINES.length)])
+              window.setTimeout(() => useGameStore.getState().postChat('customer', game.mission?.story.customer ?? 'Customer', 'Perfect fit! I’m keeping it.'), (trying - 0.4) * 1000)
+            }
+            // Gone in to try it; back out by the end.
+            if (joy > -trying + 0.5 && joy < -0.45) {
+              setLift(customer, HIDDEN_LIFT)
+              parcelAt = null
+            }
+          } else {
+            if (confettiAge.current === Infinity && confettiDone.current !== game.missionNumber) {
+              confettiDone.current = game.missionNumber
+              confettiAge.current = 0
+              burstConfetti(confetti, hands.x, hands.y + 0.3, hands.z)
+            }
+            setLift(customer, floor + Math.abs(Math.sin(joy * HOP_RATE)) * HOP_HEIGHT)
+            if (joy >= TIMES.joy) game.finishHandoff()
           }
-          setLift(customer, Math.abs(Math.sin(joy * HOP_RATE)) * HOP_HEIGHT)
-          if (joy >= TIMES.joy) game.finishHandoff()
         }
       }
     }
@@ -463,11 +508,14 @@ export function Handoff({
     // Carried in the rider's hands while they walk it from the counter, and on to the door.
     if (game.phase === 'toCustomer' && isAfoot(state)) parcelAt = boxTop
 
-    if (game.phase === 'delivered' && shownWaiting.current) {
-      // Back home, with their parcel.
-      setLift(customer, 0)
-      const home = walkTo(customer, shownWaiting.current.x, shownWaiting.current.z, STROLL_SPEED, dt)
-      if (!home) parcelAt = handsOf(customer)
+    if (game.phase === 'delivered' && home) {
+      if (scene === 'outside') parcelAt = new THREE.Vector3(home.x, floor + PAVEMENT_HEIGHT + 0.14, home.z)
+      else {
+        // Back home, with their parcel.
+        setLift(customer, floor)
+        const back = walkTo(customer, home.x, home.z, STROLL_SPEED, dt)
+        if (!back) parcelAt = handsOf(customer)
+      }
     }
 
     if (parcelMesh) {

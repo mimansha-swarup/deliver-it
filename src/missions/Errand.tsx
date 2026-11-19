@@ -5,18 +5,24 @@ import { useGameStore } from '../game/gameStore'
 import { clearSpots, setInterest, setSpot } from '../game/interact'
 import { liveMission } from '../game/livePlayer'
 import { theItem } from '../game/objective'
-import { liveRoom } from '../game/rooms'
+import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
+import { errandLive } from '../game/doorsteps'
+import type { DoorPlan } from '../game/gameTypes'
+import { playBarks, playDoorbell, playLift, playStairs } from '../audio/doorSounds'
 import { setStep } from '../ui/uiState'
 import { isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import type { DarkStore } from '../world/darkStore'
-import { enterRoom, ROOM_SPOTS } from '../world/roomShapes'
+import { enterRoom, planRoom, ROOM_SPOTS } from '../world/roomShapes'
 
 /*
  * An order's steps on foot. Riding there is the mission tracker's; from the kerb on it's this:
  *
  *   pickup    park by the dark store, walk in, collect the bag from the counter (E), walk out
- *   delivery  park by the address, walk to the customer and hand it over (E)
+ *   delivery  park by the address and walk to the door: a house's gate or front door (ring the bell,
+ *             wait for them, hand over), or a flat (in at the lobby, the lift or the stairs to the
+ *             floor, the bell at their door). In the gated society the guard comes first (item 13).
+ *             With no door near the stop, the customer waits at the kerb.
  *
  * It keeps the interact spots (game/interact.ts) and the objective's step (ui/uiState.ts) in line
  * with where the rider is, a few times a second. Nothing here draws anything.
@@ -29,10 +35,18 @@ const PARK_RANGE = 45
 const STORE_DOOR_OUT = 1.1
 const DOOR_REACH = 2.2
 
+/** How long after the bell the customer comes to the door, by what's going on behind it, in milliseconds. */
+const WAIT_MS = { plain: 1700, tryOn: 1700, dog: 3600, outside: 2600 }
+const DOG_LINES = ['Bruno! Quiet! Sorry, he only barks, he never bites. Coming!', 'Tiger, inside! Inside! One minute, I am tying him.', 'Don’t mind the dog, he is just saying hello. Coming!']
+const OUTSIDE_LINES = ['I’m on a call, please keep it outside the door. Thank you!', 'Baby is sleeping, don’t ring again please! Just leave it at the door.', 'Hands are full in the kitchen. Keep it outside na, I’ll take it.']
+
+type Stage = { door: DoorPlan | null; step: 'approach' | 'rung' | 'out'; at: number }
+
 const vehicleWord = () => (liveVehicle.spec.size.cab ? liveVehicle.spec.name : liveVehicle.spec.kind.toLowerCase().includes('bicycle') ? 'bicycle' : liveVehicle.spec.name)
 
 export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; stores: DarkStore[] }) {
   const since = useRef(0)
+  const stage = useRef<Stage>({ door: null, step: 'approach', at: 0 })
 
   useEffect(
     () => () => {
@@ -57,6 +71,10 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
       clearSpots('errand:')
       setInterest('errand', null)
       setStep(null)
+      if (!mission) {
+        stage.current = { door: null, step: 'approach', at: 0 }
+        errandLive.customerAt = null
+      }
       return
     }
 
@@ -100,26 +118,148 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     // On the way to the customer.
     setSpot('errand:door', null)
     setSpot('errand:counter', null)
-    const { waiting, story } = mission
-    const away = Math.hypot(waiting.x - here.x, waiting.z - here.z)
-    setInterest('errand', { x: waiting.x, z: waiting.z, reach: PARK_RANGE })
-    if (liveRoom.kind === 'store') {
+    const { waiting, story, door } = mission
+    // A new door (a new order, or a double drop's second customer): the errand starts again.
+    if (stage.current.door !== door) {
+      stage.current = { door, step: 'approach', at: 0 }
+      errandLive.customerOut = door.kind === 'kerb'
+      errandLive.customerAt = null
+      errandLive.scene = door.scene
+      errandLive.cleared = false
+    }
+    const away = Math.hypot(door.x - here.x, door.z - here.z)
+    setInterest('errand', { x: door.x, z: door.z, reach: PARK_RANGE })
+    if (liveRoom.kind === 'store' || liveRoom.kind === 'chai') {
       setStep(`Got it. Back out to your ${vehicleWord()}`)
-      setSpot('errand:hand', null)
+      clearSpots('errand:')
       return
     }
-    setSpot('errand:hand', {
-      x: waiting.x,
-      z: waiting.z,
-      radius: 2.6,
-      priority: 2,
-      text: 'Hand over',
-      run: () => useGameStore.getState().arriveAtStop(liveMission.elapsed),
-    })
-    if (afoot) setStep(away < PARK_RANGE ? `Walk up to ${story.customer} and hand it over` : `Get back on your ${vehicleWord()}`)
-    else setStep(away < PARK_RANGE ? `Park and walk ${theItem(story.item)} to ${story.customer}` : null)
+    const now = performance.now()
+    const say = (text: string) => useGameStore.getState().postChat('customer', story.customer, text)
+    const handOver = () => useGameStore.getState().arriveAtStop(liveMission.elapsed)
+
+    // The bell, the wait, and the hand-over, wherever the door is: on the street, or along a corridor upstairs.
+    const atTheDoor = (bell: { x: number; z: number }, room: string | undefined) => {
+      const current = stage.current
+      if (current.step === 'approach') {
+        setSpot('errand:hand', null)
+        setSpot('errand:bell', {
+          ...bell,
+          radius: 2.1,
+          room,
+          priority: 2,
+          text: 'Ring the bell',
+          run: () => {
+            playDoorbell()
+            stage.current = { ...current, step: 'rung', at: performance.now() }
+            if (door.scene === 'dog') {
+              window.setTimeout(() => playBarks(4), 500)
+              window.setTimeout(() => say(DOG_LINES[Math.floor(Math.random() * DOG_LINES.length)]), 1400)
+            } else if (door.scene === 'outside') window.setTimeout(() => say(OUTSIDE_LINES[Math.floor(Math.random() * OUTSIDE_LINES.length)]), 900)
+            else window.setTimeout(() => say('Coming, coming! One second.'), 700)
+          },
+        })
+        setStep(room ? `Ring the bell at flat ${door.flat}` : `Ring the bell at ${story.customer}’s ${door.atGate ? 'gate' : 'door'}`)
+        return
+      }
+      setSpot('errand:bell', null)
+      if (current.step === 'rung') {
+        setStep(door.scene === 'dog' ? 'Wait: the dog is being called off' : `Wait for ${story.customer}`)
+        if (now - current.at > WAIT_MS[door.scene]) {
+          stage.current = { ...current, step: 'out' }
+          errandLive.customerOut = true
+        }
+        return
+      }
+      const leaveIt = door.scene === 'outside'
+      setSpot('errand:hand', { ...bell, radius: 2.6, room, priority: 2, text: leaveIt ? 'Leave it at the door' : 'Hand over', run: handOver })
+      setStep(leaveIt ? 'Leave the order at the door' : `Hand ${theItem(story.item)} to ${story.customer}`)
+    }
+
+    if (door.kind === 'kerb') {
+      setSpot('errand:hand', { x: waiting.x, z: waiting.z, radius: 2.6, priority: 2, text: 'Hand over', run: handOver })
+      if (afoot) setStep(away < PARK_RANGE ? `Walk up to ${story.customer} and hand it over` : `Get back on your ${vehicleWord()}`)
+      else setStep(away < PARK_RANGE ? `Park and walk ${theItem(story.item)} to ${story.customer}` : null)
+      return
+    }
+
+    if (door.kind === 'house') {
+      if (!afoot) {
+        clearSpots('errand:')
+        setStep(away < PARK_RANGE ? `Park and walk to ${story.customer}’s ${door.atGate ? 'gate' : 'door'}` : null)
+        return
+      }
+      if (away > PARK_RANGE * 1.5) {
+        clearSpots('errand:')
+        setStep(`Get back on your ${vehicleWord()}`)
+        return
+      }
+      atTheDoor(door, undefined)
+      return
+    }
+
+    // A flat: in at the building's door, up by the lift or the stairs, along the corridor to their door.
+    const name = door.building
+    if (!liveRoom.kind) {
+      setSpot('errand:bell', null)
+      setSpot('errand:hand', null)
+      if (!afoot) {
+        setSpot('errand:lobby', null)
+        setStep(away < PARK_RANGE ? `Park and walk in to ${name}: flat ${door.flat}` : null)
+        return
+      }
+      const blocked = door.kind === 'society' && !errandLive.cleared
+      setSpot('errand:lobby', {
+        x: door.x,
+        z: door.z,
+        radius: DOOR_REACH,
+        text: 'Go in',
+        run: () => {
+          if (blocked) useGameStore.getState().postChat('dispatch', 'Security', 'Hello! Delivery? Come to the gate first: OTP and the register.', true)
+          else enterRoom('lobby', door, { x: door.outX, z: door.outZ }, name, name)
+        },
+      })
+      setStep(away > PARK_RANGE * 1.5 ? `Get back on your ${vehicleWord()}` : blocked ? `Show the guard at ${name}’s gate your OTP` : `Walk in to ${name}: flat ${door.flat}, floor ${door.floor}`)
+      return
+    }
+    setSpot('errand:lobby', null)
+    if (liveRoom.kind === 'lobby') {
+      setSpot('errand:bell', null)
+      setSpot('errand:hand', null)
+      const goUp = (how: 'lift' | 'stairs') => {
+        if (how === 'lift') playLift()
+        else playStairs(Math.min(14, door.floor * 5))
+        goThrough(how === 'lift' ? `Lift to floor ${door.floor}` : `Up the stairs to floor ${door.floor}`, () => {
+          const { down, customer } = ROOM_SPOTS.corridor
+          setRoom('corridor', { x: liveRoom.x, z: liveRoom.z }, liveRoom.exit, name, planRoom('corridor').blocks, door.floor, { x: down.x + 0.5, z: down.z, heading: Math.PI / 2 })
+          errandLive.customerAt = { x: liveRoom.x + customer.x, z: liveRoom.z + customer.z, rotation: 0, floorY: liveRoom.floorY }
+          setSpot('room:down', { x: liveRoom.x + down.x, z: liveRoom.z + down.z, radius: 1.4, room: 'corridor', text: 'Go down', run: () => leaveRoom('Down to the street') })
+        }, how === 'lift' ? 1100 : 500 + door.floor * 450)
+      }
+      const { lift, stairs } = ROOM_SPOTS.lobby
+      setSpot('errand:lift', {
+        x: liveRoom.x + lift.x,
+        z: liveRoom.z + lift.z,
+        radius: 1.5,
+        room: 'lobby',
+        priority: 2,
+        text: door.liftWorks ? `Lift to floor ${door.floor}` : 'Lift: out of order',
+        run: () => {
+          if (door.liftWorks) goUp('lift')
+          else useGameStore.getState().postChat('customer', story.customer, 'Sorry, the lift is not working since morning! Please take the stairs.')
+        },
+      })
+      setSpot('errand:stairs', { x: liveRoom.x + stairs.x, z: liveRoom.z + stairs.z, radius: 1.4, room: 'lobby', priority: 2, text: `Stairs to floor ${door.floor}`, run: () => goUp('stairs') })
+      setStep(`Take the lift or the stairs to floor ${door.floor}`)
+      return
+    }
+    setSpot('errand:lift', null)
+    setSpot('errand:stairs', null)
+    if (liveRoom.kind === 'corridor') {
+      const { bell } = ROOM_SPOTS.corridor
+      atTheDoor({ x: liveRoom.x + bell.x, z: liveRoom.z + bell.z }, 'corridor')
+    }
   })
 
   return null
 }
-

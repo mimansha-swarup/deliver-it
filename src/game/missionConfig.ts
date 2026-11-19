@@ -37,6 +37,8 @@ export const MISSION_RULES = {
    */
   onTimeRouteSpeed: 6.3,
   minOnTimeSeconds: 30,
+  /** Added to every order's time limit for parking at the dark store, walking in, collecting and walking out, in seconds. */
+  pickupWalkSeconds: 30,
 
   /** A new customer is at least this far from the last one, in metres. */
   minCustomerSpacing: 60,

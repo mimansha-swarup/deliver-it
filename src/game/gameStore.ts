@@ -542,7 +542,7 @@ export const useGameStore = create<GameState>()(
           if (state.phase === 'handingOver' && state.mission && next) {
             return {
               phase: 'toCustomer',
-              mission: { ...state.mission, customer: next.customer, waiting: next.waiting, story: next.story, nextDrops: rest },
+              mission: { ...state.mission, customer: next.customer, waiting: next.waiting, door: next.door, story: next.story, nextDrops: rest },
               // Each customer's order is its own: bumps with the first don't count against the next.
               knocks: 0,
             }

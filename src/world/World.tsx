@@ -34,6 +34,7 @@ import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
 import { teleportSpots } from '../dev/teleportSpots'
 import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev/spawn'
+import { doorsteps } from '../game/doorsteps'
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
@@ -260,6 +261,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   yield STEP
   // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
   const houses = planHouseKit(data.buildings, data.roads, collisions, stores)
+  // Front doors, for deliveries to the door (game/doorsteps.ts).
+  doorsteps.doors = houses.doors
   lap('house kit')
   yield STEP
   // Building sites take open plots before trees and lamps do, and are solid to them.
