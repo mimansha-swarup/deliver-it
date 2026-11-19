@@ -127,7 +127,9 @@ function easeWave(person: Pedestrian, target: number, dt: number) {
   person.wave = wave + (target - wave) * (1 - Math.exp(-WAVE_RESPONSE * dt))
 }
 
-function placeCustomer(person: Pedestrian, { x, z, rotation, tint }: WaitingCustomer) {
+function placeCustomer(person: Pedestrian, { x, z, rotation, tint }: WaitingCustomer, upstairs = false) {
+  // On a floor of its own (a corridor), the footpath's height doesn't apply: `lift` alone places them.
+  person.deck = upstairs ? 1 : undefined
   person.x = x
   person.z = z
   person.heading = rotation
@@ -348,9 +350,8 @@ export function Handoff({
     if (waiting !== shownWaiting.current || moved !== shownAt.current) {
       shownWaiting.current = waiting
       shownAt.current = moved
-      if (waiting) placeCustomer(customer, moved ? { ...waiting, x: moved.x, z: moved.z, rotation: moved.rotation } : waiting)
       // Upstairs they stand on that floor, not on the street's footpath.
-      customer.deck = moved?.floorY != null ? 1 : undefined
+      if (waiting) placeCustomer(customer, moved ? { ...waiting, x: moved.x, z: moved.z, rotation: moved.rotation } : waiting, moved?.floorY != null)
     }
     const home = moved ?? waiting
     const floor = moved?.floorY != null ? moved.floorY - PAVEMENT_HEIGHT : 0
