@@ -4326,3 +4326,28 @@ body,
     transform: none;
   }
 }
+
+/* ---- Debug: the frame-rate overlay (FpsOverlay.tsx, ?debug=1) ---- */
+
+.fps-overlay {
+  position: fixed;
+  left: var(--edge);
+  bottom: calc(var(--edge) + var(--minimap-online) + 10px);
+  z-index: 20;
+  margin: 0;
+  padding: 4px 8px;
+  border-left: 3px solid #3ddc97;
+  border-radius: 6px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 78%);
+  font: 600 11px/1.45 ui-monospace, Menlo, monospace;
+  pointer-events: none;
+}
+
+.fps-overlay[data-slow='warn'] {
+  border-left-color: #ffb02e;
+}
+
+.fps-overlay[data-slow='bad'] {
+  border-left-color: #e0473e;
+}
