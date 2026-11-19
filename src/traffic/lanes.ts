@@ -1,6 +1,7 @@
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { RoadGraph } from '../world/roadGraph'
 import { isInsideBounds } from '../world/worldUtils'
+import type { DeckSpan } from './deckLanes'
 
 /** One straight piece of a path through the world, followed in one direction. */
 export type Lane = {
@@ -29,6 +30,8 @@ export type Lane = {
    * as `shift`), less a margin. A vehicle there keeps its own left side to the right of it.
    */
   parked?: { from: number; to: number; edge: number }[]
+  /** On a flyover: which deck, and where along it the lane starts and ends (deckLanes.ts). */
+  deck?: DeckSpan
 }
 
 type LaneRules = {

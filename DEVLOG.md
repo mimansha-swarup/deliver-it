@@ -10188,3 +10188,31 @@ Riding Sarjapur Road on Low with the CPU slowed 4×, back to back with the build
   barrier along each edge, all following the ramp's heights up and down. The concrete deck body stays
   underneath, girders and all.
 - Debug: `window.__deliverItFlyovers` lists the decks (with ?debug).
+
+## 2026-11-19: Entry 199, traffic drives over the flyovers
+
+### What I did
+- **Deck lanes in the traffic's own lane list** (traffic/deckLanes.ts): every flyover deck becomes a run
+  of lanes about 8 m long along its path (left lane on one-way decks, each half on two-way ones), 1,000
+  in all, clipped to the map. Each knows where it is along its deck, so a vehicle on it is drawn at the
+  deck's height there (`Vehicle.deck`, part of its `lift`), up the S-curve ramps and over.
+- **Joined at the ends**: a ramp's foot joins up to two ground lanes ending near it heading up it (they
+  may carry on along the road or take the flyover), and the end of a ramp down joins the ground lanes
+  that carry on; a short link lane bridges any gap. Where a deck ends in the air (the Silk Board
+  interchange), it runs on to the next deck heading the same way at the same height.
+- **Two levels that never meet**: each step, traffic up on a deck (over 2.2 m) deals only with the
+  others up there and traffic below only with traffic below: queues, giving way, overlaps. The rider
+  counts only on the same level. Up there, a vehicle has no physics body (the crash world is all on
+  the ground), isn't pushed out of the buildings below and doesn't stop for anyone lying in the road
+  below. It never drives through the rider (`blockRider`), but it can't be knocked over.
+- **The stand-in streams** (`FlyoverTraffic`) now only show beyond 210 m of the rider, past where the
+  real traffic reaches.
+- scripts/shots.mjs: `--eval` runs inside an async function, so a script can wait for traffic to settle.
+
+### Measured
+Under the Agara flyover on Outer Ring Road, 40 s: about 5 vehicles up on the deck at a time (8 at
+most), two drove up from the ground and six came down onto it. Every vehicle on a deck lane was drawn
+at the deck's height.
+
+### Not done
+Vehicles stay level on the ramps (up to about 8%); they don't pitch with the slope.

@@ -9,7 +9,7 @@
  * window, the clock set to `--hour` and the weather clear (in the address, `?hour=` and `?weather=`,
  * so the world loads at that time), then each spot on High and on Low.
  * Files are <spot>-<quality>.png. `--press F8` (or `F8,F8`) presses keys before each shot, and
- * `--eval <js>` runs a script in the page after them.
+ * `--eval <js>` runs a script in the page after them (inside an async function: it may `await`).
  */
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -118,7 +118,8 @@ try {
         await sleep(800)
       }
       if (EVAL) {
-        await evaluate(`(() => { ${EVAL} })(); 'ok'`)
+        // Async, so a script can `await` (say, for traffic to settle) before the shot.
+        await evaluate(`(async () => { ${EVAL} })().then(() => 'ok')`)
         // Long enough for the map squares round a new spot to stream in, if the script moved the rider.
         await sleep(3000)
       }

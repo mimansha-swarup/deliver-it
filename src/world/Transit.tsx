@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
+import { livePlayer } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { ROAD_TEXTURES } from './assetUrls'
@@ -441,7 +442,13 @@ type Overhead = { deck: number; s: number; speed: number; direction: 1 | -1; lan
 
 const overheadTransform = new THREE.Object3D()
 
-/** Traffic on the flyovers: each deck a stream of vehicles each way (one way on one-way decks), seen only where it's up off the ground. */
+/**
+ * Beyond the traffic's own reach (trafficLogic.ts removes vehicles 220 m from the rider), the decks'
+ * traffic is these simple stand-ins; nearer, it's real traffic on the decks' lanes.
+ */
+const STAND_IN_FROM = 210
+
+/** Traffic on the flyovers far off: each deck a stream of vehicles each way (one way on one-way decks), seen only where it's up off the ground. */
 function FlyoverTraffic({ decks }: { decks: Flyover[] }) {
   const geometries = useMemo(() => OVERHEAD_KINDS.map(createOverheadGeometry), [])
   const material = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.15 }), [])
@@ -491,6 +498,9 @@ function FlyoverTraffic({ decks }: { decks: Flyover[] }) {
       const height = heightOnFlyover(deck, s)
       if (height < 1.5) return
       const mesh = meshes.current[vehicle.kind]
+      const { x: atX, z: atZ } = pointOnPath(deck.path, s)
+      // Near the rider, the real traffic drives the decks (deckLanes.ts): these stand-ins are only for further off.
+      if (Math.hypot(atX - livePlayer.x, atZ - livePlayer.z) < STAND_IN_FROM) return
       if (!mesh) return
       const { x, z, dirX, dirZ } = pointOnPath(deck.path, s)
       // Lanes from the deck's middle out: on a two-way deck, each way on its own (left) side.
@@ -682,10 +692,6 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const roadMaps = useCompressedTextures(ROAD_TEXTURES, prepareDeckAsphalt)
   const deckTop = useMemo(() => createDeckSurfaces(flyovers.decks), [flyovers])
-  useEffect(() => {
-    // Debug: the decks, for scripts that look at or ride them.
-    if (isDebug()) (window as unknown as { __deliverItFlyovers?: Flyovers }).__deliverItFlyovers = flyovers
-  }, [flyovers])
   const asphalt = useMemo(() => {
     // As the streets' asphalt (StreetEdges.tsx): the photo's grain under the palette's colour, tyre
     // tracks, a gutter by each barrier.

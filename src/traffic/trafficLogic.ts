@@ -1,4 +1,6 @@
 import type { CrashPhysics, CrashShape, CrashSurface, Quaternion, Tumbler } from '../physics/crashPhysics'
+import { addDeckLanes, deckHeightOn, UP_ON_DECK_TRAFFIC } from './deckLanes'
+import type { Flyover } from '../world/transitPlacement'
 import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics'
 import { applyImpact, getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
@@ -165,6 +167,8 @@ type Mover = {
   z: number
   heading: number
   lift: number
+  /** The height of the road under it, up on a flyover (deckLanes.ts); 0 or unset on the ground. */
+  deck?: number
   /** A 0 to 1 value used to pick a colour. */
   tint: number
 }
@@ -420,6 +424,8 @@ export type TrafficWorld = {
   riderPusher: NonNullable<Tumbler['body']>
   loose: LooseBody[]
   roadLanes: Lane[]
+  /** The flyovers whose lanes are among `roadLanes` (deckLanes.ts). */
+  decks: Flyover[]
   walkLanes: Lane[]
   vehicles: Vehicle[]
   pedestrians: Pedestrian[]
@@ -541,6 +547,8 @@ export function createTrafficWorld(
   random: () => number = Math.random,
   /** The kind of street at a point: how busy it is, and whether buses run there. */
   streetAt: (x: number, z: number) => { traffic: number; buses: boolean } | null = () => null,
+  /** The flyovers, driven over as well (deckLanes.ts). */
+  decks: Flyover[] = [],
 ): TrafficWorld {
   const roadLanes = createLanes(graph, collisions, {
     minRoadWidth: 5,
@@ -561,6 +569,9 @@ export function createTrafficWorld(
       lane.signal = { junction: signal.junction, group, stopBack: signal.stopBack }
     }
   }
+  // The flyovers' lanes, after the ground's, joined to them at the ramps' feet.
+  const deckLanes = addDeckLanes(roadLanes, decks)
+  if (deckLanes.lanes > 0) console.info(`[traffic] flyovers: ${deckLanes.lanes} lanes, ${deckLanes.joins} joins`)
 
   const walkLanes = createLanes(graph, collisions, {
     minRoadWidth: 4,
@@ -647,7 +658,8 @@ export function createTrafficWorld(
   return {
     physics,
     collisions,
-    breakers: roadLanes.map((lane) => breakersOnLink(lane.startNode, lane.endNode)),
+    breakers: roadLanes.map((lane) => (lane.startNode < 0 ? [] : breakersOnLink(lane.startNode, lane.endNode))),
+    decks,
     riderPusher,
     loose,
     roadLanes,
@@ -1310,13 +1322,15 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
 
   // Out around anything parked at the kerb; two-wheelers and autos squeeze about as well, no further left.
   const limit = parkedLimit(vehicle, lane)
-  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, world.downed, dt, limit)
+  // Up on a deck, nobody lying in the road below is in the way.
+  const downed = (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC ? [] : world.downed
+  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, downed, dt, limit)
   else {
     vehicle.shiftTarget = Math.min(0, limit)
     easeShift(vehicle, dt)
   }
 
-  const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider, world.downed)
+  const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider, downed)
   const hasWaited = blockedBy === 'crossing' && vehicle.waiting > rules.patience
   const keep = vehicle.nimble ? rules.nimbleGap : rules.carGap
   const free = hasWaited ? vehicle.cruiseSpeed : Math.min(vehicle.cruiseSpeed, Math.max(0, gap - keep))
@@ -1370,13 +1384,15 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const turnRate = vehicle.speed / (radius * rules.steeringSlack)
   // `shift` moves its line sideways: positive left, negative right. It steers over to it.
   steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift, turnRate, radius, dt, random)
-  // Up and over a breaker. The body rises with the hump under its middle.
-  vehicle.lift = breakerLift(world, vehicle)
+  // Up and over a breaker. The body rises with the hump under its middle. On a flyover, it's at the deck's height.
+  vehicle.deck = deckHeightOn(roadLanes[vehicle.lane], vehicle.along, world.decks)
+  vehicle.lift = breakerLift(world, vehicle) + vehicle.deck
 
   // If a tight corner still carries it wide, the wall stops it, rather than it driving through.
+  // Not up on a deck: the buildings and pillars are below.
   const beforeX = vehicle.x
   const beforeZ = vehicle.z
-  pushOutOfBuildings(world.collisions, vehicle, vehicle.radius * rules.wallMargin)
+  if (vehicle.deck <= UP_ON_DECK_TRAFFIC) pushOutOfBuildings(world.collisions, vehicle, vehicle.radius * rules.wallMargin)
   const pushed = vehicle.x !== beforeX || vehicle.z !== beforeZ
   vehicle.pinned = pushed ? vehicle.pinned + dt : Math.max(0, vehicle.pinned - dt)
   // One that stays stuck, out of the rider's sight, is taken away, and a new one appears elsewhere.
@@ -1635,7 +1651,8 @@ function updatePushers(world: TrafficWorld, vehicles: Vehicle[], rider: ScooterS
   for (const vehicle of vehicles) {
     const pusher = vehicle.pusher as NonNullable<Tumbler['body']>
     const close = Math.hypot(vehicle.x - rider.x, vehicle.z - rider.z) < PUSHER_DISTANCE
-    if (vehicle.lane !== -1 && !vehicle.body && close) {
+    // Up on a deck, it has no shape in the physics world, whose walls and bodies are all on the ground.
+    if (vehicle.lane !== -1 && !vehicle.body && close && (vehicle.deck ?? 0) <= UP_ON_DECK_TRAFFIC) {
       physics.movePusher(pusher, vehicle.x, vehicle.crash.centre, vehicle.z, vehicle.heading)
     } else {
       physics.hidePusher(pusher)
@@ -1954,8 +1971,15 @@ export function stepTraffic(
   const rules = TRAFFIC_RULES
   // Up on a flyover, the traffic and people below don't meet the rider: they deal with a stand-in
   // far away. Where traffic appears and goes still follows the real rider.
-  const contact = riderUpOnDeck(rider) ? farRider(rider) : rider
+  const riderUp = riderUpOnDeck(rider)
+  const far = farRider(rider)
+  const contact = riderUp ? far : rider
   const activeVehicles = world.vehicles.slice(0, vehicleCount)
+  // Traffic up on the flyovers and on the ground never meet: each deals only with its own level,
+  // and with the rider only on the same level.
+  const isUp = (vehicle: Vehicle) => vehicle.lane !== -1 && (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC
+  const upVehicles = activeVehicles.filter(isUp)
+  const groundVehicles = upVehicles.length > 0 ? activeVehicles.filter((vehicle) => !isUp(vehicle)) : activeVehicles
   world.signalClock += dt
   listDowned(world, contact, activeVehicles, pedestrianCount)
 
@@ -1967,6 +1991,7 @@ export function stepTraffic(
       vehicle.rotation = null
       vehicle.fallen = null
       vehicle.lift = 0
+      vehicle.deck = 0
       vehicle.lane = -1
       if (vehicle.thrownRider) {
         if (vehicle.thrownRider.body) world.physics.removeBody(vehicle.thrownRider)
@@ -1998,6 +2023,8 @@ export function stepTraffic(
       )
       if (lane === -1) continue
       placeOnLane(vehicle, roadLanes, lane, random)
+      vehicle.deck = deckHeightOn(roadLanes[lane], vehicle.along, world.decks)
+      vehicle.lift = vehicle.deck
       vehicle.speed = vehicle.cruiseSpeed
       vehicle.waiting = 0
       vehicle.pinned = 0
@@ -2019,22 +2046,30 @@ export function stepTraffic(
       continue
     }
 
-    if (mustGiveWay(vehicle, activeVehicles)) {
+    const up = isUp(vehicle)
+    const peers = up ? upVehicles : groundVehicles
+    const seen = up === riderUp ? rider : far
+    if (mustGiveWay(vehicle, peers)) {
       vehicle.speed = 0
-      maybeHonk(world, vehicle, contact, false, dt)
+      maybeHonk(world, vehicle, seen, false, dt)
       continue
     }
     // Never into another vehicle: a step that would push this one further into another's
     // footprint is taken back, and it waits (see `overlapWithTraffic`).
-    const before = overlapWithTraffic(vehicle, activeVehicles)
-    const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, shift: vehicle.shift }
-    stepVehicle(world, vehicle, activeVehicles, contact, dt)
+    const before = overlapWithTraffic(vehicle, peers)
+    const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, shift: vehicle.shift, deck: vehicle.deck, lift: vehicle.lift }
+    stepVehicle(world, vehicle, peers, seen, dt)
     if (vehicle.lane === -1) continue
-    if (!vehicle.body && overlapWithTraffic(vehicle, activeVehicles) > before + 0.001) {
+    if (!vehicle.body && overlapWithTraffic(vehicle, peers) > before + 0.001) {
       Object.assign(vehicle, kept)
       vehicle.speed = 0
       // A two-wheeler squeezing sideways into something beside it gives up that gap.
       vehicle.shiftTarget = vehicle.shift
+    }
+    // Up on a deck there's no crash physics (it's all on the ground): it just never drives through the rider.
+    if (up) {
+      blockRider(vehicle, seen, dt)
+      continue
     }
     hitRider(world, vehicle, contact, dt)
     for (const person of world.pedestrians.slice(0, pedestrianCount)) {

@@ -120,6 +120,8 @@ type Moving = {
   detailed?: boolean
   heading: number
   lift: number
+  /** Up on a flyover: its deck's height, which `lift` includes. */
+  deck?: number
   tint: number
   /** A full 3D rotation, when physics has it tumbling. */
   rotation?: [number, number, number, number] | null
@@ -150,7 +152,8 @@ function writeTransforms(
       !item.hidden &&
       !(isSeatedRider && item.riderOff)
     // On a raised footpath, walk on top of it.
-    transform.position.set(item.x, Math.max(ground, groundLift.at(item.x, item.z)) + item.lift, item.z)
+    // Up on a flyover, its lift is the deck's height: no footpath below lifts it.
+    transform.position.set(item.x, (item.deck ? ground : Math.max(ground, groundLift.at(item.x, item.z))) + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
     // Size zero is the cheapest way to skip one copy of an instanced shape.

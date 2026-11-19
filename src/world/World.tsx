@@ -399,7 +399,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     const near = nearestRoadPiece(roadIndex, x, z, 4)
     return near ? streetPresetOf(data.roads[near.piece.road]) : null
   }
-  const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt)
+  const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt, flyovers.decks)
   // Buses pull up at the shelters, which are at OSM's bus stops (landmarkPlacement.ts).
   setBusStops(traffic, cityLandmarks.stops)
   if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic })
