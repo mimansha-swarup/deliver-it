@@ -30,6 +30,7 @@ const QUALITIES = option('qualities', 'High,Low').split(',')
 const PRESS = option('press', '').split(',').filter(Boolean)
 /** JavaScript run in the page before each shot, after the key presses. */
 const EVAL = option('eval', '')
+const SETTLE = Number(option('settle', '3000'))
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
 /** --size 1280x720: the window's size, for checking the HUD on small and wide screens. */
 const [WIDTH, HEIGHT] = option('size', '1440x810').split('x').map(Number)
@@ -121,7 +122,8 @@ try {
         // Async, so a script can `await` (say, for traffic to settle) before the shot.
         await evaluate(`(async () => { ${EVAL} })().then(() => 'ok')`)
         // Long enough for the map squares round a new spot to stream in, if the script moved the rider.
-        await sleep(3000)
+        // `--settle 100` for a script that has timed a moment itself.
+        await sleep(SETTLE)
       }
       const { data } = await send('Page.captureScreenshot', { format: 'png' })
       const file = join(OUT, `${spot}-${quality.toLowerCase()}${WIDTH === 1440 && HEIGHT === 810 ? '' : `-${WIDTH}x${HEIGHT}`}.png`)

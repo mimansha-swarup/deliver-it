@@ -48,7 +48,24 @@ export type RentPlan = 'hour' | 'day'
 export type Rental = { id: VehicleId; plan: RentPlan; insured: boolean; hoursLeft: number; crashes: number }
 export type Emi = { id: VehicleId; weekly: number; weeksLeft: number; nextDueDay: number; missed: number }
 /** A vehicle on its way to the rider, or waiting there for them: `rental` or `purchase` set once handed over. */
-export type Delivery = { id: VehicleId; x: number; z: number; arrivesAt: number; rental: Rental | null; own: boolean }
+export type Delivery = {
+  id: VehicleId
+  /** Where it's brought to: beside where the rider was when they asked, and the way they faced. */
+  x: number
+  z: number
+  dirX: number
+  dirZ: number
+  arrivesAt: number
+  rental: Rental | null
+  own: boolean
+  /** Ridden up and standing there (FleetClock.tsx says so once its ride in is done). */
+  here: boolean
+  /** When the handover began (performance.now()), while the keys change hands; else null. */
+  handing: number | null
+}
+
+/** The vehicle the rider was on, being ridden away to the Garage after a handover: from where, which way, since when. */
+export type Leaving = { id: VehicleId; x: number; z: number; dirX: number; dirZ: number; since: number }
 
 type Fleet = {
   /** Bought vehicles (the scooter isn't listed: it's always the rider's). */
@@ -56,6 +73,11 @@ type Fleet = {
   rental: Rental | null
   emis: Emi[]
   delivery: Delivery | null
+  leaving: Leaving | null
+  /** The delivery has been ridden up and is standing at its spot. */
+  markHere: () => void
+  /** The keys have changed hands: the rider is on the new vehicle, and the old one is ridden away. */
+  completeHandover: () => void
   /** Metres ridden not yet charged as running cost. */
   uncharged: number
   rent: (id: VehicleId, plan: RentPlan, insured: boolean, how: 'deliver' | 'hub') => string | null
@@ -136,7 +158,10 @@ export const useFleet = create<Fleet>()(
         if (!game().spend('GaadiGo delivery fee', FLEET_RULES.deliveryFee)) return `Delivery is ₹${FLEET_RULES.deliveryFee}: not enough in the wallet.`
         const [low, high] = FLEET_RULES.deliveryMinutes
         const minutes = low + Math.random() * (high - low)
-        set({ delivery: { id, x: livePlayer.x, z: livePlayer.z, arrivesAt: liveSky.totalHours + minutes / 60, rental, own } })
+        // Brought to the rider's left (the kerb side), a couple of metres off, facing the way they face.
+        const dirX = Math.sin(livePlayer.heading)
+        const dirZ = Math.cos(livePlayer.heading)
+        set({ delivery: { id, x: livePlayer.x + dirZ * 2.2, z: livePlayer.z - dirX * 2.2, dirX, dirZ, arrivesAt: liveSky.totalHours + minutes / 60, rental, own, here: false, handing: null } })
         say(`GaadiGo: your ${VEHICLES[id].name} is on its way, about ${Math.round(minutes)} min. Wait where you are.`)
         return null
       }
@@ -146,7 +171,29 @@ export const useFleet = create<Fleet>()(
         rental: null,
         emis: [],
         delivery: null,
+        leaving: null,
         uncharged: 0,
+
+        markHere: () => {
+          const delivery = get().delivery
+          if (!delivery || delivery.here) return
+          set({ delivery: { ...delivery, here: true } })
+          say(`GaadiGo: your ${VEHICLES[delivery.id].name} is here. Pull up beside it and stop for the keys.`)
+        },
+
+        completeHandover: () => {
+          const delivery = get().delivery
+          if (!delivery) return
+          const before = game().vehicleId
+          game().setVehicle(delivery.id)
+          set({
+            delivery: null,
+            ...(delivery.rental ? { rental: delivery.rental } : {}),
+            // The delivery person rides the one the rider was on away, to the Garage.
+            leaving: { id: before, x: livePlayer.x - delivery.dirZ * 2.2, z: livePlayer.z + delivery.dirX * 2.2, dirX: delivery.dirX, dirZ: delivery.dirZ, since: performance.now() },
+          })
+          say(`Keys handed over: you're on the ${VEHICLES[delivery.id].name}. Your ${VEHICLES[before].name} is being taken to your Garage.`)
+        },
 
         rent: (id, plan, insured, how) => {
           const spec = VEHICLES[id]
@@ -227,18 +274,12 @@ export const useFleet = create<Fleet>()(
             if (before.hoursLeft > 0 && rental.hoursLeft <= 0) say(`GaadiGo: your ${VEHICLES[rental.id].name} is due back. Late fees are running: end the rental in the app.`)
           }
 
-          // A delivery that has arrived: handed over once the rider is beside it and stopped.
+          // A delivery standing at its spot: once the rider is beside it and stopped, the keys change
+          // hands (FleetClock.tsx plays that, then calls `completeHandover`).
           const delivery = get().delivery
-          if (!delivery || liveSky.totalHours < delivery.arrivesAt) return
-          if (!arrivedSaid) {
-            arrivedSaid = true
-            say(`GaadiGo: your ${VEHICLES[delivery.id].name} is here. Pull up beside it for the handover.`)
-          }
+          if (!delivery || !delivery.here || delivery.handing !== null) return
           if (Math.hypot(delivery.x - livePlayer.x, delivery.z - livePlayer.z) > FLEET_RULES.handoverRange || speed > FLEET_RULES.handoverSpeed) return
-          game().setVehicle(delivery.id)
-          set({ delivery: null, ...(delivery.rental ? { rental: delivery.rental } : {}) })
-          arrivedSaid = false
-          say(`Handed over: you're on the ${VEHICLES[delivery.id].name}. The one you were on goes to your Garage.`)
+          set({ delivery: { ...delivery, handing: performance.now() } })
         },
 
         newDay: (day) => {
@@ -287,7 +328,6 @@ orderGate.allows = (type) => {
   return carries(type) || (coming !== undefined && VEHICLES[coming].unlocks.includes(type))
 }
 
-let arrivedSaid = false
 /** The rider's speed at the last tick, and the game clock then. */
 let lastSpeed = 0
 let lastHours: number | null = null

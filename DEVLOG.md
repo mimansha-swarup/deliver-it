@@ -10503,3 +10503,46 @@ catering refused on the scooter and accepted through the offer's rent button.
 - The rider's pose is the scooter's on the motorbike and the bicycle; a car's collision size is still the
   scooter's; the delivery person appears rather than rides in; the recovery agent is a message.
 - "Eco" and "express" order types are listed on vehicles but no orders use them yet.
+
+## 2026-11-20: Entry 211, GaadiGo: vehicles that feel, look and sound different, and a handover
+
+### Feel (vehicleCatalog.ts `feel`, tuning.ts, ScooterController.ts)
+The first version scaled one acceleration number a vehicle, worth about 1 km/h in the first half
+second. Each vehicle now has its own launch, pull near top speed, throttle response (how fast the
+drive comes in), coasting (regenerative braking on the electric scooter, a van that rolls on), braking,
+turning and body roll (three and four wheels roll out of a corner). Nitro and drift boost only on the
+petrol two-wheelers. Garage upgrades off, speed every half second from rest, and braking:
+
+| | 0.5 s | 1 s | 1.5 s | 2 s | Braking |
+| --- | --- | --- | --- | --- | --- |
+| Scooter | 8 | 16 | 23 | 29 | 5.4 m from 40 |
+| Minchu E1 | 15 | 26 | 34 | 40 | 6.8 m from 48 |
+| Bicycle | 3 | 7 | 10 | 13 | 1.7 m from 18 |
+| Vega 150 | 9 | 20 | 29 | 38 | 15.8 m from 55 |
+| E-Cargo | 3 | 8 | 13 | 17 | 3.8 m from 25 |
+| Car | 6 | 13 | 19 | 26 | 5.7 m from 37 |
+| Van | 2 | 7 | 11 | 15 | 3.7 m from 23 |
+
+The speedometer names the vehicle and how it's driven, and has a bar to its own top speed.
+
+### Shapes (vehicleBodies.ts)
+Built here, each its own silhouette, with wheels that turn: the Minchu E1 (slim, white with a blade of
+teal, a ring headlamp, a hub motor filling the back wheel, an insulated bag), the Bhaara E-Cargo (a short
+open cab over one wheel, a tall load box on two) and the bicycle (now with mudguards, a lamp, and cranks
+and pedals that go round under the throttle). The motorbike, car and van are still the traffic's models.
+
+### Sound
+New engine voices: an electric whine that climbs a long way, the cargo three-wheeler's lower geared
+whine, a 150 cc thump, a van's diesel. The bicycle has no engine: its chain ticks as it's pedalled and
+its freewheel ticks faster and lighter coasting. A horn each (the van an air horn), a bell on the bicycle.
+
+### The handover (FleetClock.tsx)
+When a delivery is due the phone is put down, and the delivery person rides the vehicle up from 55 m
+behind and stops at the kerb beside where it was asked for. They stand by it; when the rider is beside
+it and stopped they walk the keys over (2.6 s); the rider is then on the new vehicle and the delivery
+person rides the old one away to the Garage.
+
+### Not verified, not done
+Sounds need an ear. The built vehicles' front wheels don't steer. The rider's pose is still the scooter's
+on every two-wheeler. The delivery can park on a footpath on a narrow street. On two wheels the delivery
+person riding is a simple figure (a body and a helmet), not the walking model.

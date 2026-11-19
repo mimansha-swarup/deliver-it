@@ -304,6 +304,12 @@ export function Phone() {
   )
 
   // P brings it up on the lock screen (or puts it away). Enter unlocks. Esc goes back: app, home, away.
+  // Something in the world wants to be seen (a GaadiGo delivery pulling up): the phone goes down.
+  useEffect(() => {
+    const lower = () => setRaised(false)
+    window.addEventListener('deliver-it-lower-phone', lower)
+    return () => window.removeEventListener('deliver-it-lower-phone', lower)
+  }, [])
   const state = useRef({ raised, screen, thread, mapOpen })
   useEffect(() => {
     state.current = { raised, screen, thread, mapOpen }
