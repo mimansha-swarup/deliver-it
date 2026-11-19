@@ -1,0 +1,236 @@
+import { addFootprint, addPost, isNearBuilding, type CollisionWorld } from './collision'
+import type { StiltVehicle } from './houseKit'
+import type { BusStop } from './landmarkPlacement'
+import { nearestRoadPiece, type RoadIndex } from './props'
+import { IDLE_POSE } from '../traffic/gait'
+import type { ShopPerson } from './shopPeoplePlacement'
+import { Surface, type SurfaceMap } from './surfaceMap'
+import type { Flyover } from './transitPlacement'
+import { distanceToEdge, innerPoint, type WorshipSite } from './worship'
+import type { GroundPoint } from './worldUtils'
+
+/*
+ * Agara: the Abhaya Anjaneya statue, about 100 ft of Hanuman standing with his hand raised in
+ * blessing, beside the Agara flyover on Outer Ring Road, by the Hanuman temple OSM has there, with the
+ * Jagannath temple a few doors down. A place of worship: the statue stands on a solid plinth, takes no
+ * part in crashes, and faces the flyover, so riders coming over it see it full on.
+ *
+ * Round the temple's door: flower and coconut sellers, devotees' footwear left outside, autos at the
+ * kerb, a few people at any time and a crowd on Saturdays, Hanuman's day.
+ */
+
+/** The whole height, plinth and all, in metres: about 100 ft. */
+export const STATUE_HEIGHT = 30.5
+/** The plinth's side, in metres. */
+export const PLINTH = 9
+/** The statue's temple is the Hanuman temple within this far of the Agara flyover, in metres. */
+const NEAR_FLYOVER = 400
+/** The plinth is put on open ground within this far of the temple, the nearest spot that takes it. */
+const STATUE_REACH = 60
+/** Day 1 is a Monday, so day 6 is the first Saturday. */
+export const isSaturday = (day: number) => (((day - 1) % 7) + 7) % 7 === 5
+
+export type Agara = {
+  statue: { x: number; z: number; rotation: number } | null
+  /** Sellers' stalls: `variation` under 0.5 is flowers, over it coconuts. */
+  stalls: { x: number; z: number; rotation: number; variation: number }[]
+  /** Patches of footwear left outside the door. */
+  footwear: { x: number; z: number; rotation: number; variation: number }[]
+  autos: StiltVehicle[]
+  /** Sellers and a few devotees, there every day. */
+  people: ShopPerson[]
+  /** The Saturday crowd. */
+  crowd: ShopPerson[]
+  /** Where `?spawn=agara-flyover` starts: the foot of the flyover's ramp, heading up it. */
+  spawn: { name: string; x: number; z: number; heading: number } | null
+  report: Record<string, number>
+  /** The temple the statue stands by, as OSM names it. */
+  temple: string
+}
+
+const centreOf = (outline: GroundPoint[]): GroundPoint => {
+  let x = 0
+  let z = 0
+  for (const [px, pz] of outline) {
+    x += px
+    z += pz
+  }
+  return [x / outline.length, z / outline.length]
+}
+
+export function planAgara({
+  worship,
+  decks,
+  surface,
+  roads,
+  collisions,
+  stops,
+}: {
+  worship: WorshipSite[]
+  decks: Flyover[]
+  surface: SurfaceMap
+  roads: RoadIndex
+  collisions: CollisionWorld
+  stops: BusStop[]
+}): Agara {
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, report: {}, temple: '' }
+
+  // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
+  const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
+  let best: { site: WorshipSite; deck: Flyover; distance: number; point: GroundPoint } | null = null
+  for (const site of worship) {
+    if (!/hanuman|anjaneya/i.test(site.name ?? '') || site.outline.length === 0) continue
+    const [cx, cz] = centreOf(site.outline)
+    for (const deck of ringRoad) {
+      for (const point of deck.path.points) {
+        const distance = Math.hypot(point[0] - cx, point[1] - cz)
+        if (distance < NEAR_FLYOVER && (!best || distance < best.distance)) best = { site, deck, distance, point }
+      }
+    }
+  }
+  if (!best) {
+    agara.report.placed = 0
+    return agara
+  }
+  const { site, deck } = best
+  const [cx, cz] = centreOf(site.outline)
+  agara.temple = site.name ?? ''
+  agara.report.metresFromFlyover = Math.round(best.distance)
+
+  // The start for `?spawn=agara-flyover`: the foot of this deck's ramp, in its left lane, heading up.
+  {
+    const { points } = deck.path
+    const from = deck.startsLow ? 0 : points.length - 1
+    const to = deck.startsLow ? 3 : points.length - 4
+    const [ax, az] = points[from]
+    const [bx, bz] = points[Math.max(0, Math.min(points.length - 1, to))]
+    const length = Math.hypot(bx - ax, bz - az) || 1
+    const fx = (bx - ax) / length
+    const fz = (bz - az) / length
+    agara.spawn = { name: 'Agara flyover', x: ax - fx * 12 + fz * 1.5, z: az - fz * 12 - fx * 1.5, heading: Math.atan2(fx, fz) }
+  }
+
+  // The statue: on the nearest open ground to the temple that takes the plinth whole, clear of everything.
+  const half = PLINTH / 2 + 1.5
+  const takesPlinth = (x: number, z: number) => {
+    for (const [dx, dz] of [[0, 0], [half, 0], [-half, 0], [0, half], [0, -half], [half, half], [-half, half], [half, -half], [-half, -half]]) {
+      const at = surface.at(x + dx, z + dz)
+      if (at !== Surface.Open && at !== Surface.Park && at !== Surface.Plot) return false
+      if (surface.isOverhead(x + dx, z + dz) || isNearBuilding(collisions, x + dx, z + dz, 2)) return false
+    }
+    return true
+  }
+  let spot: GroundPoint | null = null
+  for (let distance = 8; distance <= STATUE_REACH && !spot; distance += 4) {
+    for (let i = 0; i < 16 && !spot; i++) {
+      const angle = (i / 16) * Math.PI * 2
+      const x = cx + Math.cos(angle) * distance
+      const z = cz + Math.sin(angle) * distance
+      if (takesPlinth(x, z)) spot = [x, z]
+    }
+  }
+  if (spot) {
+    const [x, z] = spot
+    // Facing the flyover's nearest point, so the view from the deck frames him.
+    let nearest = best.point
+    let nearestDistance = Infinity
+    for (const point of deck.path.points) {
+      const d = Math.hypot(point[0] - x, point[1] - z)
+      if (d < nearestDistance) {
+        nearestDistance = d
+        nearest = point
+      }
+    }
+    const rotation = Math.atan2(nearest[0] - x, nearest[1] - z)
+    agara.statue = { x, z, rotation }
+    // The plinth is solid, and its ground is taken: nothing is planted or built on it.
+    const h = PLINTH / 2
+    const cos = Math.cos(rotation)
+    const sin = Math.sin(rotation)
+    const corner = (lx: number, lz: number): GroundPoint => [x + lx * cos + lz * sin, z - lx * sin + lz * cos]
+    addFootprint(collisions, [corner(-h, -h), corner(h, -h), corner(h, h), corner(-h, h)])
+    const g = h + 1
+    surface.fillPolygon([corner(-g, -g), corner(g, -g), corner(g, g), corner(-g, g)], Surface.Building)
+    agara.report.statueMetresFromTemple = Math.round(Math.hypot(x - cx, z - cz))
+    agara.report.statueMetresFromFlyover = Math.round(nearestDistance)
+  }
+  agara.report.placed = spot ? 1 : 0
+
+  // Outside the temple's door.
+  const [frontX, frontZ] = site.front
+  const sideX = frontZ
+  const sideZ = -frontX
+  const inside = innerPoint(site.outline)
+  const out = distanceToEdge(site.outline, inside, site.front)
+  const doorX = inside[0] + frontX * out
+  const doorZ = inside[1] + frontZ * out
+  const facingOut = Math.atan2(frontX, frontZ)
+  const free = (x: number, z: number, radius: number) => {
+    const at = surface.at(x, z)
+    return at !== Surface.Road && at !== Surface.Building && at !== Surface.Water && !isNearBuilding(collisions, x, z, radius)
+  }
+
+  // Sellers either side of the way in: flowers and coconuts, each with its seller behind it.
+  ;[-5.2, -3, 3, 5.2].forEach((across, i) => {
+    const x = doorX + frontX * 2.6 + sideX * across
+    const z = doorZ + frontZ * 2.6 + sideZ * across
+    if (!free(x, z, 0.9)) return
+    agara.stalls.push({ x, z, rotation: facingOut, variation: i % 2 === 0 ? 0.2 : 0.8 })
+    addPost(collisions, x, z, 0.8)
+    agara.people.push({ x: x - frontX * 0.9, z: z - frontZ * 0.9, heading: facingOut, body: (i % 2) as 0 | 1, tint: (i * 0.31 + 0.1) % 1, skin: 0.72 + ((i * 0.13) % 0.3), idle: IDLE_POSE.weight, phase: i * 2.9 })
+  })
+  // Footwear left outside, in two patches by the door.
+  for (const across of [-1.5, 1.5]) {
+    const x = doorX + frontX * 0.9 + sideX * across
+    const z = doorZ + frontZ * 0.9 + sideZ * across
+    if (free(x, z, 0.3)) agara.footwear.push({ x, z, rotation: facingOut, variation: across > 0 ? 0.7 : 0.2 })
+  }
+  // Devotees: a few every day, facing the door, and many more on a Saturday.
+  const stand = (list: ShopPerson[], forward: number, across: number, i: number) => {
+    const x = doorX + frontX * forward + sideX * across
+    const z = doorZ + frontZ * forward + sideZ * across
+    if (!free(x, z, 0.4)) return
+    list.push({ x, z, heading: facingOut + Math.PI + (((i * 7) % 5) - 2) * 0.12, body: (i % 2) as 0 | 1, tint: (i * 0.37) % 1, skin: 0.7 + ((i * 0.11) % 0.33), idle: i % 4 === 0 ? IDLE_POSE.phone : i % 2 === 0 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 1.9 })
+  }
+  ;[[1.8, -0.5], [2.4, 0.7], [3.4, -1.3], [4.2, 1.5]].forEach(([forward, across], i) => stand(agara.people, forward, across, i))
+  for (let i = 0; i < 22; i++) {
+    const row = Math.floor(i / 6)
+    const column = (i % 6) - 2.5
+    stand(agara.crowd, 3 + row * 1.1 + ((i * 13) % 5) * 0.08, column * 0.95 + ((i * 7) % 3) * 0.12, i + 4)
+  }
+
+  // Autos waiting at the kerb of the nearest road.
+  const near = nearestRoadPiece(roads, doorX, doorZ, 40)
+  if (near) {
+    const { start, end, width } = near.piece
+    const length = Math.hypot(end[0] - start[0], end[1] - start[1]) || 1
+    const dirX = (end[0] - start[0]) / length
+    const dirZ = (end[1] - start[1]) / length
+    const along = (doorX - start[0]) * dirX + (doorZ - start[1]) * dirZ
+    const onX = start[0] + dirX * along
+    const onZ = start[1] + dirZ * along
+    const toDoor = Math.hypot(doorX - onX, doorZ - onZ) || 1
+    const inX = (doorX - onX) / toDoor
+    const inZ = (doorZ - onZ) / toDoor
+    // Keeping left: on the door's side of the road, traffic runs with the door on its left.
+    const forward = inX * dirZ - inZ * dirX > 0 ? 1 : -1
+    for (let i = 0; i < 3; i++) {
+      const x = onX + inX * (width / 2 - 1.1) + dirX * (6 + i * 3.3)
+      const z = onZ + inZ * (width / 2 - 1.1) + dirZ * (6 + i * 3.3)
+      if (surface.at(x, z) !== Surface.Road || isNearBuilding(collisions, x, z, 1.1)) continue
+      agara.autos.push({ x, z, rotation: Math.atan2(dirX * forward, dirZ * forward), variation: (i * 0.37 + 0.2) % 1, car: true, model: 0 })
+      addPost(collisions, x, z, 1)
+    }
+  }
+
+  // The nearest bus stop OSM has, for the report: the stops themselves are placed by landmarkPlacement.ts.
+  let stopDistance = Infinity
+  for (const stop of stops) stopDistance = Math.min(stopDistance, Math.hypot(stop.x - doorX, stop.z - doorZ))
+  agara.report.metresToBusStop = Number.isFinite(stopDistance) ? Math.round(stopDistance) : -1
+  agara.report.stalls = agara.stalls.length
+  agara.report.footwear = agara.footwear.length
+  agara.report.autos = agara.autos.length
+  agara.report.people = agara.people.length
+  agara.report.saturdayCrowd = agara.crowd.length
+  return agara
+}

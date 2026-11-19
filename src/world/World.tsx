@@ -37,6 +37,8 @@ import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
 import { planShopPeople } from './shopPeoplePlacement'
+import { planAgara } from './agaraPlacement'
+import { Agara } from './Agara'
 import { Fences } from './Fences'
 import { buildStreetEdges } from './streetEdgeGeometry'
 import { StreetEdges } from './StreetEdges'
@@ -282,6 +284,9 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // The flyovers, as scenery overhead, with traffic on them and life underneath (transitPlacement.ts).
   const flyovers = planFlyovers({ decks: flyoverDecks, surface: surfaceMap, collisions })
   worldSurface.report.flyovers = flyovers.report
+  // Agara's Abhaya Anjaneya statue by the flyover, and the life at its temple's door (agaraPlacement.ts).
+  const agara = planAgara({ worship, decks: flyoverDecks, surface: surfaceMap, roads: roadIndex, collisions, stops: cityLandmarks.stops })
+  worldSurface.report.agara = agara.report
   // HSR Layout's bus stand by the BDA Complex, its bays showing the routes most stops have.
   const routeCounts = new Map<string, number>()
   for (const stop of cityLandmarks.stops) for (const route of stop.routes) routeCounts.set(route, (routeCounts.get(route) ?? 0) + 1)
@@ -345,7 +350,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // The plants in the pots are small leafy bushes, drawn with the hedges in the tree style.
   props.bushes.push(...story.potPlants)
   if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
-  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItWorship: worship, __deliverItFlyovers: flyovers, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
+  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItWorship: worship, __deliverItFlyovers: flyovers, __deliverItAgara: agara, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   yield STEP
@@ -377,7 +382,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const spawnSlug = requestedSpawn()
   const saved = forcedTutorial() ? null : useGameStore.getState().lastPosition
   const spawn =
-    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
+    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
     (saved ? { name: 'Where you left off', ...saved } : null) ??
     homeStart
   // Not where the ride starts, so the scooter never starts inside a parked car.
@@ -438,6 +443,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
   // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
+  // The sellers and devotees at Agara's temple door stand with the rest.
+  shopPeople.standing.push(...agara.people)
   // Kids out playing on the sports pitches, which get their courts, hoops, nets and stumps (pitches.ts).
   for (const [i, { x, z, heading }] of planPitches(surfaceMap.pitches, collisions).entries())
     shopPeople.standing.push({ x, z, heading, body: 1, tint: (i * 0.61) % 1, skin: 0.72 + ((i * 0.17) % 0.33), idle: i % 3 === 0 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 3.1 })
@@ -478,7 +485,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   lap('spawn and landmarks')
   yield STEP
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, deckCollisions: decks.collisionsAt }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, deckCollisions: decks.collisionsAt }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -597,7 +604,7 @@ export function World() {
   startWorld(data)
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, deckCollisions } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, deckCollisions } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -642,6 +649,7 @@ export function World() {
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
         <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
+        <Part name="agara"><Agara agara={agara} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>

@@ -34,6 +34,7 @@ export const WORLD_PARTS = {
   fuel: 'Petrol bunks',
   pitches: 'Sports pitches',
   transit: 'The metro, flyovers and bus stands',
+  agara: 'The Anjaneya statue at Agara',
   temples: 'Temples, mosques and churches',
   fences: 'Walls, fences and railings',
   boundary: 'The edge of the map',

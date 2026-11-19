@@ -10238,3 +10238,26 @@ planted under a deck: the old mask already stopped that). 9 lamp posts removed. 
 ### Not checked
 Signs and hoardings, and buildings beside a deck: buildings are already kept off the decks' footprints
 by the setback, but a sign or hoarding near a deck's edge isn't checked against it.
+
+## 2026-11-19: Entry 201, Agara: the Abhaya Anjaneya statue and its temple's door
+
+### What I did
+- **The statue** (agaraPlacement.ts, Agara.tsx): Hanuman standing 30.5 m with his plinth (about
+  100 ft), right hand raised in blessing, the mace upright at his left, his tail in an arc behind his
+  head; stone with gilded crown, mace and ornaments. One shape of about 3,000 triangles drawn at any
+  distance, so it stands over the rooftops; floodlit at night (a warm glow that comes up with the
+  street lamps). Placed from OSM: on the nearest open ground to OSM's "Hanuman Temple" by the Outer
+  Ring Road flyover at Agara (16 m from it, 61 m from the flyover), turned to face the flyover's
+  nearest point, so the view from the deck frames him, with the Jagannath temple's tower beside him.
+- **Dignified**: the plinth is a solid wall like a building's (no riding onto or up it), and the
+  statue is never a crash body: nothing knocks it and it takes no part in the chaos physics.
+- **At the temple's door**: flower and coconut stalls with their sellers (3 fitted), two patches of
+  footwear left outside, three autos at the kerb, four devotees every day and a crowd of 19 more on
+  Saturdays (day 1 is a Monday, so days 6, 13, ...; `isSaturday`).
+- **Already there from OSM**: the Jagannath temple (Odisha style) 65 m south and the Ayyappan temple;
+  the nearest OSM bus stop is 124 m from the door.
+- `?spawn=agara-flyover` (with ?debug) starts at the foot of the flyover's ramp, heading up.
+
+### Not known
+The real statue's colours: I haven't a reference here, so it's painted stone with gilt. Easy to change
+(Agara.tsx, the colours at the top).
