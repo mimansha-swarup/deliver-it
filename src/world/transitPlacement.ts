@@ -398,3 +398,117 @@ export function heightOnFlyover(deck: Flyover, s: number): number {
   const t = Math.max(0, Math.min(1, (s - at[i - 1]) / span))
   return deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t
 }
+
+// ---------------------------------------------------------------------------
+// The bus stand
+
+/*
+ * HSR Layout's bus stand, by the BDA Complex, where OSM has its station: a concrete apron off the
+ * road with a long island under a canopy, four numbered bays with their routes, buses waiting at
+ * them and people on the island.
+ */
+
+export type BusStand = {
+  name: string
+  nameKannada: string
+  /** Its middle, and the way the road runs past it (the island runs the same way). */
+  x: number
+  z: number
+  dirX: number
+  dirZ: number
+  /** Which side of the island the road is on: the apron's open side. */
+  roadSide: number
+  /** 1 for the full stand, less where only a smaller one fits. */
+  scale: number
+  bays: { number: number; routes: string[] }[]
+  buses: { x: number; z: number; rotation: number; variation: number }[]
+  people: { x: number; z: number; heading: number }[]
+}
+
+export const BUS_STAND = { length: 40, depth: 22, island: { length: 32, width: 3.4 } }
+/** How far from OSM's spot a site for the stand is looked for, in metres. */
+const STAND_REACH = 200
+
+export function planBusStand({ data, surface, roads, collisions, routes }: { data: MapData; surface: SurfaceMap; roads: RoadIndex; collisions: CollisionWorld; routes: string[] }): BusStand | null {
+  const node = data.transit.find(
+    (feature) =>
+      feature.geometry.type === 'Point' &&
+      (feature.properties.public_transport === 'station' || feature.properties.amenity === 'bus_station') &&
+      /hsr/i.test(feature.properties.name ?? ''),
+  )
+  if (!node) return null
+  const [nx, nz] = toGround(node.geometry.coordinates as LonLat)
+  const road = nearestRoadPiece(roads, nx, nz, 80)
+  if (!road) return null
+  const roadLength = Math.hypot(road.piece.end[0] - road.piece.start[0], road.piece.end[1] - road.piece.start[1]) || 1
+  const roadX = (road.piece.end[0] - road.piece.start[0]) / roadLength
+  const roadZ = (road.piece.end[1] - road.piece.start[1]) / roadLength
+  const ground = new Set<Surface>([Surface.Open, Surface.Paved, Surface.Plot, Surface.Park])
+  // The nearest clear site to OSM's spot, along the nearest road or square to it.
+  let best: { x: number; z: number; distance: number; dirX: number; dirZ: number; scale: number } | null = null
+  // The full stand if it fits within reach, else a smaller one (four-fifths the size).
+  for (const scale of [1, 0.8]) {
+    for (const [dirX, dirZ] of [[roadX, roadZ], [roadZ, -roadX]]) {
+      for (let dx = -STAND_REACH; dx <= STAND_REACH; dx += 5) {
+        for (let dz = -STAND_REACH; dz <= STAND_REACH; dz += 5) {
+          const x = nx + dx
+          const z = nz + dz
+          const distance = Math.hypot(dx, dz)
+          if (distance > STAND_REACH || (best && distance >= best.distance)) continue
+          let clear = true
+          for (let a = (-BUS_STAND.length * scale) / 2; a <= (BUS_STAND.length * scale) / 2 && clear; a += 2) {
+            for (let o = (-BUS_STAND.depth * scale) / 2; o <= (BUS_STAND.depth * scale) / 2 && clear; o += 2) {
+              const px = x + dirX * a + dirZ * o
+              const pz = z + dirZ * a - dirX * o
+              if (!ground.has(surface.at(px, pz)) || isNearBuilding(collisions, px, pz, 0.5)) clear = false
+            }
+          }
+          if (clear) best = { x, z, distance, dirX, dirZ, scale }
+        }
+      }
+    }
+    if (best) break
+  }
+  if (!best) return null
+  const { x, z, dirX, dirZ, scale } = best
+  // The way out: the road nearest the site, whose side the apron opens onto.
+  const exit = nearestRoadPiece(roads, x, z, 60) ?? road
+  // The road's side: the apron opens towards it.
+  const roadSide = (exit.piece.start[0] - x) * dirZ - (exit.piece.start[1] - z) * dirX >= 0 ? 1 : -1
+  const at = (a: number, o: number): GroundPoint => [x + dirX * a + dirZ * o * roadSide, z + dirZ * a - dirX * o * roadSide]
+  const stand: BusStand = {
+    name: 'HSR Layout Bus Stand',
+    nameKannada: 'ಎಚ್‌ಎಸ್‌ಆರ್ ಬಡಾವಣೆ ಬಸ್ ನಿಲ್ದಾಣ',
+    x,
+    z,
+    dirX,
+    dirZ,
+    roadSide,
+    scale: 1,
+    bays: [1, 2, 3, 4].map((number, i) => ({ number, routes: routes.slice(i * 3, i * 3 + 3) })),
+    buses: [],
+    people: [],
+  }
+  // The apron is paved ground: concrete, with nothing planted on it.
+  const length = (BUS_STAND.length * scale) / 2
+  const depth = (BUS_STAND.depth * scale) / 2
+  surface.fillPolygon([at(-length, -depth), at(length, -depth), at(length, depth), at(-length, depth)], Surface.Paved)
+  // Solid: the island, and the buses at three of the bays (two on the road side, one behind).
+  const island = { length: BUS_STAND.island.length * scale, width: BUS_STAND.island.width }
+  stand.scale = scale
+  addWall(collisions, at(-island.length / 2, 0), at(island.length / 2, 0), island.width)
+  const rotation = Math.atan2(dirX, dirZ)
+  for (const [a, o] of [[-9 * scale, 3.6], [8 * scale, 3.6], [-1, -3.6]] as const) {
+    const [bx, bz] = at(a, o)
+    stand.buses.push({ x: bx, z: bz, rotation, variation: (stand.buses.length * 0.37) % 1 })
+    addWall(collisions, at(a - 5.4, o), at(a + 5.4, o), 2.5)
+  }
+  // People on the island, under the canopy, facing the bays.
+  for (let i = 0; i < 9; i++) {
+    const a = -island.length / 2 + 2 + (i * (island.length - 4)) / 8 + ((i * 37) % 5) * 0.2
+    const side = i % 2 === 0 ? 1 : -1
+    const [px, pz] = at(a, side * 0.9)
+    stand.people.push({ x: px, z: pz, heading: Math.atan2(dirZ * side * roadSide, -dirX * side * roadSide) })
+  }
+  return stand
+}

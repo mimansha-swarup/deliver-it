@@ -9853,3 +9853,47 @@ flyover (the Agara one on the Outer Ring Road), with traffic and deliveries stil
 
 ### Performance
 Two merged meshes for the decks and pillars, one for the posters, three instanced meshes for the traffic.
+
+## 2026-11-19: Entry 184, bus stops and the bus stand
+
+### What I did
+- **Shelters at OSM's bus stops** (landmarkPlacement.ts): each on the footpath on its stop's side of
+  the nearest road, facing it, slid along up to 10 m to find a clear footpath; a big shelter where
+  three or more routes stop. 46 stops (29 left out: no clear footpath near). The old one-every-520-m
+  shelters are kept only for a map with no stops. Each has **a board** on its roof's front, the
+  city buses' green: the stop's name in Kannada and English and its route numbers from OSM's route
+  relations (30 stops have them). The boards share three pictures (CityLandmarks.tsx). One to three
+  **people waiting** at each.
+- **Buses stop** (trafficLogic.ts, `setBusStops`): each stop belongs to the bus lane nearest it, within
+  15 m. A bus brakes to stop there, waits 9 s, and goes on; lanes are short pieces of road, so it looks
+  into the lane it has chosen next as well. Tested by putting a bus 10 m before a stop: it stopped
+  0.3 m short, waited 9 s and pulled away.
+- **HSR Layout's bus stand** by the BDA Complex (transitPlacement.ts, Transit.tsx): OSM has its
+  station as a point. The nearest site that's clear (open or paved ground, no buildings), along a
+  road or square to it, within 200 m, is 80 m west of the point; there the stand is four-fifths size.
+  Its apron is paved ground (concrete, nothing planted); an island with a kerb painted yellow and
+  black, a long canopy on posts with green fascias, benches; four numbered bays with boards of the
+  routes most stops have; a name board in Kannada and English at each end; three buses at the bays;
+  nine people on the island.
+
+## Report: fixes, HUD layout and transit landmarks (Entries 174 to 184)
+
+### FPS and worst frames (a 2× screen, 4 s standing or 6 s riding)
+| | FPS | Over 20 ms | Worst frame | Work a frame (mean / p95) |
+| --- | --- | --- | --- | --- |
+| Sarjapur Road, High, riding | 120 | 0 | 10.4 ms | 3.3 / 3.9 ms |
+| Sarjapur Road, High, standing | 120 | 0 | 10.4 ms | 3.2 / 3.8 ms |
+| Sarjapur Road, Low, riding | 120 | 0 | 10.3 ms | 2.2 / 2.9 ms |
+| Sarjapur Road, Low, standing | 120 | 0 | 10.0 ms | 2.2 / 2.9 ms |
+| Sarjapur Road, Low, riding, CPU 4× slower | 118 | 0 | 18.5 ms | 7.5 / 9.2 ms |
+| Hosur Road (the metro), High, riding | 108 | 1 | 34.9 ms | 3.6 / 4.1 ms |
+| Hosur Road, High, standing | 108 | 0 | 17.1 ms | 3.5 / 3.9 ms |
+| Hosur Road, Low, riding | 120 | 0 | 10.3 ms | 2.3 / 2.8 ms |
+| Hosur Road, Low, standing | 120 | 0 | 10.3 ms | 2.2 / 2.9 ms |
+
+### Load time, Play to riding, by spawn (local, cached)
+27th Main 4.7 s, Sarjapur Road 4.5 s, 13th Cross 4.7 s, 24th Main 5.1 s, the petrol pump 4.6 s,
+Hosur Road 4.6 s, home 4.6 s. Planning 2.6 s, building the parts 1.3 s, the nearby squares 0.3 s.
+On a cold first visit add the download, now 1.2 MB of map instead of 15.7 MB.
+
+Screenshots in `world-pass.local/shots/report`.

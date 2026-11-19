@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
-import type { Landmarks } from './landmarkPlacement'
+import type { BusStop, Landmarks } from './landmarkPlacement'
 import { PropInstances } from './RoadsideProps'
 import { box, merge } from './simpleShapes'
 import { PLAY_AREA } from './worldUtils'
@@ -142,6 +142,93 @@ function Board({ board }: { board: Landmarks['boards'][number] }) {
   )
 }
 
+// ---- Bus stop boards ----
+
+/** Boards share pictures: each picture holds this many, two across, each 1024 by 102 pixels. */
+const BOARD_SLOT = { width: 1024, height: 102, columns: 2, rows: 20 }
+const BOARDS_PER_ATLAS = BOARD_SLOT.columns * BOARD_SLOT.rows
+
+/** A stop's board in its slot: the city buses' green, the name in Kannada and English, and the routes in white boxes. */
+function drawStopBoard(context: CanvasRenderingContext2D, stop: BusStop, left: number, top: number) {
+  const { width, height } = BOARD_SLOT
+  context.fillStyle = '#1f6b3f'
+  context.fillRect(left, top, width, height)
+  context.fillStyle = '#f2c12e'
+  context.fillRect(left, top + height - 8, width, 8)
+  context.fillStyle = '#ffffff'
+  context.textBaseline = 'middle'
+  context.textAlign = 'left'
+  const name = stop.nameKannada ? `${stop.nameKannada} · ${stop.name}` : stop.name
+  context.font = `700 40px 'Baloo Tamma 2', system-ui, sans-serif`
+  context.fillText(name, left + 16, top + 30, width - 32)
+  // Route numbers, in boxes, as many as fit.
+  context.font = `800 30px system-ui, sans-serif`
+  let x = left + 16
+  for (const route of stop.routes.length ? stop.routes : ['Bus stop']) {
+    const w = context.measureText(route).width + 20
+    if (x + w > left + width - 16) break
+    context.fillStyle = '#ffffff'
+    context.fillRect(x, top + 52, w, 38)
+    context.fillStyle = '#1f6b3f'
+    context.fillText(route, x + 10, top + 72)
+    x += w + 10
+  }
+}
+
+function createStopBoardAtlas(stops: BusStop[]): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = BOARD_SLOT.width * BOARD_SLOT.columns
+  canvas.height = BOARD_SLOT.height * BOARD_SLOT.rows
+  const paint = () => {
+    const context = canvas.getContext('2d')!
+    stops.forEach((stop, i) => drawStopBoard(context, stop, (i % BOARD_SLOT.columns) * BOARD_SLOT.width, Math.floor(i / BOARD_SLOT.columns) * BOARD_SLOT.height))
+  }
+  paint()
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  document.fonts?.load(`700 40px 'Baloo Tamma 2'`, stops.map((stop) => stop.nameKannada).join('')).then(() => {
+    paint()
+    texture.needsUpdate = true
+  }, () => {})
+  return texture
+}
+
+/** The boards, one plane each on the front of its shelter's roof, its picture from the atlas. */
+function createStopBoardGeometry(stops: BusStop[]): THREE.BufferGeometry {
+  const planes = stops.map((stop, i) => {
+    const length = (stop.big ? 12 : 6) - 0.4
+    const plane = new THREE.PlaneGeometry(length, 0.62).toNonIndexed()
+    const column = i % BOARD_SLOT.columns
+    const row = Math.floor(i / BOARD_SLOT.columns)
+    const uv = plane.getAttribute('uv') as THREE.BufferAttribute
+    for (let k = 0; k < uv.count; k++) uv.setXY(k, (column + uv.getX(k)) / BOARD_SLOT.columns, 1 - (row + 1 - uv.getY(k)) / BOARD_SLOT.rows)
+    return plane.translate(0, 3.15, 0.95).rotateY(stop.rotation).translate(stop.x, 0, stop.z)
+  })
+  return merge(planes)
+}
+
+function StopBoards({ stops }: { stops: BusStop[] }) {
+  const atlases = useMemo(() => {
+    const groups: BusStop[][] = []
+    for (let i = 0; i < stops.length; i += BOARDS_PER_ATLAS) groups.push(stops.slice(i, i + BOARDS_PER_ATLAS))
+    return groups.map((group) => ({ texture: createStopBoardAtlas(group), geometry: createStopBoardGeometry(group) }))
+  }, [stops])
+  useEffect(() => () => atlases.forEach(({ texture, geometry }) => {
+    texture.dispose()
+    geometry.dispose()
+  }), [atlases])
+  return (
+    <>
+      {atlases.map(({ texture, geometry }, i) => (
+        <mesh key={i} geometry={geometry}>
+          <meshStandardMaterial map={texture} roughness={0.75} polygonOffset polygonOffsetFactor={-2} />
+        </mesh>
+      ))}
+    </>
+  )
+}
+
 export function CityLandmarks({ landmarks }: { landmarks: Landmarks }) {
   const lake = useMemo(() => (landmarks.lake.length ? createLakeGeometry(landmarks.lake) : null), [landmarks])
   const water = useMemo(() => createWaterMaterial(), [])
@@ -166,6 +253,7 @@ export function CityLandmarks({ landmarks }: { landmarks: Landmarks }) {
       <PropInstances props={landmarks.pillars} geometry={pillar} sizeRange={0} vertexColors to={600} />
       <PropInstances props={landmarks.shelters} geometry={shelter} sizeRange={0} vertexColors />
       <PropInstances props={landmarks.bigShelters} geometry={bigShelter} sizeRange={0} vertexColors />
+      {landmarks.stops.length > 0 && <StopBoards stops={landmarks.stops} />}
       {landmarks.boards.map((board, i) => (
         <Board key={i} board={board} />
       ))}

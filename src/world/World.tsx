@@ -5,7 +5,7 @@ import { markPartBuilt, useLaunch, type WorldPart } from '../game/launch'
 import { Sky } from '../sky/Sky'
 import { createCrashPhysics } from '../physics/crashPhysics'
 import { loadRapier } from '../physics/rapier'
-import { createTrafficWorld } from '../traffic/trafficLogic'
+import { createTrafficWorld, setBusStops } from '../traffic/trafficLogic'
 import { createTrafficSignals } from '../traffic/trafficSignals'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
@@ -72,7 +72,7 @@ import { findTyreShops, forecourtOutline, FUEL_STATIONS, isOnForecourt, placeFue
 import { IDLE_POSE } from '../traffic/gait'
 import { planPitches } from './pitches'
 import { SportsPitches } from './SportsPitches'
-import { planFlyovers, planMetro } from './transitPlacement'
+import { planBusStand, planFlyovers, planMetro } from './transitPlacement'
 import { Transit } from './Transit'
 import { fillEmptyPlots } from './infillPlots'
 import { WarmAssets } from './WarmAssets'
@@ -184,6 +184,11 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The flyovers, as scenery overhead, with traffic on them and life underneath (transitPlacement.ts).
   const flyovers = planFlyovers({ data, surface: surfaceMap, collisions })
   worldSurface.report.flyovers = flyovers.report
+  // HSR Layout's bus stand by the BDA Complex, its bays showing the routes most stops have.
+  const routeCounts = new Map<string, number>()
+  for (const stop of cityLandmarks.stops) for (const route of stop.routes) routeCounts.set(route, (routeCounts.get(route) ?? 0) + 1)
+  const busStand = planBusStand({ data, surface: surfaceMap, roads: roadIndex, collisions, routes: [...routeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([route]) => route).slice(0, 12) })
+  worldSurface.report.busStand = { placed: busStand ? 1 : 0 }
   if (isDebug()) (window as unknown as { __deliverItLandmarks?: unknown }).__deliverItLandmarks = cityLandmarks
   lap(`sites, fuel and worship: ${fuel.length} bunks, ${fuel.filter(({ yard }) => yard > 0).length} with a yard, ${tyreShops.length} tyre shops`)
   // TEMPORARY: a spot on the street in front of each Jagannath temple, facing it.
@@ -235,7 +240,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The plants in the pots are small leafy bushes, drawn with the hedges in the tree style.
   props.bushes.push(...story.potPlants)
   if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
-  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItFlyovers: flyovers, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
+  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItFlyovers: flyovers, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
@@ -290,6 +295,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     return near ? streetPresetOf(data.roads[near.piece.road]) : null
   }
   const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt)
+  // Buses pull up at the shelters, which are at OSM's bus stops (landmarkPlacement.ts).
+  setBusStops(traffic, cityLandmarks.stops)
+  if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic })
   lap('road features and traffic')
   // After the lanes, so parked cars don't count as blocking them: traffic eases out around them instead.
   markParkedOnLanes(traffic.roadLanes, parkedFootprints(parking))
@@ -310,6 +318,19 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // Kids out playing on the sports pitches, which get their courts, hoops, nets and stumps (pitches.ts).
   for (const [i, { x, z, heading }] of planPitches(surfaceMap.pitches, collisions).entries())
     shopPeople.standing.push({ x, z, heading, body: 1, tint: (i * 0.61) % 1, skin: 0.72 + ((i * 0.17) % 0.33), idle: i % 3 === 0 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 3.1 })
+  // People on the bus stand's island.
+  for (const [i, { x, z, heading }] of (busStand?.people ?? []).entries())
+    shopPeople.standing.push({ x, z, heading, body: (i % 2) as 0 | 1, tint: (i * 0.41) % 1, skin: 0.72 + ((i * 0.13) % 0.33), idle: i % 3 === 0 ? IDLE_POSE.phone : IDLE_POSE.weight, phase: i * 1.7 })
+  // People waiting at the bus stops: one to three in front of each shelter, facing the road.
+  cityLandmarks.stops.forEach((stop, i) => {
+    const waiting = 1 + ((i * 7) % 3)
+    const alongX = Math.cos(stop.rotation)
+    const alongZ = -Math.sin(stop.rotation)
+    for (let k = 0; k < waiting; k++) {
+      const across = (k - (waiting - 1) / 2) * 1.1 + ((i % 5) - 2) * 0.2
+      shopPeople.standing.push({ x: stop.x + alongX * across + Math.sin(stop.rotation) * 0.15, z: stop.z + alongZ * across + Math.cos(stop.rotation) * 0.15, heading: stop.rotation + ((k % 3) - 1) * 0.3, body: ((i + k) % 2) as 0 | 1, tint: ((i * 0.37 + k * 0.29) % 1), skin: 0.72 + ((i + k) * 0.11) % 0.33, idle: (i + k) % 3 === 0 ? IDLE_POSE.phone : IDLE_POSE.weight, phase: i * 2.3 + k })
+    }
+  })
   // The petrol bunks' attendants, at the car filling up at each (fuelStationData.ts).
   const pumps = [...fuel.map(pumpVisitors), ...tyreShops.map((shop) => {
     const { vehicles, mechanic } = tyreShopVisitors(shop)
@@ -332,7 +353,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -401,7 +422,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -445,7 +466,7 @@ export function World() {
         <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
-        <Part name="transit"><Transit metro={metro} flyovers={flyovers} /></Part>
+        <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>

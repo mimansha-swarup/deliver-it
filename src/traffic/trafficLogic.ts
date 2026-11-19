@@ -358,6 +358,9 @@ export type Vehicle = Mover & {
   honkWait: number
   /** While righting itself after a crash: how it was lying, how high, and how far back up it is. */
   fallen: Quaternion | null
+  /** A bus at a stop: seconds left there, and which stop it last served (`busStopKey`), so it doesn't stop twice. */
+  busDwell?: number
+  servedStop?: number
   fallenLift: number
   rising: number
   /** A two-wheeler's rider, who is thrown off in a crash. Null for everything else. */
@@ -430,6 +433,8 @@ export type TrafficWorld = {
   impacts: HitSound[]
   /** Every person traffic must stop for this step, walking or down. See `listDowned`. */
   downed: Obstacle[]
+  /** For each road lane, where along it buses stop, in metres (`setBusStops`). */
+  busStops?: number[][]
 }
 
 function angleBetween(from: number, to: number): number {
@@ -1231,6 +1236,69 @@ function maybeHonk(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, r
   vehicle.honkWait = atRider ? 0.8 + random() * 1.5 : 2 + random() * 3
 }
 
+/** How long a bus waits at a stop, in seconds, and how far ahead it looks for one, in metres. */
+const BUS_STOP = { dwell: 9, lookAhead: 70, reach: 15 }
+
+const busStopKey = (lane: number, along: number) => lane * 100000 + Math.round(along)
+
+/**
+ * Gives each lane buses run on the stops beside it: a stop belongs to the bus lane nearest it
+ * (the kerb lane on its side), where along that lane it is. Shelters are at OSM's stops
+ * (landmarkPlacement.ts), so buses stop where the city's do.
+ */
+export function setBusStops(world: TrafficWorld, stops: { x: number; z: number }[]) {
+  const byLane: number[][] = world.roadLanes.map(() => [])
+  for (const { x, z } of stops) {
+    let best = -1
+    let bestDistance: number = BUS_STOP.reach
+    let bestAlong = 0
+    world.roadLanes.forEach((lane, index) => {
+      if (!lane.buses || lane.length < 1) return
+      const along = (x - lane.startX) * lane.forwardX + (z - lane.startZ) * lane.forwardZ
+      if (along < 0 || along > lane.length) return
+      const distance = Math.hypot(x - (lane.startX + lane.forwardX * along), z - (lane.startZ + lane.forwardZ * along))
+      if (distance < bestDistance) {
+        best = index
+        bestDistance = distance
+        bestAlong = along
+      }
+    })
+    if (best >= 0) byLane[best].push(bestAlong)
+  }
+  byLane.forEach((list) => list.sort((a, b) => a - b))
+  world.busStops = byLane
+}
+
+/**
+ * For a bus: the speed that stops it at the next stop ahead on its lane, Infinity with none near,
+ * 0 while it waits there. Starts the wait when it arrives.
+ */
+function busStopSpeed(world: TrafficWorld, vehicle: Vehicle, dt: number): number {
+  if ((vehicle.busDwell ?? 0) > 0) {
+    vehicle.busDwell = (vehicle.busDwell ?? 0) - dt
+    return 0
+  }
+  // Lanes are short pieces of road: look along this one, then the one it has chosen next.
+  const ahead: { lane: number; offset: number }[] = [{ lane: vehicle.lane, offset: -vehicle.along }]
+  const current = world.roadLanes[vehicle.lane]
+  if (current && vehicle.nextLane !== undefined && vehicle.nextLane >= 0) ahead.push({ lane: vehicle.nextLane, offset: current.length - vehicle.along })
+  for (const { lane, offset } of ahead) {
+    for (const along of world.busStops?.[lane] ?? []) {
+      const distance = along + offset
+      if (distance < -1 || distance > BUS_STOP.lookAhead) continue
+      const key = busStopKey(lane, along)
+      if (vehicle.servedStop === key) continue
+      if (distance < 0.8 && vehicle.speed < 0.6) {
+        vehicle.busDwell = BUS_STOP.dwell
+        vehicle.servedStop = key
+        return 0
+      }
+      return Math.sqrt(2 * TRAFFIC_RULES.signalBraking * Math.max(0, distance))
+    }
+  }
+  return Infinity
+}
+
 function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], rider: ScooterState, dt: number) {
   const { roadLanes, random } = world
   const rules = TRAFFIC_RULES
@@ -1274,7 +1342,9 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const turn = nextTurn(vehicle, roadLanes, random)
   const bendSpeed = turn.angle < 0.3 ? Infinity : rules.cornerSpeed * Math.max(0.6, (Math.PI / 2 / turn.angle) ** 0.7)
   const forBend = Math.sqrt(bendSpeed * bendSpeed + 2 * rules.cornerBraking * turn.distance)
-  const target = Math.min(free, held, forBend, forBump) * vehicle.recovery
+  // A bus pulls up at each stop on its lane, and waits (setBusStops).
+  const forStop = vehicle.kind === 'bus' ? busStopSpeed(world, vehicle, dt) : Infinity
+  const target = Math.min(free, held, forBend, forBump, forStop) * vehicle.recovery
 
   const rate = target < vehicle.speed ? rules.braking : rules.acceleration
   const change = target - vehicle.speed
@@ -1282,7 +1352,7 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
 
   // Waiting at a light isn't a deadlock, or the whole queue would barge off together on green.
   const atLight = toStop !== Infinity
-  vehicle.waiting = vehicle.speed < 0.3 && !atLight ? vehicle.waiting + dt : 0
+  vehicle.waiting = vehicle.speed < 0.3 && !atLight && !((vehicle.busDwell ?? 0) > 0) ? vehicle.waiting + dt : 0
   if (hasWaited) vehicle.waiting = rules.patience + 1
 
   maybeHonk(world, vehicle, rider, blockedBy === 'rider' && gap < 3, dt)

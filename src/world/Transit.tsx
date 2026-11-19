@@ -7,7 +7,8 @@ import { PropInstances } from './RoadsideProps'
 import { StiltParking } from './StiltParking'
 import { box, colored, merge } from './simpleShapes'
 import { createPosterAtlas, POSTER_COLUMNS, POSTER_ROWS } from './posters'
-import { heightOnFlyover, pointOnPath, STAIR_RUN, STATION, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
+import { createBusGeometry } from '../traffic/bus'
+import { BUS_STAND, heightOnFlyover, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
 
 /*
  * Draws the metro planned in transitPlacement.ts: the tracks and overhead line on the viaduct's deck, the
@@ -518,7 +519,110 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   )
 }
 
-export function Transit({ metro, flyovers }: { metro: Metro; flyovers: Flyovers }) {
+// ---- The bus stand ----
+
+const BUS_GREEN = '#1f6b3f'
+const STAND_BUS_COLORS = ['#3f7a4a', '#2f5a8f', '#b98a2c'].map((hex) => new THREE.Color(hex))
+
+/** The stand's island, its canopy on posts, benches and a kerb painted yellow and black, along +z. */
+function createStandGeometry(scale: number) {
+  const island = { length: BUS_STAND.island.length * scale, width: BUS_STAND.island.width }
+  const half = island.length / 2
+  const parts: THREE.BufferGeometry[] = [box([island.width, 0.25, island.length], [0, 0.125, 0], '#a7a39b')]
+  for (let a = -half; a < half; a += 1) {
+    for (const side of [-1, 1]) parts.push(box([0.12, 0.27, 1], [side * (island.width / 2 - 0.06), 0.135, a + 0.5], Math.round(a) % 2 === 0 ? YELLOW : '#26262a'))
+  }
+  for (let a = -half + 2; a <= half - 2; a += 6) parts.push(box([0.16, 3.4, 0.16], [0, 1.95, a], '#6d7378'))
+  const roof = box([6.2, 0.15, island.length + 2], [0, 3.7, 0], '#d7dbe0')
+  parts.push(roof)
+  for (const side of [-1, 1]) parts.push(box([0.08, 0.45, island.length + 2], [side * 3.1, 3.5, 0], BUS_GREEN))
+  for (let a = -half + 3; a <= half - 3; a += 6) for (const side of [-1, 1]) parts.push(box([0.45, 0.45, 2.2], [side * 0.7, 0.47, a + 3], '#5a6a73'))
+  return merge(parts)
+}
+
+/** The stand's boards: its name, Kannada over English, and each bay's number with its routes. */
+function createStandBoardTexture(stand: BusStand): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 512
+  const paint = () => {
+    const context = canvas.getContext('2d')!
+    context.fillStyle = BUS_GREEN
+    context.fillRect(0, 0, 1024, 192)
+    context.fillStyle = YELLOW
+    context.fillRect(0, 176, 1024, 16)
+    context.fillStyle = '#ffffff'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.font = `700 64px 'Baloo Tamma 2', system-ui, sans-serif`
+    context.fillText(stand.nameKannada, 512, 60, 980)
+    context.font = `800 60px 'Baloo Tamma 2', system-ui, sans-serif`
+    context.fillText(stand.name, 512, 130, 980)
+    stand.bays.forEach((bay, i) => {
+      const left = i * 256
+      context.fillStyle = '#f4f1e8'
+      context.fillRect(left + 8, 200, 240, 304)
+      context.fillStyle = BUS_GREEN
+      context.font = `800 120px system-ui, sans-serif`
+      context.fillText(String(bay.number), left + 128, 280)
+      context.font = `800 40px system-ui, sans-serif`
+      bay.routes.forEach((route, k) => context.fillText(route, left + 128, 380 + k * 46, 220))
+    })
+  }
+  paint()
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  document.fonts?.load(`700 64px 'Baloo Tamma 2'`, stand.nameKannada).then(() => {
+    paint()
+    texture.needsUpdate = true
+  }, () => {})
+  return texture
+}
+
+/** A plane showing part of the stand's board picture: `[left, top, width, height]` as shares of it. */
+function boardPart(width: number, height: number, [u, v, w, h]: [number, number, number, number]) {
+  const plane = new THREE.PlaneGeometry(width, height).toNonIndexed()
+  const uv = plane.getAttribute('uv') as THREE.BufferAttribute
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, u + uv.getX(k) * w, 1 - v - (1 - uv.getY(k)) * h)
+  return plane
+}
+
+function BusStandScenery({ stand }: { stand: BusStand }) {
+  const structure = useMemo(() => createStandGeometry(stand.scale), [stand])
+  const texture = useMemo(() => createStandBoardTexture(stand), [stand])
+  const bus = useMemo(() => createBusGeometry(), [])
+  const boards = useMemo(() => {
+    const parts: THREE.BufferGeometry[] = []
+    const half = (BUS_STAND.island.length * stand.scale) / 2
+    // The bays' boards, hanging from the canopy's edge on both sides, two bays a side.
+    stand.bays.forEach((_, i) => {
+      const side = i < 2 ? 1 : -1
+      const a = (i % 2 === 0 ? -1 : 1) * half * 0.5
+      parts.push(boardPart(1.2, 1.5, [i * 0.25, 200 / 512, 0.25, 304 / 512]).rotateY(side > 0 ? Math.PI / 2 : -Math.PI / 2).translate(side * 3.16, 2.75, a))
+    })
+    // The name board on the canopy's ends.
+    for (const end of [-1, 1]) parts.push(boardPart(6, 1.1, [0, 0, 1, 192 / 512]).rotateY(end > 0 ? 0 : Math.PI).translate(0, 4.4, end * (half + 1.05)))
+    return merge(parts)
+  }, [stand])
+  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), [])
+  useEffect(() => () => {
+    for (const thing of [structure, texture, bus, boards, material]) thing.dispose()
+  }, [structure, texture, bus, boards, material])
+  const turn = Math.atan2(stand.dirX, stand.dirZ)
+  return (
+    <>
+      <group position={[stand.x, 0, stand.z]} rotation-y={turn}>
+        <mesh geometry={structure} material={material} castShadow receiveShadow />
+        <mesh geometry={boards}>
+          <meshStandardMaterial map={texture} roughness={0.7} side={THREE.DoubleSide} />
+        </mesh>
+      </group>
+      <PropInstances props={stand.buses} geometry={bus} colors={STAND_BUS_COLORS} sizeRange={0} vertexColors to={250} />
+    </>
+  )
+}
+
+export function Transit({ metro, flyovers, busStand }: { metro: Metro; flyovers: Flyovers; busStand: BusStand | null }) {
   const track = useMemo(() => createTrackGeometry(metro), [metro])
   const stations = useMemo(() => (metro.stations.length ? merge(metro.stations.map(createStationGeometry)) : null), [metro])
   const cart = useMemo(() => createCartGeometry(), [])
@@ -529,6 +633,7 @@ export function Transit({ metro, flyovers }: { metro: Metro; flyovers: Flyovers 
   return (
     <>
       <FlyoverScenery flyovers={flyovers} />
+      {busStand && <BusStandScenery stand={busStand} />}
       {track && <mesh geometry={track} material={material} castShadow receiveShadow />}
       {stations && <mesh geometry={stations} material={material} castShadow receiveShadow />}
       {metro.stations.map((station) => (

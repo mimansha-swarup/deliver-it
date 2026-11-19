@@ -28,9 +28,23 @@ export type Landmarks = {
   spans: { from: GroundPoint; to: GroundPoint }[]
   shelters: Prop[]
   bigShelters: Prop[]
+  /** The bus stops, from OSM where it has them: each one's shelter (an index into `shelters` or `bigShelters`), name and routes, for its board. */
+  stops: BusStop[]
   /** A big name board: where it stands, which way it faces, and what it says. */
   boards: { x: number; z: number; rotation: number; lines: string[] }[]
   report: Record<string, number>
+}
+
+export type BusStop = {
+  x: number
+  z: number
+  /** Which way its open front faces (the road). */
+  rotation: number
+  big: boolean
+  name: string
+  nameKannada: string
+  /** The bus routes that stop here, as OSM's route relations have them, in order. */
+  routes: string[]
 }
 
 const LAKE_PARK = 'Agara Lake Park'
@@ -130,8 +144,74 @@ function planLake(data: MapData, surface: SurfaceMap): [number, number, number][
   return rows
 }
 
+/** A stop is slid along its road by up to these, in metres, to find a clear footpath. */
+const STOP_SLIDES = [0, 3, -3, 6, -6, 10, -10]
+
+/**
+ * Shelters at OSM's bus stops (scripts/prepare_transit.mjs): on the footpath on the stop's side of
+ * its nearest road, facing it, a big shelter where three routes or more stop. Where the footpath is
+ * too narrow or taken, the stop is slid along a little, or left out.
+ */
+function placeOsmStops(data: MapData, surface: SurfaceMap, roads: RoadIndex, collisions: CollisionWorld, landmarks: Landmarks) {
+  const grid = new PointGrid(32)
+  let refused = 0
+  for (const node of data.transit) {
+    const { properties } = node
+    if (node.geometry.type !== 'Point' || (properties.highway !== 'bus_stop' && !(properties.public_transport === 'platform' && properties.bus === 'yes'))) continue
+    const [nx, nz] = toGround(node.geometry.coordinates)
+    if (!isInsideBounds(nx, nz, 15) || grid.hasWithin(nx, nz, 25)) continue
+    const near = nearestRoadPiece(roads, nx, nz, 30)
+    if (!near) {
+      refused++
+      continue
+    }
+    const { piece } = near
+    const preset = streetPresetOf(data.roads[piece.road])
+    const footpath = preset?.footpath ?? 2
+    const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1]) || 1
+    const alongX = (piece.end[0] - piece.start[0]) / length
+    const alongZ = (piece.end[1] - piece.start[1]) / length
+    const at0 = (nx - piece.start[0]) * alongX + (nz - piece.start[1]) * alongZ
+    const side = (nx - piece.start[0]) * alongZ - (nz - piece.start[1]) * alongX >= 0 ? 1 : -1
+    const routes = (properties.routes ?? '').split(';').filter(Boolean)
+    const big = routes.length >= 3 && footpath >= 2.6
+    const half = (big ? BIG_SHELTER_LENGTH : SHELTER_LENGTH) / 2
+    const out = piece.width / 2 + Math.max(1.2, footpath * 0.62)
+    let placed = false
+    for (const slide of STOP_SLIDES) {
+      const along = at0 + slide
+      if (along < half + 2 || along > length - half - 2) continue
+      const at = (s: number): GroundPoint => [piece.start[0] + alongX * (along + s) + alongZ * out * side, piece.start[1] + alongZ * (along + s) - alongX * out * side]
+      const clear = [-half, -half / 2, 0, half / 2, half].every((s) => {
+        const [px, pz] = at(s)
+        const ground = surface.at(px, pz)
+        return (ground === Surface.Footpath || ground === Surface.Open || ground === Surface.Paved) && !isNearBuilding(collisions, px, pz, 0.4)
+      })
+      if (!clear) continue
+      const [x, z] = at(0)
+      const rotation = Math.atan2(-alongZ * side, alongX * side)
+      ;(big ? landmarks.bigShelters : landmarks.shelters).push({ x, z, rotation, variation: (landmarks.stops.length % 7) / 7 })
+      landmarks.stops.push({ x, z, rotation, big, name: properties['name:en'] ?? properties.name ?? 'Bus stop', nameKannada: properties['name:kn'] ?? '', routes })
+      const [ax, az] = at(-half)
+      const [bx, bz] = at(half)
+      for (const depth of [-0.8, 0.65]) {
+        const dx = Math.sin(rotation) * depth
+        const dz = Math.cos(rotation) * depth
+        addWall(collisions, [ax + dx, az + dz], [bx + dx, bz + dz], 0.15)
+      }
+      grid.add(x, z)
+      placed = true
+      break
+    }
+    if (!placed) refused++
+  }
+  landmarks.report.osmStops = landmarks.stops.length
+  landmarks.report.osmStopsRefused = refused
+  landmarks.report.osmStopsWithRoutes = landmarks.stops.filter(({ routes }) => routes.length > 0).length
+}
+
 export function placeLandmarks({ data, surface, roads, collisions }: { data: MapData; surface: SurfaceMap; roads: RoadIndex; collisions: CollisionWorld }): Landmarks {
-  const landmarks: Landmarks = { lake: planLake(data, surface), pillars: [], spans: [], shelters: [], bigShelters: [], boards: [], report: {} }
+  const landmarks: Landmarks = { lake: planLake(data, surface), pillars: [], spans: [], shelters: [], bigShelters: [], stops: [], boards: [], report: {} }
   landmarks.report.lakeCells = landmarks.lake.reduce((sum, [, from, to]) => sum + to - from + 1, 0)
 
   // ---- The metro viaduct: pillars in the median between Hosur Road's two carriageways ----
@@ -197,11 +277,13 @@ export function placeLandmarks({ data, surface, roads, collisions }: { data: Map
   landmarks.report.metroPillars = landmarks.pillars.length
   landmarks.report.metroSpans = landmarks.spans.length
 
-  // ---- Bus shelters on main roads' footpaths ----
+  // ---- Bus shelters: at OSM's bus stops, on the footpath on their side of the road ----
+  placeOsmStops(data, surface, roads, collisions, landmarks)
+  // With no stops on the map, one every SHELTER_EVERY metres on main roads instead.
   const shelterGrid = new PointGrid(64)
   let due = SHELTER_EVERY / 2
   let count = 0
-  for (const piece of roads.pieces) {
+  for (const piece of landmarks.stops.length > 0 ? [] : roads.pieces) {
     const preset = streetPresetOf(data.roads[piece.road])
     if (preset?.name !== 'main' || preset.footpath < 2.6) continue
     const length = Math.hypot(piece.end[0] - piece.start[0], piece.end[1] - piece.start[1])
