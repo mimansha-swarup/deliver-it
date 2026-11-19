@@ -1,5 +1,6 @@
 import { getAudioEvenIfPaused } from './audioEngine'
 import type { CodeStation } from './stations'
+import { playBreak, stopBreak } from './rj'
 
 /** How often the scheduler wakes up, in milliseconds. */
 const WAKE_EVERY = 25
@@ -19,9 +20,38 @@ const FADE_IN = 1.2
 let timer: number | null = null
 let output: GainNode | null = null
 
+/** How loud the music is under the RJ's voice, against its usual level, and seconds between the RJ's breaks. */
+const DUCKED = 0.22
+const BREAK_EVERY: [number, number] = [70, 115]
+let breakTimer: number | null = null
+
+/** Turns the playing station down under the RJ's voice, and back up after. */
+function duck(down: boolean) {
+  if (!output) return
+  const now = output.context.currentTime
+  output.gain.cancelScheduledValues(now)
+  output.gain.setTargetAtTime(down ? DUCKED : 1, now, 0.25)
+}
+
+/** Books the RJ's next break on this station, a minute or two off. */
+function bookBreak(station: string, first = false) {
+  if (breakTimer !== null) window.clearTimeout(breakTimer)
+  const [low, high] = BREAK_EVERY
+  const wait = first ? 22 + Math.random() * 20 : low + Math.random() * (high - low)
+  breakTimer = window.setTimeout(() => {
+    breakTimer = null
+    // Not while the page is in the background: the break waits for the rider.
+    if (document.hidden) bookBreak(station)
+    else playBreak(station, duck, () => bookBreak(station))
+  }, wait * 1000)
+}
+
 export function stopStation() {
   if (timer !== null) window.clearInterval(timer)
   timer = null
+  if (breakTimer !== null) window.clearTimeout(breakTimer)
+  breakTimer = null
+  stopBreak()
   if (output) {
     const fading = output
     const now = fading.context.currentTime
@@ -66,4 +96,6 @@ export function playStation(station: CodeStation) {
 
   book()
   timer = window.setInterval(book, WAKE_EVERY)
+  // The RJ comes on between the music (rj.ts): the first time soon, so a new listener hears there is one.
+  bookBreak(station.name, true)
 }

@@ -8,6 +8,7 @@ import { liveSky } from '../game/livePlayer'
 import { STATIONS } from '../audio/stations'
 import { playPing } from '../audio/uiSounds'
 import { useStation } from '../audio/useStation'
+import { RJ_NAME, useOnAir } from '../audio/rj'
 import { VideoScreen } from './Radio'
 import { useUi } from './uiState'
 import { AppGlyph, PhoneApp, WeatherIcon } from './phoneApps'
@@ -24,11 +25,11 @@ import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 
 
 /** How long a message peeks the phone up (or shows as a banner on it), in milliseconds. */
-const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500 }
+const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500, radio: 9000 }
 /** How many notifications float above the half-open phone at once. */
 const FLOATING_SHOWN = 3
 
-type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' }
+type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' | 'radio' }
 
 /** The battery: full at 7 am, about 4% an hour after, charged again by sleeping. */
 function batteryAt(hours: number): number {
@@ -70,15 +71,20 @@ function useNotifications(onMessage: (note: Peek) => void): Peek | null {
     const show = (next: Peek) => {
       onMessage(next)
       setPeek(next)
-      playPing(next.kind === 'urgent' ? 'urgent' : next.kind === 'music' ? 'nowPlaying' : 'message')
+      // The RJ has a jingle of their own.
+      if (next.kind !== 'radio') playPing(next.kind === 'urgent' ? 'urgent' : next.kind === 'music' ? 'nowPlaying' : 'message')
     }
     // The highest chat line and message shown so far. Ids only grow, so anything above is new.
     // (Comparing with `previous` isn't enough: a line added from inside another update is seen
     // again when the outer update's listeners run, with the latest state.)
+    // The RJ's words, as they're said (audio/rj.ts): on the phone too, for anyone with the sound off.
+    const offAir = useOnAir.subscribe(({ line }) => {
+      if (line) show({ id: Date.now(), from: `${RJ_NAME} · ${line.station}`, thread: null, text: line.text, kind: 'radio' })
+    })
     const initial = useGameStore.getState()
     let shownChat = initial.chat.reduce((most, line) => Math.max(most, line.id), -Infinity)
     let shownMessage = initial.messages[0]?.id ?? -Infinity
-    return useGameStore.subscribe((state, previous) => {
+    const offGame = useGameStore.subscribe((state, previous) => {
       // Online, the chat carries the customer and Ravi; off duty, Ravi's messages come on their own.
       for (const line of state.chat) {
         if (line.id <= shownChat) continue
@@ -94,6 +100,10 @@ function useNotifications(onMessage: (note: Peek) => void): Peek | null {
         if (station) show({ id: Date.now(), from: 'Now playing', thread: null, text: station.name, kind: 'music' })
       }
     })
+    return () => {
+      offGame()
+      offAir()
+    }
   }, [onMessage])
 
   useEffect(() => {

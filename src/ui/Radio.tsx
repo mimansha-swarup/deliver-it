@@ -5,6 +5,9 @@ import { playStation, stopStation } from '../audio/radio'
 import type { VideoStation } from '../audio/stations'
 import { useStation } from '../audio/useStation'
 import { useGameStore } from '../game/gameStore'
+import { liveSky } from '../game/livePlayer'
+import { roadReport } from '../audio/rj'
+import { eventNews } from '../game/cityEvents'
 
 
 /**
@@ -17,6 +20,11 @@ export function RadioPlayer() {
   const musicOn = useGameStore((state) => state.musicOn)
   const hornsOn = useGameStore((state) => state.hornsOn)
   const changeStation = useGameStore((state) => state.changeStation)
+
+  // What the RJ's traffic update can talk about: the time, the rain, and what's on the roads (game/cityEvents.ts).
+  useEffect(() => {
+    roadReport.get = () => ({ hours: liveSky.hours, rain: liveSky.rain, night: liveSky.look.night > 0.6, events: eventNews() })
+  }, [])
 
   useEffect(() => setMusicOn(musicOn), [musicOn])
   useEffect(() => setSfxOn(hornsOn), [hornsOn])

@@ -178,52 +178,10 @@ const ringRoadNights: CodeStation = {
   },
 }
 
-/**
- * "HSR After Hours": 30 songs chosen by the player, from Kannada indie and
- * Bangalore rock to the café sound around HSR Layout. Each id is the artist's
- * or label's own upload, checked to allow playing outside YouTube. Three songs
- * from the list weren't on YouTube under that name, so the closest song by the
- * same artist stands in, marked "stand-in".
- *
- * The id stays 'hsr-indie' so a saved choice of this station still works.
+/*
+ * Three stations, all of it made here in code: no recordings, nobody else's songs. (A fourth, which
+ * played a YouTube playlist of real songs, was taken off the dial: the radio carries only original
+ * music now. `VideoStation` and its player stay, unused, for a playlist of music that's free to use.)
+ * A saved choice of the old station falls back to the first.
  */
-const hsrAfterHours: VideoStation = {
-  kind: 'video',
-  id: 'hsr-indie',
-  name: 'HSR After Hours',
-  tagline: 'Songs from around HSR, on YouTube',
-  videos: [
-    'y4QPOKGcnuI', // 1. Vasuki Vaibhav: Gira Gira
-    'BmUe3-sfr7E', // 2. Prateek Kuhad: Kasoor
-    'J3m3uptDf0Q', // 3. Anuv Jain: Alag Aasmaan
-    'U77d9912lrw', // 4. The Local Train: Aaftaab
-    'zKd3oBWe7G0', // 5. Sagar Simha: Doora
-    'sElE_BfQ67s', // 6. Cigarettes After Sex: Apocalypse
-    'sBzrzS1Ag_g', // 7. Tame Impala: The Less I Know The Better
-    '6WuoRV66ti8', // 8. Vasu Dixit: Nadiyolage
-    '6eGCi4SVy94', // 9. OAFF, Savera: Doobey (stand-in for "Savera")
-    'hWOB5QYcmh0', // 10. HONNE: Day 1
-    'puQlNY1ikwM', // 11. Tanmay Gururaj: Ninna Notavu
-    '_kgQxGew2gI', // 12. Swarathma: Jamba
-    'e4h0VoZpdI8', // 13. Raghu Dixit: Lokada Kalaji
-    'LCQdM9fkeqs', // 14. Thermal and a Quarter: Bangalore Blues (stand-in for "Namma Bengaluru")
-    'Y8ZApXcnhy4', // 15. Sumedh K: Tulasi
-    'HSzJL-GJBHc', // 16. Sanjith Hegde: Kareyole
-    'q-TJxeZZxpc', // 17. Parvaaz: Ghaib
-    'oESni03J8h8', // 18. Agam: Rangapura Vihara
-    'qLCLvzTGFVM', // 19. The Local Train: Dil Mere
-    '0gosur3db5I', // 20. Ritviz: Udd Gaye
-    'slNebO7Yips', // 21. Nucleya: Bass Rani (Aaja)
-    'hOHKltAiKXQ', // 22. Hanumankind: Big Dawgs
-    'Il7Nv270zNk', // 23. Prateek Kuhad: cold/mess
-    'Pc-FNBnSplg', // 24. When Chai Met Toast: Firefly
-    'dWqb-WqbGh8', // 25. Lucky Ali: O Sanam
-    'jTkEOh88cB0', // 26. The Bicycle Days: Circles (stand-in for "A Song for the Moon")
-    '2g5xkLqIElU', // 27. Tame Impala: Borderline
-    'MNmiN43iAyQ', // 28. Parvaaz: Beparwah
-    'mS-rBCrA3C4', // 29. Swarathma: Raah e Fakira
-    '5qxYc0CarVo', // 30. Thermal and a Quarter: Lies
-  ],
-}
-
-export const STATIONS: Station[] = [chaiBreak, tablaTaxi, ringRoadNights, hsrAfterHours]
+export const STATIONS: Station[] = [chaiBreak, tablaTaxi, ringRoadNights]

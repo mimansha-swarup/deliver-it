@@ -25,6 +25,7 @@ import { KeyList } from './HelpOverlay'
 import { useTutorial } from '../game/tutorial'
 import { RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 import { CARGO } from '../missions/cargo'
+import { RJ_NAME, useOnAir } from '../audio/rj'
 import { currentGoal, FAMILY_THREAD, FUND_GOALS, useFamily } from '../game/family'
 import { energyOf, fillPrice, fuelLevel, serviceState, UPKEEP, useUpkeep } from '../game/upkeep'
 import { DEBUG_SAVE } from '../game/saveKeys'
@@ -539,6 +540,18 @@ function MapsApp({ nav }: { nav: PhoneNav }) {
   )
 }
 
+/** What the RJ is saying now, as text: the same words the radio speaks. */
+function OnAir() {
+  const line = useOnAir((state) => state.line)
+  if (!line) return null
+  return (
+    <section className="app-card">
+      <p className="app-card-title">On air · {RJ_NAME} · {line.kind === 'ad' ? 'Advertisement' : 'Traffic update'}</p>
+      <p className="app-line">{line.text}</p>
+    </section>
+  )
+}
+
 function MusicApp({ nav }: { nav: PhoneNav }) {
   return (
     <div className="app">
@@ -547,7 +560,8 @@ function MusicApp({ nav }: { nav: PhoneNav }) {
         <section className="phone-sheet phone-music">
           <RadioControls />
         </section>
-        <p className="app-line app-muted">R changes station while riding.</p>
+        <OnAir />
+        <p className="app-line app-muted">Three stations, all original music made in the game. {RJ_NAME} comes on every minute or two with traffic and ads.</p>
       </div>
     </div>
   )
