@@ -24,6 +24,9 @@ export const liveSky = {
   setHoursTo: null as number | null,
 }
 
+/** The order's clock, in seconds since its grace ran out: kept by the mission tracker, read at the hand-over. */
+export const liveMission = { elapsed: 0 }
+
 export const liveView = {
   /** Nothing further than this from the rider is drawn, in metres. */
   drawDistance: 1300,

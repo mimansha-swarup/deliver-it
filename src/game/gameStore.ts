@@ -177,6 +177,8 @@ type GameState = Telemetry & {
   arriveAtStop: (seconds: number) => void
   /** Moves on once the parcel has changed hands. */
   finishHandoff: () => void
+  /** The bag is picked up from the dark store's counter: on to the customer. */
+  collectOrder: () => void
   nextMission: () => void
   setTelemetry: (telemetry: Telemetry) => void
   setAtBunk: (atBunk: string | null) => void
@@ -528,6 +530,8 @@ export const useGameStore = create<GameState>()(
             }),
           }
         }),
+
+      collectOrder: () => set((state) => (state.phase === 'toPickup' && state.mission ? { phase: 'toCustomer' } : state)),
 
       finishHandoff: () =>
         set((state) => {

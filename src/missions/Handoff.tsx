@@ -9,8 +9,11 @@ import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { STRIDE_PER_METRE } from '../traffic/gait'
 import { createWomanGeometry } from '../traffic/peopleShapes'
 import { People } from '../traffic/Traffic'
+import { createPerson } from '../traffic/person'
 import type { Pedestrian } from '../traffic/trafficLogic'
-import type { ScooterState } from '../vehicle/ScooterController'
+import { isAfoot, type ScooterState } from '../vehicle/ScooterController'
+import { liveRoom } from '../game/rooms'
+import { ROOM_SPOTS } from '../world/roomShapes'
 import { createPrintTexture, SHIRT_COLOR } from '../vehicle/shirtPrint'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
@@ -76,31 +79,6 @@ const PRINT_RANGE = 30
 const PRINT_MIN_FACING = 0.3
 
 const HIDDEN_LIFT = -50
-
-function createPerson(x: number, z: number, heading: number, tint: number, skin: number): Pedestrian {
-  return {
-    lane: -1,
-    along: 0,
-    speed: 0,
-    x,
-    z,
-    heading,
-    lift: 0,
-    tint,
-    dodgeX: 0,
-    dodgeZ: 0,
-    stride: 0,
-    walking: 0,
-    skin,
-    body: null,
-    rotation: null,
-    downTime: 0,
-    down: 0,
-    fallen: null,
-    fallenLift: 0,
-    rising: 0,
-  }
-}
 
 function turnTowards(person: Pedestrian, heading: number, dt: number) {
   const turn = Math.atan2(Math.sin(heading - person.heading), Math.cos(heading - person.heading))
@@ -213,20 +191,21 @@ function stepConfetti(mesh: THREE.InstancedMesh, pieces: Confetti[], age: number
 
 /** Finds a side-on view of the rider and a spot, on whichever side has room for a camera. */
 function setShot(
-  state: ScooterState,
+  from: { x: number; z: number },
   [spotX, spotZ]: [number, number],
   collisions: CollisionWorld,
 ) {
-  const lookX = (state.x + spotX) / 2
-  const lookZ = (state.z + spotZ) / 2
-  const awayX = spotX - state.x
-  const awayZ = spotZ - state.z
+  const lookX = (from.x + spotX) / 2
+  const lookZ = (from.z + spotZ) / 2
+  const awayX = spotX - from.x
+  const awayZ = spotZ - from.z
   const length = Math.hypot(awayX, awayZ) || 1
 
   for (const side of [1, -1]) {
     const cameraX = lookX + (awayZ / length) * side * SHOT_DISTANCE
     const cameraZ = lookZ - (awayX / length) * side * SHOT_DISTANCE
-    const isClear = !isNearBuilding(collisions, cameraX, cameraZ, SHOT_CLEARANCE)
+    // In a room the camera is kept inside its walls anyway (FollowCamera.tsx).
+    const isClear = liveRoom.kind !== null || !isNearBuilding(collisions, cameraX, cameraZ, SHOT_CLEARANCE)
     if (isClear || side === -1) {
       liveShot.cameraX = cameraX
       liveShot.cameraZ = cameraZ
@@ -252,14 +231,23 @@ function pickBody(bodies: THREE.BufferGeometry[], look: number) {
   return bodies[Math.floor(look * bodies.length * 0.999)]
 }
 
-/** Where a person should stop beside the box, from the side they came from. */
-function getStandingSpot(state: ScooterState, person: Pedestrian): [number, number] {
-  const boxX = state.x - Math.sin(state.heading) * BOX_BACK
-  const boxZ = state.z - Math.cos(state.heading) * BOX_BACK
+/** Where a person should stop beside the box (or the rider holding the parcel), from the side they came from. */
+function getStandingSpot(boxX: number, boxZ: number, person: Pedestrian): [number, number] {
   const awayX = person.x - boxX
   const awayZ = person.z - boxZ
   const length = Math.hypot(awayX, awayZ) || 1
   return [boxX + (awayX / length) * STAND_OFF, boxZ + (awayZ / length) * STAND_OFF]
+}
+
+const HELD = { forward: 0.34, height: 1.06 }
+
+/** Where the parcel is before it's handed over: on top of the vehicle's box, or held in front of the rider on foot. */
+function carrier(state: ScooterState): { x: number; y: number; z: number } {
+  if (isAfoot(state)) {
+    const { rider } = state
+    return { x: rider.x + Math.sin(rider.heading) * HELD.forward, y: rider.ground + HELD.height, z: rider.z + Math.cos(rider.heading) * HELD.forward }
+  }
+  return { x: state.x - Math.sin(state.heading) * BOX_BACK, y: BOX_TOP, z: state.z - Math.cos(state.heading) * BOX_BACK }
 }
 
 /**
@@ -356,16 +344,14 @@ export function Handoff({
       shownPhase.current = game.phase
       phaseTime.current = 0
       arrivedAt.current = null
-      if (game.phase === 'handingOver') setShot(state, getStandingSpot(state, customer), collisions)
+      if (game.phase === 'handingOver') setShot(carrier(state), getStandingSpot(carrier(state).x, carrier(state).z, customer), collisions)
       else liveShot.active = false
     }
     phaseTime.current += dt
     idleTime.current += dt
 
-    const forwardX = Math.sin(state.heading)
-    const forwardZ = Math.cos(state.heading)
-    const boxX = state.x - forwardX * BOX_BACK
-    const boxZ = state.z - forwardZ * BOX_BACK
+    // The parcel starts from the box on the vehicle, or from the rider's hands when they've walked it over.
+    const { x: boxX, z: boxZ, y: boxY } = carrier(state)
 
     const handsOf = (person: Pedestrian) =>
       new THREE.Vector3(
@@ -373,14 +359,14 @@ export function Handoff({
         HANDS_HEIGHT + person.lift,
         person.z + Math.cos(person.heading) * HANDS_FORWARD,
       )
-    const boxTop = new THREE.Vector3(boxX, BOX_TOP, boxZ)
+    const boxTop = new THREE.Vector3(boxX, boxY, boxZ)
     let parcelAt: THREE.Vector3 | null = null
     let parcelScale = 1
     let parcelSpin = 0
 
     // --- At the dark store ---
     if (game.phase === 'collecting') {
-      const [spotX, spotZ] = getStandingSpot(state, staffMember)
+      const [spotX, spotZ] = getStandingSpot(boxX, boxZ, staffMember)
       const away = Math.hypot(spotX - staffMember.x, spotZ - staffMember.z)
       const arrived = walkTo(staffMember, spotX, spotZ, Math.max(WALK_SPEED, away / LONGEST_WALK), dt)
       if (arrived) {
@@ -431,7 +417,7 @@ export function Handoff({
     }
 
     if (game.phase === 'handingOver') {
-      const [spotX, spotZ] = getStandingSpot(state, customer)
+      const [spotX, spotZ] = getStandingSpot(boxX, boxZ, customer)
       const distance = Math.hypot(spotX - customer.x, spotZ - customer.z)
       const speed = Math.max(WALK_SPEED, distance / LONGEST_WALK)
       const arrived = arrivedAt.current !== null || walkTo(customer, spotX, spotZ, speed, dt)
@@ -443,7 +429,7 @@ export function Handoff({
 
         const since = phaseTime.current - arrivedAt.current
         const hands = handsOf(customer)
-        const raised = boxTop.clone().setY(BOX_TOP + LIFT_HEIGHT)
+        const raised = boxTop.clone().setY(boxY + LIFT_HEIGHT)
 
         if (since < TIMES.lift) {
           const progress = since / TIMES.lift
@@ -468,6 +454,14 @@ export function Handoff({
         }
       }
     }
+
+    // Waiting on the dark store's counter, until it's picked up.
+    if (game.phase === 'toPickup' && game.mission && liveRoom.kind === 'store') {
+      const { bag } = ROOM_SPOTS.store
+      parcelAt = new THREE.Vector3(liveRoom.x + bag.x, liveRoom.floorY + bag.y + 0.12, liveRoom.z + bag.z)
+    }
+    // Carried in the rider's hands while they walk it from the counter, and on to the door.
+    if (game.phase === 'toCustomer' && isAfoot(state)) parcelAt = boxTop
 
     if (game.phase === 'delivered' && shownWaiting.current) {
       // Back home, with their parcel.

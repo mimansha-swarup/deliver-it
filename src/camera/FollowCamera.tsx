@@ -181,12 +181,6 @@ export function FollowCamera({
     const lift = tilt > 0 ? Math.sin(tilt) * distance * 1.6 : tilt * 4
     camera.position.set(focusX - forwardX * back, Math.max(0.5, HEIGHT * view.height + lift) + level.current, focusZ - forwardZ * back)
 
-    if (indoors) {
-      camera.position.x = Math.max(liveRoom.x - ROOM.width / 2 + ROOM_MARGIN, Math.min(liveRoom.x + ROOM.width / 2 - ROOM_MARGIN, camera.position.x))
-      camera.position.z = Math.max(liveRoom.z - ROOM.depth / 2 + ROOM_MARGIN, Math.min(liveRoom.z + ROOM.depth / 2 - ROOM_MARGIN, camera.position.z))
-      camera.position.y = Math.min(camera.position.y, liveRoom.floorY + ROOM.height - ROOM_MARGIN)
-    }
-
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
     camera.position.y += Math.sin(clock.elapsedTime * 61) * state.impact * SHAKE_SIZE * 0.6
@@ -211,11 +205,18 @@ export function FollowCamera({
     const amount = shotAmount.current * shotAmount.current * (3 - 2 * shotAmount.current)
     if (amount > 0.001) {
       camera.position.x += (liveShot.cameraX - camera.position.x) * amount
-      camera.position.y += (SHOT_HEIGHT - camera.position.y) * amount
+      camera.position.y += (SHOT_HEIGHT + level.current - camera.position.y) * amount
       camera.position.z += (liveShot.cameraZ - camera.position.z) * amount
       lookX += (liveShot.lookX - lookX) * amount
-      lookY += (SHOT_LOOK_HEIGHT - lookY) * amount
+      lookY += (SHOT_LOOK_HEIGHT + level.current - lookY) * amount
       lookZ += (liveShot.lookZ - lookZ) * amount
+    }
+
+    // In a room, the camera stays inside its walls and under its ceiling, whatever the shot.
+    if (indoors) {
+      camera.position.x = Math.max(liveRoom.x - ROOM.width / 2 + ROOM_MARGIN, Math.min(liveRoom.x + ROOM.width / 2 - ROOM_MARGIN, camera.position.x))
+      camera.position.z = Math.max(liveRoom.z - ROOM.depth / 2 + ROOM_MARGIN, Math.min(liveRoom.z + ROOM.depth / 2 - ROOM_MARGIN, camera.position.z))
+      camera.position.y = Math.min(camera.position.y, liveRoom.floorY + ROOM.height - ROOM_MARGIN)
     }
 
     camera.lookAt(lookX, lookY, lookZ)

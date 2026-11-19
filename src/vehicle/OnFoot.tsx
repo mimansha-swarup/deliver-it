@@ -4,7 +4,7 @@ import { useGameStore } from '../game/gameStore'
 import { isNearInterest, spotInReach } from '../game/interact'
 import { isKey } from '../game/keyBindings'
 import { setPrompt } from '../game/prompts'
-import { liveRoom } from '../game/rooms'
+import { liveRoom, roomMover } from '../game/rooms'
 import type { CollisionWorld } from '../world/collision'
 import { getOff, getOn, getTravelSpeed, isAfoot, isBesideVehicle, scooterLevel, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
@@ -42,6 +42,21 @@ export function OnFoot({ scooter, collisions, deckCollisions }: { scooter: RefOb
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [scooter, collisions, deckCollisions])
+
+  // Doors and lifts move the rider (game/rooms.ts).
+  useEffect(() => {
+    roomMover.place = (x, z, heading) => {
+      const { rider } = scooter.current
+      rider.x = x
+      rider.z = z
+      rider.heading = heading
+      rider.velocityX = 0
+      rider.pace = 0
+      // Straight onto that floor, or back up onto the street (the ground there is found on the next step).
+      rider.ground = liveRoom.kind ? liveRoom.floorY : 0.08
+      rider.y = rider.ground + 0.93
+    }
+  }, [scooter])
 
   useFrame((_, delta) => {
     since.current += delta

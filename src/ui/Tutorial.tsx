@@ -34,16 +34,16 @@ const STEPS: Record<TutorialStep, StepText> = {
     card: () => `Accept the order: ${keyFor('accept')}.`,
   },
   pickup: {
-    ravi: () => 'Follow the arrow at the top and the line on your map to the dark store on 27th Main. Stop in the orange ring.',
-    card: () => 'Follow the arrow and the minimap to the dark store. Stop in the ring to collect.',
+    ravi: () => `Follow the arrow at the top and the line on your map to the dark store on 27th Main. Park outside, get off with ${keyFor('mount')}, walk in and collect the bag at the counter with ${keyFor('interact')}.`,
+    card: () => `Ride to the dark store, stop and get off (${keyFor('mount')}). Walk in at its door (${keyFor('interact')}) and pick up the bag at the counter (${keyFor('interact')}). Then back out and on (${keyFor('mount')}).`,
   },
   map: {
     ravi: () => `Got it! Before you go: ${keyFor('map')} opens the full map of HSR. Have a look at where you're going.`,
     card: () => `Open the full map: ${keyFor('map')} (close it the same way, or with Esc).`,
   },
   deliver: {
-    ravi: () => "Now take it to the customer. They'll rate you: on time and a smooth ride gets the best tip.",
-    card: () => 'Deliver to the customer: follow the green arrow, stop in the ring. Then see their rating and tip.',
+    ravi: () => "Now take it to the customer's door. They'll rate you: on time and a smooth ride gets the best tip.",
+    card: () => `Deliver it: follow the green arrow, park, get off (${keyFor('mount')}) and walk it to the door. ${keyFor('interact')} rings the bell and hands it over. Then see their rating and tip.`,
   },
   gaadigo: {
     ravi: () => `Sakkath! One more thing: GaadiGo, on your phone (${keyFor('phone')}). It rents and sells other vehicles: a cycle, an electric scooter, later a van for the big orders. Open it and have a look.`,

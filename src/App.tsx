@@ -30,6 +30,7 @@ import { worldPlanner } from './world/planAhead'
 import { DutyUi } from './ui/DutyUi'
 import { Objective } from './ui/Objective'
 import { Prompts } from './ui/Prompts'
+import { RoomFade } from './ui/RoomFade'
 import { Tutorial } from './ui/Tutorial'
 import { Minimap } from './ui/Minimap'
 import { FullMap } from './ui/FullMap'
@@ -93,6 +94,7 @@ function RidingUi() {
       </div>
       <PhotoModeUi />
       <Discovery />
+      <RoomFade />
       <FpsOverlay />
       <HelpOverlay />
     </>

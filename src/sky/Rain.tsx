@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { liveSky } from '../game/livePlayer'
+import { livePlayer, liveSky } from '../game/livePlayer'
 
 /** The box of rain around the camera, in metres. */
 const BOX_WIDTH = 30
@@ -78,7 +78,8 @@ export function Rain({ count }: { count: number }) {
   useFrame(({ camera, clock }) => {
     uniforms.uTime.value = clock.elapsedTime % 1000
     uniforms.uCentre.value.copy(camera.position)
-    uniforms.uOpacity.value = liveSky.rain
+    // No rain indoors (game/rooms.ts).
+    uniforms.uOpacity.value = livePlayer.indoors ? 0 : liveSky.rain
   })
 
   return (

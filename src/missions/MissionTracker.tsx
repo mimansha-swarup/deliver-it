@@ -1,13 +1,13 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
-import { livePlayer, liveSky } from '../game/livePlayer'
+import { liveMission, livePlayer, liveSky } from '../game/livePlayer'
 import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
 import { MISSION_RULES } from '../game/missionConfig'
 import type { MissionPlanner } from './missionPlanner'
 import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { liveRoom } from '../game/rooms'
-import { getCurrentStop, hasArrived } from './missionLogic'
+import { getCurrentStop } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
 import { FRUSTRATION, timeFrustration } from './customerChat'
@@ -111,10 +111,9 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       else elapsed.current += frameTime
     }
 
-    const distance = stop ? Math.hypot(stop.x - state.x, stop.z - state.z) : 0
-    if (stop && hasArrived(distance, travelSpeed)) {
-      game.arriveAtStop(elapsed.current)
-    }
+    // Arriving isn't automatic: the rider parks, walks in and collects, walks up and hands over (Errand.tsx).
+    const distance = stop ? Math.hypot(stop.x - livePlayer.x, stop.z - livePlayer.z) : 0
+    liveMission.elapsed = elapsed.current
 
     // The route: to the order's stop, or else to the rider's own waypoint, which clears on arrival.
     const waypoint = stop ? null : game.waypoint

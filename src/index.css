@@ -4500,3 +4500,26 @@ body,
   font-weight: 700;
   text-align: center;
 }
+
+/* Through a door, up a lift: a short fade to dark and back (game/rooms.ts). */
+.room-fade {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0b0c0e;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.26s ease;
+  z-index: 40;
+}
+.room-fade[data-on='true'] {
+  opacity: 1;
+}
+.room-fade p {
+  margin: 0;
+  color: #f4f1e8;
+  font-size: clamp(16px, 1.6vw, 22px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}

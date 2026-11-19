@@ -10,6 +10,9 @@
  * y up from its floor.
  */
 
+import { create } from 'zustand'
+import { clearSpots, setSpot } from './interact'
+
 export type RoomKind = 'store' | 'chai' | 'lobby' | 'corridor'
 
 /** How far under the street the rooms are, in metres: out of sight, and out of the sun's reach. */
@@ -63,4 +66,67 @@ export const liveRoom = {
 /** A spot in the room's own space, as a place in the world. */
 export function roomPoint(x: number, z: number): [number, number] {
   return [liveRoom.x + x, liveRoom.z + z]
+}
+
+/** Just inside a room's street door, in its own space: where the rider arrives and leaves from. */
+export const ROOM_DOOR = { x: 0, z: ROOM.depth / 2 - 0.75 }
+
+/** What the screen needs to know: which room is being drawn (with its sign), and the fade between places. */
+export const useRoom = create<{ kind: RoomKind | null; label: string; fading: boolean; fadeText: string }>(() => ({ kind: null, label: '', fading: false, fadeText: '' }))
+
+/** Moves the rider, on foot, to a place and a facing: set by the on-foot controller, which has them. */
+export const roomMover: { place: (x: number, z: number, heading: number) => void } = { place: () => {} }
+
+/** How long the screen takes to go dark, in milliseconds; it stays dark for `hold` and comes back as fast. */
+const FADE_MS = 280
+
+/**
+ * Through a door, up a lift: the screen goes dark with a word about where to, `then` happens in the
+ * dark, and it comes back. The rider can't walk meanwhile. `hold`: extra time in the dark, in ms.
+ */
+export function goThrough(text: string, then: () => void, hold = 120) {
+  if (liveRoom.frozen) return
+  liveRoom.frozen = true
+  useRoom.setState({ fading: true, fadeText: text })
+  window.setTimeout(() => {
+    then()
+    window.setTimeout(() => {
+      useRoom.setState({ fading: false })
+      window.setTimeout(() => {
+        liveRoom.frozen = false
+      }, FADE_MS * 0.6)
+    }, hold)
+  }, FADE_MS)
+}
+
+type Place = { x: number; z: number; heading: number }
+
+/** Puts the rider in a room at once (no fade): under `at`, arriving at `arrive` (the room's own space; the street door by default). */
+export function setRoom(kind: RoomKind, at: { x: number; z: number }, exit: Place, label: string, blocks: Block[], floor = 0, arrive: Place = { ...ROOM_DOOR, heading: Math.PI }) {
+  clearSpots('room:')
+  liveRoom.kind = kind
+  liveRoom.x = at.x
+  liveRoom.z = at.z
+  liveRoom.floorY = ROOM_DEPTH
+  liveRoom.blocks = blocks
+  liveRoom.exit = exit
+  liveRoom.label = label
+  liveRoom.floor = floor
+  useRoom.setState({ kind, label })
+  roomMover.place(at.x + arrive.x, at.z + arrive.z, arrive.heading)
+  // The way out: the street door, where the room has one.
+  if (kind !== 'corridor') setSpot('room:exit', { x: at.x + ROOM_DOOR.x, z: at.z + ROOM_DOOR.z + 0.45, radius: 1.0, text: 'Leave', room: kind, run: () => leaveRoom() })
+}
+
+/** Back out to the street, where the rider came in. */
+export function leaveRoom(text = '') {
+  if (!liveRoom.kind) return
+  goThrough(text, () => {
+    const { exit } = liveRoom
+    clearSpots('room:')
+    liveRoom.kind = null
+    liveRoom.blocks = []
+    useRoom.setState({ kind: null, label: '' })
+    roomMover.place(exit.x, exit.z, exit.heading)
+  })
 }
