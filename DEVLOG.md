@@ -10326,3 +10326,30 @@ The SUV's windscreen is a little unevenly shaded close up, and the cars' wheels 
 One clean pair, before this Mac got busy again (load over 4): 71 fps, worst 25 ms, 5.8 ms of the game's
 own work a frame, against 68 fps, 25 ms and 6.0 ms. Not confirmed at 80: the old build doesn't reach
 it on this machine today either.
+
+## 2026-11-20: Entry 205, the Anjaneya statue and the Jagannath temple in detail
+
+### The statue (Agara.tsx)
+The blocky figure is replaced. He's built from smooth swept forms (limbs, torso, tail) and lathed ones
+(crown, mace, lotus), smooth-shaded: a calm face (half-closed eyes under level brows, Hanuman's full
+muzzle, a tilak), ears with rings, a tiered crown with a ring of gems and a crest, the right hand
+open in blessing with its fingers, the mace upright in his left with a ribbed head and finial, necklaces,
+a pendant, a marigold-and-jasmine garland, armlets, bangles and anklets, a red dhoti with a gold hem,
+pleats and a green sash, the tail arching over his head. He stands on a lotus pedestal (two rows of
+petals) on the roof of a small temple at his feet: banded walls, pilasters, a door up three steps,
+kalashas at the corners.
+- **Colours**: I could only search descriptions, not see photos. Sources agree it's a 102 ft idol painted
+  in many colours, "in colourful royal attire", crowned and jewelled, on a lotus pedestal; none gives the
+  palette. So: warm skin, red muzzle, red dhoti, green sash, gold crown, mace and jewels, a pink lotus.
+- **Scale**: 31.1 m (102 ft) with the temple under him. From the flyover he stands clear above the roofs.
+- **Levels of detail**: about 26,000 triangles within 260 m, 4,600 beyond (20 m margin either way).
+- **At night**: floodlit in his own colours (the paint lit warm), rising with the street lamps.
+- Still never a crash body; the temple under him is a solid wall.
+
+### The Jagannath temple (Temples.tsx; every Jagannath temple on the map gets this)
+- The tower: moulded base with a framed niche on each face; 20 courses with five ribs a face, the middle
+  rib red all the way up, a red band every fourth course with ribbed corner discs; a gold medallion and a
+  small shrine standing out of each face; the neck, an amalaka ribbed all round, the cap and pot; the
+  Nila Chakra as an eight-spoked wheel on its stem; a long red pennant edged in yellow on a pole.
+- The hall in front: a pyramid of eight red-edged tiers in two groups under a bell, amalaka and pot.
+- At ground level: a framed door up three steps between two lions, and the Aruna Stambha before it.

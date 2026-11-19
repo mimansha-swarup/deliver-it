@@ -98,57 +98,184 @@ function vimana([x, z]: GroundPoint, base: number, size: number, angle: number):
  */
 function rekhaDeula([x, z]: GroundPoint, base: number, size: number, angle: number): THREE.BufferGeometry[] {
   const parts: THREE.BufferGeometry[] = []
-  const height = size * 2.4
-  const courses = 10
-  const courseHeight = height / courses
+  const height = size * 2.6
+  const WHITE = '#f4efe2'
+  const SHADE = '#e6dcc6'
+  const RED = '#b8402a'
+  // The base (pabhaga): mouldings, then the wall (jangha) with a framed niche on each face.
+  const foot = size * 0.38
+  parts.push(block(size * 1.2, foot * 0.22, size * 1.2, [x, base, z], angle, RED))
+  parts.push(block(size * 1.14, foot * 0.2, size * 1.14, [x, base + foot * 0.22, z], angle, WHITE))
+  parts.push(block(size * 1.2, foot * 0.16, size * 1.2, [x, base + foot * 0.42, z], angle, SHADE))
+  parts.push(block(size * 1.08, foot * 0.42, size * 1.08, [x, base + foot * 0.58, z], angle, WHITE))
+  for (let face = 0; face < 4; face++) {
+    const turn = angle + (face * Math.PI) / 2
+    const out = size * 0.56
+    const at = (lift: number, depth: number): [number, number, number] => [x + Math.sin(turn) * (out + depth), base + lift, z + Math.cos(turn) * (out + depth)]
+    // A niche: a dark recess in a red frame under a little stepped roof, as the side deities' are.
+    parts.push(block(size * 0.3, foot * 0.6, 0.12, at(foot * 0.3, 0), turn, RED))
+    parts.push(block(size * 0.2, foot * 0.46, 0.14, at(foot * 0.33, 0.02), turn, '#3a2c24'))
+    parts.push(block(size * 0.36, foot * 0.08, 0.2, at(foot * 0.9, 0), turn, WHITE))
+    parts.push(block(size * 0.24, foot * 0.08, 0.18, at(foot * 0.98, 0), turn, RED))
+  }
+  // The tower (gandi): courses (bhumis) with five ribs on each face (pancharatha), the middle one
+  // (raha) furthest out and painted red, curving in to the neck. Every fourth course is a red band,
+  // with a ribbed corner disc (bhumi-amla) on it.
+  const courses = 20
+  const from = base + foot
+  const courseHeight = (height - foot) / courses
+  const widthAt = (t: number) => size * (1 - 0.5 * (t < 0.3 ? 0 : ((t - 0.3) / 0.7) ** 1.7))
   for (let course = 0; course < courses; course++) {
     const t = (course + 0.5) / courses
-    // Straight for the lower half, then curving in to about half its width at the top.
-    const curve = t < 0.45 ? 0 : ((t - 0.45) / 0.55) ** 1.6
-    const width = size * (1 - 0.48 * curve)
-    const y = base + course * courseHeight
-    const shade = course % 2 === 0 ? '#f3eee2' : '#e8dfcb'
-    parts.push(block(width, courseHeight * 0.92, width, [x, y, z], angle, shade))
-    // The ribs: the middle of each face stepped out, twice.
-    parts.push(block(width * 0.5, courseHeight * 0.92, width * 1.1, [x, y, z], angle, shade))
-    parts.push(block(width * 1.1, courseHeight * 0.92, width * 0.5, [x, y, z], angle, shade))
-    parts.push(block(width * 0.2, courseHeight * 0.92, width * 1.18, [x, y, z], angle, '#c4602f'))
-    parts.push(block(width * 1.18, courseHeight * 0.92, width * 0.2, [x, y, z], angle, '#c4602f'))
-    // A thin cornice between courses.
-    parts.push(block(width * 1.04, courseHeight * 0.08, width * 1.04, [x, y + courseHeight * 0.92, z], angle, '#d8ccb2'))
+    const width = widthAt(t)
+    const y = from + course * courseHeight
+    const isBand = course % 4 === 3
+    const shade = isBand ? RED : WHITE
+    const tall = courseHeight * 0.86
+    parts.push(block(width, tall, width, [x, y, z], angle, shade))
+    // The ribs, each stepped a little further out than the last, on both axes.
+    parts.push(block(width * 0.72, tall, width * 1.07, [x, y, z], angle, shade))
+    parts.push(block(width * 1.07, tall, width * 0.72, [x, y, z], angle, shade))
+    parts.push(block(width * 0.44, tall, width * 1.13, [x, y, z], angle, shade))
+    parts.push(block(width * 1.13, tall, width * 0.44, [x, y, z], angle, shade))
+    parts.push(block(width * 0.18, tall, width * 1.19, [x, y, z], angle, RED))
+    parts.push(block(width * 1.19, tall, width * 0.18, [x, y, z], angle, RED))
+    // The groove between courses: a thin dark-edged cornice.
+    parts.push(block(width * 1.05, courseHeight * 0.14, width * 1.05, [x, y + tall, z], angle, '#cfc2a6'))
+    if (isBand) {
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const cx = x + (Math.sin(angle) * sz + Math.cos(angle) * sx) * width * 0.5
+        const cz = z + (Math.cos(angle) * sz - Math.sin(angle) * sx) * width * 0.5
+        parts.push(placed(new THREE.CylinderGeometry(width * 0.085, width * 0.085, tall * 0.9, 8).translate(0, tall * 0.5, 0), [cx, y, cz], angle, WHITE))
+      }
+    }
+  }
+  // A carved medallion (the chaitya window) low on each face's middle rib, and a small shrine
+  // (anga-shikhara) standing out of it higher up.
+  for (let face = 0; face < 4; face++) {
+    const turn = angle + (face * Math.PI) / 2
+    const on = (t: number, depth: number): [number, number, number] => {
+      const out = widthAt(t) * 0.6 + depth
+      return [x + Math.sin(turn) * out, from + (height - foot) * t, z + Math.cos(turn) * out]
+    }
+    parts.push(placed(new THREE.CylinderGeometry(size * 0.11, size * 0.11, 0.1, 12).rotateX(Math.PI / 2), on(0.2, 0.02), turn, GOLD))
+    parts.push(placed(new THREE.CylinderGeometry(size * 0.06, size * 0.06, 0.14, 10).rotateX(Math.PI / 2), on(0.2, 0.04), turn, RED))
+    const mini = size * 0.16
+    const [mx, my, mz] = on(0.42, -mini * 0.2)
+    parts.push(block(mini, mini * 1.5, mini * 0.7, [mx, my, mz], turn, WHITE))
+    parts.push(block(mini * 0.75, mini * 0.6, mini * 0.6, [mx, my + mini * 1.5, mz], turn, SHADE))
+    parts.push(placed(new THREE.CylinderGeometry(mini * 0.42, mini * 0.42, mini * 0.2, 8).translate(0, mini * 0.1, 0), [mx, my + mini * 2.1, mz], turn, RED))
+    parts.push(placed(new THREE.ConeGeometry(mini * 0.14, mini * 0.4, 6).translate(0, mini * 0.2, 0), [mx, my + mini * 2.3, mz], turn, GOLD))
   }
   let y = base + height
-  const top = size * 0.52
-  // The neck, then the amalaka: a wide, flattened, ribbed disc.
-  parts.push(placed(new THREE.CylinderGeometry(top * 0.42, top * 0.5, size * 0.12, 12).translate(0, size * 0.06, 0), [x, y, z], angle, '#e8dfcb'))
+  const top = size * 0.5
+  // The neck (beki), then the amalaka: a wide, flattened disc, ribbed all round.
+  parts.push(placed(new THREE.CylinderGeometry(top * 0.42, top * 0.5, size * 0.12, 12).translate(0, size * 0.06, 0), [x, y, z], angle, SHADE))
   y += size * 0.12
-  parts.push(placed(new THREE.CylinderGeometry(top * 0.62, top * 0.62, size * 0.2, 20).translate(0, size * 0.1, 0), [x, y, z], angle, '#ece5d4'))
-  parts.push(placed(new THREE.TorusGeometry(top * 0.62, size * 0.06, 6, 20).rotateX(Math.PI / 2), [x, y + size * 0.1, z], angle, '#ece5d4'))
+  parts.push(placed(new THREE.CylinderGeometry(top * 0.6, top * 0.6, size * 0.2, 20).translate(0, size * 0.1, 0), [x, y, z], angle, WHITE))
+  for (let rib = 0; rib < 20; rib++) {
+    const turn = (rib / 20) * Math.PI * 2
+    const lobe = new THREE.SphereGeometry(size * 0.075, 6, 5)
+    lobe.scale(1, 1.5, 1)
+    lobe.translate(Math.sin(turn) * top * 0.62, size * 0.1, Math.cos(turn) * top * 0.62)
+    parts.push(placed(lobe, [x, y, z], angle, rib % 2 === 0 ? WHITE : SHADE))
+  }
   y += size * 0.2
-  parts.push(placed(new THREE.CylinderGeometry(top * 0.3, top * 0.42, size * 0.1, 12).translate(0, size * 0.05, 0), [x, y, z], angle, '#e8dfcb'))
-  y += size * 0.1
-  parts.push(placed(new THREE.SphereGeometry(size * 0.13, 10, 6).translate(0, size * 0.1, 0), [x, y, z], angle, GOLD))
-  parts.push(placed(new THREE.ConeGeometry(size * 0.06, size * 0.25, 8).translate(0, size * 0.32, 0), [x, y, z], angle, GOLD))
-  y += size * 0.45
-  // The Nila Chakra, a wheel facing the front, and the flag above it.
-  parts.push(placed(new THREE.TorusGeometry(size * 0.18, size * 0.025, 5, 16), [x, y + size * 0.2, z], angle, GOLD))
-  parts.push(placed(new THREE.CylinderGeometry(0.03, 0.03, size * 1.0, 5).translate(0, size * 0.5, 0), [x, y, z], angle, '#5a4632'))
-  const flag = new THREE.BufferGeometry()
-  flag.setAttribute('position', new THREE.Float32BufferAttribute([0, size, 0, size * 0.75, size * 0.85, 0, 0, size * 0.7, 0], 3))
-  flag.computeVertexNormals()
-  parts.push(placed(flag, [x, y, z], angle + Math.PI / 2, FLAG_RED))
+  // The skull-cap (khapuri) and the pot (kalasha).
+  parts.push(placed(new THREE.SphereGeometry(top * 0.46, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), [x, y, z], angle, WHITE))
+  y += top * 0.4
+  parts.push(placed(new THREE.SphereGeometry(size * 0.13, 12, 8).scale(1, 0.85, 1).translate(0, size * 0.1, 0), [x, y, z], angle, GOLD))
+  parts.push(placed(new THREE.CylinderGeometry(size * 0.05, size * 0.08, size * 0.1, 8).translate(0, size * 0.24, 0), [x, y, z], angle, GOLD))
+  y += size * 0.3
+  // The Nila Chakra: an eight-spoked wheel facing the front, on its stem; the pole behind it, and
+  // the Patitapabana flag, a long red pennant with a yellow edge and crescent.
+  const wheel = size * 0.2
+  parts.push(placed(new THREE.CylinderGeometry(0.05, 0.07, size * 0.2, 6).translate(0, size * 0.1, 0), [x, y, z], angle, GOLD))
+  const hub = y + size * 0.2 + wheel
+  parts.push(placed(new THREE.TorusGeometry(wheel, size * 0.028, 6, 24), [x, hub, z], angle, GOLD))
+  parts.push(placed(new THREE.TorusGeometry(wheel * 0.72, size * 0.014, 5, 20), [x, hub, z], angle, GOLD))
+  parts.push(placed(new THREE.CylinderGeometry(wheel * 0.2, wheel * 0.2, 0.08, 10).rotateX(Math.PI / 2), [x, hub, z], angle, GOLD))
+  for (let spoke = 0; spoke < 4; spoke++) {
+    parts.push(placed(new THREE.BoxGeometry(wheel * 2, size * 0.022, size * 0.022).rotateZ((spoke * Math.PI) / 4), [x, hub, z], angle, GOLD))
+  }
+  const pole = size * 1.25
+  parts.push(placed(new THREE.CylinderGeometry(0.035, 0.045, pole, 6).translate(0, pole / 2, 0), [x, hub - wheel * 0.2, z], angle, '#5a4632'))
+  const mast = hub - wheel * 0.2 + pole
+  const pennant = (points: number[], color: string, lift: number) => {
+    const flag = new THREE.BufferGeometry()
+    flag.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
+    flag.computeVertexNormals()
+    return placed(flag, [x, mast + lift, z], angle + Math.PI / 2, color)
+  }
+  parts.push(pennant([0, 0, 0, size * 1.05, -size * 0.2, 0, 0, -size * 0.42, 0], FLAG_RED, 0))
+  parts.push(pennant([0, -size * 0.42, 0.01, size * 1.05, -size * 0.2, 0.01, 0, -size * 0.5, 0.01], '#e8b62c', 0))
+  parts.push(placed(new THREE.TorusGeometry(size * 0.06, size * 0.014, 4, 10, Math.PI), [x, mast - size * 0.2, z], angle + Math.PI / 2, '#e8b62c'))
   return parts
 }
 
-/** A pidha roof: three stepped tiers over the hall in front of a Kalinga tower. */
+/**
+ * The hall in front of a Kalinga tower (the jagamohana), a pidha deula: a pyramid of stepped tiers
+ * in two groups, each tier's edge a red line, under a bell (ghanta), an amalaka and a kalasha.
+ */
 function pidha([x, z]: GroundPoint, base: number, size: number, angle: number): THREE.BufferGeometry[] {
   const parts: THREE.BufferGeometry[] = []
   let y = base
-  for (const share of [1, 0.75, 0.5]) {
-    parts.push(block(size * share, size * 0.22, size * share, [x, y, z], angle, '#efe6d6'))
-    y += size * 0.22
+  const tiers = [1, 0.9, 0.8, 0.7, 0.58, 0.5, 0.42, 0.34]
+  tiers.forEach((share, tier) => {
+    const tall = size * (tier === 4 ? 0.16 : 0.085)
+    // A recessed wall between the two groups of tiers.
+    if (tier === 4) parts.push(block(size * share * 0.9, tall, size * share * 0.9, [x, y, z], angle, '#e6dcc6'))
+    else {
+      parts.push(block(size * share, tall * 0.7, size * share, [x, y, z], angle, '#f4efe2'))
+      parts.push(block(size * share * 1.04, tall * 0.3, size * share * 1.04, [x, y + tall * 0.7, z], angle, '#b8402a'))
+    }
+    y += tall
+  })
+  parts.push(placed(new THREE.SphereGeometry(size * 0.16, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.8, 1), [x, y, z], angle, '#f4efe2'))
+  y += size * 0.12
+  parts.push(placed(new THREE.CylinderGeometry(size * 0.13, size * 0.13, size * 0.06, 14).translate(0, size * 0.03, 0), [x, y, z], angle, '#e6dcc6'))
+  y += size * 0.06
+  parts.push(placed(new THREE.SphereGeometry(size * 0.07, 10, 6).translate(0, size * 0.06, 0), [x, y, z], angle, GOLD))
+  parts.push(placed(new THREE.ConeGeometry(size * 0.035, size * 0.16, 8).translate(0, size * 0.2, 0), [x, y, z], angle, GOLD))
+  return parts
+}
+
+/**
+ * At ground level in front of a Jagannath temple, as at Puri: steps up to a door between two lions
+ * (the Simhadwara), and the Aruna Stambha before it, a tall many-sided pillar with a figure on top.
+ */
+function kalingaForecourt(site: WorshipSite, inside: GroundPoint, ground: number, angle: number): THREE.BufferGeometry[] {
+  const parts: THREE.BufferGeometry[] = []
+  const out = distanceToEdge(site.outline, inside, site.front)
+  const at = (forward: number, across: number): GroundPoint => [
+    inside[0] + site.front[0] * (out + forward) + site.front[1] * across,
+    inside[1] + site.front[1] * (out + forward) - site.front[0] * across,
+  ]
+  // The door: a dark opening in a red frame with a stepped white lintel.
+  const [dx, dz] = at(0.06, 0)
+  parts.push(block(1.5, 2.3, 0.12, [dx, ground + PLINTH, dz], angle, '#3a2c24'))
+  for (const side of [-1, 1]) {
+    const [jx, jz] = at(0.08, side * 0.86)
+    parts.push(block(0.22, 2.5, 0.2, [jx, ground + PLINTH, jz], angle, '#b8402a'))
   }
-  parts.push(placed(new THREE.ConeGeometry(size * 0.06, size * 0.25, 8).translate(0, size * 0.125, 0), [x, y, z], angle, GOLD))
+  parts.push(block(2.2, 0.22, 0.26, [at(0.08, 0)[0], ground + PLINTH + 2.3, at(0.08, 0)[1]], angle, '#f4efe2'))
+  parts.push(block(1.6, 0.18, 0.24, [at(0.08, 0)[0], ground + PLINTH + 2.52, at(0.08, 0)[1]], angle, '#b8402a'))
+  // Steps, and a lion each side, sitting up on a block.
+  for (let step = 0; step < 3; step++) parts.push(block(2.6 - step * 0.3, PLINTH / 3, 0.36, [at(0.95 - step * 0.33, 0)[0], ground + (step * PLINTH) / 3 - 0.02, at(0.95 - step * 0.33, 0)[1]], angle, '#d8ccb2'))
+  for (const side of [-1, 1]) {
+    const [lx, lz] = at(0.9, side * 1.75)
+    parts.push(block(0.6, 0.45, 0.9, [lx, ground, lz], angle, '#b8402a'))
+    parts.push(placed(new THREE.SphereGeometry(0.3, 8, 6).scale(0.85, 1, 1.3).translate(0, 0.3, -0.05), [lx, ground + 0.45, lz], angle, '#f4efe2'))
+    parts.push(placed(new THREE.SphereGeometry(0.22, 8, 6).translate(0, 0.62, 0.28), [lx, ground + 0.45, lz], angle, '#f4efe2'))
+    parts.push(placed(new THREE.SphereGeometry(0.27, 8, 5).scale(1, 1, 0.6).translate(0, 0.62, 0.16), [lx, ground + 0.45, lz], angle, '#e8b62c'))
+  }
+  // The Aruna Stambha, a little way out in front.
+  const [px, pz] = at(3.2, 0)
+  parts.push(block(1.0, 0.3, 1.0, [px, ground, pz], angle, '#b8402a'))
+  parts.push(block(0.74, 0.3, 0.74, [px, ground + 0.3, pz], angle, '#f4efe2'))
+  parts.push(placed(new THREE.CylinderGeometry(0.16, 0.2, 5.2, 16).translate(0, 2.6, 0), [px, ground + 0.6, pz], angle, '#6b5a4c'))
+  parts.push(placed(new THREE.CylinderGeometry(0.34, 0.18, 0.3, 16).translate(0, 0.15, 0), [px, ground + 5.8, pz], angle, '#6b5a4c'))
+  parts.push(placed(new THREE.SphereGeometry(0.17, 8, 6).scale(1, 1.3, 1).translate(0, 0.22, 0), [px, ground + 6.1, pz], angle, GOLD))
   return parts
 }
 
@@ -234,6 +361,7 @@ function buildSite(site: WorshipSite): THREE.BufferGeometry[] {
       parts.push(...rekhaDeula(towerAt, roof, size, angle))
       const hallAt: GroundPoint = [towerAt[0] + site.front[0] * size * 1.05, towerAt[1] + site.front[1] * size * 1.05]
       if (distanceToEdge(site.outline, inside, site.front) > shift + size * 1.3) parts.push(...pidha(hallAt, roof, size * 0.85, angle))
+      parts.push(...kalingaForecourt(site, inside, ground, angle))
       break
     }
     case 'muslim': {

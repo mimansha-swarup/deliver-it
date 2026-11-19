@@ -19,10 +19,10 @@ import type { GroundPoint } from './worldUtils'
  * kerb, a few people at any time and a crowd on Saturdays, Hanuman's day.
  */
 
-/** The whole height, plinth and all, in metres: about 100 ft. */
-export const STATUE_HEIGHT = 30.5
-/** The plinth's side, in metres. */
-export const PLINTH = 9
+/** The whole height, the temple under him and all, in metres: 102 ft, as the real one. */
+export const STATUE_HEIGHT = 31.1
+/** The side of the little temple he stands on, in metres. */
+export const PLINTH = 10
 /** The statue's temple is the Hanuman temple within this far of the Agara flyover, in metres. */
 const NEAR_FLYOVER = 400
 /** The plinth is put on open ground within this far of the temple, the nearest spot that takes it. */
