@@ -28,11 +28,22 @@ export function makePath(points: GroundPoint[]): Path {
 }
 
 /** The point `distance` along a path, and the direction it runs there. */
+/** The first point of a path at or past `s` metres along it (never the very first): a binary search, as the decks' paths have thousands of points. */
+function segmentAt(at: number[], s: number): number {
+  let low = 1
+  let high = at.length - 1
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (at[middle] < s) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
 export function pointOnPath(path: Path, distance: number): { x: number; z: number; dirX: number; dirZ: number } {
   const { points, at } = path
   const s = Math.max(0, Math.min(path.length, distance))
-  let i = 1
-  while (i < at.length - 1 && at[i] < s) i++
+  const i = segmentAt(at, s)
   const [ax, az] = points[i - 1]
   const [bx, bz] = points[i]
   const span = at[i] - at[i - 1] || 1
@@ -558,8 +569,7 @@ export function planFlyovers({ decks, surface, collisions }: { decks: Flyover[];
 /** A flyover's deck height `s` along it. */
 export function heightOnFlyover(deck: Flyover, s: number): number {
   const { at } = deck.path
-  let i = 1
-  while (i < at.length - 1 && at[i] < s) i++
+  const i = segmentAt(at, s)
   const span = at[i] - at[i - 1] || 1
   const t = Math.max(0, Math.min(1, (s - at[i - 1]) / span))
   return deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t

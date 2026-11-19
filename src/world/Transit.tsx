@@ -498,11 +498,10 @@ function FlyoverTraffic({ decks }: { decks: Flyover[] }) {
       const height = heightOnFlyover(deck, s)
       if (height < 1.5) return
       const mesh = meshes.current[vehicle.kind]
-      const { x: atX, z: atZ } = pointOnPath(deck.path, s)
-      // Near the rider, the real traffic drives the decks (deckLanes.ts): these stand-ins are only for further off.
-      if (Math.hypot(atX - livePlayer.x, atZ - livePlayer.z) < STAND_IN_FROM) return
-      if (!mesh) return
       const { x, z, dirX, dirZ } = pointOnPath(deck.path, s)
+      // Near the rider, the real traffic drives the decks (deckLanes.ts): these stand-ins are only for further off.
+      if (Math.hypot(x - livePlayer.x, z - livePlayer.z) < STAND_IN_FROM) return
+      if (!mesh) return
       // Lanes from the deck's middle out: on a two-way deck, each way on its own (left) side.
       const half = deck.width / 2 - 1.8
       const offset = deck.oneWay ? -half + 1.75 + vehicle.lane * 3.5 : (1.75 + vehicle.lane * 3.5) * -vehicle.direction

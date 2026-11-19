@@ -16,6 +16,9 @@ const DRAW_DISTANCE = 75
 const DETAIL_DISTANCE = 35
 /** They never move, so which ones are near is only worked out every so many frames. */
 const REFRESH_FRAMES = 6
+/** Every this many frames, the whole list is searched for the ones within reach plus NEARBY_SLACK metres; between, only those are looked at. */
+const NEARBY_FRAMES = 60
+const NEARBY_SLACK = 30
 const CAR_MODEL = 'hatchback'
 /** The top of the concrete slab under the stilts, which the vehicles stand on. */
 const FLOOR_TOP = 0.06
@@ -45,14 +48,21 @@ function Parked({
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const frame = useRef(0)
+  /** The ones near enough to be drawn soon, listed afresh every NEARBY_FRAMES: the kerbside lists hold thousands. */
+  const nearby = useRef<StiltVehicle[]>([])
 
   useFrame(({ camera }) => {
     const instances = mesh.current
     if (!instances || frame.current++ % REFRESH_FRAMES !== 0) return
     lodCamera.x = camera.position.x
     lodCamera.z = camera.position.z
+    if ((frame.current - 1) % NEARBY_FRAMES === 0) {
+      const limit = to + NEARBY_SLACK
+      const { x, z } = camera.position
+      nearby.current = items.filter((item) => Math.abs(item.x - x) < limit && Math.abs(item.z - z) < limit)
+    }
     let drawn = 0
-    for (const item of items) {
+    for (const item of nearby.current) {
       // Detailed or far by the camera's distance, with hysteresis (vehicleLod.ts): the cutoff is
       // `to` for the detailed copies and `from` for the far ones.
       if (from > 0 ? isDetailed(item, from) || cameraDistance(item.x, item.z) > to : !isDetailed(item, to)) continue

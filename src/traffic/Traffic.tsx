@@ -204,6 +204,38 @@ function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: nu
   if (instances.instanceColor) instances.instanceColor.needsUpdate = true
 }
 
+/** Traffic waiting off the map (quiet hours) sits a million metres away: nothing past this is drawn. */
+const NOWHERE = 5000
+
+/**
+ * A vehicle's level of detail, drawing only the copies it applies to: they're written one after
+ * another and only that many are drawn. `reach` (the detailed model) or `from` (the far one) is the
+ * vehicle's cutoff (vehicleLod.ts). Before, every copy went to the GPU each frame, the ones on the
+ * other level shrunk to nothing, which still cost all their corners: with 22,000-triangle near cars
+ * that was most of a million triangles for traffic nowhere near.
+ */
+function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: number, isSeatedRider: boolean, from: number, palette: string[]) {
+  const color = nearColor
+  let drawn = 0
+  for (const item of items) {
+    if (item.hidden || (isSeatedRider && item.riderOff)) continue
+    const near = from > 0 ? !isDetailed(item, from) : reach === Infinity || isDetailed(item, reach)
+    if (!near || Math.abs(item.x) > NOWHERE) continue
+    // On a raised footpath, on top of it. Up on a flyover, its lift is the deck's height: no footpath below lifts it.
+    transform.position.set(item.x, (item.deck ? ROAD_HEIGHT : Math.max(ROAD_HEIGHT, groundLift.at(item.x, item.z))) + item.lift, item.z)
+    if (item.rotation) transform.quaternion.set(...item.rotation)
+    else transform.rotation.set(0, item.heading, 0)
+    transform.scale.setScalar(1)
+    transform.updateMatrix()
+    instances.setMatrixAt(drawn, transform.matrix)
+    instances.setColorAt(drawn, color.set(palette[Math.floor(item.tint * palette.length * 0.999)]))
+    drawn++
+  }
+  instances.count = drawn
+  instances.instanceMatrix.needsUpdate = true
+  if (instances.instanceColor) instances.instanceColor.needsUpdate = true
+}
+
 function updateReflection(material: THREE.MeshStandardMaterial) {
   material.envMapIntensity = liveSky.look.ambientIntensity * REFLECTION_STRENGTH
 }
@@ -274,7 +306,7 @@ function MovingInstances({
       }
       writeNearest(mesh.current, near.items, reach, palette, from)
     }
-    else writeTransforms(mesh.current, items, reach, seatedRider, ROAD_HEIGHT, from, true)
+    else writePacked(mesh.current, items, reach ?? Infinity, seatedRider, from, palette)
     if (material.current) updateReflection(material.current)
   })
 
