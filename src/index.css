@@ -4801,3 +4801,20 @@ body,
   color: #c9c6bc;
   font-size: 12px;
 }
+
+/* The traffic police's card (ui/PoliceCard.tsx): the guard card's shape, in khaki. */
+.police-card {
+  border-top-color: #b99a5b;
+}
+.police-card .guard-card-title {
+  color: #d9c08a;
+}
+.police-card-fine {
+  margin-top: 6px !important;
+  color: #3ddc97;
+  font-size: 15px;
+  font-weight: 800;
+}
+.police-card[data-fined='true'] .police-card-fine {
+  color: #ff8d82;
+}

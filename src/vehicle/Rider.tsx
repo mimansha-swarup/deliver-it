@@ -191,6 +191,7 @@ export function Rider({
 
   // The helmet colour bought at the Garage. Only the colour changes, so the material is kept.
   const helmetId = useGameStore((state) => state.helmetId)
+  const helmetOn = useGameStore((state) => state.helmetOn)
   useEffect(() => {
     materials.helmet.color.set(findColour(HELMETS, helmetId).color)
   }, [materials, helmetId])
@@ -301,7 +302,19 @@ export function Rider({
         <meshStandardMaterial map={printTexture} transparent roughness={0.8} depthWrite={false} />
       </mesh>
 
-      <group ref={head} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
+      {/* Bare-headed, when the helmet is left off: a head and hair where the helmet would be. */}
+      <group visible={!helmetOn} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
+        <mesh scale={[0.9, 1.05, 0.98]} position={[0, -0.01, 0.005]}>
+          <sphereGeometry args={[0.108, 14, 10]} />
+          <meshStandardMaterial color="#9a6a48" roughness={0.75} />
+        </mesh>
+        <mesh scale={[0.95, 0.8, 1.02]} position={[0, 0.035, -0.012]}>
+          <sphereGeometry args={[0.112, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55]} />
+          <meshStandardMaterial color="#1c1714" roughness={0.9} />
+        </mesh>
+      </group>
+      {/* Left off (the Garage's choice), the traffic police have something to say about it. */}
+      <group ref={head} visible={helmetOn} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
         {/* The helmet, over the model's head (+z forward). Seen from behind and a little above, as the
             camera sees it: a shell with a dark rubber rim, the visor wrapping round to the sides on
             its pivots, a chin bar, vents on top and at the back, twin stripes, the Deliver It decal and

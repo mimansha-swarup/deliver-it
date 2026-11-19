@@ -120,6 +120,8 @@ export function Garage({ onClose, canBuy = true }: { onClose: () => void; canBuy
   const credits = useGameStore((state) => state.credits)
   const paintId = useGameStore((state) => state.paintId)
   const helmetId = useGameStore((state) => state.helmetId)
+  const helmetOn = useGameStore((state) => state.helmetOn)
+  const setHelmetOn = useGameStore((state) => state.setHelmetOn)
   const ownedPaints = useGameStore((state) => state.ownedPaints)
   const ownedHelmets = useGameStore((state) => state.ownedHelmets)
   const choosePaint = useGameStore((state) => state.choosePaint)
@@ -154,7 +156,14 @@ export function Garage({ onClose, canBuy = true }: { onClose: () => void; canBuy
         <Colours list={PAINTS} owned={ownedPaints} chosen={paintId} choose={choosePaint} canBuy={canBuy} />
       )}
       {tab === 'helmet' && (
-        <Colours list={HELMETS} owned={ownedHelmets} chosen={helmetId} choose={chooseHelmet} canBuy={canBuy} />
+        <>
+          <label className="phone-switch">
+            <input type="checkbox" checked={helmetOn} onChange={(event) => { setHelmetOn(event.target.checked); event.currentTarget.blur() }} />
+            Wear the helmet
+          </label>
+          {!helmetOn && <p className="app-note">No helmet: ₹100 at every traffic police check. Amma will also hear about it.</p>}
+          <Colours list={HELMETS} owned={ownedHelmets} chosen={helmetId} choose={chooseHelmet} canBuy={canBuy} />
+        </>
       )}
     </section>
   )

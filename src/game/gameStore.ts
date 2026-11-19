@@ -129,6 +129,8 @@ type GameState = Telemetry & {
   vehicleId: VehicleId
   paintId: string
   helmetId: string
+  /** Whether the rider wears the helmet. Off, the traffic police fine it at their checks (game/police.ts). */
+  helmetOn: boolean
   ownedPaints: string[]
   ownedHelmets: string[]
   /** The career chapter, today's daily challenges, the streak of shifts finished, and Ravi's messages, newest first. */
@@ -203,6 +205,7 @@ type GameState = Telemetry & {
   /** Buys a colour if it isn't owned and is affordable, then uses it. */
   choosePaint: (id: string) => void
   chooseHelmet: (id: string) => void
+  setHelmetOn: (on: boolean) => void
   /** Counts riding towards today's goals. Called now and then, not every frame. */
   recordRide: (metres: number) => void
   /** Counts a drift boost towards today's goals. */
@@ -465,6 +468,7 @@ export const useGameStore = create<GameState>()(
       vehicleId: 'scooter',
       paintId: PAINTS[0].id,
       helmetId: HELMETS[0].id,
+      helmetOn: true,
       ownedPaints: [PAINTS[0].id],
       ownedHelmets: [HELMETS[0].id],
       career: NEW_CAREER,
@@ -784,6 +788,7 @@ export const useGameStore = create<GameState>()(
     return true
   },
   setVehicle: (vehicleId) => set({ vehicleId }),
+  setHelmetOn: (helmetOn) => set({ helmetOn }),
   fine: (label, amount, message) =>
     set((state) => {
       const paid = Math.min(state.credits, amount)
@@ -903,6 +908,7 @@ export const useGameStore = create<GameState>()(
         vehicleId: state.vehicleId,
         paintId: state.paintId,
         helmetId: state.helmetId,
+        helmetOn: state.helmetOn,
         ownedPaints: state.ownedPaints,
         ownedHelmets: state.ownedHelmets,
         career: state.career,

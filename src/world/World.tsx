@@ -37,6 +37,7 @@ import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev
 import { doorsteps } from '../game/doorsteps'
 import { eateries } from '../game/eateries'
 import { areaAt, setAreas } from '../game/areas'
+import { POLICE, policePosts } from '../game/police'
 import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
 import { SocietyGate } from './SocietyGate'
@@ -535,6 +536,26 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
   // The sellers and devotees at Agara's temple door stand with the rest.
+  // Traffic police at the major junctions too: the widest signal junctions (they're listed widest first), spaced apart (game/police.ts).
+  policePosts.list = agaraPlaces.police && agara.police ? [{ ...agaraPlaces.police, rotation: agara.police.rotation, name: 'Agara junction' }] : []
+  for (let junction = 0; junction < traffic.signals.junctions.length && policePosts.list.length < POLICE.junctions + 1; junction++) {
+    const node = traffic.signals.junctions[junction].node
+    const jx = graph.xs[node]
+    const jz = graph.zs[node]
+    if (policePosts.list.some((other) => Math.hypot(other.x - jx, other.z - jz) < POLICE.spacing)) continue
+    const post = traffic.signals.posts.find((candidate) => candidate.junction === junction)
+    if (!post) continue
+    // Beside the pole on the side away from the road: straight out from the stop line's middle, past the pole.
+    const awayX = post.x - post.stopX
+    const awayZ = post.z - post.stopZ
+    const away = Math.hypot(awayX, awayZ) || 1
+    const x = post.x + (awayX / away) * 0.9
+    const z = post.z + (awayZ / away) * 0.9
+    if (isNearBuilding(collisions, x, z, 0.4) || surfaceMap.at(x, z) === Surface.Road) continue
+    policePosts.list.push({ x, z, rotation: post.rotation, junction, name: graph.roadNames[node] ? `${graph.roadNames[node]} junction` : 'the junction' })
+    shopPeople.standing.push({ x, z, heading: post.rotation, body: 0, tint: 0.92, skin: 0.78, idle: IDLE_POSE.weight, phase: junction * 0.7 })
+  }
+  if (isDebug()) Object.assign(window, { __police: policePosts })
   shopPeople.standing.push(...agara.people)
   // The traffic policeman at the junction's lights, facing the traffic he watches.
   if (agara.police) shopPeople.standing.push({ x: agara.police.x, z: agara.police.z, heading: agara.police.rotation, body: 0, tint: 0.92, skin: 0.8, idle: IDLE_POSE.weight, phase: 1.3 })

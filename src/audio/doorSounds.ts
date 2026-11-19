@@ -82,3 +82,12 @@ export function playStairs(steps: number) {
 export function playPen() {
   for (let stroke = 0; stroke < 5; stroke++) noise(stroke * 0.16 + Math.random() * 0.04, 0.11, 0.2, 5200, 2200)
 }
+
+/** A traffic policeman's whistle: two sharp trilled blasts. */
+export function playWhistle() {
+  for (const at of [0, 0.34]) {
+    tone(2850, at, 0.24, 0.3, 'square', 2700)
+    tone(3050, at, 0.24, 0.16, 'sine', 3150)
+    noise(at, 0.22, 0.12, 7000, 2500)
+  }
+}
