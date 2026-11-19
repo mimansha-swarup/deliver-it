@@ -8,6 +8,7 @@ import { PLINTH, STATUE_HEIGHT, type Agara as AgaraPlan } from './agaraPlacement
 import { ShopPeople } from './ShopPeople'
 import { box, colored, merge } from './simpleShapes'
 import { StiltParking } from './StiltParking'
+import { useHours } from './useHours'
 
 /*
  * The Abhaya Anjaneya statue at Agara and the life at its temple's door (agaraPlacement.ts).
@@ -407,6 +408,10 @@ export function Agara({ agara }: { agara: AgaraPlan }) {
     details?.dispose()
   }, [statue, details])
   const crowd = useMemo(() => ({ standing: agara.crowd, walkers: [] }), [agara])
+  const rushCrowd = useMemo(() => ({ standing: agara.rushCrowd, walkers: [] }), [agara])
+  const autos = useMemo(() => [...agara.autos, ...agara.standAutos], [agara])
+  const morningRush = useHours(RUSH_MORNING)
+  const eveningRush = useHours(RUSH_EVENING)
   const fineMesh = useRef<THREE.Mesh>(null)
   const farMesh = useRef<THREE.Mesh>(null)
   const isFine = useRef(false)
@@ -431,10 +436,14 @@ export function Agara({ agara }: { agara: AgaraPlan }) {
         </group>
       )}
       {details && <mesh geometry={details} material={plain} castShadow receiveShadow />}
-      <StiltParking vehicles={agara.autos} carModels={AUTO_ONLY} drawDistance={120} />
+      <StiltParking vehicles={autos} carModels={AUTO_ONLY} drawDistance={120} />
+      {(morningRush || eveningRush) && agara.rushCrowd.length > 0 && <ShopPeople people={rushCrowd} />}
       {(isSaturday(day) || isFestivalDay(day)) && agara.crowd.length > 0 && <ShopPeople people={crowd} />}
     </>
   )
 }
 
 const AUTO_ONLY = ['auto'] as const
+/** When the bus stop is crowded, in hours. */
+const RUSH_MORNING: [number, number] = [7.5, 10.5]
+const RUSH_EVENING: [number, number] = [16.5, 19.5]

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
@@ -6,6 +6,7 @@ import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { LakeLife as LakeLifePlan } from './lakePlacement'
 import { ShopPeople } from './ShopPeople'
+import { useHours } from './useHours'
 
 /*
  * Agara Lake's life (lakePlacement.ts): the morning's joggers, walkers and dog walkers on the path, a
@@ -19,16 +20,6 @@ const EVENING: [number, number] = [16.5, 19]
 /** Birds are drawn with the rider this near the lake's middle, past its shore, in metres. */
 const BIRDS_WITHIN = 500
 const BIRDS = { high: 36, low: 14 }
-
-/** Whether the clock is between two hours, checked as it runs. */
-function useHours([from, to]: [number, number]): boolean {
-  const [within, setWithin] = useState(false)
-  useFrame(() => {
-    const now = liveSky.hours >= from && liveSky.hours < to
-    if (now !== within) setWithin(now)
-  })
-  return within
-}
 
 /** A bird far off: two wings from a short body, their tips up, which flap by squashing them. */
 function createBirdGeometry(): THREE.BufferGeometry {

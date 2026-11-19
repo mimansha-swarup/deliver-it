@@ -39,6 +39,10 @@ export type Agara = {
   people: ShopPerson[]
   /** The Saturday crowd. */
   crowd: ShopPerson[]
+  /** More people waiting at the Agara bus stop at rush hour. */
+  rushCrowd: ShopPerson[]
+  /** The auto stand under the flyover. */
+  standAutos: StiltVehicle[]
   /** Where `?spawn=agara-flyover` starts: on the road at the Agara junction, on the flyover's approach, facing up the ramp. */
   spawn: { name: string; x: number; z: number; heading: number } | null
   /** Where `?spawn=agara-temple` starts: on the road outside the temple's door. */
@@ -82,7 +86,7 @@ export function planAgara({
   /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
   lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, templeSpawn: null, viewDecks: [], door: null, jagannath: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, viewDecks: [], door: null, jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
@@ -290,14 +294,74 @@ export function planAgara({
   }
   if (agara.jagannath) agara.report.jagannathMetresFromTemple = Math.round(jagannathDistance)
 
-  // The nearest bus stop OSM has, for the report: the stops themselves are placed by landmarkPlacement.ts.
+  // The Agara bus stop: OSM's stop nearest the temple (landmarkPlacement.ts puts its shelter and
+  // board up, and buses pull in at it). People wait in front of it all day, and many more at rush hour.
   let stopDistance = Infinity
-  for (const stop of stops) stopDistance = Math.min(stopDistance, Math.hypot(stop.x - doorX, stop.z - doorZ))
+  let agaraStop: BusStop | null = null
+  for (const stop of stops) {
+    const distance = Math.hypot(stop.x - doorX, stop.z - doorZ)
+    if (distance < stopDistance) {
+      stopDistance = distance
+      agaraStop = stop
+    }
+  }
+  if (agaraStop && stopDistance < 400) {
+    const stop: BusStop = agaraStop
+    const outX = Math.sin(stop.rotation)
+    const outZ = Math.cos(stop.rotation)
+    const alongX = outZ
+    const alongZ = -outX
+    const wait = (list: ShopPerson[], k: number, across: number, out: number) => {
+      const x = stop.x + alongX * across + outX * out
+      const z = stop.z + alongZ * across + outZ * out
+      // In the shelter's open front and on the footpath before it: never out on the road.
+      if (surface.at(x, z) === Surface.Road) return
+      list.push({ x, z, heading: stop.rotation + (((k * 5) % 7) - 3) * 0.14, body: (k % 2) as 0 | 1, tint: (k * 0.41 + 0.2) % 1, skin: 0.7 + ((k * 0.13) % 0.33), idle: k % 3 === 0 ? IDLE_POSE.phone : k % 3 === 1 ? IDLE_POSE.weight : IDLE_POSE.still, phase: k * 2.1 })
+    }
+    for (let k = 0; k < 7; k++) wait(agara.people, k + 30, (k - 3) * 0.85 + ((k * 7) % 3) * 0.1, 0.15 + (k % 2) * 0.45)
+    for (let k = 0; k < 12; k++) wait(agara.rushCrowd, k + 50, (k - 5.5) * 0.75, 0.3 + (k % 3) * 0.35)
+  }
+
+  // Under the flyover by the junction: an auto stand in the shade between the pillars, nose to
+  // tail along the deck, and a coconut seller's stall at its end.
+  {
+    let placed = 0
+    for (const candidate of ringRoad) {
+      if (placed >= 4 || !candidate.path.points.some(([px, pz]) => Math.hypot(px - cx, pz - cz) < NEAR_FLYOVER)) continue
+      const { points, at } = candidate.path
+      let cartDone = false
+      for (let i = 2; i < points.length - 2 && placed < 4; i++) {
+        if (candidate.heights[i] < 4.6 || Math.round(at[i] / 4) % 2 !== 0) continue
+        const [x, z] = points[i]
+        const [nx, nz] = points[i + 1]
+        const length = Math.hypot(nx - x, nz - z) || 1
+        const dirX = (nx - x) / length
+        const dirZ = (nz - z) / length
+        // To one side of the pillars' line, in the shade.
+        const sx = x + dirZ * 2.4
+        const sz = z - dirX * 2.4
+        const ground = surface.at(sx, sz)
+        if ((ground !== Surface.Open && ground !== Surface.Median && ground !== Surface.Paved) || isNearBuilding(collisions, sx, sz, 1.5)) continue
+        if (!cartDone) {
+          agara.stalls.push({ x: sx, z: sz, rotation: Math.atan2(dirZ, -dirX), variation: 0.8 })
+          agara.people.push({ x: sx - dirZ * 0.9, z: sz + dirX * 0.9, heading: Math.atan2(dirZ, -dirX), body: 0, tint: 0.62, skin: 0.78, idle: IDLE_POSE.weight, phase: 4.2 })
+          addPost(collisions, sx, sz, 0.9)
+          cartDone = true
+          continue
+        }
+        agara.standAutos.push({ x: sx, z: sz, rotation: Math.atan2(dirX, dirZ), variation: (placed * 0.37 + 0.1) % 1, car: true, model: 0 })
+        addPost(collisions, sx, sz, 1)
+        placed++
+      }
+    }
+  }
   agara.report.metresToBusStop = Number.isFinite(stopDistance) ? Math.round(stopDistance) : -1
   agara.report.stalls = agara.stalls.length
   agara.report.footwear = agara.footwear.length
   agara.report.autos = agara.autos.length
   agara.report.people = agara.people.length
   agara.report.saturdayCrowd = agara.crowd.length
+  agara.report.rushHourAtBusStop = agara.rushCrowd.length
+  agara.report.autosUnderFlyover = agara.standAutos.length
   return agara
 }
