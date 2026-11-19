@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { VEHICLES } from '../vehicle/vehicleCatalog'
 import { useGameStore } from '../game/gameStore'
 import type { Reward } from '../game/gameTypes'
 import { averageRating } from '../missions/orderStory'
@@ -114,9 +115,12 @@ function Speedometer() {
   const nitro = useGameStore((state) => state.nitro)
   const nitroOn = useGameStore((state) => state.nitroOn)
   const atBunk = useGameStore((state) => state.atBunk)
+  // The vehicle in use: its name, how it's driven, and the speed as a share of its own top speed.
+  const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
+  const share = Math.min(1, speedKmh / spec.topSpeed)
 
   return (
-    <section className="hud-card hud-speed">
+    <section className="hud-card hud-speed" data-vehicle={spec.id}>
       {atBunk && (
         <p className="hud-refill" role="status">
           {nitro >= 1 ? 'Nitro full' : `Filling nitro · ${atBunk}`}
@@ -126,7 +130,11 @@ function Speedometer() {
       {boosting && !nitroOn && <p className="hud-boost">Boost</p>}
       {drifting && !boosting && !nitroOn && <p className="hud-drift">Drift</p>}
       <span className="hud-speed-value">{speedKmh}</span> km/h
-      <NitroGauge nitro={nitro} burning={nitroOn} />
+      <span className="hud-speed-scale" aria-hidden="true">
+        <span className="hud-speed-scale-fill" style={{ width: `${share * 100}%` }} />
+      </span>
+      <p className="hud-speed-vehicle">{spec.name} · {spec.drive} · top {spec.topSpeed}</p>
+      {spec.feel.nitro && <NitroGauge nitro={nitro} burning={nitroOn} />}
     </section>
   )
 }

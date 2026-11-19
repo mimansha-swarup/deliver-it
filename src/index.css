@@ -4384,3 +4384,29 @@ body,
   10%, 85% { opacity: 1; transform: translate(-50%, 0); }
   100% { opacity: 0; transform: translate(-50%, -6px); }
 }
+
+/* The speedometer's scale against the vehicle's own top speed, and which vehicle it is (Hud.tsx). */
+.hud-speed-scale {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+.hud-speed-scale-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #f2b82a;
+}
+.hud-speed[data-vehicle='ev'] .hud-speed-scale-fill,
+.hud-speed[data-vehicle='trike'] .hud-speed-scale-fill { background: #3ddc97; }
+.hud-speed[data-vehicle='bicycle'] .hud-speed-scale-fill { background: #5ea2ff; }
+.hud-speed[data-vehicle='bike'] .hud-speed-scale-fill { background: #e0457b; }
+.hud-speed-vehicle {
+  margin: 4px 0 0;
+  font-size: 11px;
+  opacity: 0.8;
+  white-space: nowrap;
+}

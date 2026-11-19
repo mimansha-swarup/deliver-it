@@ -38,6 +38,8 @@ export type ScooterState = {
   /** How full the nitro tank is, from 0 to 1, and whether it's burning. */
   nitro: number
   nitroOn: boolean
+  /** How much of the engine's pull is on, 0 to 1: it follows the throttle at the vehicle's own rate (tuning.ts). */
+  drive?: number
   /** Tilt in radians. Positive leans left. */
   lean: number
   /** Nose movement in radians. Positive dips the nose. */
@@ -507,7 +509,7 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
  */
 function updateNitro(state: ScooterState, input: DriveInput, dt: number) {
   const wanted = input.nitro && input.forward && !input.handbrake && state.speed > 0
-  if (!wanted) state.nitroOn = false
+  if (!wanted || !tuning.nitro) state.nitroOn = false
   else if (!state.nitroOn && state.nitro >= SCOOTER.nitroMinToStart) state.nitroOn = true
 
   if (state.nitroOn) {
@@ -550,14 +552,17 @@ function applyControls(speed: number, state: ScooterState, input: DriveInput, dt
   if (input.forward) {
     if (speed < -STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
     if (speed > limit) return moveToward(speed, limit, SCOOTER.overspeedDrag * dt)
-    return moveToward(speed, limit, engineForce(speed, state) * dt)
+    // The drive comes in as fast as this vehicle's does: at once on an electric motor, slowly in a loaded van.
+    state.drive = Math.min(1, (state.drive ?? 0) + tuning.response * dt)
+    return moveToward(speed, limit, engineForce(speed, state) * state.drive * dt)
   }
+  state.drive = Math.max(0, (state.drive ?? 0) - tuning.response * 2 * dt)
   if (input.backward) {
     if (speed > STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
     return moveToward(speed, -SCOOTER.maxReverseSpeed, SCOOTER.reverseAcceleration * dt)
   }
   // Off the throttle, it coasts down as usual, whatever the speed.
-  return moveToward(speed, 0, SCOOTER.coasting * dt)
+  return moveToward(speed, 0, tuning.coasting * dt)
 }
 
 /**
