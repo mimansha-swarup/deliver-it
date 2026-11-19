@@ -13,8 +13,6 @@ import { CANOPY_HEX, GREEN_TINTS, type Prop, type RoadsideProps as Props } from 
 import { box, merge } from './simpleShapes'
 import {
   createBushGeometry,
-  createCanopyGeometries,
-  createImpostorGeometries,
   createCreeperGeometries,
   createLeafyCanopyGeometries,
   createPalmGeometries,
@@ -86,6 +84,12 @@ function addSway(shader: THREE.WebGLProgramParametersWithUniforms) {
     #endif`,
   )
 }
+
+/** The trees' levels of detail beyond the full leaf cards: cards this many times bigger (and fewer by its square). */
+const COARSE_CARDS = 2.2
+const FAR_CARDS = 3.6
+/** Over this many metres round each handover, one level dissolves into the next. */
+const TREE_FADE = 8
 
 /** Behind the title screen, props are drawn this far out, in metres. The whole map's worth would be too many. */
 const TITLE_PROP_REACH = 400
@@ -233,22 +237,73 @@ function createPosterGeometry(column: number): THREE.BufferGeometry {
  * and shade, so that each tree's own colour can tint it, flowers included. And
  * both sides of a card are lit alike, or half the leaves would look black.
  */
-function addLeafLook(shader: THREE.WebGLProgramParametersWithUniforms) {
-  addSway(shader)
-  shader.fragmentShader = shader.fragmentShader
-    .replace(
-      '#include <map_fragment>',
-      `#include <map_fragment>
+/** Where the rider is, for the trees' cross-fade between levels of detail (see `leafLook`). */
+const fadeUniforms = { uPlayer: { value: new THREE.Vector2() } }
+
+/** A cross-fade: fading in from `inFrom` to `inTo` metres from the rider, out from `outFrom` to `outTo`. Zeros for none. */
+export type Fade = [inFrom: number, inTo: number, outFrom: number, outTo: number]
+
+/**
+ * The leaves' look: a leaf card's colour as a grey the copy's tint colours, lit as if facing out
+ * of the canopy, and a clean cutout:
+ * - The cutout keeps its coverage as the leaves get small on screen: the alpha is scaled up with the
+ *   texture's mip level, so thin fronds don't thin away into dots and holes in the distance, and
+ *   sharpened over one pixel round the cutoff, so each edge is one clean step, not a noisy one.
+ * - `fade` dissolves the copies in or out with distance from the rider, in a fine pattern on the
+ *   screen, so one level of detail hands over to the next without a pop.
+ */
+function leafLook(fade: Fade | null) {
+  const [inFrom, inTo, outFrom, outTo] = fade ?? [0, 0, 0, 0]
+  return (shader: THREE.WebGLProgramParametersWithUniforms) => {
+    addSway(shader)
+    shader.uniforms.uPlayer = fadeUniforms.uPlayer
+    shader.uniforms.uFade = { value: new THREE.Vector4(inFrom, inTo, outFrom, outTo) }
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'uniform vec2 uPlayer;\nvarying float vFadeDistance;\nvoid main() {')
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        #ifdef USE_INSTANCING
+          vFadeDistance = distance((modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xz, uPlayer);
+        #else
+          vFadeDistance = 0.0;
+        #endif`,
+      )
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
       diffuseColor.rgb = vec3(dot(diffuseColor.rgb, vec3(0.3, 0.6, 0.1))) * LEAF_BRIGHTNESS;`,
-    )
-    .replace(
-      '#include <normal_fragment_begin>',
-      `float faceDirection = 1.0;
+      )
+      .replace(
+        '#include <alphamap_fragment>',
+        `#ifdef USE_ALPHAMAP
+        float leafAlpha = texture2D(alphaMap, vAlphaMapUv).g;
+        vec2 texelSpace = vAlphaMapUv * vec2(textureSize(alphaMap, 0));
+        vec2 dx = dFdx(texelSpace);
+        vec2 dy = dFdy(texelSpace);
+        float mipLevel = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy))));
+        leafAlpha *= 1.0 + mipLevel * 0.25;
+        leafAlpha = (leafAlpha - LEAF_CUTOFF) / max(fwidth(leafAlpha), 0.0001) + 0.5;
+        diffuseColor.a *= clamp(leafAlpha, 0.0, 1.0);
+      #endif
+      float fadeIn = uFade.y > uFade.x ? smoothstep(uFade.x, uFade.y, vFadeDistance) : 1.0;
+      float fadeOut = uFade.w > uFade.z ? 1.0 - smoothstep(uFade.z, uFade.w, vFadeDistance) : 1.0;
+      float fadeDither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      if (fadeIn * fadeOut <= fadeDither) discard;`,
+      )
+      .replace(
+        '#include <normal_fragment_begin>',
+        `float faceDirection = 1.0;
       vec3 normal = normalize(vNormal);
       vec3 nonPerturbedNormal = normal;`,
-    )
-    .replace('void main() {', `#define LEAF_BRIGHTNESS ${LEAF_BRIGHTNESS.toFixed(1)}\nvoid main() {`)
+      )
+      .replace('void main() {', `#define LEAF_BRIGHTNESS ${LEAF_BRIGHTNESS.toFixed(1)}\n#define LEAF_CUTOFF ${LEAF_CUTOFF.toFixed(2)}\nuniform vec4 uFade;\nvarying float vFadeDistance;\nvoid main() {`)
+  }
 }
+
+/** The leaves' cutout after `leafLook` has sharpened it round LEAF_CUTOFF: half way. */
+const SHARPENED_CUTOFF = 0.5
 
 /** A park bench: slats on two legs, with a backrest. */
 function createBenchGeometry(): THREE.BufferGeometry {
@@ -442,7 +497,10 @@ export function PropInstances({
   to,
   thin,
   shadow = true,
+  fade = null,
 }: {
+  /** For leafy shapes: dissolve in and out with distance from the rider (a level of detail's cross-fade). */
+  fade?: Fade | null
   props: Prop[]
   /** Past `from` metres, only the share `keep` of the copies is drawn (the same ones for every part of a tree). */
   thin?: { from: number; keep: number } | null
@@ -475,6 +533,9 @@ export function PropInstances({
   const glowMaterial = useRef<THREE.MeshBasicMaterial>(null)
   const lastRefresh = useRef<{ x: number; z: number; reach: number } | null>(null)
   const grid = useMemo(() => createPropGrid(props), [props])
+  const fadeKey = fade?.join(',') ?? ''
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the fade's numbers, not its array, matter
+  const look = useMemo(() => leafLook(fade), [fadeKey])
 
   useFrame(({ gl }) => {
     const instances = mesh.current
@@ -572,9 +633,9 @@ export function PropInstances({
           vertexColors={vertexColors || !!leaves || flat}
           map={leaves?.color ?? surface ?? null}
           alphaMap={leaves?.alpha ?? null}
-          alphaTest={leaves ? LEAF_CUTOFF : 0}
+          alphaTest={leaves ? SHARPENED_CUTOFF : 0}
           side={leaves ? THREE.DoubleSide : THREE.FrontSide}
-          onBeforeCompile={leaves ? addLeafLook : sway ? addSway : undefined}
+          onBeforeCompile={leaves ? look : sway ? addSway : undefined}
         />
       )}
     </instancedMesh>
@@ -608,12 +669,10 @@ export function RoadsideProps({
 }) {
   const { leafyTrees, leafyReach, farTreeReach, treeThin } = useGameStore((state) => QUALITY_PRESETS[state.quality])
   const trunk = useMemo(() => createTrunkGeometry(), [])
-  // Past `farTreeReach`, one rough ball on a post, with no shadow: the far level of detail.
-  const impostors = useMemo(() => createImpostorGeometries(), [])
-  useEffect(() => () => impostors.forEach((impostor) => impostor.dispose()), [impostors])
-  // Past `leafyReach`, trees are drawn with the solid canopies, as on Low: a level of detail.
-  const solidCanopies = useMemo(() => (leafyTrees ? createCanopyGeometries() : null), [leafyTrees])
-  useEffect(() => () => solidCanopies?.forEach((canopy) => canopy.dispose()), [solidCanopies])
+  // The levels of detail beyond the full leaf cards: bigger, fewer cards, so far trees keep a soft, leafy outline.
+  const coarseCanopies = useMemo(() => createLeafyCanopyGeometries(COARSE_CARDS), [])
+  const farCanopies = useMemo(() => createLeafyCanopyGeometries(FAR_CARDS), [])
+  useEffect(() => () => [...coarseCanopies, ...farCanopies].forEach((canopy) => canopy.dispose()), [coarseCanopies, farCanopies])
   // Bushes: leafy near the rider where trees are, solid beyond and on Low.
   const bush = useMemo(() => ({ near: createBushGeometry(leafyTrees), far: leafyTrees ? createBushGeometry(false) : null }), [leafyTrees])
   useEffect(() => () => {
@@ -621,10 +680,7 @@ export function RoadsideProps({
     bush.far?.dispose()
   }, [bush])
   const palm = useMemo(() => createPalmGeometries(), [])
-  const canopies = useMemo(
-    () => (leafyTrees ? createLeafyCanopyGeometries() : createCanopyGeometries()),
-    [leafyTrees],
-  )
+  const canopies = useMemo(() => (leafyTrees ? createLeafyCanopyGeometries() : null), [leafyTrees])
   const [leafColor, leafAlpha, bark] = useCompressedTextures(FOLIAGE_TEXTURES, prepareFoliageTextures)
   const leaves = useMemo(() => ({ color: leafColor, alpha: leafAlpha }), [leafColor, leafAlpha])
   const lamp = useMemo(() => createLampGeometry(), [])
@@ -653,11 +709,28 @@ export function RoadsideProps({
   const broadleaf = useMemo(() => props.trees.filter(({ kind }) => kind !== PALM), [props.trees])
   const treesByKind = useMemo(
     () =>
-      canopies.map((_, kind) =>
+      coarseCanopies.map((_, kind) =>
         broadleaf.filter(({ variation, kind: shape }) => (shape ?? Math.floor(variation * 997) % TREE_SHAPE_COUNT) === kind),
       ),
-    [canopies, broadleaf],
+    [coarseCanopies, broadleaf],
   )
+
+  // The trees' levels of detail, each drawn a little past its band (the lists only refresh every
+  // REFRESH_DISTANCE) and dissolved in and out by the shader over TREE_FADE metres round each handover.
+  const half = TREE_FADE / 2
+  const near = leafyTrees ? leafyReach : 0
+  const levels: { name: string; geometries: THREE.BufferGeometry[]; from: number; to?: number; fade: Fade; shadow: boolean }[] = [
+    ...(canopies && near > 0 ? [{ name: 'near', geometries: canopies, from: 0, to: near + half + REFRESH_DISTANCE, fade: [0, 0, near - half, near + half] as Fade, shadow: true }] : []),
+    {
+      name: 'mid',
+      geometries: coarseCanopies,
+      from: Math.max(0, near - half - REFRESH_DISTANCE),
+      to: farTreeReach + half + REFRESH_DISTANCE,
+      fade: [near > 0 ? near - half : 0, near > 0 ? near + half : 0, farTreeReach - half, farTreeReach + half],
+      shadow: true,
+    },
+    { name: 'far', geometries: farCanopies, from: Math.max(0, farTreeReach - half - REFRESH_DISTANCE), fade: [farTreeReach - half, farTreeReach + half, 0, 0], shadow: false },
+  ]
 
   useFrame((_, delta) => {
     // A phase that speeds up in wind, so a change in wind can't make the trees jump.
@@ -666,6 +739,7 @@ export function RoadsideProps({
     windUniforms.uWindStrength.value = liveSky.wind
     lampUniforms.uNight.value = liveSky.look.night
     lampUniforms.uRain.value = liveSky.rain
+    fadeUniforms.uPlayer.value.set(livePlayer.x, livePlayer.z)
   })
 
   useEffect(
@@ -673,7 +747,7 @@ export function RoadsideProps({
       trunk.dispose()
       palm.trunk.dispose()
       palm.crown.dispose()
-      canopies.forEach((canopy) => canopy.dispose())
+      canopies?.forEach((canopy) => canopy.dispose())
       lamp.dispose()
       posters.forEach((geometry) => geometry.dispose())
       posterImage.dispose()
@@ -701,28 +775,26 @@ export function RoadsideProps({
         sizeRange={0.5}
         sway
         surface={leafyTrees ? bark : undefined}
-        to={farTreeReach}
         thin={treeThin}
       />
-      {canopies.map((canopy, kind) => (
-        <PropInstances
-          key={`${kind}-${leafyTrees}`}
-          props={treesByKind[kind]}
-          geometry={canopy}
-          colors={CANOPY_COLORS}
-          sizeRange={0.5}
-          sway
-          leaves={leafyTrees ? leaves : undefined}
-          to={leafyTrees ? leafyReach : farTreeReach}
-          thin={treeThin}
-        />
-      ))}
-      {solidCanopies?.map((canopy, kind) => (
-        <PropInstances key={`mid-${kind}`} props={treesByKind[kind]} geometry={canopy} colors={CANOPY_COLORS} sizeRange={0.5} sway from={leafyReach} to={farTreeReach} thin={treeThin} />
-      ))}
-      {impostors.map((impostor, kind) => (
-        <PropInstances key={`far-${kind}`} props={treesByKind[kind]} geometry={impostor} colors={CANOPY_COLORS} sizeRange={0.5} vertexColors from={farTreeReach} thin={treeThin} shadow={false} />
-      ))}
+      {levels.map(({ name, geometries, from, to, fade, shadow }) =>
+        geometries.map((canopy, kind) => (
+          <PropInstances
+            key={`${name}-${kind}-${fade.join(',')}`}
+            props={treesByKind[kind]}
+            geometry={canopy}
+            colors={CANOPY_COLORS}
+            sizeRange={0.5}
+            sway
+            leaves={leaves}
+            from={from}
+            to={to}
+            fade={fade}
+            thin={treeThin}
+            shadow={shadow}
+          />
+        )),
+      )}
       <PropInstances
         key={`bushes-${leafyTrees}`}
         props={bushes}

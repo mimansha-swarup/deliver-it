@@ -123,37 +123,6 @@ function createBlobs(blobs: Blob[], scale = 1): THREE.BufferGeometry {
   return merged
 }
 
-/**
- * A far tree, for each kind: one rough ball the size of its canopy on a four-sided post, about 28
- * triangles (the near trunk and canopy are about 190). Vertex coloured: a white ball, which takes
- * the copy's canopy colour, and a dark post.
- */
-export function createImpostorGeometries(): THREE.BufferGeometry[] {
-  return TREE_SHAPES.map((blobs) => {
-    const low = new THREE.Vector3(Infinity, Infinity, Infinity)
-    const high = new THREE.Vector3(-Infinity, -Infinity, -Infinity)
-    for (const [x, y, z, radius] of blobs) {
-      low.min(new THREE.Vector3(x - radius, y - radius, z - radius))
-      high.max(new THREE.Vector3(x + radius, y + radius, z + radius))
-    }
-    const size = high.clone().sub(low).multiplyScalar(0.5 * 0.9)
-    const middle = high.clone().add(low).multiplyScalar(0.5)
-    const ball = new THREE.IcosahedronGeometry(1, 0).toNonIndexed()
-    ball.scale(size.x, size.y, size.z)
-    ball.translate(middle.x, middle.y, middle.z)
-    const post = new THREE.CylinderGeometry(0.16, 0.26, middle.y, 4, 1, true).toNonIndexed()
-    post.translate(0, middle.y / 2, 0)
-    const paint = (geometry: THREE.BufferGeometry, shade: number) => {
-      geometry.deleteAttribute('uv')
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Array(geometry.getAttribute('position').count * 3).fill(shade), 3))
-      return geometry
-    }
-    const merged = mergeGeometries([paint(ball, 1), paint(post, 0.32)])
-    if (!merged) throw new Error('Could not merge impostor geometry')
-    return merged
-  })
-}
-
 /** One solid shape for each kind of tree, for the Low setting. */
 export function createCanopyGeometries(): THREE.BufferGeometry[] {
   return TREE_SHAPES.map((blobs) => createBlobs(blobs))
@@ -246,8 +215,12 @@ function createLeafyCanopy(blobs: Blob[], seed: number, cardScale = 1): THREE.Bu
   return merged
 }
 
-export function createLeafyCanopyGeometries(): THREE.BufferGeometry[] {
-  return TREE_SHAPES.map((blobs, kind) => createLeafyCanopy(blobs, 2026 + kind))
+/**
+ * A leafy canopy for each kind of tree. `cardScale` above 1 makes the cards that much bigger and
+ * fewer (by its square): the levels of detail further off, which keep the leaves' soft outline.
+ */
+export function createLeafyCanopyGeometries(cardScale = 1): THREE.BufferGeometry[] {
+  return TREE_SHAPES.map((blobs, kind) => createLeafyCanopy(blobs, 2026 + kind, cardScale))
 }
 
 /** A tapered trunk, with thick branches reaching up into the canopy. */

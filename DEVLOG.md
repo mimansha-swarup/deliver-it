@@ -10049,3 +10049,24 @@ deck slab with a dark soffit, light girders along it with bottom flanges (one pe
 the flyovers, two on the metro), a cross beam at every joint (every 8 m on the flyovers, about 6 m on
 the metro) and a drainpipe along one side. Light against dark, so the structure reads from the street
 at golden hour. Ramps keep their solid body. Screenshot: `world-pass.local/shots/under-rider2`.
+
+## 2026-11-19: Entry 192, leafy trees at every distance, and leaves without dots
+
+### What I did (RoadsideProps.tsx, foliage.ts, qualitySettings.ts)
+- **No more faceted far trees.** Past 45 m on High (40 on Medium, everywhere on Low) trees were
+  faceted solid balls, very visible at golden hour. Every level is leafy now, with the real leaf
+  texture: the full leaf cards to 70 m on High, 60 on Medium (none on Low); bigger, fewer cards (2.2×,
+  a fifth as many) to 140 m on High, 110 on Medium, 60 on Low; then 3.6× cards without shadows to the
+  draw distance. The impostor balls are gone.
+- **Cross-fades**: each level dissolves into the next over 8 m, in a fine screen pattern by the copy's
+  distance from the rider (`leafLook`'s `uFade`). Each level is listed 20 m past its band, as lists
+  refresh every 20 m, so the shader always has the copies it fades.
+- **The dotted leaves**: alpha-tested fronds thinner than a pixel broke into dots and holes. The leaf
+  shader now scales the alpha up with the texture's mip level (so fronds keep their coverage when
+  small) and sharpens it over one pixel round the cutoff (`fwidth`), so each edge is a single clean
+  step. Alpha to coverage would need multisampling, which the effects chain doesn't use.
+
+### Performance (riding, 17:30, a 2× screen)
+Sarjapur Road High 115 fps (worst 25 ms), Low 120 (10 ms); Hosur Road High 97 (42 ms), Low 120
+(10 ms). Synced frame on Sarjapur Road: High 11.9 ms, Low 6.9 ms, Low with the CPU 4× slower 13.2 ms,
+as before.
