@@ -90,6 +90,12 @@ const COARSE_CARDS = 2.2
 const FAR_CARDS = 3.6
 /** Over this many metres round each handover, one level dissolves into the next. */
 const TREE_FADE = 8
+/**
+ * The trees' lists are rebuilt every this many metres (not REFRESH_DISTANCE): each level is listed this
+ * far past its band, so in the handover both levels are drawn (one dissolving), shadows and all. At
+ * 20 m every tree in a 48 m band was drawn twice.
+ */
+const TREE_REFRESH = 6
 
 /** Behind the title screen, props are drawn this far out, in metres. The whole map's worth would be too many. */
 const TITLE_PROP_REACH = 400
@@ -498,7 +504,10 @@ export function PropInstances({
   thin,
   shadow = true,
   fade = null,
+  refresh = REFRESH_DISTANCE,
 }: {
+  /** The list is rebuilt after the rider moves this far, in metres. */
+  refresh?: number
   /** For leafy shapes: dissolve in and out with distance from the rider (a level of detail's cross-fade). */
   fade?: Fade | null
   props: Prop[]
@@ -552,7 +561,7 @@ export function PropInstances({
     if (
       last &&
       last.reach === reach &&
-      Math.hypot(last.x - livePlayer.x, last.z - livePlayer.z) < REFRESH_DISTANCE
+      Math.hypot(last.x - livePlayer.x, last.z - livePlayer.z) < refresh
     ) {
       return
     }
@@ -716,20 +725,20 @@ export function RoadsideProps({
   )
 
   // The trees' levels of detail, each drawn a little past its band (the lists only refresh every
-  // REFRESH_DISTANCE) and dissolved in and out by the shader over TREE_FADE metres round each handover.
+  // TREE_REFRESH) and dissolved in and out by the shader over TREE_FADE metres round each handover.
   const half = TREE_FADE / 2
   const near = leafyTrees ? leafyReach : 0
   const levels: { name: string; geometries: THREE.BufferGeometry[]; from: number; to?: number; fade: Fade; shadow: boolean }[] = [
-    ...(canopies && near > 0 ? [{ name: 'near', geometries: canopies, from: 0, to: near + half + REFRESH_DISTANCE, fade: [0, 0, near - half, near + half] as Fade, shadow: true }] : []),
+    ...(canopies && near > 0 ? [{ name: 'near', geometries: canopies, from: 0, to: near + half + TREE_REFRESH, fade: [0, 0, near - half, near + half] as Fade, shadow: true }] : []),
     {
       name: 'mid',
       geometries: coarseCanopies,
-      from: Math.max(0, near - half - REFRESH_DISTANCE),
-      to: farTreeReach + half + REFRESH_DISTANCE,
+      from: Math.max(0, near - half - TREE_REFRESH),
+      to: farTreeReach + half + TREE_REFRESH,
       fade: [near > 0 ? near - half : 0, near > 0 ? near + half : 0, farTreeReach - half, farTreeReach + half],
       shadow: true,
     },
-    { name: 'far', geometries: farCanopies, from: Math.max(0, farTreeReach - half - REFRESH_DISTANCE), fade: [farTreeReach - half, farTreeReach + half, 0, 0], shadow: false },
+    { name: 'far', geometries: farCanopies, from: Math.max(0, farTreeReach - half - TREE_REFRESH), fade: [farTreeReach - half, farTreeReach + half, 0, 0], shadow: false },
   ]
 
   useFrame((_, delta) => {
@@ -792,6 +801,7 @@ export function RoadsideProps({
             fade={fade}
             thin={treeThin}
             shadow={shadow}
+            refresh={TREE_REFRESH}
           />
         )),
       )}

@@ -10130,3 +10130,23 @@ CPU, deterministic from the map) into the map data at build time.
 The paint is stored per corner, so a triangle crossing from paint to dark trim smears between them:
 a ragged dark fringe at wheel arches and window frames, close up. Baking the cars with a texture
 instead of corner colours would fix it.
+
+## 2026-11-19: Entry 196, trees cheaper again
+
+### What I found
+Triangles weren't it: on Hosur Road at 17:30 trees are about 280k of 4.7M (the house kit is 1.4M, traffic
+0.87M, the city kit 0.81M). The cost was in the cross-fade: tree lists refresh every 20 m, so each level
+was listed 20 m past its band, and in a 48 m band round each handover every tree was drawn twice in
+full (one copy dissolving, its pixels shaded then thrown away), and cast two shadows.
+
+### What I did
+- Tree lists refresh every 6 m (`TREE_REFRESH`): the double-drawn band is about 14 m.
+- Full leaf cards to 45 m on High (was 70), 40 on Medium (60); the coarse cards to 110 m on High (140),
+  90 on Medium (110), 50 on Low (60); the far cards, without shadows, beyond.
+
+### Measured (17:30, back to back with the build before the tree change; this Mac was busy)
+| | Before the tree change | Now |
+| --- | --- | --- |
+| Hosur Road, High, riding | 72 fps, worst 57 ms | 72 fps, worst 58 ms |
+| Sarjapur Road, High, riding | 82 fps, worst 34 ms | 83 fps, worst 18 ms |
+| Hosur Road, High, synced frame | 18.7 ms | 20.1 ms (the new near cars, 14k triangles each) |
