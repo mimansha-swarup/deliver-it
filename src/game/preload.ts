@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { loadRapier } from '../physics/rapier'
 import { fetchPackedData } from './packedData'
+import { BASIS_PATH } from '../world/ktx2'
 
 /**
  * Downloads everything the game needs, from the moment the title screen opens,
@@ -13,6 +14,8 @@ import { fetchPackedData } from './packedData'
  * file the world loads that isn't listed here is reported in the console.
  */
 const MAP_URL = `${import.meta.env.BASE_URL}data/hsr-compact.geojson`
+/** The map's smaller files (mapData.ts), fetched with it. */
+const EXTRA_DATA = ['hsr-extra-buildings', 'hsr-extra-worship', 'hsr-barriers', 'hsr-transit'].map((name) => `${import.meta.env.BASE_URL}data/${name}.geojson`)
 
 type GameFile = { url: string; kb: number; kind: 'data' | 'model' | 'image' }
 
@@ -151,7 +154,8 @@ export function preloadGame(report: (progress: LoadProgress) => void): Promise<v
       loadedKb: Math.min(loadedKb, totalKb),
       totalKb,
       stage: filesLeft > 0 || !physicsIn ? 'downloading' : 'downloaded',
-      mapReady: mapIn && physicsIn,
+      // The world starts building with the map alone; it waits for the physics engine only where it needs it (World.tsx).
+      mapReady: mapIn,
     })
 
   const fetchOne = async ({ url, kb, kind }: GameFile) => {
@@ -179,20 +183,36 @@ export function preloadGame(report: (progress: LoadProgress) => void): Promise<v
     send()
   }
 
-  const physics = loadRapier().then(() => {
+  // The map and its smaller files come first, on their own: building starts with them alone, and
+  // takes long enough (seconds) for everything else to arrive meanwhile. On a slow line, sharing the
+  // connection from the start put the map, and so everything, a few seconds later.
+  const [mapEntry, ...rest] = GAME_FILES
+  const mapFirst = Promise.all([fetchOne(mapEntry), ...EXTRA_DATA.map((url) => fetchPackedData(url).catch(() => new ArrayBuffer(0)))])
+  const afterMap = mapFirst.then(
+    () => undefined,
+    () => undefined,
+  )
+
+  // Then the texture decoder, the physics engine (needed only near the end of building), the models and textures.
+  void afterMap.then(() => {
+    new THREE.FileLoader().load(`${BASIS_PATH}basis_transcoder.js`)
+    new THREE.FileLoader().setResponseType('arraybuffer').load(`${BASIS_PATH}basis_transcoder.wasm`)
+  })
+  const physics = afterMap.then(loadRapier).then(() => {
     loadedKb += PHYSICS_KB
     physicsIn = true
     send()
   })
 
   // Four at a time: enough to keep the connection busy, few enough to show steady progress.
-  const queue = [...GAME_FILES]
+  const queue = [...rest]
   const worker = async () => {
+    await afterMap
     for (let file = queue.shift(); file; file = queue.shift()) await fetchOne(file)
   }
 
   send()
-  running = Promise.all([physics, ...Array.from({ length: 4 }, worker)])
+  running = Promise.all([mapFirst, physics, ...Array.from({ length: 4 }, worker)])
     .then(() => undefined)
     .catch((error: unknown) => {
       running = null

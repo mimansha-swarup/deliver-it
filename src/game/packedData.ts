@@ -31,7 +31,20 @@ async function gunzip(bytes: Uint8Array): Promise<ArrayBuffer> {
  * A data file's JSON bytes: the gzipped copy if there is one, unpacked, or else the file as it
  * is. `download` fetches one address and returns its bytes (so the loader can count them).
  */
-export async function fetchPackedData(url: string, download: (url: string) => Promise<ArrayBuffer> = plainDownload): Promise<ArrayBuffer> {
+/** Each file's download, once: the loader starts them on the title screen, the map reads them later. */
+const fetched = new Map<string, Promise<ArrayBuffer>>()
+
+export function fetchPackedData(url: string, download: (url: string) => Promise<ArrayBuffer> = plainDownload): Promise<ArrayBuffer> {
+  const known = fetched.get(url)
+  if (known) return known
+  const started = fetchPackedOnce(url, download)
+  fetched.set(url, started)
+  // A failed download may be tried again.
+  started.catch(() => fetched.delete(url))
+  return started
+}
+
+async function fetchPackedOnce(url: string, download: (url: string) => Promise<ArrayBuffer>): Promise<ArrayBuffer> {
   if (typeof DecompressionStream !== 'undefined') {
     try {
       const packed = new Uint8Array(await download(`${url}.gz`))

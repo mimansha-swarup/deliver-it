@@ -9987,3 +9987,36 @@ the far end or on to the flyover it joins. Traffic and deliveries stay on the gr
 - Riding past both stations on Hosur Road: one shadow shader still compiles on the way, in a 7.6 ms
   frame. The one remaining frame over 20 ms (33 to 42 ms, about 4 s into the ride) has no compile or
   upload in it: the city streaming in round the rider.
+
+## 2026-11-19: Entry 189, load time on a real connection
+
+### What I found
+Locally (no network) Play to riding is 4.7 s. On an emulated connection, pressing Play as soon as
+the title shows: 8.0 s at 20 Mbit/s, 14.7 s at 8 Mbit/s. 11 MB comes down in all (the preview server
+doesn't compress .wasm: the physics engine is 3 MB as it is, 1.2 MB gzipped).
+- The world didn't start building until the 3 MB physics engine was in, though only one step near the
+  end of building uses it.
+- The map shared the connection with the physics engine and the models from the first moment.
+- The extra buildings (1.3 MB unpacked) only started downloading on Play, and the texture decoder only
+  once the parts were being built.
+
+### What I did
+- **Building starts with the map alone** (World.tsx): `buildWorld` is a generator that pauses at the
+  step that makes the physics world, and carries on once the engine is in. The loader says the map is
+  ready without waiting for the engine (preload.ts).
+- **The map and its smaller files come down first, on their own**; then the texture decoder, the
+  physics engine, the models and textures, while the world is being planned.
+- **The extra files** (extra buildings, places of worship, barriers, transit) and **the texture
+  decoder** download from the title screen, each once (packedData.ts keeps each download).
+
+### Measured (Play pressed as soon as the title shows)
+| | Before | Now |
+| --- | --- | --- |
+| Local | 4.7 s | 4.7 s |
+| 20 Mbit/s | 8.0 s | 6.0 s |
+| 8 Mbit/s | 14.7 s | 12.4 s |
+
+At 8 Mbit/s it's the download itself: 11 MB at about 1 MB/s, about 9 MB on a host that compresses
+.wasm. Under 8 s there needs a faster connection, some time on the title screen first (everything
+downloads from the moment the page opens), or fewer bytes: the city kit model (1.2 MB, and nothing
+of it is drawn on Low since its planters became pots) and the physics engine are the big ones.

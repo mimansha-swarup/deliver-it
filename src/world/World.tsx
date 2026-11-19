@@ -96,8 +96,27 @@ const MENU_BOARD_RADIUS = 0.35
 
 type RapierModule = Awaited<ReturnType<typeof loadRapier>>
 
+type WorldPlan = ReturnType<typeof buildWorld> extends Generator<unknown, infer Plan, unknown> ? Plan : never
+
+/** The physics engine, handed to a world build that has paused for it (see `buildWorld`). */
+type RapierHolder = { rapier?: RapierModule }
+
 /** The last world built, kept outside React. See `getWorld`. */
-let built: { data: MapData; rapier: RapierModule; world: ReturnType<typeof buildWorld> } | null = null
+let built: { data: MapData; holder: RapierHolder; steps: Generator<void, WorldPlan, void>; world: WorldPlan | null } | null = null
+
+/**
+ * Starts building the world from the map alone, as soon as it's read: everything up to the step
+ * that needs the physics engine (a 3 MB download, which may still be coming), where it pauses.
+ */
+function startWorld(data: MapData) {
+  if (built?.data !== data) {
+    const holder: RapierHolder = {}
+    const steps = buildWorld(data, holder)
+    steps.next()
+    built = { data, holder, steps, world: null }
+  }
+  return built
+}
 
 /**
  * The world is built once and kept here, not in `useMemo`. While textures and
@@ -106,8 +125,17 @@ let built: { data: MapData; rapier: RapierModule; world: ReturnType<typeof build
  * the whole of HSR, that rebuilt the world about fifteen times before it showed.
  */
 function getWorld(data: MapData, rapier: RapierModule) {
-  if (built?.data !== data || built.rapier !== rapier) built = { data, rapier, world: buildWorld(data, rapier) }
-  return built.world
+  const current = startWorld(data)
+  if (!current.world) {
+    current.holder.rapier = rapier
+    current.world = finishWorld(current.steps.next())
+  }
+  return current.world
+}
+
+function finishWorld<T>(result: IteratorResult<void, T>): T {
+  if (!result.done) throw new Error('The world build paused twice')
+  return result.value
 }
 
 /**
@@ -115,7 +143,7 @@ function getWorld(data: MapData, rapier: RapierModule) {
  * added to the collision world as they're placed. Awnings and kit pieces go first,
  * while the collision world holds nothing but buildings.
  */
-function buildWorld(data: MapData, rapier: RapierModule) {
+function* buildWorld(data: MapData, holder: RapierHolder) {
   const lap = startLaps('plan')
   // Each road's kind of street, from its OSM class and the shops along it. Everything below dresses roads by it.
   const presetSummary = assignStreetPresets(data.roads, data.buildings, data.places, referenceStreetsOnly())
@@ -295,7 +323,9 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   })
   lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes; refused ${JSON.stringify(parking.rejected)}`)
   worldSurface.report['parked vehicles'] = { cars: parking.cars.length, bikes: parking.bikes.length, ...Object.fromEntries(Object.entries(parking.rejected).map(([why, count]) => [`refused, ${why}`, count])) }
-  const physics = createCrashPhysics(rapier, collisions)
+  // The physics engine: the build pauses here until it has come down (see `startWorld`).
+  yield
+  const physics = createCrashPhysics(holder.rapier!, collisions)
   lap('parked scooters and physics')
   const features = placeRoadFeatures(graph)
   // Main roads are busier and have buses; quiet streets have less (streetPresets.ts).
@@ -487,6 +517,8 @@ function placeOnce(still: THREE.Group | null) {
 
 export function World() {
   const data = use(loadMapData())
+  // Most of the build needs only the map: it starts now, while the physics engine may still be downloading.
+  startWorld(data)
   const rapier = use(loadRapier())
 
   const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, deckCollisions } =
