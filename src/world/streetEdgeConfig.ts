@@ -28,7 +28,8 @@ export const STREET = {
   /** The edge stone stands this far above the footpath. */
   edgeStoneRise: 0.012,
   /** Junction corners are rounded with this radius, measured at the road edge. */
-  cornerRadius: 3,
+  // Wide enough to turn into a residential street without riding the kerb.
+  cornerRadius: 5,
   /** The dusty strip on the soil beside the footpath. */
   dustWidth: 0.9,
   /** A square tree pit, this wide, with an edge-stone frame. */

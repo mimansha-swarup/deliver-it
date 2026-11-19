@@ -25,6 +25,9 @@ export const SCOOTER = {
   /** Turning speed in radians per second, at low speed and at top speed. */
   turnRateLow: 2,
   turnRateHigh: 1,
+  /** Below `slowTurnSpeed` (m/s, about 20 km/h) turning is up to this share sharper, most at a crawl. */
+  slowTurnBoost: 0.35,
+  slowTurnSpeed: 5.6,
   /** Below this speed, steering fades out, so a parked scooter can't spin on the spot. */
   fullSteeringSpeed: 4,
 

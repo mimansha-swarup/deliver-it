@@ -544,7 +544,8 @@ export function createTrafficWorld(
 ): TrafficWorld {
   const roadLanes = createLanes(graph, collisions, {
     minRoadWidth: 5,
-    sideOffset: () => 1.4,
+    // A quarter of the road out from the middle: 1.6 m on a 6.5 m residential street, never under 1.4.
+    sideOffset: (roadWidth) => Math.max(1.4, roadWidth / 4),
     clearance: 1.1,
   })
   for (const lane of roadLanes) {

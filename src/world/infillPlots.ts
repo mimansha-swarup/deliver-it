@@ -57,7 +57,7 @@ type PlotRule = {
 const RULES: Record<StreetPresetName, PlotRule> = {
   // Set back 2.2 m: a narrow yard behind a compound wall, with room for a car in it. Close-packed,
   // as HSR's plots are: neighbours a metre or less apart.
-  residential: { width: [8.5, 12], depth: [11, 14], setback: 2.2, gap: [0.4, 1.2], floors: [1, 3] },
+  residential: { width: [8.5, 12], depth: [11, 14], setback: 1.8, gap: [0.4, 1.2], floors: [1, 3] },
   shop: { width: [7, 10], depth: [11, 15], setback: 0.4, gap: [0.1, 0.5], floors: [2, 3] },
   main: { width: [8, 12], depth: [12, 16], setback: 0.5, gap: [0.1, 0.6], floors: [2, 4] },
 }
@@ -324,7 +324,7 @@ export function fillEmptyPlots(
         forget()
 
         // A car in the yard, beside the gate, parallel to the wall.
-        if (kind === 'house' && fit.setback >= 2.2 && random() < CAR_SHARE) {
+        if (kind === 'house' && fit.setback >= 1.8 && random() < CAR_SHARE) {
           const [x, z] = at(s + width * 0.72, front - fit.setback / 2)
           infill.parkedCars.push({ x, z, rotation: Math.atan2(along[0], along[1]) + (random() < 0.5 ? 0 : Math.PI), variation: random(), car: true })
           addPost(collisions, x, z, 1.1)

@@ -37,7 +37,8 @@ const PIECE_END_CLEAR = 6
 const DENSITY: Record<StreetPresetName | 'plain', { car: number; bikes: number }> = {
   shop: { car: 0.14, bikes: 0.22 },
   main: { car: 0.1, bikes: 0.12 },
-  residential: { car: 0.14, bikes: 0.08 },
+  // Light: residential streets were widened so a scooter can turn, and parked cars would narrow them again.
+  residential: { car: 0.04, bikes: 0.04 },
   plain: { car: 0.06, bikes: 0.05 },
 }
 /** A slot along the kerb, in metres: a car's length and its gap. */

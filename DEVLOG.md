@@ -10150,3 +10150,24 @@ full (one copy dissolving, its pixels shaded then thrown away), and cast two sha
 | Hosur Road, High, riding | 72 fps, worst 57 ms | 72 fps, worst 58 ms |
 | Sarjapur Road, High, riding | 82 fps, worst 34 ms | 83 fps, worst 18 ms |
 | Hosur Road, High, synced frame | 18.7 ms | 20.1 ms (the new near cars, 14k triangles each) |
+
+## 2026-11-19: Entry 197, residential streets wide enough to turn
+
+### What I did
+- **Carriageways**: residential 6.5 m (was 4.6), unclassified 6 m, living streets 5.5 m (roadData.ts).
+- **Density kept by the edges, not the road**: residential footpaths 1.2 m (were 1.5), infill yards
+  1.8 m (were 2.2; a car in the yard from 1.8 m). The setback and the surface map are built from the
+  new widths at load, so nothing overlaps: the setback trims 6,959 buildings (was 6,419), replaces 1,286
+  (805) and removes 723 (504); the infill builds 7,369 (7,597). About 450 fewer buildings of some 27,000.
+- **Rounded junction corners** of 5 m (were 3; 2.5 where 5 won't fit).
+- **Parking**: residential streets are now wide enough to park on, so they get a light sprinkle
+  (4% of slots, a car or a few bikes), to keep them wide. Nothing is parked within 14 m of a junction
+  (streetParking.ts already kept that). Kerbside cars 1,818 (were 1,676).
+- **Traffic** now uses residential streets too (they're over the 5 m minimum), at their lighter weight:
+  61,590 lanes (were 22,093). Lanes sit a quarter of the road out from the middle (1.6 m on a residential
+  street, never under 1.4).
+- **Steering** up to 35% tighter below 20 km/h, most at a crawl (vehicleConfig.ts `slowTurnBoost`).
+
+### Performance
+Riding Sarjapur Road on Low with the CPU slowed 4×, back to back with the build from before the tree change:
+47 fps against 44: the same (this Mac was busy, load average 4).
