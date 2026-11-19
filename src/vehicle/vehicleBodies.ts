@@ -86,6 +86,8 @@ export type BuiltVehicle = {
   glass: THREE.BufferGeometry | null
   /** How far the front wheels turn at full lock, in radians. */
   lock: number
+  /** A delivery crate that carries the Deliver It logo on its back and sides (Scooter.tsx): its corners. */
+  logoBox?: { min: [number, number, number]; max: [number, number, number] }
 }
 
 export function disposeBuilt(built: BuiltVehicle) {
@@ -164,6 +166,27 @@ function createScooter(paint: string): BuiltVehicle {
   }
 }
 
+/** A wire basket: a tray at `at` (the middle of its floor) of `size` (width, height, length), open on top, its sides upright wires and a rim. */
+function basket(at: [number, number, number], size: [number, number, number]): THREE.BufferGeometry[] {
+  const WIRE = '#77726a'
+  const [x, y, z] = at
+  const [w, h, l] = size
+  const parts = [boxAt([w, 0.012, l], [x, y, z], '#6a655e')]
+  const corners: [number, number][] = [[-w / 2, -l / 2], [w / 2, -l / 2], [w / 2, l / 2], [-w / 2, l / 2]]
+  corners.forEach(([cx, cz], index) => {
+    const [nx, nz] = corners[(index + 1) % 4]
+    // The rim, and a mid rail, along each side; uprights between them.
+    parts.push(tube([x + cx, y + h, z + cz], [x + nx, y + h, z + nz], 0.008, WIRE), tube([x + cx, y + h * 0.5, z + cz], [x + nx, y + h * 0.5, z + nz], 0.005, WIRE))
+    for (let step = 0; step < 4; step++) {
+      const t = step / 4
+      const px = x + cx + (nx - cx) * t
+      const pz = z + cz + (nz - cz) * t
+      parts.push(tube([px, y, pz], [px, y + h, pz], 0.005, WIRE))
+    }
+  })
+  return parts
+}
+
 /**
  * A city bicycle, its front to +z: a diamond frame in the vehicle's paint, a saddle, swept
  * handlebars, mudguards, and a carrier with a crate on the back for the parcel. Spoked wheels
@@ -190,7 +213,12 @@ function createBicycle(paint: string): BuiltVehicle {
     tube([-0.27, 1.06, 0.3], [0.27, 1.06, 0.3], 0.014, STEEL),
     ...[-1, 1].map((side) => tube([side * 0.27, 1.06, 0.3], [side * 0.29, 1.05, 0.18], 0.017, SEAT)),
     mudguard(front, wheel + 0.03, paint),
-    lump([0.07, 0.07, 0.06], [0, 0.96, 0.46], LAMP),
+    // A front basket on the bars, as every city bicycle here has: a wire tray with slatted sides,
+    // steel gone a little brown, on two stays down to the axle. The lamp hangs under its front edge.
+    ...basket([0, 0.84, 0.56], [0.3, 0.19, 0.24]),
+    tube([-0.11, 0.84, 0.6], [-0.05, wheel, 0.55], 0.007, STEEL),
+    tube([0.11, 0.84, 0.6], [0.05, wheel, 0.55], 0.007, STEEL),
+    lump([0.07, 0.07, 0.06], [0, 0.8, 0.7], LAMP),
   ])
   // The cranks, one each side and opposite, with their pedals, about the bottom bracket.
   const cranks = join([
@@ -210,6 +238,7 @@ function createBicycle(paint: string): BuiltVehicle {
     crank: { geometry: cranks, at: crank },
     glass: null,
     lock: 0.6,
+    logoBox: { min: [-0.17, 0.75, -0.8], max: [0.17, 1.01, -0.44] },
   }
 }
 

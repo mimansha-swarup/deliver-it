@@ -55,7 +55,7 @@ import {
 import { TOTAL_KB, type LoadProgress } from './preload'
 import { levelFromXp, UNLOCK_LEVELS, unlocksBetween } from './progression'
 import type { Quality } from './qualitySettings'
-import { saveKey } from './saveKeys'
+import { migrateSave, saveKey } from './saveKeys'
 
 type Telemetry = {
   speedKmh: number
@@ -394,7 +394,9 @@ function tallyDelivery(shift: ShiftStats, reward: Reward, earned: number, onTime
 }
 
 /** Where progress is saved in the browser. */
-const SAVE_KEY = saveKey('slikk-it-progress')
+/** Progress saved under the project's earlier name is moved across once, before anything reads it. */
+migrateSave('slikk-it-progress', 'deliver-it-progress')
+const SAVE_KEY = saveKey('deliver-it-progress')
 
 /**
  * Whether this is a first visit: no progress saved yet when the page loaded. Read before the
@@ -844,7 +846,6 @@ export const useGameStore = create<GameState>()(
     }))),
     }),
     {
-      // Kept from the project's earlier name, so existing saves still load.
       name: SAVE_KEY,
       version: 1,
       // Only progress and settings are saved. Everything else starts fresh on each visit.

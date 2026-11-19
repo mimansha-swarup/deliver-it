@@ -33,3 +33,18 @@ export function clearDebugSave() {
     // Nothing to clear.
   }
 }
+
+/**
+ * A save that used to live under another name (the project's earlier one) is moved to its new name,
+ * once: the first load after the rename copies it across and removes the old key, so progress is kept.
+ */
+export function migrateSave(from: string, to: string) {
+  try {
+    const old = localStorage.getItem(from)
+    if (old === null) return
+    if (localStorage.getItem(to) === null) localStorage.setItem(to, old)
+    localStorage.removeItem(from)
+  } catch {
+    // Storage refused: nothing to move.
+  }
+}

@@ -492,6 +492,7 @@ export function Scooter({
                   </group>
                 </group>
               )}
+              {built.logoBox && <BoxLogos bounds={new THREE.Box3(new Vector3(...built.logoBox.min), new Vector3(...built.logoBox.max))} />}
               {ownScooter && (
                 <>
                   <mesh geometry={parts.box} material={materials.box} />
