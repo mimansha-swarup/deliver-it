@@ -5,7 +5,8 @@ import { livePlayer, liveSky } from '../game/livePlayer'
 import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
 import { MISSION_RULES } from '../game/missionConfig'
 import type { MissionPlanner } from './missionPlanner'
-import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
+import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterController'
+import { liveRoom } from '../game/rooms'
 import { getCurrentStop, hasArrived } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
@@ -85,11 +86,18 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       if (game.phase === 'toCustomer') game.recordKnock()
     }
 
-    livePlayer.x = state.x
-    livePlayer.height = Math.min(state.frontWheel.height, state.rearWheel.height)
-    livePlayer.z = state.z
-    livePlayer.heading = state.heading
-    livePlayer.steer = state.steer
+    // Where the player is: on the vehicle, or on foot away from it (then the vehicle's place is kept too).
+    const afoot = isAfoot(state)
+    livePlayer.onFoot = afoot
+    livePlayer.indoors = liveRoom.kind !== null
+    livePlayer.vehicleX = state.x
+    livePlayer.vehicleZ = state.z
+    livePlayer.vehicleHeading = state.heading
+    livePlayer.x = afoot ? state.rider.x : state.x
+    livePlayer.z = afoot ? state.rider.z : state.z
+    livePlayer.heading = afoot ? state.rider.heading : state.heading
+    livePlayer.height = afoot ? (liveRoom.kind ? 0 : state.rider.ground) : Math.min(state.frontWheel.height, state.rearWheel.height)
+    livePlayer.steer = afoot ? 0 : state.steer
     livePlayer.bumps = state.bumpCount
     livePlayer.gentle = state.gentleCount
 
@@ -116,7 +124,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     if (target && game.planner) {
       const field = game.planner.getRouteField(target.node)
       const { collisions, graph } = game.planner
-      routeLength = updateLiveRoute(collisions, graph, field, state.x, state.z, target.x, target.z)
+      routeLength = updateLiveRoute(collisions, graph, field, livePlayer.x, livePlayer.z, target.x, target.z)
     } else {
       clearLiveRoute()
     }

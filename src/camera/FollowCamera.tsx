@@ -5,7 +5,8 @@ import { useFrame } from '@react-three/fiber'
 import { PerspectiveCamera, Vector3 } from 'three'
 import { liveShot } from '../game/livePlayer'
 import type { ScooterState } from '../vehicle/ScooterController'
-import { getTravelSpeed, scooterLevel } from '../vehicle/ScooterController'
+import { getTravelSpeed, isAfoot, scooterLevel } from '../vehicle/ScooterController'
+import { liveRoom, ROOM } from '../game/rooms'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
@@ -62,6 +63,13 @@ const SHAKE_SIZE = 0.35
 const RIDER_FOLLOW_RESPONSE = 3.5
 /** Where the camera looks on a rider who's down: lower than on the scooter. */
 const RIDER_LOOK_HEIGHT = 0.6
+
+/** On foot the camera is a little closer and looks a few steps ahead of the rider, at about shoulder height. */
+const FOOT_VIEW = { distance: 0.86, height: 0.98, look: 0.9 }
+const FOOT_LOOK_AHEAD = 3
+const FOOT_LOOK_HEIGHT = 1.3
+/** In a room, the camera keeps this far inside its walls and under its ceiling, in metres. */
+const ROOM_MARGIN = 0.35
 
 /** Walks backwards from the scooter and returns how far the camera can go. */
 function findClearDistance(
@@ -139,10 +147,12 @@ export function FollowCamera({
     const slipAngle = travelSpeed > 3 ? Math.atan2(state.slip, Math.max(state.speed, 1)) : 0
     const previous = cameraHeading.current ?? state.heading
     // While the rider is off, the camera holds its direction instead of spinning with the fallen scooter.
-    const targetHeading = riderOff ? previous : state.heading - slipAngle * SLIDE_FOLLOW
+    // On foot by choice, it stays behind the rider as they turn.
+    const afoot = isAfoot(state)
+    const targetHeading = afoot ? state.rider.heading : riderOff ? previous : state.heading - slipAngle * SLIDE_FOLLOW
 
-    // Moves a fraction of the remaining gap, in a way that doesn't depend on frame rate.
-    const heading = previous + (targetHeading - previous) * (1 - Math.exp(-TURN_RESPONSE * delta))
+    // Moves a fraction of the remaining gap, in a way that doesn't depend on frame rate, the short way round.
+    const heading = previous + Math.atan2(Math.sin(targetHeading - previous), Math.cos(targetHeading - previous)) * (1 - Math.exp(-TURN_RESPONSE * delta))
     cameraHeading.current = heading
 
     // Mouse-look turns the view round the rider from there, and comes back behind them while riding.
@@ -154,8 +164,10 @@ export function FollowCamera({
     level.current += (height - level.current) * (1 - Math.exp(-8 * delta))
     const up = height > UP_ON_DECK
     // The vehicle's own chase view: a van is followed from further back and higher than a scooter.
-    const view = liveVehicle.spec.camera
-    const clearDistance = findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, DISTANCE_BEHIND * view.distance)
+    const view = afoot ? FOOT_VIEW : liveVehicle.spec.camera
+    const indoors = afoot && liveRoom.kind !== null
+    // In a room the walls are the room's own (the camera is kept inside them, below); the street's don't apply.
+    const clearDistance = indoors ? DISTANCE_BEHIND * view.distance : findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, DISTANCE_BEHIND * view.distance)
     const distance =
       clearDistance < cameraDistance.current
         ? clearDistance // Snap in, or the wall would be visible for a moment.
@@ -168,6 +180,12 @@ export function FollowCamera({
     const back = distance * (tilt > 0 ? Math.cos(tilt * 0.9) : 1)
     const lift = tilt > 0 ? Math.sin(tilt) * distance * 1.6 : tilt * 4
     camera.position.set(focusX - forwardX * back, Math.max(0.5, HEIGHT * view.height + lift) + level.current, focusZ - forwardZ * back)
+
+    if (indoors) {
+      camera.position.x = Math.max(liveRoom.x - ROOM.width / 2 + ROOM_MARGIN, Math.min(liveRoom.x + ROOM.width / 2 - ROOM_MARGIN, camera.position.x))
+      camera.position.z = Math.max(liveRoom.z - ROOM.depth / 2 + ROOM_MARGIN, Math.min(liveRoom.z + ROOM.depth / 2 - ROOM_MARGIN, camera.position.z))
+      camera.position.y = Math.min(camera.position.y, liveRoom.floorY + ROOM.height - ROOM_MARGIN)
+    }
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -182,9 +200,9 @@ export function FollowCamera({
     }
 
     // On the rider, look at them rather than ahead of them.
-    const lookAhead = LOOK_AHEAD * (1 - follow)
+    const lookAhead = afoot ? FOOT_LOOK_AHEAD : LOOK_AHEAD * (1 - follow)
     let lookX = focusX + forwardX * lookAhead
-    let lookY: number = LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow + level.current + (tilt < 0 ? -tilt * 9 : 0)
+    let lookY: number = (afoot ? FOOT_LOOK_HEIGHT : LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow) + level.current + (tilt < 0 ? -tilt * 9 : 0)
     let lookZ = focusZ + forwardZ * lookAhead
 
     // Eases across to a set shot and back, so that it never cuts.

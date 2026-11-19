@@ -2,6 +2,7 @@ import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
 import { ROAD_HEIGHT, type Surface } from '../world/surface'
 import { JOG, JOG_STRIDE_PER_METRE } from './riderShape'
 import { currentGrip, tuning } from './tuning'
+import { liveRoom } from '../game/rooms'
 import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMITS } from './vehicleConfig'
 
 export type DriveInput = {
@@ -82,7 +83,8 @@ export type ScooterState = {
 export type WheelContact = { height: number; fall: number; wet: number }
 
 /** What the rider is doing after coming off: in the air or sliding, lying still, getting up, walking back, getting on. */
-export type RiderPhase = 'on' | 'thrown' | 'lying' | 'rising' | 'walking' | 'mounting'
+/** `dismounting` and `afoot`: got off on purpose (F), and walking about under the player's own control (see `stepOnFoot`). */
+export type RiderPhase = 'on' | 'thrown' | 'lying' | 'rising' | 'walking' | 'mounting' | 'dismounting' | 'afoot'
 
 export type ThrownRider = {
   phase: RiderPhase
@@ -367,6 +369,130 @@ function stepThrownRider(state: ScooterState, collisions: CollisionWorld, surfac
   }
 }
 
+/** Whether the rider is off the vehicle by choice: stepping off it, or walking about. */
+export function isAfoot(state: ScooterState): boolean {
+  return state.rider.phase === 'afoot' || state.rider.phase === 'dismounting'
+}
+
+/** On foot: walking and running speeds (m/s), how fast they're reached, turning, and how near the seat counts as beside the vehicle. */
+export const FOOT = { walk: 1.9, run: 4.4, back: 1.1, speedUp: 9, turn: 2.7, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
+/** The vehicle must be slower than this to get off it, in m/s. */
+const DISMOUNT_SPEED = 2
+
+/** Where the rider stands having got off: beside the seat, on the kerb side of a two-wheeler, at the driver's door of a cab. */
+function exitSpot(state: ScooterState, collisions: CollisionWorld): [number, number] {
+  const forwardX = Math.sin(state.heading)
+  const forwardZ = Math.cos(state.heading)
+  // To the vehicle's left is (forwardZ, -forwardX). A cab's driver sits on the right and steps out there.
+  const out = tuning.radius + 0.5
+  const sides = tuning.cab ? [-1, 1] : [1, -1]
+  const back = tuning.cab ? 0 : -SEAT_BACK
+  for (const side of sides) {
+    for (const along of [back, back - 0.8, back + 0.8]) {
+      const x = state.x + forwardX * along + forwardZ * out * side
+      const z = state.z + forwardZ * along - forwardX * out * side
+      probe.x = x
+      probe.z = z
+      pushOutOfBuildings(collisions, probe, FOOT.radius)
+      if (Math.hypot(probe.x - x, probe.z - z) < 0.05) return [x, z]
+    }
+  }
+  return [state.x - forwardX * (tuning.halfLength + 0.5), state.z - forwardZ * (tuning.halfLength + 0.5)]
+}
+const probe = { x: 0, z: 0 }
+
+/** F, stopped: the rider steps off. False if they can't (moving, mid-crash, already off). */
+export function getOff(state: ScooterState, collisions: CollisionWorld): boolean {
+  const rider = state.rider
+  if (rider.phase !== 'on' || state.crashLeft > 0 || getTravelSpeed(state) > DISMOUNT_SPEED) return false
+  const [x, z] = exitSpot(state, collisions)
+  rider.phase = 'dismounting'
+  rider.time = 0
+  rider.x = x
+  rider.z = z
+  rider.ground = (state.frontWheel.height + state.rearWheel.height) / 2
+  rider.y = rider.ground + RIDER_HIP_HEIGHT
+  rider.heading = state.heading
+  rider.roll = 0
+  rider.rollSpeed = 0
+  rider.limp = 0
+  rider.pace = 0
+  rider.velocityX = 0
+  rider.velocityY = 0
+  rider.velocityZ = 0
+  rider.onGround = true
+  state.velocityX = 0
+  state.velocityZ = 0
+  state.drifting = false
+  state.nitroOn = false
+  return true
+}
+
+/** Whether the rider, on foot, is close enough to their vehicle to get on. */
+export function isBesideVehicle(state: ScooterState): boolean {
+  return state.rider.phase === 'afoot' && !liveRoom.kind && Math.hypot(state.rider.x - state.x, state.rider.z - state.z) < FOOT.reach + tuning.halfLength * 0.6
+}
+
+/** F, on foot beside the vehicle: the rider gets on. */
+export function getOn(state: ScooterState): boolean {
+  if (!isBesideVehicle(state)) return false
+  state.rider.phase = 'mounting'
+  state.rider.time = 0
+  state.rider.pace = 0
+  return true
+}
+
+/**
+ * The rider on foot, under the player's control: forward and back walk (the nitro key runs), left
+ * and right turn. Kept out of walls, compound walls, poles and parked vehicles like everything
+ * else, up and down kerbs with the ground; inside a room (game/rooms.ts), kept within its walls
+ * and off its furniture.
+ */
+function stepOnFoot(state: ScooterState, input: DriveInput, collisions: CollisionWorld, surface: Surface, dt: number) {
+  const rider = state.rider
+  rider.time += dt
+  if (rider.phase === 'dismounting') {
+    // Swings a leg over and steps down beside it: the pose blends from the seat to standing.
+    rider.off = Math.min(1, rider.time / FOOT.dismountTime)
+    if (rider.off >= 1) {
+      rider.phase = 'afoot'
+      rider.time = 0
+    }
+    return
+  }
+  rider.off = 1
+  rider.limp = 0
+  rider.roll = 0
+  rider.heading += (Number(input.left) - Number(input.right)) * FOOT.turn * dt
+  // On foot `velocityX` is the walking speed along the way they face (backwards negative): there's no sideways.
+  const wanted = liveRoom.frozen ? 0 : input.forward ? (input.nitro ? FOOT.run : FOOT.walk) : input.backward ? -FOOT.back : 0
+  rider.velocityX = moveToward(rider.velocityX, wanted, FOOT.speedUp * dt)
+  const step = rider.velocityX * dt
+  rider.pace = Math.abs(rider.velocityX)
+  rider.x += Math.sin(rider.heading) * step
+  rider.z += Math.cos(rider.heading) * step
+  if (liveRoom.kind) {
+    liveRoom.keepInside(rider, FOOT.radius)
+    rider.ground = liveRoom.floorY
+  } else {
+    rider.x = clamp(rider.x, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
+    rider.z = clamp(rider.z, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
+    pushOutOfBuildings(collisions, rider, FOOT.radius)
+    // Not through their own vehicle either.
+    const awayX = rider.x - state.x
+    const awayZ = rider.z - state.z
+    const gap = Math.hypot(awayX, awayZ)
+    const keep = tuning.radius + FOOT.radius * 0.6
+    if (gap < keep && gap > 0.001) {
+      rider.x = state.x + (awayX / gap) * keep
+      rider.z = state.z + (awayZ / gap) * keep
+    }
+    rider.ground += (surface.heightAt(rider.x, rider.z, rider.ground) - rider.ground) * (1 - Math.exp(-14 * dt))
+  }
+  rider.y = rider.ground + RIDER_HIP_HEIGHT
+  rider.stride += Math.abs(step) * JOG_STRIDE_PER_METRE
+}
+
 /**
  * `travelX` and `travelZ` are the speed just before the hit, which is what the
  * rider carries on with if they're thrown off.
@@ -399,7 +525,8 @@ function startCrash(state: ScooterState, side: number, strength: number, travelX
   state.drifting = false
   state.boostLeft = 0
   state.nitroOn = false
-  if (Math.hypot(travelX, travelZ) > SCOOTER.throwOffSpeed) throwRiderOff(state, travelX, travelZ)
+  // Nobody's thrown from a vehicle they aren't on (it was parked, and something hit it).
+  if (state.rider.phase === 'on' && Math.hypot(travelX, travelZ) > SCOOTER.throwOffSpeed) throwRiderOff(state, travelX, travelZ)
 }
 
 /**
@@ -823,6 +950,7 @@ function updateBodyMotion(state: ScooterState, input: DriveInput, dt: number) {
 
 /** How high the scooter is: its lower wheel, or the rider's ground while they're off it. Up on a flyover, metres above the street. */
 export function scooterLevel(state: ScooterState): number {
+  if (isAfoot(state)) return state.rider.ground
   return state.rider.phase === 'on' ? Math.min(state.frontWheel.height, state.rearWheel.height) : Math.min(state.rider.ground, state.frontWheel.height)
 }
 
@@ -837,7 +965,10 @@ export function stepScooter(
   wetness = 0,
 ) {
   const crashed = state.crashLeft > 0
-  const controls = crashed ? NO_INPUT : input
+  // Parked with the rider off it and walking: the vehicle holds its brake, and the keys move the rider.
+  const afoot = isAfoot(state)
+  // (Getting back on, too: it doesn't pull away until the rider is in the seat.)
+  const controls = crashed ? NO_INPUT : afoot || state.rider.phase === 'mounting' ? HOLD_INPUT : input
 
   updateDrift(state, controls, dt)
   updateNitro(state, controls, dt)
@@ -851,7 +982,8 @@ export function stepScooter(
     state.crashLeft = Math.max(0, state.crashLeft - dt)
   }
 
-  if (state.rider.phase !== 'on') {
+  if (afoot) stepOnFoot(state, input, collisions, surface, dt)
+  else if (state.rider.phase !== 'on') {
     stepThrownRider(state, collisions, surface, dt)
     // The scooter stays on its side until the rider is back to pick it up.
     const { phase } = state.rider as { phase: RiderPhase }

@@ -343,3 +343,32 @@ export function fitCanvas(canvas: HTMLCanvasElement): [number, number] {
   return [width, height]
 }
 
+
+/**
+ * The rider's vehicle, parked, while they're away from it on foot: a marigold dot with a P, held at
+ * the map's edge when it's further than the map shows, so it can always be walked back to.
+ */
+export function drawParkedVehicle(context: CanvasRenderingContext2D, view: View) {
+  if (!livePlayer.onFoot) return
+  let [x, y] = toScreen(view, livePlayer.vehicleX, livePlayer.vehicleZ)
+  const reach = Math.hypot(x, y)
+  const edge = (view.radius ?? Math.min(view.width, view.height) / 2) - 14
+  if (reach > edge) {
+    x *= edge / reach
+    y *= edge / reach
+  }
+  const cx = view.riderX + x
+  const cy = view.riderY + y
+  context.beginPath()
+  context.arc(cx, cy, 8, 0, Math.PI * 2)
+  context.fillStyle = '#f6b32b'
+  context.fill()
+  context.lineWidth = 2
+  context.strokeStyle = '#2a1300'
+  context.stroke()
+  context.fillStyle = '#2a1300'
+  context.font = 'bold 10px system-ui, sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText('P', cx, cy + 0.5)
+}

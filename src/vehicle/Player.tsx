@@ -19,6 +19,7 @@ import type { TrafficWorld } from '../traffic/trafficLogic'
 import { PlayerSounds } from '../audio/PlayerSounds'
 import { BunkRefill } from './BunkRefill'
 import { FleetClock } from './FleetClock'
+import { OnFoot } from './OnFoot'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
@@ -74,6 +75,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <MissionTracker scooter={scooterState} />
       <BunkRefill scooter={scooterState} stations={bunks} />
       <FleetClock scooter={scooterState} />
+      <OnFoot scooter={scooterState} collisions={collisions} deckCollisions={deckCollisions} />
       <MissionMarker />
       <HomeMarker />
       <PhotoCamera />
