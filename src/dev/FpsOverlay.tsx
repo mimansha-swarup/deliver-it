@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useResolution } from '../game/resolution'
-import { isDebug } from './spawn'
+import { debugAsked } from './spawn'
 
 /*
- * Debug only (`?debug=1`): frames per second and the worst frames, over the game, above the
+ * Only with `?debug=1` in the address (not just for being the dev server): frames per second and the worst frames, over the game, above the
  * minimap. It times frames with its own requestAnimationFrame, the gap between one picture and
  * the next as the player sees it, and writes the text straight into the page twice a second, so
  * it costs next to nothing and never re-renders React.
@@ -20,7 +20,7 @@ const UPDATE_MS = 500
 export function FpsOverlay() {
   const text = useRef<HTMLPreElement>(null)
   useEffect(() => {
-    if (!isDebug()) return
+    if (!debugAsked()) return
     const frames: { at: number; ms: number }[] = []
     // three.js resets its counts at every render call, and the effects make several a frame: the
     // overlay resets them once a frame instead, so they're the whole frame's.
@@ -62,6 +62,6 @@ export function FpsOverlay() {
       if (gl) gl.autoReset = true
     }
   }, [])
-  if (!isDebug()) return null
+  if (!debugAsked()) return null
   return <pre ref={text} className="fps-overlay" aria-hidden="true" />
 }

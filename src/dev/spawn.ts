@@ -22,6 +22,14 @@ export function isDebug(): boolean {
   return typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')
 }
 
+/**
+ * Whether the address itself asks for debug (`?debug` or `?debug=1`), dev server or not: for what's
+ * drawn over the game (the FPS overlay), which shouldn't be on screen just because it's the dev server.
+ */
+export function debugAsked(): boolean {
+  return typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')
+}
+
 export function slugOf(name: string): string {
   return name
     .toLowerCase()
