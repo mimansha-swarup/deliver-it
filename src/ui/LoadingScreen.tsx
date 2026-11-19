@@ -111,7 +111,8 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
     const timer = window.setTimeout(() => setNearGivenUp(true), NEAR_WAIT_MS)
     return () => window.clearTimeout(timer)
   }, [partsBuilt])
-  const allBuilt = partsBuilt && (!nearWaiting || nearGivenUp)
+  const warmed = useLaunch((state) => state.warmed)
+  const allBuilt = partsBuilt && (!nearWaiting || nearGivenUp) && warmed
 
   // Everything is on screen. A few frames more let the first pictures be drawn
   // (which is when the GPU prepares each material), then the ride starts.

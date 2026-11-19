@@ -9964,3 +9964,26 @@ the far end or on to the flyover it joins. Traffic and deliveries stay on the gr
 ### Not done
 - The traffic drawn on the decks doesn't see the rider: it passes through them.
 - The minimap's street name is the road below, not the flyover.
+
+## 2026-11-19: Entry 188, a debug FPS overlay, and the world drawn once before riding
+
+### What I did
+- **FPS overlay** with ?debug=1 (dev/FpsOverlay.tsx), above the minimap: FPS over the last second,
+  the worst frame in the last second and the last 10 s, how many frames took over 20 ms in the last
+  10 s, and the whole frame's draw calls and triangles (three.js resets its counts at each render
+  call, and the effects make several a frame, so the overlay resets them once a frame instead), and
+  the resolution. Its edge turns amber past 20 ms and red past 33. It times frames with its own
+  requestAnimationFrame and writes the text twice a second, without React.
+- **Prewarm** (World.tsx): once every part is built, behind the loading screen, the whole world is
+  compiled (`compileAsync`, every material, seen or not) and drawn once with nothing culled, so every
+  geometry, texture and shadow shader reaches the GPU now, not in the frame where it first comes into
+  view: the metro's viaduct, stations, boards and trains included (instanced meshes with no copies yet,
+  as the trains waiting off the line, are drawn with one for that frame). The ride waits for it
+  (`warmed` in launch.ts).
+
+### Measured
+- Shaders compiled at load: 244 (were about 170, the rest compiling on first sight while riding).
+- The prewarm takes 0.24 s; Play to riding 4.6 to 4.8 s here, as before.
+- Riding past both stations on Hosur Road: one shadow shader still compiles on the way, in a 7.6 ms
+  frame. The one remaining frame over 20 ms (33 to 42 ms, about 4 s into the ride) has no compile or
+  upload in it: the city streaming in round the rider.

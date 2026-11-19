@@ -1,7 +1,8 @@
 import { Suspense, use, useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
-import { markPartBuilt, useLaunch, type WorldPart } from '../game/launch'
+import { markPartBuilt, useLaunch, WORLD_PART_COUNT, type WorldPart } from '../game/launch'
+import { useThree } from '@react-three/fiber'
 import { Sky } from '../sky/Sky'
 import { createCrashPhysics } from '../physics/crashPhysics'
 import { loadRapier } from '../physics/rapier'
@@ -375,6 +376,54 @@ function buildWorld(data: MapData, rapier: RapierModule) {
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
+/**
+ * Draws the whole built world once behind the loading screen, with nothing culled, then lets the
+ * ride start: shaders for everything (the metro's, the trains', the shadow ones, which only compile
+ * when something is first drawn into the shadow map), every geometry and every texture reach the GPU
+ * now, not in the frame where each first comes into view. Instanced meshes with no copies yet (the
+ * trains, waiting off the line) are drawn with one for this frame.
+ */
+function Prewarm() {
+  const { gl, scene, camera } = useThree()
+  const ready = useLaunch((state) => state.built.length >= WORLD_PART_COUNT && !state.warmed)
+  useEffect(() => {
+    if (!ready) return
+    let live = true
+    // A frame on, so every part has had its first frame (instance lists filled).
+    const id = requestAnimationFrame(async () => {
+      markLoad('prewarm start')
+      const culled: THREE.Object3D[] = []
+      const empty: THREE.InstancedMesh[] = []
+      scene.traverse((object) => {
+        if (object.frustumCulled) {
+          culled.push(object)
+          object.frustumCulled = false
+        }
+        if (object instanceof THREE.InstancedMesh && object.count === 0 && object.instanceMatrix.count > 0) {
+          empty.push(object)
+          object.count = 1
+        }
+      })
+      try {
+        await gl.compileAsync(scene, camera)
+        if (!live) return
+        gl.shadowMap.needsUpdate = true
+        gl.render(scene, camera)
+      } finally {
+        for (const object of culled) object.frustumCulled = true
+        for (const mesh of empty) mesh.count = 0
+      }
+      markLoad('prewarm done')
+      if (live) useLaunch.setState({ warmed: true })
+    })
+    return () => {
+      live = false
+      cancelAnimationFrame(id)
+    }
+  }, [ready, gl, scene, camera])
+  return null
+}
+
 function Built({ name }: { name: WorldPart }) {
   useEffect(() => {
     markLoad(`part: ${name}`)
@@ -489,6 +538,7 @@ export function World() {
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>
         {isDebug() && <SurfaceDebug surface={surfaceMap} />}
+        <Prewarm />
         <Part name="player"><Player stores={stores} collisions={collisions} deckCollisions={deckCollisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} home={home} /></Part>
       </WarmAssets>
     </Suspense>
