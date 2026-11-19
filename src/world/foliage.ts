@@ -90,6 +90,23 @@ export function createBushGeometry(leafy: boolean): THREE.BufferGeometry {
 export const TREE_SHAPE = { round: 0, tall: 1, wide: 2, umbrella: 3, column: 4, dome: 5, arch: 6 } as const
 /** A tree planted without a shape gets one of the first this many (not the arch, which only avenues get). */
 export const TREE_SHAPE_COUNT = 6
+
+/**
+ * How high a tree's leaves reach and how far out from its trunk, in metres, at its drawn size 1:
+ * from its canopy's balls, with a margin for the leaf cards standing out of them. For keeping
+ * canopies clear of the flyovers and the viaduct (overheadClearance.ts).
+ */
+export function treeExtent(kind: number): { top: number; reach: number } {
+  if (kind === PALM) return { top: PALM_TOP + 0.8, reach: 3.4 }
+  const blobs = TREE_SHAPES[kind] ?? TREE_SHAPES[0]
+  let top = 0
+  let reach = 0
+  for (const [x, y, z, radius] of blobs) {
+    top = Math.max(top, y + radius)
+    reach = Math.max(reach, Math.hypot(x, z) + radius)
+  }
+  return { top: top + 0.6, reach: reach + 0.8 }
+}
 /** A coconut palm: its own trunk and crown, not one of the ball-built canopies. */
 export const PALM = 7
 

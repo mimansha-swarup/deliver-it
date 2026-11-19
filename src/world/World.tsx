@@ -56,6 +56,7 @@ import { SurfaceDebug } from '../dev/SurfaceDebug'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
+import { clearOverheads } from './overheadClearance'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
 import { RestrictedWall } from './RestrictedWall'
@@ -266,7 +267,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
   // Under the flyovers: nothing tall, and no grass (bare earth, groundCover.ts). Not paved: the concrete
   // shader over that much ground cost about 1.3 ms a frame on High.
-  for (const outline of flyoverFootprints(flyoverDecks)) surfaceMap.markOverhead(outline)
+  // The overhead layer holds each deck's underside height, for keeping trees and lamps clear of it.
+  for (const { outline, underside } of flyoverFootprints(flyoverDecks)) surfaceMap.markOverhead(outline, underside)
   worldSurface.map = surfaceMap
   // A tyre puncture shop on open ground beside the bunks that have some (fuelStationData.ts).
   const tyreShops = findTyreShops(fuel, (x, z) => surfaceMap.at(x, z) === Surface.Open, collisions)
@@ -324,6 +326,10 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     return [{ x: graph.xs[node], z: graph.zs[node], reach }]
   })
   props.trees.push(...plantContextTrees({ gates: houses.gates, temples: worship, junctions, roads: roadIndex, collisions }))
+  // Every tree and lamp post is in: none comes up through a flyover or the viaduct (overheadClearance.ts).
+  const overhead = clearOverheads(surfaceMap, props, collisions)
+  worldSurface.report.overhead = overhead
+  lap(`overhead clearance: ${JSON.stringify(overhead)}`)
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
   // The small things that tell a street's story: dogs, a cow, chairs, pots, garbage, cycles, papers, transformers.

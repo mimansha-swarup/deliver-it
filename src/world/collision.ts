@@ -98,6 +98,34 @@ export function addPost(world: CollisionWorld, x: number, z: number, radius: num
   addFootprint(world, footprint)
 }
 
+/** Takes away a post added by `addPost` at (x, z), from every cell it's in. False if there's none there. */
+export function removePost(world: CollisionWorld, x: number, z: number): boolean {
+  const isPost = (footprint: Footprint) => {
+    if (footprint.length !== 6) return false
+    let sumX = 0
+    let sumZ = 0
+    for (const [px, pz] of footprint) {
+      sumX += px
+      sumZ += pz
+    }
+    return Math.abs(sumX / 6 - x) < 0.01 && Math.abs(sumZ / 6 - z) < 0.01
+  }
+  let found = false
+  const reach = MAX_CHECK_RADIUS + 1
+  for (let cellX = toCell(x - reach); cellX <= toCell(x + reach); cellX++) {
+    for (let cellZ = toCell(z - reach); cellZ <= toCell(z + reach); cellZ++) {
+      const key = cellKey(cellX, cellZ)
+      const cell = world.get(key)
+      if (!cell) continue
+      const index = cell.findIndex(isPost)
+      if (index < 0) continue
+      cell.splice(index, 1)
+      found = true
+    }
+  }
+  return found
+}
+
 /**
  * Finds the nearest point on a footprint's outline, and whether (x, z) is inside.
  * "Inside" uses the ray test: walk in one direction and count the walls you

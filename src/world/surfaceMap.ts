@@ -78,8 +78,10 @@ export class SurfaceMap {
   /** Sports pitches (pitches.ts): maidans are worn down to the earth (groundCover.ts). */
   pitches: Pitch[] = []
   /**
-   * Cells with a flyover or the metro overhead (transitPlacement.ts): nothing tall stands there,
-   * no tree, lamp post or building, or it would come up through the deck.
+   * The overhead-structure layer: cells with a flyover deck, the metro viaduct or a station overhead
+   * (transitPlacement.ts), each holding the lowest underside above it, in quarter metres (0 is open
+   * sky). Nothing tall stands there, no tree, lamp post or building, or it would come up through the
+   * deck; and near them, trees and lamps are kept clear of it (overheadClearance.ts).
    */
   readonly overhead = new Uint8Array(this.width * this.depth)
 
@@ -100,12 +102,41 @@ export class SurfaceMap {
     const column = Math.floor(x - PLAY_AREA.minX)
     const row = Math.floor(z - PLAY_AREA.minZ)
     if (column < 0 || row < 0 || column >= this.width || row >= this.depth) return false
-    return this.overhead[row * this.width + column] === 1
+    return this.overhead[row * this.width + column] !== 0
   }
 
-  /** Marks a polygon as under a deck (see `overhead`). */
-  markOverhead(points: GroundPoint[]) {
-    this.fillPolygon(points, 1 as Surface, undefined, this.overhead)
+  /**
+   * Marks a polygon as under a deck whose underside is `underside` metres up (see `overhead`).
+   * Where decks overlap, the lowest underside is kept.
+   */
+  markOverhead(points: GroundPoint[], underside = 0) {
+    const code = Math.max(1, Math.min(255, Math.round(underside * 4)))
+    const cells = this.overhead
+    this.scanPolygon(points, (start, end) => {
+      for (let i = start; i < end; i++) if (cells[i] === 0 || code < cells[i]) cells[i] = code
+    })
+  }
+
+  /** The lowest underside of anything overhead within `radius` of a point, in metres, or Infinity. */
+  lowestUndersideNear(x: number, z: number, radius: number): number {
+    let lowest = 255 + 1
+    const centreColumn = x - PLAY_AREA.minX
+    const centreRow = z - PLAY_AREA.minZ
+    const firstRow = Math.max(0, Math.floor(centreRow - radius))
+    const lastRow = Math.min(this.depth - 1, Math.floor(centreRow + radius))
+    const firstColumn = Math.max(0, Math.floor(centreColumn - radius))
+    const lastColumn = Math.min(this.width - 1, Math.floor(centreColumn + radius))
+    const reach = (radius + 0.71) * (radius + 0.71)
+    for (let row = firstRow; row <= lastRow; row++) {
+      const dz = row + 0.5 - centreRow
+      for (let column = firstColumn; column <= lastColumn; column++) {
+        const code = this.overhead[row * this.width + column]
+        if (code === 0 || code >= lowest) continue
+        const dx = column + 0.5 - centreColumn
+        if (dx * dx + dz * dz <= reach) lowest = code
+      }
+    }
+    return lowest > 255 ? Infinity : lowest / 4
   }
 
   /** Whether every point round a circle allows it: a thing with some size must fit whole. */
@@ -120,6 +151,15 @@ export class SurfaceMap {
 
   /** Fills a polygon (scanline, even-odd), only over cells of the given kinds if `over` is given. */
   fillPolygon(points: GroundPoint[], kind: Surface, over?: Surface[], target: Uint8Array = this.cells) {
+    this.scanPolygon(points, (start, end) => {
+      // Most fills are over anything: a run at a time.
+      if (!over) target.fill(kind, start, end)
+      else for (let cell = start; cell < end; cell++) this.set(cell, kind, over)
+    })
+  }
+
+  /** Each run of cells inside a polygon (scanline, even-odd), as indices from `start` up to `end`. */
+  private scanPolygon(points: GroundPoint[], run: (start: number, end: number) => void) {
     if (points.length < 3) return
     let minZ = Infinity
     let maxZ = -Infinity
@@ -145,9 +185,7 @@ export class SurfaceMap {
         const to = Math.min(this.width - 1, Math.floor(crossings[k + 1] - 0.5))
         if (to < from) continue
         const rowStart = row * this.width
-        // Most fills are over anything: a run at a time.
-        if (!over) target.fill(kind, rowStart + from, rowStart + to + 1)
-        else for (let column = from; column <= to; column++) this.set(rowStart + column, kind, over)
+        run(rowStart + from, rowStart + to + 1)
       }
     }
   }

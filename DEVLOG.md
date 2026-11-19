@@ -10216,3 +10216,25 @@ at the deck's height.
 
 ### Not done
 Vehicles stay level on the ramps (up to about 8%); they don't pitch with the slope.
+
+## 2026-11-19: Entry 200, nothing comes up through a flyover or the viaduct
+
+### What I did
+- **An overhead-structure layer with heights** (surfaceMap.ts `overhead`): each cell under a flyover
+  deck, the metro viaduct or a station now holds the lowest underside above it, in quarter metres (it
+  was a yes/no mask). Flyover decks: the deck's height at that segment less 1.7 m of deck and girders
+  (the ground on a ramp's embankment); the viaduct 11.6 m; station concourses 5.8 m.
+- **A clearance pass once every tree and lamp post is planted** (overheadClearance.ts), from each tree
+  kind's real reach and top (foliage.ts `treeExtent`), its drawn size and its lean. Under a deck: a
+  shrub instead, where the ground takes one. Beside a deck, with leaves that would come within 1 m of
+  it: made smaller (down to 60%), or moved 2 to 5 m to where a tree may stand clear, or taken out.
+  A lamp post whose head would reach a deck goes, with its cables. Their solid posts move or go with
+  them (collision.ts `removePost`).
+
+### Counts (whole map: all flyovers, the viaduct and stations)
+558 trees stood near a deck. 230 made smaller, 31 moved, 245 removed, none turned to shrubs (none was
+planted under a deck: the old mask already stopped that). 9 lamp posts removed. 92 ms at load.
+
+### Not checked
+Signs and hoardings, and buildings beside a deck: buildings are already kept off the decks' footprints
+by the setback, but a sign or hoarding near a deck's edge isn't checked against it.

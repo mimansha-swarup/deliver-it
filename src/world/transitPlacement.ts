@@ -85,6 +85,10 @@ export type Metro = {
 export const STATION = { length: 76, concourse: 6.4, platform: 14.6, roof: 20.5, minHalfWidth: 12, maxHalfWidth: 19, narrowest: 9 }
 /** Half the viaduct deck's width and a little (landmarkPlacement's deck is 8.6 m wide). */
 const VIADUCT_HALF_WIDTH = 5.3
+/** The underside of the viaduct's deck, in metres (CityLandmarks.tsx' DECK.bottom is 12), less its bearings. */
+const VIADUCT_UNDERSIDE = 11.6
+/** A station's concourse floor's depth below its top: its underside is this far below `STATION.concourse`. */
+const STATION_FLOOR = 0.6
 /** A flight of stairs climbs this far along the ground to the concourse. */
 export const STAIR_RUN = 11
 
@@ -155,8 +159,8 @@ export function planMetro({
   metro.report.pillarsMeanOffset = ordered.length ? Math.round((ordered.reduce((sum, { off }) => sum + off, 0) / ordered.length) * 10) / 10 : 0
   if (ordered.length < 2) return metro
   metro.path = makePath(ordered.map(({ x, z }): GroundPoint => [x, z]))
-  // Nothing tall under the viaduct's deck.
-  for (const outline of pathFootprint(metro.path, VIADUCT_HALF_WIDTH)) surface.markOverhead(outline)
+  // Nothing tall under the viaduct's deck, and nothing reaching up into it (overheadClearance.ts).
+  for (const outline of pathFootprint(metro.path, VIADUCT_HALF_WIDTH)) surface.markOverhead(outline, VIADUCT_UNDERSIDE)
 
   // ---- Stations: OSM's subway stations near the line ----
   const stationNodes = data.transit.filter(
@@ -302,7 +306,7 @@ export function planMetro({
       }
     }
     metro.stations.push(station)
-    for (const outline of pathFootprint(metro.path, station.halfWidth + 0.5, along - STATION.length / 2, along + STATION.length / 2)) surface.markOverhead(outline)
+    for (const outline of pathFootprint(metro.path, station.halfWidth + 0.5, along - STATION.length / 2, along + STATION.length / 2)) surface.markOverhead(outline, STATION.concourse - STATION_FLOOR)
 
     // ---- Below: autos at the kerb by each entrance, bikes and carts in the median ----
     for (const entrance of station.entrances) {
@@ -445,11 +449,23 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
   return decks
 }
 
-/** A deck's ground footprint, as one rectangle a segment, its width and a margin either side. */
-export function flyoverFootprints(decks: Flyover[]): GroundPoint[][] {
-  const outlines: GroundPoint[][] = []
-  for (const deck of decks) outlines.push(...pathFootprint(deck.path, deck.width / 2 + FOOTPRINT_MARGIN))
-  return outlines
+/** How far below a deck's top its underside is, girders and all, in metres (Transit.tsx' deck). */
+const DECK_DEPTH = 1.7
+
+/**
+ * A deck's ground footprint, as one rectangle a segment, its width and a margin either side, each with
+ * its underside's height (the lower end's, less the deck's depth; on a ramp's embankment, the ground).
+ */
+export function flyoverFootprints(decks: Flyover[]): { outline: GroundPoint[]; underside: number }[] {
+  const footprints: { outline: GroundPoint[]; underside: number }[] = []
+  for (const deck of decks) {
+    const { at } = deck.path
+    for (let i = 1; i < at.length; i++) {
+      const underside = Math.max(0, Math.min(deck.heights[i - 1], deck.heights[i]) - DECK_DEPTH)
+      for (const outline of pathFootprint(deck.path, deck.width / 2 + FOOTPRINT_MARGIN, at[i - 1], at[i])) footprints.push({ outline, underside })
+    }
+  }
+  return footprints
 }
 
 /** Rectangles `half` either side of each segment of a path, a little longer, so they overlap at the joints. */
@@ -481,8 +497,6 @@ export function planFlyovers({ decks, surface, collisions }: { decks: Flyover[];
 
   for (const deck of decks) {
     const { path } = deck
-    // Nothing tall under the deck.
-    for (const outline of pathFootprint(path, deck.width / 2 + FOOTPRINT_MARGIN)) surface.markOverhead(outline)
 
     // The ramps are solid embankments: walled along both edges where the deck is too low to ride
     // under (and high enough to see), so they're ridden up from the foot, not onto from the side.
