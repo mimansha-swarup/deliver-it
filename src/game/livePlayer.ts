@@ -6,7 +6,8 @@ import { createSkyState, getSkyLook } from '../sky/skyLogic'
  * writing to them 60 times a second doesn't re-render anything.
  */
 /** `bumps` and `gentle`: hard and gentle landings so far (ScooterController), for the tutorial. */
-export const livePlayer = { x: 0, z: 0, heading: 0, bumps: 0, gentle: 0 }
+/** `height`: how high the wheels are, in metres: up on a flyover's deck, its height. */
+export const livePlayer = { x: 0, z: 0, heading: 0, bumps: 0, gentle: 0, height: 0 }
 
 /** The sky as it looks right now, worked out each frame by the Sky component. */
 export const liveSky = {

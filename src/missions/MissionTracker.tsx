@@ -86,6 +86,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     }
 
     livePlayer.x = state.x
+    livePlayer.height = Math.min(state.frontWheel.height, state.rearWheel.height)
     livePlayer.z = state.z
     livePlayer.heading = state.heading
     livePlayer.bumps = state.bumpCount

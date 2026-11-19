@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { NAMMA_SPOTS, useDiscovery } from '../game/discovery'
 import { keyFor } from '../game/keyBindings'
 import { useGameStore } from '../game/gameStore'
 import type { Mission, MissionPhase, OrderKind } from '../game/gameTypes'
@@ -627,6 +628,26 @@ function CameraApp({ nav }: { nav: PhoneNav }) {
   )
 }
 
+/** Namma spots: views worth finding round Agara, ticked off once seen (game/discovery.ts). */
+function SpotsApp({ nav }: { nav: PhoneNav }) {
+  const found = useDiscovery((state) => state.found)
+  const count = NAMMA_SPOTS.filter(({ id }) => found[id]).length
+  return (
+    <div className="app">
+      <AppBar title="Namma spots" nav={nav} />
+      <div className="app-body">
+        <p className="app-line">Our spots: {count} of {NAMMA_SPOTS.length} found.</p>
+        {NAMMA_SPOTS.map(({ id, name, how }) => (
+          <section className="app-card" key={id}>
+            <p className="app-card-title">{found[id] ? '✓ ' : '○ '}{name}</p>
+            <p className="app-line">{found[id] ? 'Found.' : how}</p>
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** Settings: controls, picture, sound, language, the tutorial. */
 function SettingsApp({ nav }: { nav: PhoneNav }) {
   const musicOn = useGameStore((state) => state.musicOn)
@@ -688,6 +709,8 @@ export function PhoneApp({ app, nav }: { app: AppId; nav: PhoneNav }) {
       return <GarageApp nav={nav} />
     case 'camera':
       return <CameraApp nav={nav} />
+    case 'spots':
+      return <SpotsApp nav={nav} />
     case 'settings':
       return <SettingsApp nav={nav} />
   }

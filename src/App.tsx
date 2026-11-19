@@ -22,6 +22,7 @@ import { useResolution } from './game/resolution'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
 import { DevStats } from './dev/DevStats'
 import { FpsOverlay } from './dev/FpsOverlay'
+import { Discovery } from './ui/Discovery'
 import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
@@ -87,6 +88,7 @@ function RidingUi() {
       <Phone />
       </div>
       <PhotoModeUi />
+      <Discovery />
       <FpsOverlay />
       <HelpOverlay />
     </>

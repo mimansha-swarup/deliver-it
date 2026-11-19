@@ -4351,3 +4351,36 @@ body,
 .fps-overlay[data-slow='bad'] {
   border-left-color: #e0473e;
 }
+
+/* The card that names an area on arriving, or a Namma spot on finding it (ui/Discovery.tsx). */
+.area-card {
+  position: fixed;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 14px 28px 12px;
+  text-align: center;
+  color: #fff;
+  background: rgba(15, 17, 21, 0.72);
+  border-top: 2px solid #f2b82a;
+  border-radius: 6px;
+  pointer-events: none;
+  animation: area-card 4.5s ease both;
+  z-index: 20;
+}
+.area-card-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.area-card-sub {
+  margin: 4px 0 0;
+  font-size: 14px;
+  opacity: 0.85;
+}
+@keyframes area-card {
+  0% { opacity: 0; transform: translate(-50%, 8px); }
+  10%, 85% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -6px); }
+}
