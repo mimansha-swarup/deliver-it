@@ -17,6 +17,8 @@ import { SOCIETY_GATE, type SocietyPlan } from './society'
  */
 
 const SEEN_FROM = 170
+/** The boom stands this far out from the compound's own gate, on the street side, so it's seen in front of it. */
+const BOOM_OUT = 0.45
 const UNIFORM = ['#3b5ba5']
 const SIGN_FONT = "'Baloo Tamma 2', 'Arial Black', system-ui, sans-serif"
 
@@ -52,14 +54,14 @@ function createGate(): THREE.BufferGeometry {
   const half = SOCIETY_GATE.width / 2
   const parts: THREE.BufferGeometry[] = []
   // The boom: a post at the far end with a counterweight, and a red and white arm across to the wicket.
-  parts.push(box([0.22, 1.15, 0.22], [-half - 0.05, 0.575, 0], '#5d6166'), box([0.34, 0.3, 0.3], [-half - 0.42, 1.0, 0], '#3a3d42'))
+  parts.push(box([0.22, 1.15, 0.22], [-half - 0.05, 0.575, BOOM_OUT], '#5d6166'), box([0.34, 0.3, 0.3], [-half - 0.42, 1.0, BOOM_OUT], '#3a3d42'))
   const reach = SOCIETY_GATE.width - SOCIETY_GATE.wicket + 0.1
   const stripes = 8
   for (let stripe = 0; stripe < stripes; stripe++) {
-    parts.push(box([reach / stripes, 0.1, 0.07], [-half + (stripe + 0.5) * (reach / stripes), 1.0, 0], stripe % 2 ? '#e9e4d8' : '#b3261e'))
+    parts.push(box([reach / stripes, 0.1, 0.07], [-half + (stripe + 0.5) * (reach / stripes), 1.0, BOOM_OUT], stripe % 2 ? '#e9e4d8' : '#b3261e'))
   }
-  parts.push(box([0.07, 0.9, 0.07], [half - SOCIETY_GATE.wicket + 0.05, 0.45, 0], '#5d6166'))
-  parts.push(box([0.36, 0.3, 0.03], [-0.4, 0.72, 0.05], '#e9e4d8'), box([0.3, 0.07, 0.01], [-0.4, 0.76, 0.07], '#b3261e'))
+  parts.push(box([0.07, 0.9, 0.07], [half - SOCIETY_GATE.wicket + 0.05, 0.45, BOOM_OUT], '#5d6166'))
+  parts.push(box([0.36, 0.3, 0.03], [-0.4, 0.72, BOOM_OUT + 0.05], '#e9e4d8'), box([0.3, 0.07, 0.01], [-0.4, 0.76, BOOM_OUT + 0.07], '#b3261e'))
   // The sentry box, inside the wall: plastered, a window to the street, a rusting tin roof.
   const boxX = half + 0.9
   parts.push(box([1.15, 2.1, 1.15], [boxX, 1.05, -0.85], '#d8cfb6'), box([1.45, 0.07, 1.5], [boxX, 2.16, -0.8], '#8a5a3c'))
@@ -110,9 +112,9 @@ export function SocietyGate({ society }: { society: SocietyPlan }) {
         <mesh geometry={geometry} castShadow receiveShadow>
           <meshStandardMaterial vertexColors roughness={0.85} side={flip < 0 ? THREE.BackSide : THREE.FrontSide} />
         </mesh>
-        {/* The name board on the compound wall, on the far side of the gate from the guard; never mirrored. */}
-        <mesh position={[-half - 1.9, 1.02, 0.11]} scale={[flip, 1, 1]}>
-          <planeGeometry args={[2.4, 0.75]} />
+        {/* The name board, on the sentry box over its window, above the compound wall. */}
+        <mesh position={[half + 0.9, 1.93, -0.262]} scale={[flip, 1, 1]}>
+          <planeGeometry args={[1.12, 0.35]} />
           <meshStandardMaterial map={board} roughness={0.5} />
         </mesh>
       </group>

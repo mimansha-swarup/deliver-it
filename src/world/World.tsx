@@ -35,6 +35,8 @@ import { distanceToEdge, innerPoint, planPlacesOfWorship, templeCompounds } from
 import { teleportSpots } from '../dev/teleportSpots'
 import { findSpawn, isDebug, referenceStreetsOnly, requestedSpawn } from '../dev/spawn'
 import { doorsteps } from '../game/doorsteps'
+import { eateries } from '../game/eateries'
+import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
 import { SocietyGate } from './SocietyGate'
 import { Temples } from './Temples'
@@ -563,6 +565,12 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
       const street = near ? data.roads[near.piece.road].properties.name : undefined
       return { x, z, name: street ? `Chai stall · ${street}` : 'Chai stall' }
     })
+  // Chai stalls and darshinis can be walked into, to eat and rest (game/eateries.ts): worth getting off for.
+  eateries.list = shopFronts
+    .filter(({ type }) => type === 'chai' || type === 'darshini')
+    .map(({ x, z, rotation, type }) => ({ x, z, outX: Math.sin(rotation), outZ: Math.cos(rotation), kind: type === 'chai' ? 'chai' as const : 'darshini' as const }))
+  fixedInterests.list = eateries.list.map(({ x, z }) => ({ x, z, reach: 16 }))
+  if (isDebug()) Object.assign(window, { __eateries: eateries })
   lap('spawn and landmarks')
   yield STEP
 

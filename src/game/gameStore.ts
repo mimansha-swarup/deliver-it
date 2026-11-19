@@ -56,6 +56,7 @@ import { TOTAL_KB, type LoadProgress } from './preload'
 import { levelFromXp, UNLOCK_LEVELS, unlocksBetween } from './progression'
 import type { Quality } from './qualitySettings'
 import { migrateSave, saveKey } from './saveKeys'
+import { FRESH } from './eateries'
 
 type Telemetry = {
   speedKmh: number
@@ -166,6 +167,8 @@ type GameState = Telemetry & {
   photoMode: boolean
   /** How roughly the current order has been carried (customerChat.ts): judged at the door, not felt as mood. */
   rough: number
+  /** Deliveries left on which the rider, having eaten and rested, is tipped a little more (game/eateries.ts). Saved. */
+  fresh: number
 
   startGame: () => void
   setLoading: (loading: LoadProgress) => void
@@ -224,6 +227,8 @@ type GameState = Telemetry & {
   setWaypoint: (waypoint: { x: number; z: number; node: number } | null) => void
   /** A line from Ravi: a message, a chat line while online, a peek on the phone. */
   raviSays: (text: string) => void
+  /** Eats at a chai stall or darshini: paid from the wallet, and the next few deliveries are tipped more. False if it can't be afforded. */
+  eat: (what: string, price: number) => boolean
   /** Pays for something if the wallet has it: written in the ledger. False (and nothing taken) if it hasn't. */
   spend: (label: string, amount: number) => boolean
   /** Changes the vehicle in use (GaadiGo's handovers, game/fleet.ts). */
@@ -478,6 +483,7 @@ export const useGameStore = create<GameState>()(
       photoMode: false,
       waypoint: null,
       rough: 0,
+      fresh: 0,
       frustration: 0,
       graceLeft: 0,
       fumingLeft: 0,
@@ -548,8 +554,11 @@ export const useGameStore = create<GameState>()(
             }
           }
 
-          const reward = state.pendingReward
-          if (state.phase !== 'handingOver' || !reward) return state
+          const judged = state.pendingReward
+          if (state.phase !== 'handingOver' || !judged) return state
+          // A rider who has eaten and rested is tipped a little more, for a few deliveries.
+          const freshTip = state.fresh > 0 && judged.tipCredits > 0 ? Math.max(1, Math.round(judged.tipCredits * FRESH.tipShare)) : 0
+          const reward = freshTip > 0 ? { ...judged, tipCredits: judged.tipCredits + freshTip } : judged
 
           const paid = {
             ...state,
@@ -605,6 +614,7 @@ export const useGameStore = create<GameState>()(
             pendingReward: null,
             ratings: [...state.ratings, reward.stars].slice(-RATINGS_KEPT),
             fiveStarStreak: reward.stars === 5 ? state.fiveStarStreak + 1 : 0,
+            fresh: Math.max(0, state.fresh - 1),
             credits: after.credits,
             xp: after.xp,
           }
@@ -757,6 +767,11 @@ export const useGameStore = create<GameState>()(
     set((state) => ({ credits: state.credits - amount, ledger: addLedger(state.ledger, state.day, [{ label, amount: -amount, kind: 'expense' }]) }))
     return true
   },
+  eat: (what, price) => {
+    if (!get().spend(what, price)) return false
+    set({ fresh: FRESH.deliveries })
+    return true
+  },
   setVehicle: (vehicleId) => set({ vehicleId }),
   fine: (label, amount, message) =>
     set((state) => {
@@ -878,6 +893,7 @@ export const useGameStore = create<GameState>()(
         history: state.history,
         ledger: state.ledger,
         lastPosition: state.lastPosition,
+        fresh: state.fresh,
       }),
     },
   ),

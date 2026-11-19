@@ -5,6 +5,7 @@ import { TitleCamera } from '../camera/TitleCamera'
 import { useGameStore } from '../game/gameStore'
 import { Handoff } from '../missions/Handoff'
 import { Errand } from '../missions/Errand'
+import { Eating } from '../missions/Eating'
 import { Rooms } from '../world/Rooms'
 import { HomeMarker, MissionMarker } from '../missions/MissionMarker'
 import { PhotoCamera } from '../ui/PhotoMode'
@@ -83,6 +84,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <PhotoCamera />
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
       <Errand scooter={scooterState} stores={stores} />
+      <Eating scooter={scooterState} />
       <Rooms />
       {/* Built once riding has begun, so it doesn't hold up the loading screen. */}
       <AfterRideStarts>

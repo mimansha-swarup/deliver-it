@@ -546,6 +546,7 @@ function MusicApp({ nav }: { nav: PhoneNav }) {
 function WalletApp({ nav }: { nav: PhoneNav }) {
   const credits = useGameStore((state) => state.credits)
   const ledger = useGameStore((state) => state.ledger)
+  const fresh = useGameStore((state) => state.fresh)
   const day = useGameStore((state) => state.day)
   const today = ledger.filter((entry) => entry.day === day)
   const sum = (kinds: string[]) => today.filter((entry) => kinds.includes(entry.kind)).reduce((total, entry) => total + entry.amount, 0)
@@ -556,6 +557,7 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
         <section className="app-card">
           <p className="app-card-title">Balance</p>
           <p className="app-big">{credits} credits</p>
+          {fresh > 0 && <p className="app-line">Fresh from a meal: +15% tips on the next {fresh} {fresh === 1 ? 'delivery' : 'deliveries'}</p>}
         </section>
         <section className="app-card app-totals">
           <p className="app-card-title">Today · day {day}</p>

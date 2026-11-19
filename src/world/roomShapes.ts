@@ -138,12 +138,13 @@ function chaiRoom(): RoomPlan {
   parts.push(box([2.2, 0.04, 0.25], [-1.6, 1.75, -HALF_Z + 0.16], '#6b4a2c'))
   for (let i = 0; i < 6; i++) parts.push(cylinder(0.09, 0.2, [-2.5 + i * 0.36, 1.87, -HALF_Z + 0.16], ['#c62828', '#f2b705', '#2a7fc2', '#3f9b5a', '#e86a1c', '#e8e1cf'][i]))
   // Standing tables: a steel post and a round top, chest high.
-  const tables: [number, number][] = [[-2.0, 1.0], [2.0, 1.0], [0, 1.9]]
+  // Clear of the way from the door to the counter.
+  const tables: [number, number][] = [[-2.1, 1.0], [2.0, 1.0], [-2.3, -0.35]]
   for (const [x, z] of tables) {
     parts.push(cylinder(0.04, 1.05, [x, 0.525, z], '#8f9499'), cylinder(0.42, 0.04, [x, 1.07, z], '#cfd3d6'), cylinder(0.22, 0.03, [x, 0.015, z], '#6d7074'))
   }
   // A glass and a plate left on one.
-  parts.push(cylinder(0.035, 0.09, [-1.9, 1.135, 1.05], '#e8dcc0'), cylinder(0.11, 0.015, [-2.15, 1.1, 0.95], '#d9dde0'))
+  parts.push(cylinder(0.035, 0.09, [-2.0, 1.135, 1.05], '#e8dcc0'), cylinder(0.11, 0.015, [-2.25, 1.1, 0.95], '#d9dde0'))
   // A wash basin by the door, and a water drum.
   parts.push(box([0.5, 0.14, 0.38], [HALF_X - 0.28, 0.8, 2.3], '#e9e7e1'), cylinder(0.24, 0.7, [-HALF_X + 0.4, 0.35, 2.5], '#2a7fc2'))
   return {
