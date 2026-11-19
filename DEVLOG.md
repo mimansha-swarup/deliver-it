@@ -10546,3 +10546,41 @@ person rides the old one away to the Garage.
 Sounds need an ear. The built vehicles' front wheels don't steer. The rider's pose is still the scooter's
 on every two-wheeler. The delivery can park on a footpath on a narrow street. On two wheels the delivery
 person riding is a simple figure (a body and a helmet), not the walking model.
+
+## 2026-11-20: Entry 212, every player vehicle its own shape, steering, a pose each, and the handover tidied
+
+### What I did
+- **Every player vehicle is built in code, in pieces** (vehicleBodies.ts): the traffic models are no longer
+  used for the rider's vehicles. New: the Deliver It scooter as a Bengaluru family scooter (step-through,
+  flat footboard, wide apron, handlebar cowl with a small round headlamp, round side panels, a rack for
+  the yellow box with its logos); the Vega 150 (open engine under a long tank, bench seat, chrome exhaust,
+  round headlamp on long forks, twin shocks); the Oota Hatch (short bonnet, tall cabin with open window
+  frames, a food carrier on the roof); the Saagane Loadstar (a cab-over van, open-framed cab, long white
+  load body).
+- **Steering**: on two and three wheels the fork, bars, mudguard and front wheel turn about the column;
+  the car's and van's front wheels turn about their own middles. All wheels spin.
+- **A pose per vehicle** (vehicleCatalog.ts `seat`, Rider.tsx): the rider's hips, back lean, grips and
+  feet come from the vehicle. Upright with feet on the footboard on the scooters; leaning forward to wide
+  bars with feet back on the pegs on the Vega; high on the saddle with feet going round on the pedals on
+  the bicycle; at the bars on the three-wheeler's bench; at the wheel on the right inside the car and the
+  van, seen through the open window frames. A foot goes down at a stop only on two wheels. From the
+  driver's seat (V) the driver isn't drawn.
+- **Handover**: the delivery parks on the road at the kerb (the surface map is asked: left of the rider
+  first, then right, behind, ahead, or the nearest road if the rider's off it). Six tries with the rider on
+  road, open ground and footpath: on the road every time. The delivery rider is the character model in a
+  green jacket and helmet, posed to the vehicle's seat, riding in and riding the old one away.
+
+### Performance (riding, 17:30, this Mac at load 3)
+| | High fps | High worst | Low fps | Low worst |
+| --- | --- | --- | --- | --- |
+| Sarjapur Road, scooter | 114 | 16.7 ms | 120 | 10.0 ms |
+| Sarjapur Road, three-wheeler | 115 | 17.6 ms | 120 | 10.3 ms |
+| Sarjapur Road, van | 114 | 17.2 ms | 120 | 10.3 ms |
+| 13th Cross, scooter | 102 | 17.1 ms | 120 | 10.3 ms |
+| 13th Cross, three-wheeler | 103 | 18.1 ms | 120 | 10.2 ms |
+| 13th Cross, van | 103 | 17.0 ms | 120 | 10.4 ms |
+No frame over 20 ms in any run.
+
+### Left
+The bodies are blocks, tubes and rounded lumps: distinct in outline, simple close up. The windows have
+frames and no glass. A car's collision size is still the scooter's. Crash poses still assume the scooter.
