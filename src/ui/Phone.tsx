@@ -242,6 +242,8 @@ export function Phone() {
   const reading = useRef<string | null>(null)
   useEffect(() => {
     reading.current = raised && screen === 'messages' ? thread : null
+    // Which app is up, for whoever wants to know (the tutorial's GaadiGo step).
+    useUi.setState({ phoneApp: raised && screen !== 'lock' && screen !== 'home' ? screen : null })
   }, [raised, screen, thread])
 
   /** Notifications floating above the half-open phone, newest last; each leaves after its time. */

@@ -15,6 +15,8 @@ export type Action =
   | 'right'
   | 'handbrake'
   | 'nitro'
+  | 'mount'
+  | 'interact'
   | 'online'
   | 'accept'
   | 'decline'
@@ -27,7 +29,7 @@ export type Action =
   | 'weather'
   | 'help'
 
-export const ACTIONS: { id: Action; label: string; group: 'Riding' | 'Work' | 'Phone and map' | 'Other' }[] = [
+export const ACTIONS: { id: Action; label: string; group: 'Riding' | 'On foot' | 'Work' | 'Phone and map' | 'Other' }[] = [
   { id: 'forward', label: 'Ride forward', group: 'Riding' },
   { id: 'backward', label: 'Brake and reverse', group: 'Riding' },
   { id: 'left', label: 'Steer left', group: 'Riding' },
@@ -35,6 +37,8 @@ export const ACTIONS: { id: Action; label: string; group: 'Riding' | 'Work' | 'P
   { id: 'handbrake', label: 'Drift (hold while turning)', group: 'Riding' },
   { id: 'nitro', label: 'Nitro', group: 'Riding' },
   { id: 'horn', label: 'Horn', group: 'Riding' },
+  { id: 'mount', label: 'Get off or on the vehicle', group: 'On foot' },
+  { id: 'interact', label: 'Use: pick up, ring, hand over, enter', group: 'On foot' },
   { id: 'online', label: 'Go online or offline', group: 'Work' },
   { id: 'accept', label: 'Accept an order', group: 'Work' },
   { id: 'decline', label: 'Decline an order', group: 'Work' },
@@ -54,6 +58,8 @@ export const DEFAULT_KEYS: Record<Action, string[]> = {
   right: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
   nitro: ['ShiftLeft', 'ShiftRight'],
+  mount: ['KeyF'],
+  interact: ['KeyE'],
   online: ['KeyO'],
   accept: ['KeyY'],
   decline: ['KeyX'],

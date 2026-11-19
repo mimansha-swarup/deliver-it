@@ -28,6 +28,8 @@ import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
 import { worldPlanner } from './world/planAhead'
 import { DutyUi } from './ui/DutyUi'
+import { Objective } from './ui/Objective'
+import { Prompts } from './ui/Prompts'
 import { Tutorial } from './ui/Tutorial'
 import { Minimap } from './ui/Minimap'
 import { FullMap } from './ui/FullMap'
@@ -76,6 +78,8 @@ function RidingUi() {
       <div className="riding-ui" hidden={photoMode}>
       <Hud />
       <DutyUi />
+      <Objective />
+      <Prompts />
       <Tutorial />
       <ChatBubbles />
       <PlayerHorn />

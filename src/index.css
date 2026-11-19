@@ -4433,3 +4433,70 @@ body,
 .debug-panel .app-wide-button {
   margin-top: 8px;
 }
+
+/* The objective line: top-left, under the duty badge. One short instruction, always. */
+.objective {
+  position: fixed;
+  top: calc(var(--edge) + 40px);
+  left: var(--edge);
+  max-width: min(440px, calc(50vw - 160px));
+  margin: 0;
+  padding: 7px 14px 7px 10px;
+  border-left: 3px solid #f6b32b;
+  border-radius: 4px 12px 12px 4px;
+  color: #fff8e6;
+  background: rgb(15 17 21 / 78%);
+  font-size: clamp(13px, 1.05vw, 16px);
+  font-weight: 600;
+  line-height: 1.3;
+  animation: objective-in 0.35s ease both;
+}
+.objective-mark {
+  color: #f6b32b;
+}
+@keyframes objective-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+.duty-badge[data-duty='online'] ~ .objective {
+  top: calc(var(--edge) + 64px);
+}
+
+/* Context prompts: bottom centre, above the order offer's place, only while they apply. */
+.prompts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--edge) + 4px);
+  display: flex;
+  gap: 10px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.duty-offer ~ .prompts {
+  bottom: calc(var(--edge) + 96px);
+}
+.prompt {
+  margin: 0;
+  padding: 8px 16px 8px 10px;
+  border-radius: 999px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 82%);
+  font-size: clamp(13px, 1.05vw, 16px);
+  font-weight: 600;
+  white-space: nowrap;
+  animation: objective-in 0.25s ease both;
+}
+.prompt kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  padding: 1px 7px;
+  border: 1px solid rgb(244 241 232 / 45%);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: rgb(244 241 232 / 12%);
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+}

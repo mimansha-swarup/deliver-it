@@ -1,10 +1,10 @@
-import { keyFor, useKeyName } from '../game/keyBindings'
+import { keyFor } from '../game/keyBindings'
 import { carries, cheapestFor, rentFor } from '../game/fleet'
 import { ORDER_TYPE_NAMES } from '../vehicle/vehicleCatalog'
 import { isKey } from '../game/keyBindings'
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
-import { CANCEL_PENALTY, dayPeriod, formatHour, OFFER_SECONDS, type ShiftGoal, type ShiftSummary } from '../game/duty'
+import { CANCEL_PENALTY, dayPeriod, OFFER_SECONDS, type ShiftGoal, type ShiftSummary } from '../game/duty'
 import { liveSky } from '../game/livePlayer'
 import { MISSION_RULES } from '../game/missionConfig'
 import { playPing } from '../audio/uiSounds'
@@ -56,7 +56,6 @@ export function GoalLine({ goal }: { goal: ShiftGoal }) {
 /** Off duty or online, at a glance, with the key to change it. */
 function DutyBadge() {
   const duty = useGameStore((state) => state.duty)
-  const onlineKey = useKeyName('online')
   const goal = useGameStore((state) => state.shift?.goal ?? null)
   const finishing = useGameStore((state) => state.offlineAfterOrder)
   const skyTime = useGameStore((state) => state.skyTime)
@@ -67,7 +66,7 @@ function DutyBadge() {
   if (duty === 'off') {
     return (
       <p className="duty-badge" data-duty="off" role="status">
-        <strong>Off duty</strong> <span>Ride anywhere · <kbd>{onlineKey}</kbd> to go online</span>
+        <strong>Off duty</strong>
       </p>
     )
   }
@@ -247,20 +246,6 @@ function ShiftSummaryCard({ summary }: { summary: ShiftSummary }) {
   )
 }
 
-/** At home: sleep until the morning, which ends the day and saves. */
-function HomePrompt() {
-  const atHome = useGameStore((state) => state.atHome)
-  const sleepKey = useKeyName('sleep')
-  const duty = useGameStore((state) => state.duty)
-  if (!atHome) return null
-  return (
-    <p className="duty-home" role="status">
-      <strong>Home</strong>{' '}
-      {duty === 'off' ? <span><kbd>{sleepKey}</kbd> to sleep until {formatHour(7)}</span> : <span>Go offline to sleep</span>}
-    </p>
-  )
-}
-
 /** Sleeping: the screen goes dark for a moment, and says which day it is. */
 function SleepFade() {
   const day = useGameStore((state) => state.day)
@@ -287,7 +272,6 @@ export function DutyUi() {
       <DutyBadge />
       <OfferCard />
       <OfflineQuestion />
-      <HomePrompt />
       {summary && <ShiftSummaryCard summary={summary} />}
       <SleepFade />
     </>
