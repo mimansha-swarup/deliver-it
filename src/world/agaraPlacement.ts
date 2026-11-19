@@ -47,6 +47,8 @@ export type Agara = {
   spawn: { name: string; x: number; z: number; heading: number } | null
   /** Where `?spawn=agara-temple` starts: on the road outside the temple's door. */
   templeSpawn: { name: string; x: number; z: number; heading: number } | null
+  /** Up on the Agara flyover's deck, at its highest point, in the left lane (`?spawn=agara-flyover-top`). */
+  topSpawn: { name: string; x: number; z: number; heading: number; height: number } | null
   /** The flyover decks near the statue (both carriageways), whose view of him is kept clear of trees. */
   viewDecks: Flyover[]
   /**
@@ -93,7 +95,7 @@ export function planAgara({
   /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
   lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, viewDecks: [], festival: null, police: null, door: null, jagannath: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], rushCrowd: [], standAutos: [], spawn: null, templeSpawn: null, topSpawn: null, viewDecks: [], festival: null, police: null, door: null, jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
@@ -131,6 +133,23 @@ export function planAgara({
     }
     if (approach) {
       const { points } = approach.deck.path
+      // The top of that deck: its highest point, in the left lane, facing along it.
+      {
+        const { heights, width } = approach.deck
+        let top = 0
+        for (let i = 1; i < heights.length; i++) if (heights[i] > heights[top]) top = i
+        // The middle of the level stretch at that height, not its first point.
+        let last = top
+        while (last + 1 < heights.length && heights[last + 1] >= heights[top] - 0.05) last++
+        const at = Math.min(points.length - 2, Math.floor((top + last) / 2))
+        const [tx, tz] = points[at]
+        const [ux, uz] = points[at + 1]
+        const span = Math.hypot(ux - tx, uz - tz) || 1
+        const dx = (ux - tx) / span
+        const dz = (uz - tz) / span
+        const left = Math.min(width / 4, 1.8)
+        agara.topSpawn = { name: 'Agara flyover, up on the deck', x: tx + dz * left, z: tz - dx * left, heading: Math.atan2(dx, dz), height: heights[at] }
+      }
       const [ax, az] = points[0]
       const [bx, bz] = points[Math.min(points.length - 1, 4)]
       const length = Math.hypot(bx - ax, bz - az) || 1

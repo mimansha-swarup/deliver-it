@@ -14,7 +14,8 @@ import { lonLatToWorld, type GroundPoint } from '../world/worldUtils'
  * at that stretch's middle.
  */
 
-export type Spawn = { name: string; x: number; z: number; heading: number }
+/** `height`: how high the wheels start, for a start up on a flyover's deck (left out: on the ground). */
+export type Spawn = { name: string; x: number; z: number; heading: number; height?: number }
 
 /** Debug tools are on in the dev server, or anywhere with `?debug` in the address. */
 export function isDebug(): boolean {
@@ -41,6 +42,10 @@ export function slugOf(name: string): string {
  * Review streets, one for each street preset (streetPresets.ts):
  * `?spawn=shop-street`, `?spawn=residential-street` and `?spawn=main-road`.
  * 27th Main Road, the reference shop street, is `?spawn=27th-main` as before.
+ *
+ * Places, not streets (World.tsx finds them): `?spawn=petrol-pump`, `agara-flyover` (the ramp's foot),
+ * `agara-flyover-top` (up on the deck, at its highest), `agara-temple`, `dark-store` (the home dark
+ * store's door) and `gated-society` (outside the society's gate, by the guard).
  */
 export const REVIEW_STREETS: Record<string, string> = {
   'shop-street': '24th-main-road',
@@ -114,7 +119,14 @@ export function findSpawn(roads: LineFeature[], slug: string): Spawn | null {
 }
 
 /** Puts the rider at a spawn, standing still. */
-export function placeAt(scooter: { x: number; z: number; heading: number; speed: number; velocityX: number; velocityZ: number }, spawn: Spawn) {
+export function placeAt(
+  scooter: { x: number; z: number; heading: number; speed: number; velocityX: number; velocityZ: number; frontWheel?: { height: number }; rearWheel?: { height: number } },
+  spawn: Spawn,
+) {
+  if (spawn.height !== undefined && scooter.frontWheel && scooter.rearWheel) {
+    scooter.frontWheel.height = spawn.height
+    scooter.rearWheel.height = spawn.height
+  }
   scooter.x = spawn.x
   scooter.z = spawn.z
   scooter.heading = spawn.heading

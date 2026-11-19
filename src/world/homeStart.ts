@@ -3,6 +3,8 @@ import type { Gate } from './houseKit'
 import { nearestRoadPiece, type RoadIndex } from './props'
 import { PLAY_AREA, type GroundPoint } from './worldUtils'
 import type { FuelStation } from './fuelStationData'
+import type { DarkStore } from './darkStore'
+import type { RoadGraph } from './roadGraph'
 
 /*
  * Where a new rider starts: at home, in central HSR. Home is a family house on 16th Cross Road in
@@ -62,4 +64,21 @@ export function petrolPumpSpawn(stations: FuelStation[]): Spawn | null {
   if (!station) return null
   const back = station.front + 3
   return { name: 'Petrol bunk', x: station.x - station.outX * back, z: station.z - station.outZ * back, heading: Math.atan2(station.outX, station.outZ) }
+}
+
+/**
+ * Debug start (`?spawn=dark-store`): on the road outside a dark store's door, on the store's side,
+ * facing along the road with the store on the left, a few steps from the counter.
+ */
+export function darkStoreSpawn(store: DarkStore | undefined, graph: RoadGraph): Spawn | null {
+  if (!store) return null
+  const roadX = graph.xs[store.node]
+  const roadZ = graph.zs[store.node]
+  const out = Math.hypot(store.x - roadX, store.z - roadZ) || 1
+  const toStoreX = (store.x - roadX) / out
+  const toStoreZ = (store.z - roadZ) / out
+  // Towards the store by a lane's worth, but never past the road's own edge.
+  const across = Math.min(1.8, out * 0.3)
+  // Along the road with the store on the left: the store's direction turned a quarter turn right.
+  return { name: 'Dark store', x: roadX + toStoreX * across, z: roadZ + toStoreZ * across, heading: Math.atan2(-toStoreZ, toStoreX) }
 }

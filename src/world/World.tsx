@@ -60,7 +60,7 @@ import { CityLandmarks } from './CityLandmarks'
 import { StoryProps } from './StoryProps'
 import { lonLatToWorld, PLAY_AREA, type GroundPoint } from './worldUtils'
 import { SurfaceDebug } from '../dev/SurfaceDebug'
-import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
+import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate, darkStoreSpawn } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
 import { clearOverheads, keepViewClear } from './overheadClearance'
@@ -432,7 +432,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const spawnSlug = requestedSpawn()
   const saved = forcedTutorial() ? null : useGameStore.getState().lastPosition
   const spawn =
-    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug === 'agara-temple' ? agara.templeSpawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
+    (spawnSlug === 'petrol-pump' ? petrolPumpSpawn(fuel) : spawnSlug === 'dark-store' ? darkStoreSpawn(stores[0], graph) : spawnSlug === 'agara-flyover-top' ? agara.topSpawn : spawnSlug === 'agara-flyover' ? agara.spawn : spawnSlug === 'agara-temple' ? agara.templeSpawn : spawnSlug ? findSpawn(data.roads, spawnSlug) : null) ??
     (saved ? { name: 'Where you left off', ...saved } : null) ??
     homeStart
   // Not where the ride starts, so the scooter never starts inside a parked car.
