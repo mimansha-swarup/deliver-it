@@ -117,10 +117,34 @@ export function uprightness(rotation: Quaternion | null): number {
   return rotation ? rotateVector(rotation, 0, 1, 0)[1] : 1
 }
 
-/** Every wall as one fixed mesh of thin sides. No roofs, as nothing gets that high. */
-function createWallMesh(collisions: CollisionWorld) {
-  const footprints = new Set<Footprint>()
-  for (const list of collisions.values()) for (const footprint of list) footprints.add(footprint)
+/** Walls are made into the physics world a tile at a time, this wide, in metres, round the rider. */
+const WALL_TILE = 200
+
+/** The walls, by the tiles they reach into, as they are now. */
+function wallsByTile(collisions: CollisionWorld): Map<string, Footprint[]> {
+  const seen = new Set<Footprint>()
+  const tiles = new Map<string, Footprint[]>()
+  for (const list of collisions.values()) {
+    for (const footprint of list) {
+      if (seen.has(footprint)) continue
+      seen.add(footprint)
+      const xs = footprint.map(([x]) => x)
+      const zs = footprint.map(([, z]) => z)
+      for (let tx = Math.floor(Math.min(...xs) / WALL_TILE); tx <= Math.floor(Math.max(...xs) / WALL_TILE); tx++) {
+        for (let tz = Math.floor(Math.min(...zs) / WALL_TILE); tz <= Math.floor(Math.max(...zs) / WALL_TILE); tz++) {
+          const key = `${tx},${tz}`
+          const tile = tiles.get(key)
+          if (tile) tile.push(footprint)
+          else tiles.set(key, [footprint])
+        }
+      }
+    }
+  }
+  return tiles
+}
+
+/** These walls as one fixed mesh of thin sides. No roofs, as nothing gets that high. */
+function createWallMesh(footprints: Iterable<Footprint>) {
   // Each corner once at the ground and once at the top, shared by the two sides it joins.
   let corners = 0
   for (const footprint of footprints) corners += footprint.length
@@ -172,8 +196,26 @@ export function createCrashPhysics(R: RapierModule, collisions: CollisionWorld) 
   fixed(middleX, 5, minZ - 1, halfX, 5, 1)
   fixed(middleX, 5, maxZ + 1, halfX, 5, 1)
 
-  const { vertices, indices } = createWallMesh(collisions)
-  if (indices.length > 0) world.createCollider(R.ColliderDesc.trimesh(vertices, indices))
+  // The walls: sorted into tiles now (as they are now: walls added later were never in here), and made
+  // into the world only round the rider (`wallsNear`). One mesh of the whole city's walls took a
+  // quarter of a second to build while loading, and crashes only ever happen near the rider.
+  const tiles = wallsByTile(collisions)
+  const builtTiles = new Set<string>()
+  const wallsNear = (x: number, z: number) => {
+    const cx = Math.floor(x / WALL_TILE)
+    const cz = Math.floor(z / WALL_TILE)
+    for (let tx = cx - 1; tx <= cx + 1; tx++) {
+      for (let tz = cz - 1; tz <= cz + 1; tz++) {
+        const key = `${tx},${tz}`
+        if (builtTiles.has(key)) continue
+        builtTiles.add(key)
+        const footprints = tiles.get(key)
+        if (!footprints) continue
+        const { vertices, indices } = createWallMesh(footprints)
+        if (indices.length > 0) world.createCollider(R.ColliderDesc.trimesh(vertices, indices))
+      }
+    }
+  }
 
   /** A shape that follows the arcade rules. Something hitting it stops, and it doesn't care. */
   const createPusher = (shape: CrashShape, isRider = false) => {
@@ -271,5 +313,5 @@ export function createCrashPhysics(R: RapierModule, collisions: CollisionWorld) 
     world.step()
   }
 
-  return { world, createPusher, movePusher, hidePusher, addBody, launch, readBack, removeBody, step }
+  return { world, createPusher, movePusher, hidePusher, addBody, launch, readBack, removeBody, step, wallsNear }
 }

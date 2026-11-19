@@ -10079,3 +10079,33 @@ saw it, and a CPU profile of the first 2 s of riding showed 303 ms in compiling 
 is built during loading now (Player.tsx), so the prewarm covers it. Four spawns, riding at 17:30:
 no frame over 50 ms after the ride starts (one of 51 ms on Hosur Road). Play to riding 4.9 to 5.1 s
 here (about 0.25 s more: the traffic's building moved into loading).
+
+## 2026-11-19: Entry 194, planning on the title screen, crash walls built round the rider
+
+### What I found
+On an emulated mid-range laptop (the CPU 2× slower) on 20 Mbit/s, pressing Play as soon as the title
+shows, Play to riding was 9.3 s: the 9.7 s seen on the preview. It's mostly the CPU: planning the city
+about 5 s, building the parts about 2.5 s. Pressing Play 5 s later it was 3.5 s, as the downloads were done.
+
+### What I did
+- **The city is planned on the title screen** (World.tsx, planAhead.ts): as soon as the map is in,
+  the world build runs a step at a time between frames (the build is a generator that yields after each
+  step, and where it needs the physics engine). The title's pictures pan on the compositor, so they keep
+  moving. When Play is pressed, whatever's left is finished at once.
+- **Crash walls are built round the rider** (crashPhysics.ts): one physics mesh of every wall in the
+  city took a quarter of a second to build while loading (0.6 s on the slower CPU). The walls are sorted
+  into 200 m tiles at the same moment as before (so the same walls are in it), and each tile's mesh is
+  made when the rider comes within a tile of it: about 9 tiles at the start, a few milliseconds each.
+  Physics step while loading: 300 → 46 ms.
+- Tried and reverted: keeping infill's answers across buildings (forgetting only round each new one).
+  The version bookkeeping cost more than the answers saved.
+
+### Measured (Play to riding)
+| | Play at once | 2 s on the title |
+| --- | --- | --- |
+| Local | 3.4 s (was 4.9) | |
+| CPU 2×, 20 Mbit/s | 8.65 s (was 9.3) | 6.2 s |
+
+From the page opening to riding on that profile is about 10.4 to 10.7 s however long the title is up:
+what's left is CPU. The next step is to bake the building setback and the infill (1.7 s on the slower
+CPU, deterministic from the map) into the map data at build time.

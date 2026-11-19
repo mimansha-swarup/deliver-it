@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { markPartBuilt, useLaunch, WORLD_PART_COUNT, type WorldPart } from '../game/launch'
 import { useThree } from '@react-three/fiber'
+import { worldPlanner } from './planAhead'
 import { Sky } from '../sky/Sky'
 import { createCrashPhysics } from '../physics/crashPhysics'
 import { loadRapier } from '../physics/rapier'
@@ -96,26 +97,78 @@ const MENU_BOARD_RADIUS = 0.35
 
 type RapierModule = Awaited<ReturnType<typeof loadRapier>>
 
-type WorldPlan = ReturnType<typeof buildWorld> extends Generator<unknown, infer Plan, unknown> ? Plan : never
+type WorldPlan = ReturnType<typeof buildWorld> extends Generator<BuildPause, infer Plan, void> ? Plan : never
 
 /** The physics engine, handed to a world build that has paused for it (see `buildWorld`). */
 type RapierHolder = { rapier?: RapierModule }
 
+/** What the world build yields: a step done (a good place to let the page breathe), or a wait for the physics engine. */
+const STEP = 'step'
+const NEEDS_PHYSICS = 'physics'
+type BuildPause = typeof STEP | typeof NEEDS_PHYSICS
+
+type Build = { data: MapData; holder: RapierHolder; steps: Generator<BuildPause, WorldPlan, void>; world: WorldPlan | null; waiting: boolean }
+
 /** The last world built, kept outside React. See `getWorld`. */
-let built: { data: MapData; holder: RapierHolder; steps: Generator<void, WorldPlan, void>; world: WorldPlan | null } | null = null
+let built: Build | null = null
+
+function buildFor(data: MapData): Build {
+  if (built?.data !== data) {
+    const holder: RapierHolder = {}
+    built = { data, holder, steps: buildWorld(data, holder), world: null, waiting: false }
+  }
+  return built
+}
+
+/** Runs the build one step on, unless it's done or waiting for the physics engine. True if there's more to do now. */
+function advanceWorld(build: Build): boolean {
+  if (build.world || build.waiting) return false
+  const result = build.steps.next()
+  if (result.done) {
+    build.world = result.value
+    return false
+  }
+  if (result.value === NEEDS_PHYSICS && !build.holder.rapier) {
+    build.waiting = true
+    return false
+  }
+  return true
+}
+
+/**
+ * Plans the world ahead, from the title screen: as soon as the map is in, its steps run one at a
+ * time between frames (each a few hundred milliseconds at most), so most of it is done by the time
+ * Play is pressed. The title's pictures pan on the compositor, so they keep moving meanwhile.
+ * Waits for the physics engine where the build needs it.
+ */
+function planAhead() {
+  void loadMapData().then((data) => {
+    const build = buildFor(data)
+    const run = () => {
+      if (built !== build) return
+      if (advanceWorld(build)) setTimeout(run, 0)
+      else if (build.waiting && !build.world) {
+        void loadRapier().then((rapier) => {
+          build.holder.rapier = rapier
+          build.waiting = false
+          setTimeout(run, 0)
+        })
+      }
+    }
+    setTimeout(run, 0)
+  }, () => {})
+}
+
+worldPlanner.ahead = planAhead
 
 /**
  * Starts building the world from the map alone, as soon as it's read: everything up to the step
  * that needs the physics engine (a 3 MB download, which may still be coming), where it pauses.
  */
 function startWorld(data: MapData) {
-  if (built?.data !== data) {
-    const holder: RapierHolder = {}
-    const steps = buildWorld(data, holder)
-    steps.next()
-    built = { data, holder, steps, world: null }
-  }
-  return built
+  const build = buildFor(data)
+  while (advanceWorld(build));
+  return build
 }
 
 /**
@@ -125,17 +178,16 @@ function startWorld(data: MapData) {
  * the whole of HSR, that rebuilt the world about fifteen times before it showed.
  */
 function getWorld(data: MapData, rapier: RapierModule) {
-  const current = startWorld(data)
-  if (!current.world) {
-    current.holder.rapier = rapier
-    current.world = finishWorld(current.steps.next())
-  }
-  return current.world
+  const build = buildFor(data)
+  build.holder.rapier = rapier
+  build.waiting = false
+  while (advanceWorld(build));
+  return finishWorld(build.world)
 }
 
-function finishWorld<T>(result: IteratorResult<void, T>): T {
-  if (!result.done) throw new Error('The world build paused twice')
-  return result.value
+function finishWorld<T>(world: T | null): T {
+  if (!world) throw new Error('The world build stopped before the end')
+  return world
 }
 
 /**
@@ -154,6 +206,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const roadPieces = toRoadPieces(data.roads)
   const roadIndex = indexRoadPieces(roadPieces)
   lap('presets and road index')
+  yield STEP
   // No building stands on a road or its footpath: trimmed back, made smaller, or replaced by a walled plot.
   // Flyovers aren't ridden or drawn as ground roads, but their footprint is kept clear all the same:
   // no building is kept or built under one (they come after the roads, so road numbers stay the same).
@@ -163,11 +216,13 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const setback = setBuildingsBack({ ...data, roads: clearRoads }, clearIndex)
   worldSurface.report['buildings set back'] = setback.report
   lap(`building setback: ${JSON.stringify(setback.report)}`)
+  yield STEP
   // Shops on the ground floor of nearly every building along shop streets and main roads, as on 27th Main.
   const groundFloorShops = addGroundFloorShops(data.buildings, data.roads, roadIndex)
   if (import.meta.env.DEV) console.info('[streets] ground-floor shops added:', groundFloorShops)
   const collisions = createCollisionWorld(data.buildings)
   lap('ground-floor shops and collisions')
+  yield STEP
   // Military land is walled off first, so nothing is placed through its wall.
   addRestrictedWalls(collisions, data.restricted)
   // Empty plots beside the streets are built on, before anything else looks at the buildings.
@@ -182,19 +237,23 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Debug: the pocket parks' corners, to go and look at them from the console.
   if (isDebug()) (window as unknown as { __deliverItPocketParks?: unknown }).__deliverItPocketParks = infill.parks.map((park) => park.geometry.coordinates[0].map((p) => { const [x, , z] = lonLatToWorld(p); return [x, z] }))
   lap(`infill: ${infill.buildings.length} buildings, ${infill.parks.length} pocket parks`)
+  yield STEP
   if (import.meta.env.DEV) console.info('[streets] infill:', JSON.stringify({ buildings: infill.buildings.length, sites: infill.sites.length, cars: infill.parkedCars.length, hoardings: infill.hoardings.length, pumps: infill.pumps.length, shrines: infill.shrines.length, parks: infill.parks.length }))
   const mappedShops = generateShopFronts(data.places, collisions)
   const kit = placeCityKit(data.buildings, data.roads, collisions, mappedShops)
   lap('shop fronts and city kit')
+  yield STEP
   const graph = createRoadGraph(data.roads)
   const signalNodes = createTrafficSignals(graph).junctions.map(({ node }) => node)
   // The main dark store: the shop front nearest a spot on 27th Main in Sector 2, central to the streets round it.
   const stores = findDarkStores(data.buildings, graph, collisions, mappedShops, MAIN_STORE_NEAR, signalNodes, { min: 0, max: MAIN_STORE_SEARCH })
   for (const store of stores) addDarkStorePosts(collisions, store)
   lap('road graph and dark stores')
+  yield STEP
   // Before trees, lamps and parked scooters, which must keep clear of the compound walls it adds.
   const houses = planHouseKit(data.buildings, data.roads, collisions, stores)
   lap('house kit')
+  yield STEP
   // Building sites take open plots before trees and lamps do, and are solid to them.
   const sites = [...findConstructionSites(data, collisions), ...infill.sites]
   // Petrol bunks take their forecourts before trees and lamps do, and their pillars and pumps are solid.
@@ -228,6 +287,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   worldSurface.report.busStand = { placed: busStand ? 1 : 0 }
   if (isDebug()) (window as unknown as { __deliverItLandmarks?: unknown }).__deliverItLandmarks = cityLandmarks
   lap(`sites, fuel and worship: ${fuel.length} bunks, ${fuel.filter(({ yard }) => yard > 0).length} with a yard, ${tyreShops.length} tyre shops`)
+  yield STEP
   // TEMPORARY: a spot on the street in front of each Jagannath temple, facing it.
   teleportSpots.length = 0
   for (const site of worship.filter(({ faith }) => faith === 'kalinga')) {
@@ -241,6 +301,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const boundaries = planBoundaries(data, roadIndex, collisions, { temples: templeCompounds(data.worship), plots: setback.plots, bunks: fuel.map(forecourtOutline) })
   worldSurface.report.boundaries = boundaries.report
   lap(`boundaries: ${JSON.stringify(boundaries.report)}`)
+  yield STEP
   // Main roads get more showrooms; other streets the everyday mix.
   const shopFronts = fillShopUnits(houses.shopUnits, mappedShops, (roll, x, z) => {
     const near = nearestRoadPiece(roadIndex, x, z, 20)
@@ -250,6 +311,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
   const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
   lap('shop units and roadside props')
+  yield STEP
   // Hedges inside the compound walls join the median shrubs, drawn together.
   props.bushes.push(...houses.hedges)
   const benches = plantParks(data, collisions, props)
@@ -280,6 +342,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItWorship: worship, __deliverItFlyovers: flyovers, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
+  yield STEP
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
   const edges = buildStreetEdges({
     roads: data.roads,
@@ -292,6 +355,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   })
   groundLift.at = edges.liftAt
   lap('street edges')
+  yield STEP
   // Before traffic takes them over: no parked scooter with one wheel on the footpath and one off it.
   props.parkedScooters = settleParkedScooters(
     props.parkedScooters,
@@ -322,11 +386,13 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     roadIndex,
   })
   lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes; refused ${JSON.stringify(parking.rejected)}`)
+  yield STEP
   worldSurface.report['parked vehicles'] = { cars: parking.cars.length, bikes: parking.bikes.length, ...Object.fromEntries(Object.entries(parking.rejected).map(([why, count]) => [`refused, ${why}`, count])) }
-  // The physics engine: the build pauses here until it has come down (see `startWorld`).
-  yield
+  // The physics engine: the build pauses here until it has come down (see `advanceWorld`).
+  yield NEEDS_PHYSICS
   const physics = createCrashPhysics(holder.rapier!, collisions)
   lap('parked scooters and physics')
+  yield STEP
   const features = placeRoadFeatures(graph)
   // Main roads are busier and have buses; quiet streets have less (streetPresets.ts).
   const streetAt = (x: number, z: number) => {
@@ -338,6 +404,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   setBusStops(traffic, cityLandmarks.stops)
   if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic })
   lap('road features and traffic')
+  yield STEP
   // After the lanes, so parked cars don't count as blocking them: traffic eases out around them instead.
   markParkedOnLanes(traffic.roadLanes, parkedFootprints(parking))
   addParkedCarWalls(collisions, parking)
@@ -350,6 +417,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const fences = [...boundaries.runs, ...railings]
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   lap('railings and tanks')
+  yield STEP
   const groundSurface = createSurface(data.roads, features, edges.heightAt)
   // The flyovers are ridden: a wheel no more than a step below a deck is on it (transitPlacement.ts).
   const decks = createDeckLevels(flyovers.decks)
@@ -389,6 +457,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     attendants.forEach(({ x, z, heading }) => shopPeople.standing.push({ x, z, heading, body: 0, tint: (i * 0.37) % 1, skin: 0.8, idle: IDLE_POSE.weight, phase: i * 7 })),
   )
   lap('surface, soil and shop people')
+  yield STEP
   // Signs go on walls only, so they can be placed at any point once the buildings are in.
   const landmarks = placeLandmarkSigns(data.roads, collisions)
   const home = homeGate ? { x: homeGate.x, z: homeGate.z } : null
@@ -401,6 +470,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
       return { x, z, name: street ? `Chai stall · ${street}` : 'Chai stall' }
     })
   lap('spawn and landmarks')
+  yield STEP
 
   return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, deckCollisions: decks.collisionsAt }
 }

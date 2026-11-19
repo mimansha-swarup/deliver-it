@@ -25,6 +25,7 @@ import { FpsOverlay } from './dev/FpsOverlay'
 import { PostEffects } from './world/PostEffects'
 import { ViewDistance } from './world/ViewDistance'
 import { World } from './world/World'
+import { worldPlanner } from './world/planAhead'
 import { DutyUi } from './ui/DutyUi'
 import { Tutorial } from './ui/Tutorial'
 import { Minimap } from './ui/Minimap'
@@ -102,6 +103,10 @@ function App() {
   useEffect(() => {
     void preloadGame(useGameStore.getState().setLoading)
   }, [])
+  // The city is planned ahead, on the title screen, as soon as the map is in (World.tsx's `planAhead`).
+  useEffect(() => {
+    if (mapReady) worldPlanner.ahead()
+  }, [mapReady])
 
   return (
     <>
