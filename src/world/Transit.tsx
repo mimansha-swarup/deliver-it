@@ -323,6 +323,16 @@ function MetroTrains({ metro }: { metro: Metro }) {
 // ---- Flyovers ----
 
 const ASPHALT = '#4e4f57'
+/** The deck's underside, in shade: darker than the girders, which catch the light bounced off the road. */
+const SOFFIT = '#5d5952'
+const GIRDER = '#b4afa5'
+const GIRDER_FLANGE = '#c4bfb5'
+
+/** A drainpipe along the underside, `length` long, `x` across and `y` below the deck. */
+function pipeAlong(length: number, x: number, y: number) {
+  const pipe = new THREE.CylinderGeometry(0.13, 0.13, length, 6).toNonIndexed().rotateX(Math.PI / 2)
+  return colored(pipe.translate(x, y, 0), '#2f3133')
+}
 
 /** A flyover's deck in sloped pieces: a concrete body, the asphalt on top, crash barriers each side. */
 function createDeckGeometry(deck: Flyover) {
@@ -340,7 +350,22 @@ function createDeckGeometry(deck: Flyover) {
     const pitch = Math.atan2(by - ay, flat)
     const yaw = Math.atan2(bx - ax, bz - az)
     const place = (geometry: THREE.BufferGeometry) => parts.push(geometry.rotateX(-pitch).rotateY(yaw).translate((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2))
-    place(box([deck.width, 1.2, length], [0, -0.6, 0], CONCRETE))
+    place(box([deck.width, 0.5, length], [0, -0.25, 0], CONCRETE))
+    // Underneath, where it can be ridden under: a darker soffit, girders along it, a cross beam at
+    // each joint and a drainpipe along the outer girder, so it doesn't read as one flat slab.
+    if (Math.min(ay, by) >= RIDE_UNDER - 0.5) {
+      place(box([deck.width - 0.2, 0.06, length], [0, -0.53, 0], SOFFIT))
+      const girders = Math.max(2, Math.round(deck.width / 3.2))
+      for (let g = 0; g < girders; g++) {
+        const x = ((g + 0.5) / girders - 0.5) * (deck.width - 1.4)
+        place(box([0.45, 1.1, length], [x, -1.05, 0], GIRDER))
+        place(box([0.9, 0.18, length], [x, -1.6, 0], GIRDER_FLANGE))
+      }
+      place(box([deck.width - 1.2, 0.9, 0.35], [0, -0.95, length / 2 - 0.2], GIRDER))
+      place(pipeAlong(length, (deck.width / 2 - 0.9) * (i % 2 === 0 ? 1 : 1), -1.25))
+    } else {
+      place(box([deck.width, 0.7, length], [0, -0.85, 0], CONCRETE))
+    }
     // Where it's too low to ride under, the ramp is a solid embankment between retaining walls.
     const fill = (ay + by) / 2 - 0.9
     if (Math.min(ay, by) < RIDE_UNDER && fill > 0.05) {

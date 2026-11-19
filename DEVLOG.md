@@ -10039,3 +10039,13 @@ All of it is in the deck's merged mesh, the pillars' instanced shape, or three n
 numbers, posters) for the whole line.
 
 Screenshots: `world-pass.local/shots/viaduct-10` (day), `viaduct-night2` (night).
+
+## 2026-11-19: Entry 191, the undersides of the decks
+
+The underside a rider sees on Hosur Road is the Electronic City flyover's deck over the road,
+which was one flat 1.2 m slab; the metro's girders (Entry 190) were too close in colour to its
+soffit to read. Now, wherever a deck can be ridden under (Transit.tsx, CityLandmarks.tsx): a thin
+deck slab with a dark soffit, light girders along it with bottom flanges (one per 3.2 m of width on
+the flyovers, two on the metro), a cross beam at every joint (every 8 m on the flyovers, about 6 m on
+the metro) and a drainpipe along one side. Light against dark, so the structure reads from the street
+at golden hour. Ramps keep their solid body. Screenshot: `world-pass.local/shots/under-rider2`.

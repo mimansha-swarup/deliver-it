@@ -88,13 +88,26 @@ function createPillar() {
   ])
 }
 
-/** Two box girders under each span, and the cross beams at its ends: the deck's underside. */
+/**
+ * The deck's underside: a dark soffit, two light box girders with bottom flanges, cross beams every
+ * 6 m and at the ends, and a drainpipe along one girder. Light against dark, so it reads from the
+ * street, not as one flat surface.
+ */
 function girders(length: number) {
-  const depth = 1.3
-  return [
-    ...[-2.4, 2.4].map((x) => box([1.6, depth, length + 0.6], [x, DECK.bottom - depth / 2, 0], '#a8a399')),
-    ...[-1, 1].map((end) => box([DECK.width - 1, depth - 0.2, 0.5], [0, DECK.bottom - depth / 2 + 0.1, end * (length / 2 - 0.4)], '#9a958b')),
+  const depth = 1.4
+  const parts = [
+    box([DECK.width - 0.2, 0.06, length + 0.6], [0, DECK.bottom - 0.03, 0], '#57534c'),
+    ...[-2.4, 2.4].flatMap((x) => [
+      box([1.3, depth, length + 0.6], [x, DECK.bottom - depth / 2, 0], '#bab5ab'),
+      box([1.8, 0.2, length + 0.6], [x, DECK.bottom - depth - 0.1, 0], '#cbc6bc'),
+    ]),
   ]
+  for (let at = -length / 2 + 0.4; at <= length / 2 - 0.4; at += Math.max(3, (length - 0.8) / Math.max(1, Math.round(length / 6)))) {
+    parts.push(box([3.5, depth - 0.3, 0.3], [0, DECK.bottom - (depth - 0.3) / 2, at], '#a39e94'))
+  }
+  const pipe = new THREE.CylinderGeometry(0.12, 0.12, length + 0.6, 6).toNonIndexed().rotateX(Math.PI / 2)
+  parts.push(colored(pipe.translate(3.4, DECK.bottom - 0.5, 0), '#2f3133'))
+  return parts
 }
 
 /** Lamps on the deck's parapets, every this many metres, staggered side to side. */
