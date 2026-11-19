@@ -7,7 +7,7 @@ import { orderGate, useGameStore } from './gameStore'
 import { livePlayer, liveSky } from './livePlayer'
 import { levelFromXp } from './progression'
 import { saveKey } from './saveKeys'
-import { useUpkeep } from './upkeep'
+import { UPKEEP, useUpkeep } from './upkeep'
 
 /*
  * GaadiGo (a made-up vehicle marketplace): renting and buying the vehicles in vehicleCatalog.ts.
@@ -227,6 +227,8 @@ export const useFleet = create<Fleet>()(
             leaving: { id: before, x: livePlayer.x - delivery.dirZ * 2.2, z: livePlayer.z + delivery.dirX * 2.2, dirX: delivery.dirX, dirZ: delivery.dirZ, since: performance.now() },
           })
           say(`Keys handed over: you're on the ${VEHICLES[delivery.id].name}. Your ${VEHICLES[before].name} is being taken to your Garage.`)
+          // If that one had broken down, it's towed and mended there, for a charge.
+          if (useUpkeep.getState().broken?.id === before) useUpkeep.getState().mend(UPKEEP.tow, 'Towed to your Garage and mended')
         },
 
         rent: (id, plan, insured, how) => {

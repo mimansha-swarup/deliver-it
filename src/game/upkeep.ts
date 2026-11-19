@@ -14,7 +14,10 @@ import { saveKey } from './saveKeys'
  * - Servicing: due every so many kilometres, done at the Garage at the dark store. Overdue, it's a
  *   little slower and far likelier to break down (breakdowns.ts).
  *
- * Each has its notifications: low, empty, due, overdue. Kept on this device with the fleet's save.
+ * - Breakdowns: rare, and far likelier with the service overdue. A roadside mechanic mends it where it
+ *   stands, or GaadiGo brings a rental and the broken one is towed to the Garage (ui/BreakdownCard.tsx).
+ *
+ * Each has its notifications: low, empty, due, overdue, broken down. Kept on this device with the fleet's save.
  */
 
 export type Energy = 'petrol' | 'charge' | 'none'
@@ -43,6 +46,23 @@ export const UPKEEP = {
   serviceCost: { scooter: 120, bicycle: 40, ev: 100, bike: 160, trike: 220, car: 320, van: 420 } as Record<VehicleId, number>,
   /** Out of fuel on the road: this much (a share of a tank) brought to the rider, for this much. */
   rescue: { share: 0.25, price: 90 },
+  /**
+   * Breakdowns: the chance of one in each kilometre, by how the servicing stands (rare when it's kept
+   * up: about one in 250 km; overdue, about one in 11). Never in the first kilometres, nor soon after
+   * the last. A roadside mechanic fixes it where it stands for a price, in a few seconds.
+   */
+  breakdownPerKm: { ok: 0.004, due: 0.02, overdue: 0.09 },
+  breakdownFreeKm: 1.5,
+  mechanic: { price: 180, seconds: 4 },
+  /** Towed to the Garage and mended there, when a rental is taken instead. */
+  tow: 150,
+}
+
+/** What goes wrong, by what the vehicle runs on. */
+const FAULTS: Record<Energy, string[]> = {
+  petrol: ['a puncture in the back tyre', 'a fouled spark plug', 'a snapped clutch cable', 'a choked fuel line'],
+  charge: ['a puncture in the back tyre', 'a controller fault', 'a loose battery connector'],
+  none: ['a puncture', 'a snapped chain', 'a jammed brake'],
 }
 
 type Upkeep = {
@@ -52,6 +72,14 @@ type Upkeep = {
   sinceService: Partial<Record<VehicleId, number>>
   /** A fill in progress: the level it's rising to, and how fast (shares a second). */
   filling: { id: VehicleId; to: number; rate: number } | null
+  /** The vehicle that has broken down and what's wrong with it, until it's mended; `mending`: a mechanic is at it. */
+  broken: { id: VehicleId; fault: string; mending: boolean } | null
+  /** Kilometres ridden since the last breakdown (or ever). */
+  sinceBreakdown: number
+  /** Calls the roadside mechanic: paid now, mended in a few seconds. The reason it can't, or null. */
+  callMechanic: () => string | null
+  /** Mended without the mechanic: towed to the Garage as a rental takes its place (`charge`), or by the rental company. */
+  mend: (charge: number, word: string) => void
   /** Counts the metres just ridden: empties the tank, adds to the service clock, and says what needs saying. */
   drive: (id: VehicleId, metres: number, seconds: number) => void
   /** Fills up (as much as the wallet allows). The reason it can't, or null once paid for. */
@@ -74,10 +102,11 @@ export type ServiceState = 'ok' | 'due' | 'overdue'
 export const serviceState = (km: number): ServiceState => (km >= UPKEEP.overdueKm ? 'overdue' : km >= UPKEEP.serviceEveryKm ? 'due' : 'ok')
 
 /** Sets what the upkeep does to the handling: an empty tank crawls, an overdue service is a little slow. */
-function applyToHandling(state: Pick<Upkeep, 'fuel' | 'sinceService'>, id: VehicleId) {
+function applyToHandling(state: Pick<Upkeep, 'fuel' | 'sinceService' | 'broken'>, id: VehicleId) {
   const spec = VEHICLES[id]
   const empty = energyOf(spec) !== 'none' && fuelLevel(state.fuel, id) <= 0
-  tuning.limp = empty ? UPKEEP.emptyCrawl : serviceState(state.sinceService[id] ?? 0) === 'overdue' ? UPKEEP.overdueSpeed : 1
+  // Broken down, it doesn't go at all.
+  tuning.limp = state.broken?.id === id ? 0 : empty ? UPKEEP.emptyCrawl : serviceState(state.sinceService[id] ?? 0) === 'overdue' ? UPKEEP.overdueSpeed : 1
 }
 
 export const useUpkeep = create<Upkeep>()(
@@ -86,6 +115,32 @@ export const useUpkeep = create<Upkeep>()(
       fuel: {},
       sinceService: {},
       filling: null,
+      broken: null,
+      sinceBreakdown: 0,
+
+      callMechanic: () => {
+        const broken = get().broken
+        if (!broken || broken.mending) return null
+        if (!game().spend(`Roadside mechanic · ${VEHICLES[broken.id].name}`, UPKEEP.mechanic.price)) return `The mechanic wants ₹${UPKEEP.mechanic.price}: not enough in the wallet.`
+        set({ broken: { ...broken, mending: true } })
+        game().raviSays(`A mechanic is on his way to your ${VEHICLES[broken.id].name}: ${broken.fault}. ₹${UPKEEP.mechanic.price}. Stay with it.`)
+        window.setTimeout(() => {
+          if (!get().broken?.mending) return
+          get().mend(0, 'The mechanic has it running again')
+        }, UPKEEP.mechanic.seconds * 1000)
+        return null
+      },
+
+      mend: (charge, word) => {
+        const broken = get().broken
+        if (!broken) return
+        if (charge > 0) game().fine(`Tow and repair · ${VEHICLES[broken.id].name}`, charge, '')
+        const next = { fuel: get().fuel, sinceService: get().sinceService, broken: null }
+        set({ broken: null, sinceBreakdown: 0 })
+        applyToHandling(next, game().vehicleId)
+        const overdue = serviceState(get().sinceService[broken.id] ?? 0) !== 'ok'
+        game().raviSays(`${word}: the ${VEHICLES[broken.id].name}${charge > 0 ? `, ₹${charge}` : ''}.${overdue ? ' Get it serviced, maga, or it will happen again.' : ''}`)
+      },
 
       drive: (id, metres, seconds) => {
         const spec = VEHICLES[id]
@@ -120,8 +175,16 @@ export const useUpkeep = create<Upkeep>()(
               : `The ${spec.name}'s service is overdue. It's running rough and it will break down on you. Garage at the dark store, maga!`,
           )
         }
-        if (level !== fuelLevel(state.fuel, id) || km > 0 || filling !== state.filling) {
-          const next = { fuel: { ...state.fuel, [id]: level }, sinceService: { ...state.sinceService, [id]: sinceService }, filling }
+        // Breakdowns: rare with the servicing kept up, likely with it overdue.
+        let { broken } = state
+        const sinceBreakdown = state.sinceBreakdown + km
+        if (!broken && km > 0 && sinceBreakdown > UPKEEP.breakdownFreeKm && Math.random() < UPKEEP.breakdownPerKm[service] * km) {
+          const faults = FAULTS[energy]
+          broken = { id, fault: faults[Math.floor(Math.random() * faults.length)], mending: false }
+          game().raviSays(`Breakdown! Your ${spec.name} has ${broken.fault}. Call the roadside mechanic (₹${UPKEEP.mechanic.price}), or rent from GaadiGo and it's towed to your Garage: both are on your screen.`)
+        }
+        if (level !== fuelLevel(state.fuel, id) || km > 0 || filling !== state.filling || broken !== state.broken) {
+          const next = { fuel: { ...state.fuel, [id]: level }, sinceService: { ...state.sinceService, [id]: sinceService }, filling, broken, sinceBreakdown }
           set(next)
           applyToHandling(next, id)
         }
@@ -149,7 +212,7 @@ export const useUpkeep = create<Upkeep>()(
         const spec = VEHICLES[id]
         if (fuelLevel(get().fuel, id) > 0) return 'There is still some in it.'
         if (!game().spend(`Roadside top-up · ${spec.name}`, UPKEEP.rescue.price)) return `A roadside top-up is ₹${UPKEEP.rescue.price}: not enough in the wallet.`
-        const next = { fuel: { ...get().fuel, [id]: UPKEEP.rescue.share }, sinceService: get().sinceService }
+        const next = { fuel: { ...get().fuel, [id]: UPKEEP.rescue.share }, sinceService: get().sinceService, broken: get().broken }
         set({ fuel: next.fuel })
         applyToHandling(next, id)
         game().raviSays(`A boy from the bunk brought a can: ${Math.round(UPKEEP.rescue.share * 100)}% in the ${spec.name}, ₹${UPKEEP.rescue.price}. Fill up properly now.`)
@@ -162,7 +225,7 @@ export const useUpkeep = create<Upkeep>()(
         if (!game().spend(`Service · ${spec.name}`, price)) return 'Not enough in the wallet.'
         told.delete(`due ${id}`)
         told.delete(`overdue ${id}`)
-        const next = { fuel: get().fuel, sinceService: { ...get().sinceService, [id]: 0 } }
+        const next = { fuel: get().fuel, sinceService: { ...get().sinceService, [id]: 0 }, broken: get().broken }
         set({ sinceService: next.sinceService })
         applyToHandling(next, id)
         game().raviSays(`${spec.name} serviced: ${energyOf(spec) === 'petrol' ? 'oil, plugs, ' : ''}brakes, tyres, cables, air. ₹${price}. Good for another ${UPKEEP.serviceEveryKm} km.`)
@@ -180,10 +243,10 @@ export const useUpkeep = create<Upkeep>()(
         }
         if (!charged) return
         set({ fuel })
-        applyToHandling({ fuel, sinceService: get().sinceService }, game().vehicleId)
+        applyToHandling({ fuel, sinceService: get().sinceService, broken: get().broken }, game().vehicleId)
       },
     }),
-    { name: saveKey('deliver-it-upkeep'), version: 1, partialize: (state) => ({ fuel: state.fuel, sinceService: state.sinceService }) },
+    { name: saveKey('deliver-it-upkeep'), version: 1, partialize: (state) => ({ fuel: state.fuel, sinceService: state.sinceService, broken: state.broken ? { ...state.broken, mending: false } : null, sinceBreakdown: state.sinceBreakdown }) },
   ),
 )
 
