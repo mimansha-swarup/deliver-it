@@ -79,6 +79,8 @@ const FLAG_POST_TEMPLE = 40;
 const FLAG_POST_RADIUS = 0.45;
 /** How far a generated shrine may move from its pin to find room, in metres. */
 const SHRINE_SEARCH = 12;
+/** At its smallest, a shrine looks this far from its pin, in metres. */
+const SHRINE_FAR = 40;
 
 function faithOf({
   religion,
@@ -353,6 +355,8 @@ export function planPlacesOfWorship(
   buildings: BuildingFeature[],
   roads: RoadIndex,
   collisions: CollisionWorld,
+  /** Roads and flyovers together: a shrine of the game's own keeps clear of both (World.tsx). */
+  clear: RoadIndex = roads,
 ): WorshipSite[] {
   const byId = new Map(buildings.map((building) => [building.id, building]));
   const sites: WorshipSite[] = [];
@@ -397,7 +401,7 @@ export function planPlacesOfWorship(
       const corners = rectangle(centre, front, width + 0.6, depth + 0.6);
       return [centre, ...corners].every(
         ([x, z]) =>
-          isClearOfRoads(roads, x, z, 0.8) &&
+          isClearOfRoads(clear, x, z, 0.8) &&
           !isNearBuilding(collisions, x, z, 0.2) &&
           (!place.compound || isInsideOutline(place.compound, x, z)),
       );
@@ -409,8 +413,10 @@ export function planPlacesOfWorship(
         width = Math.max(3, width * 0.8);
         depth = Math.max(3, depth * 0.8);
       }
-      for (let reach = 0; reach <= SHRINE_SEARCH && !spot; reach += 1.5) {
-        const tries = reach === 0 ? 1 : 12;
+      // A pin under a flyover or on a median may need to look further for ground (SHRINE_FAR).
+      const search = shrink <= 0.41 ? SHRINE_FAR : SHRINE_SEARCH;
+      for (let reach = 0; reach <= search && !spot; reach += 1.5) {
+        const tries = reach === 0 ? 1 : Math.max(12, Math.round(reach * 1.5));
         for (let i = 0; i < tries && !spot; i++) {
           const angle = (i / tries) * Math.PI * 2;
           const centre: GroundPoint = [

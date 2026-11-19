@@ -9927,3 +9927,13 @@ Screenshots in `world-pass.local/shots/report`.
 
 ### Performance (Hosur Road, High, riding; the machine was busy with the hosted game)
 110 to 115 fps, 1 frame over 20 ms, worst 33 to 42 ms, 3.5 ms of work a frame.
+
+## 2026-11-19: Entry 186, temples out from under the flyovers
+
+Two temples the game builds itself, where the map has only a pin (the Jagannath Temple by Silk
+Board and the Ayyappan Temple at Agara), stood under flyovers: their pins are on the median and
+the ground under the deck. Shrines now keep clear of flyovers as well as roads (worship.ts, given
+the same roads-and-flyovers index as the setback), and at their smallest look up to 40 m from
+their pin for ground (was 12). Both are placed again, 26 m and 35 m from their pins, and no
+temple's building is under a deck. Ramp feet checked from the rider's view: the road runs up
+to the barriers, no building in the way.

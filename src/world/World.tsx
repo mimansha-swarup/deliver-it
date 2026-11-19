@@ -172,7 +172,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions, infill.pumps)
   // The riders' bay at each dark store: on its footpath, short of the kerb.
   // Temples, mosques and churches: shrines where the map has only a pin, and striped compound walls.
-  const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions)
+  const worship = planPlacesOfWorship(data.worship, data.buildings, roadIndex, collisions, clearIndex)
   // The ground map: what every spot is (road, footpath, paved, building, park, plot...), which
   // everything placed from here on asks first (surfaceMap.ts).
   const surfaceMap = createSurfaceMap(data, { paved: fuel.map(forecourtOutline), plots: sites.map(siteOutline) })
@@ -248,7 +248,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   // The plants in the pots are small leafy bushes, drawn with the hedges in the tree style.
   props.bushes.push(...story.potPlants)
   if (isDebug()) (window as unknown as { __deliverItStory?: unknown }).__deliverItStory = story
-  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItFlyovers: flyovers, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
+  if (isDebug()) Object.assign(window, { __deliverItMetro: metro, __deliverItWorship: worship, __deliverItFlyovers: flyovers, __deliverItBusStand: busStand, __deliverItShops: shopFronts, __deliverItPitches: surfaceMap.pitches, __deliverItSurface: surfaceMap, __deliverItFuel: fuel, __deliverItBoundaries: boundaries })
   worldSurface.report['story props'] = { ...Object.fromEntries(Object.entries(story).map(([kind, list]) => [kind, list.length])), refused: storyRefused }
   lap(`parks and street life: ${props.trees.length} trees, ${props.lamps.length} lamps, ${JSON.stringify(props.counts)}; story ${JSON.stringify(worldSurface.report['story props'])}`)
   // The new ground, where a road has it: kerbs, corners, raised footpaths. It sets those streets' heights.
