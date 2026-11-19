@@ -25,6 +25,7 @@ import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanGeometry } from './peopleShapes'
 import { createBusGeometry } from './bus'
+import { cameraDistance, isDetailed, lodCamera } from './vehicleLod'
 import {
   takeHonks,
   takeImpacts,
@@ -115,6 +116,8 @@ const MAX_STEP = 0.05
 type Moving = {
   x: number
   z: number
+  /** Drawn with its detailed model (vehicleLod.ts). */
+  detailed?: boolean
   heading: number
   lift: number
   tint: number
@@ -136,12 +139,14 @@ function writeTransforms(
   isSeatedRider = false,
   ground = ROAD_HEIGHT,
   from = 0,
+  /** A level of detail: `reach` (the detailed model) or `from` (the far one) is the vehicle's cutoff (vehicleLod.ts). */
+  lod = false,
 ) {
   items.forEach((item, index) => {
-    const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
+    const distance = cameraDistance(item.x, item.z)
+    const near = lod ? (from > 0 ? !isDetailed(item, from) : reach === Infinity || isDetailed(item, reach)) : distance < reach && distance >= from
     const inRange =
-      distance < reach &&
-      distance >= from &&
+      near &&
       !item.hidden &&
       !(isSeatedRider && item.riderOff)
     // On a raised footpath, walk on top of it.
@@ -180,8 +185,8 @@ function writeNearest(instances: THREE.InstancedMesh, items: Moving[], reach: nu
   const color = nearColor
   let drawn = 0
   for (const item of items) {
-    const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
-    if (item.hidden || distance >= reach || distance < from) continue
+    if (item.hidden) continue
+    if (from > 0 ? isDetailed(item, from) || cameraDistance(item.x, item.z) >= reach : !isDetailed(item, reach)) continue
     transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
@@ -266,7 +271,7 @@ function MovingInstances({
       }
       writeNearest(mesh.current, near.items, reach, palette, from)
     }
-    else writeTransforms(mesh.current, items, reach, seatedRider, ROAD_HEIGHT, from)
+    else writeTransforms(mesh.current, items, reach, seatedRider, ROAD_HEIGHT, from, true)
     if (material.current) updateReflection(material.current)
   })
 
@@ -293,6 +298,18 @@ function MovingInstances({
       />
     </instancedMesh>
   )
+}
+
+/**
+ * Puts the camera's position where the vehicles' levels of detail read it (vehicleLod.ts). First
+ * among the traffic's parts, so its frame runs before theirs.
+ */
+function LodCamera() {
+  useFrame(({ camera }) => {
+    lodCamera.x = camera.position.x
+    lodCamera.z = camera.position.z
+  })
+  return null
 }
 
 /** Headlights and tail lights, which fade in after dark. */
@@ -729,7 +746,7 @@ function VehicleWheels({ items, wheels, reach = Infinity }: { items: Moving[]; w
       if (item.rotation) transform.quaternion.set(...item.rotation)
       else transform.rotation.set(0, item.heading, 0)
       // Past `reach` the vehicle is a stand-in with wheels of its own, so these shrink to nothing.
-      transform.scale.setScalar(Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < reach ? 1 : 0)
+      transform.scale.setScalar(reach === Infinity || isDetailed(item, reach) ? 1 : 0)
       transform.updateMatrix()
       wheelBody.copy(transform.matrix)
 
@@ -972,6 +989,7 @@ export function Traffic({
 
   return (
     <>
+      <LodCamera />
       {VEHICLES.map(({ kind, palette }) => {
         const items = inPlay.filter((vehicle) => vehicle.kind === kind)
         if (kind === 'bike') {

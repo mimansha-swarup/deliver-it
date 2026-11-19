@@ -2,20 +2,20 @@ import { Fragment, useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { livePlayer } from '../game/livePlayer'
 import { getStreetReflection } from '../traffic/carModel'
 import { TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { CAR_COLORS, PARKED_COLORS, tintPaintOnly } from '../traffic/vehiclePaint'
 import { createParkedCarGeometry, createParkedScooterGeometry } from '../traffic/vehicleShapes'
 import { STEERING_Z } from '../vehicle/Rider'
 import type { StiltVehicle } from './houseKit'
+import { cameraDistance, isDetailed, lodCamera } from '../traffic/vehicleLod'
 
 /** Parked vehicles further than this aren't drawn, in metres. Under a building, they're hard to see from further. */
 const DRAW_DISTANCE = 75
 /** Nearer than this they're the detailed models; further, the far versions of a few hundred triangles. */
 const DETAIL_DISTANCE = 35
 /** They never move, so which ones are near is only worked out every so many frames. */
-const REFRESH_FRAMES = 20
+const REFRESH_FRAMES = 6
 const CAR_MODEL = 'hatchback'
 /** The top of the concrete slab under the stilts, which the vehicles stand on. */
 const FLOOR_TOP = 0.06
@@ -46,13 +46,16 @@ function Parked({
   const mesh = useRef<THREE.InstancedMesh>(null)
   const frame = useRef(0)
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     const instances = mesh.current
     if (!instances || frame.current++ % REFRESH_FRAMES !== 0) return
+    lodCamera.x = camera.position.x
+    lodCamera.z = camera.position.z
     let drawn = 0
     for (const item of items) {
-      const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
-      if (distance > to || distance < from) continue
+      // Detailed or far by the camera's distance, with hysteresis (vehicleLod.ts): the cutoff is
+      // `to` for the detailed copies and `from` for the far ones.
+      if (from > 0 ? isDetailed(item, from) || cameraDistance(item.x, item.z) > to : !isDetailed(item, to)) continue
       transform.position.set(item.x, FLOOR_TOP, item.z)
       transform.rotation.set(0, item.rotation, 0)
       transform.updateMatrix()

@@ -10109,3 +10109,24 @@ about 5 s, building the parts about 2.5 s. Pressing Play 5 s later it was 3.5 s,
 From the page opening to riding on that profile is about 10.4 to 10.7 s however long the title is up:
 what's left is CPU. The next step is to bake the building setback and the infill (1.7 s on the slower
 CPU, deterministic from the map) into the map data at build time.
+
+## 2026-11-19: Entry 195, vehicles' detail by the camera, and better near cars
+
+### What I did
+- **Per-vehicle levels of detail from the camera, with hysteresis** (traffic/vehicleLod.ts). Every
+  part of a vehicle (body, rider, wheels; parked cars and scooters too) asked its own question, by the
+  rider's distance, with no margin, and the parked cars only every 20 frames. Now each vehicle has one
+  answer a frame, from the camera's position: detailed nearer than its cutoff less 4 m, back to its far
+  version only past the cutoff plus 4 m, so one queued round the cutoff at a junction doesn't flicker
+  between the two. Moving, stopped, crashed and parked alike. Riding Sarjapur Road for 20 s, 282
+  samples of traffic within 40 m of the camera: none on its far model.
+- **The near cars themselves.** Close up, the SUV that looked low-detail was the detailed model: a
+  jagged grille and blotchy paint, baked at 6,500 triangles from a 2.1 cm wrap with colours sampled
+  from 256-pixel textures. The four cars are re-baked at 14,000 triangles from a 1.5 cm wrap, sampling
+  512-pixel textures (prepare_traffic_models.mjs, from the original downloads). The far versions are
+  unchanged. traffic.glb 0.77 → 1.1 MB compressed; a handful of near cars at once.
+
+### Not done
+The paint is stored per corner, so a triangle crossing from paint to dark trim smears between them:
+a ragged dark fringe at wheel arches and window frames, close up. Baking the cars with a texture
+instead of corner colours would fix it.

@@ -19,7 +19,8 @@ import { MeshoptSimplifier } from 'meshoptimizer'
 import * as THREE from 'three'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const TEXTURE_SAMPLE_SIZE = 256
+/** Colour is sampled from each texture at this size: at 256, close up, the paint and trim read as blotches. */
+const TEXTURE_SAMPLE_SIZE = 512
 const GLASS = [0.018, 0.028, 0.036]
 /** Paint is stored white, so each vehicle's own colour comes through exactly. */
 const WHITE = [1, 1, 1]
@@ -35,8 +36,10 @@ const MAX_SHAPE_ERROR = 0.02
 const CREASE = (50 * Math.PI) / 180
 
 /*
- * Cars are wrapped on a fine grid (about 2 cm), then simplified to about 6,500 triangles: dozens are
- * on screen at once, and at 24,000–28,000 each traffic was over half of every frame's triangles.
+ * Cars are wrapped on a fine grid (1.5 cm), then simplified to about 14,000 triangles for the near
+ * version, drawn only within 32 to 50 m of the camera (a handful at once); at 6,500 from a 2 cm wrap the
+ * SUV's grille came out jagged and its paint blotchy close up. (At 24,000–28,000 each, drawn for
+ * everything, traffic was once over half of every frame's triangles.)
  * Simplifying from the fine wrap, rather than wrapping coarsely, keeps door lines and lights.
  * Each vehicle also gets a far version, under 1,000 triangles with its wheels, for beyond ~20 m.
  */
@@ -45,8 +48,8 @@ const VEHICLES = [
     name: 'sedan',
     folder: '2022_maruti_suzuki_swift_dzire',
     length: 4.2,
-    triangles: 6500,
-    wrapCell: 0.021,
+    triangles: 14000,
+    wrapCell: 0.015,
     dropMaterial: /seats_|speedometer|sidewall/,
     dropNode: /^(movsteer|seats_|sidewall|dashboard|speedometer)/,
     wheelNode: /^wheel_rf(\.\d+)?$/,
@@ -55,8 +58,8 @@ const VEHICLES = [
     name: 'hatchback',
     folder: '2020_maruti_suzuki_alto_800',
     length: 3.6,
-    triangles: 6500,
-    wrapCell: 0.018,
+    triangles: 14000,
+    wrapCell: 0.015,
     dropMaterial: /seat|^dash|^mate|steering|dore2/,
     dropNode: /^(dash|mate|steering)/,
     wheelNode: /^wheel(\.\d+)?$/,
@@ -65,8 +68,8 @@ const VEHICLES = [
     name: 'suv',
     folder: '2022_mahindra_scorpio-n',
     length: 4.6,
-    triangles: 6500,
-    wrapCell: 0.021,
+    triangles: 14000,
+    wrapCell: 0.015,
     dropMaterial: /_int_|sunroof_m/,
     dropNode: /^movsteer/,
     wheelNode: /^wheel_rf(\.\d+)?$/,
@@ -75,8 +78,8 @@ const VEHICLES = [
     name: 'mpv',
     folder: 'renault_triber',
     length: 4,
-    triangles: 6500,
-    wrapCell: 0.021,
+    triangles: 14000,
+    wrapCell: 0.015,
     dropMaterial: /seat|^dash|^int\.|roof_int|misc|glossy|^mate|^sell/,
     dropNode: /^(int|prtseat|dashmax|roof int|seat\d|mate)\b/,
     wheelNode: /^wheels$/,
