@@ -1,4 +1,5 @@
 import { areaAt, type Area } from '../game/areas'
+import { cityEvents } from '../game/cityEvents'
 import { rushHour } from '../game/rush'
 import { noiseLoop } from './ambience'
 import { getNoise, midiToHz } from './instruments'
@@ -13,13 +14,15 @@ import { getNoise, midiToHz } from './instruments'
  *   vendors        near a cart: a seller's two-note cry, a hand bell, a rubber horn
  *   temple bells   near any temple, in its opening hours
  *   lake birds     by the water, by day: coots, a lapwing, a kingfisher's rattle
+ *   events         what's happening on the road nearby (game/cityEvents.ts): a wedding band's drums and
+ *                  pipe, the rattle of a breaker at a dug-up road, a cow's moo
  *   rain           on what's around: drumming on tin awnings along the shops, pattering through
  *                  leaves on the quiet streets, hissing on open tarmac on the main roads
  */
 
 export type AreaState = { x: number; z: number; night: number; rain: number; hours: number; speed: number; indoors: boolean }
 
-const VOLUME = { traffic: 0.2, honk: 0.1, music: 0.085, vendor: 0.13, bell: 0.15, birds: 0.1, tin: 0.16, leaves: 0.2, tarmac: 0.14 }
+const VOLUME = { band: 0.3, breaker: 0.16, moo: 0.2, traffic: 0.2, honk: 0.1, music: 0.085, vendor: 0.13, bell: 0.15, birds: 0.1, tin: 0.16, leaves: 0.2, tarmac: 0.14 }
 const HONK_EVERY: [number, number] = [2.8, 7.5]
 const HONK_EVERY_RUSH: [number, number] = [0.9, 2.8]
 const VENDOR_EVERY: [number, number] = [5, 12]
@@ -178,6 +181,37 @@ export function createAreaSounds(context: AudioContext, output: AudioNode) {
     }
   }
 
+  /** A wedding band's bar: a dhol's low and high strokes, and a reedy pipe playing a short rising figure of our own. */
+  const bandBar = (volume: number, pan: number, bar: number) => {
+    const to = panned(pan)
+    const start = context.currentTime + 0.04
+    const beat = 0.19
+    ;[1, 0, 1, 1, 0, 1, 1, 0].forEach((low, step) => {
+      const at = start + step * beat
+      if (low) note(to, at, 120, 0.16, volume, 'sine', 70)
+      tick(to, at + beat / 2, 0.05, volume * 0.5, 1800)
+    })
+    const figure = [[0, 4, 7, 4], [7, 9, 7, 4], [4, 7, 9, 12], [9, 7, 4, 0]][bar % 4]
+    figure.forEach((semitone, index) => note(to, start + index * beat * 2, midiToHz(69 + semitone), beat * 1.9, volume * 0.35, 'sawtooth'))
+  }
+  /** A breaker at the dug-up road: a second of hammering. */
+  const breaker = (volume: number, pan: number) => {
+    const to = panned(pan)
+    for (let hit = 0; hit < 14; hit++) tick(to, context.currentTime + 0.02 + hit * 0.075, 0.05, volume, 900 + (hit % 2) * 500)
+  }
+  const moo = (volume: number, pan: number) => {
+    const to = panned(pan)
+    const at = context.currentTime + 0.03
+    const mouth = context.createBiquadFilter()
+    mouth.type = 'bandpass'
+    mouth.frequency.value = 520
+    mouth.Q.value = 2.2
+    mouth.connect(to)
+    note(mouth, at, 150, 1.5, volume * 3, 'sawtooth', 118)
+  }
+  let untilEvent = 1
+  let bandBars = 0
+
   let area: Area = { junction: 0, shops: 0, temple: 0, water: 0, vendor: 0, street: null }
   let sinceLook = LOOK_EVERY
   let untilHonk = 2
@@ -253,6 +287,27 @@ export function createAreaSounds(context: AudioContext, output: AudioNode) {
       if (untilBird <= 0) {
         untilBird = between(BIRD_EVERY) * (1 + night * 6)
         if (area.water > 0.05 && day > 0.2) waterBird(VOLUME.birds * area.water * outside * (0.6 + 0.4 * Math.random()), Math.random() * 1.8 - 0.9)
+      }
+
+      // What's happening on the road nearby.
+      untilEvent -= dt
+      if (untilEvent <= 0) {
+        untilEvent = 1.6
+        const event = cityEvents.active[0]
+        const near = event ? Math.max(0, 1 - Math.hypot(event.x - x, event.z - z) / 110) : 0
+        if (event && near > 0.03) {
+          const pan = Math.max(-0.8, Math.min(0.8, (event.x - x) / 60))
+          if (event.kind === 'wedding') {
+            untilEvent = 0.19 * 8
+            bandBar(VOLUME.band * near * outside, pan, bandBars++)
+          } else if (event.kind === 'dig') {
+            untilEvent = 2.5 + Math.random() * 3
+            breaker(VOLUME.breaker * near * outside, pan)
+          } else if (event.kind === 'cow') {
+            untilEvent = 7 + Math.random() * 9
+            if (near > 0.5) moo(VOLUME.moo * near * outside, pan)
+          }
+        }
       }
 
       // Rain on what's around: tin along the shops, leaves on the quiet streets, open tarmac on the main roads (louder at speed).

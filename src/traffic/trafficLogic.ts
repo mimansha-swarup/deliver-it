@@ -1983,10 +1983,16 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
  * Closes (or reopens) the road lanes a test picks, and takes the traffic on them off the road.
  * Returns how many lanes it closed.
  */
-export function closeLanes(world: TrafficWorld, isClosed: ((lane: Lane) => boolean) | null): number {
+const laneClosers = new Map<string, (lane: Lane) => boolean>()
+
+/** `owner`: who is closing them (the festival, a city event): each closes and reopens its own, and a lane is shut while anyone has it shut. */
+export function closeLanes(world: TrafficWorld, isClosed: ((lane: Lane) => boolean) | null, owner = 'festival'): number {
+  if (isClosed) laneClosers.set(owner, isClosed)
+  else laneClosers.delete(owner)
+  const tests = [...laneClosers.values()]
   let count = 0
   world.roadLanes.forEach((lane, index) => {
-    lane.closed = isClosed !== null && isClosed(lane)
+    lane.closed = tests.some((test) => test(lane))
     if (!lane.closed) return
     count++
     for (const vehicle of world.vehicles) if (vehicle.lane === index && !vehicle.body) vehicle.lane = -1

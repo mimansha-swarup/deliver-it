@@ -41,6 +41,7 @@ import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
 import { SocietyGate } from './SocietyGate'
 import { EvChargers } from './EvChargers'
+import { CityEvents } from './CityEvents'
 import { chargerSpot } from './fuelStationData'
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
@@ -760,7 +761,7 @@ export function World() {
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /><EvChargers stations={fuel} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>
         <Part name="transit"><Transit metro={metro} flyovers={flyovers} busStand={busStand} /></Part>
-        <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /><Festival festival={agara.festival} traffic={traffic} collisions={collisions} graph={graph} /></Part>
+        <Part name="agara"><Agara agara={agara} /><LakeLife lake={lakeLife} /><Festival festival={agara.festival} traffic={traffic} collisions={collisions} graph={graph} /><CityEvents traffic={traffic} collisions={collisions} graph={graph} /></Part>
         <Part name="temples"><Temples sites={worship} /></Part>
         <Part name="fences"><Fences runs={fences} />{society && <SocietyGate society={society} />}</Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>

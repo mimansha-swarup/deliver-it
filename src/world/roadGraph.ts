@@ -162,8 +162,13 @@ export const roadClosures = { version: 0, closed: new Set<number>() }
 const CLOSED_COSTS = 4000
 const linkKey = (from: number, to: number) => from * 1_000_000 + to
 
-export function setClosedLinks(pairs: [number, number][]) {
-  roadClosures.closed = new Set(pairs.flatMap(([a, b]) => [linkKey(a, b), linkKey(b, a)]))
+/** Who has closed what: the festival, a city event. Each sets and lifts its own; the closed set is all of them together. */
+const closedBy = new Map<string, [number, number][]>()
+
+export function setClosedLinks(pairs: [number, number][], owner = 'festival') {
+  if (pairs.length > 0) closedBy.set(owner, pairs)
+  else closedBy.delete(owner)
+  roadClosures.closed = new Set([...closedBy.values()].flat().flatMap(([a, b]) => [linkKey(a, b), linkKey(b, a)]))
   roadClosures.version++
 }
 
