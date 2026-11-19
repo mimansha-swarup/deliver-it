@@ -9937,3 +9937,30 @@ the same roads-and-flyovers index as the setback), and at their smallest look up
 their pin for ground (was 12). Both are placed again, 26 m and 35 m from their pins, and no
 temple's building is under a deck. Ramp feet checked from the rider's view: the road runs up
 to the barriers, no building in the way.
+
+## 2026-11-19: Entry 187, riding the flyovers
+
+### What I did
+The scooter rides every flyover now: up a ramp from the road at its foot, along the deck, and down
+the far end or on to the flyover it joins. Traffic and deliveries stay on the ground.
+- **Which level** (World.tsx, `createDeckLevels` in transitPlacement.ts): the ground's height at a
+  spot now takes how high the wheel already is (`Surface.heightAt(x, z, near)`). A deck counts if it's
+  no more than 0.6 m above the wheel, so riding up from a ramp's foot carries the scooter up with it,
+  and riding under a deck keeps it on the street. Each wheel and the thrown rider use it.
+- **Up on a deck** (above 2.2 m), only the decks' edges are solid, and closed ends where a deck stops
+  in the air. They're **banded by height** (1.5 m bands): the first try crashed mid-deck at Silk Board
+  into the barriers of the interchange crossing 2.6 m higher. The camera rises with the scooter and
+  looks for walls on the deck.
+- **The traffic below ignores a rider up on a deck** (trafficLogic.ts): it deals with a stand-in far
+  away, so a car underneath doesn't hit or block the rider. Where traffic appears still follows the rider.
+- The ramps are open: the barriers across their feet are gone. Their sides stay walled where the
+  embankment is high enough to see, so they're ridden up from the foot, not climbed from the side.
+
+### Checked
+- Both Silk Board flyovers, end to end at full throttle: up to 6.8 m, along, down to 0.1 m at the
+  far end, no crash. The Silk Board Interchange: up to 9.4 m, no crash.
+- Riding across under the Silk Board and Agara decks: the wheels stay at 0.2 m (the kerb).
+
+### Not done
+- The traffic drawn on the decks doesn't see the rider: it passes through them.
+- The minimap's street name is the road below, not the flyover.

@@ -22,7 +22,7 @@ import { Ground } from './Ground'
 import { Lighting } from './Lighting'
 import { placeRoadFeatures } from './roadFeatures'
 import { RoadDetails } from './RoadDetails'
-import { createSurface } from './surface'
+import { createSurface, type Surface as RideSurface } from './surface'
 import { loadMapData, type MapData } from './mapData'
 import { plantParks } from './parkPlanting'
 import { Parks } from './Parks'
@@ -72,7 +72,7 @@ import { findTyreShops, forecourtOutline, FUEL_STATIONS, isOnForecourt, placeFue
 import { IDLE_POSE } from '../traffic/gait'
 import { planPitches } from './pitches'
 import { SportsPitches } from './SportsPitches'
-import { flyoverFootprints, planBusStand, planFlyoverDecks, planFlyovers, planMetro } from './transitPlacement'
+import { createDeckLevels, DECK_STEP_UP, flyoverFootprints, planBusStand, planFlyoverDecks, planFlyovers, planMetro } from './transitPlacement'
 import { Transit } from './Transit'
 import { fillEmptyPlots } from './infillPlots'
 import { WarmAssets } from './WarmAssets'
@@ -319,7 +319,17 @@ function buildWorld(data: MapData, rapier: RapierModule) {
   const fences = [...boundaries.runs, ...railings]
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   lap('railings and tanks')
-  const surface = createSurface(data.roads, features, edges.heightAt)
+  const groundSurface = createSurface(data.roads, features, edges.heightAt)
+  // The flyovers are ridden: a wheel no more than a step below a deck is on it (transitPlacement.ts).
+  const decks = createDeckLevels(flyovers.decks)
+  const surface: RideSurface = {
+    wetAt: groundSurface.wetAt,
+    heightAt(x, z, near = 0) {
+      const ground = groundSurface.heightAt(x, z)
+      const deck = decks.heightAt(x, z, near + DECK_STEP_UP)
+      return deck !== null && deck > ground ? deck : ground
+    },
+  }
   const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
   // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
@@ -361,7 +371,7 @@ function buildWorld(data: MapData, rapier: RapierModule) {
     })
   lap('spawn and landmarks')
 
-  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand }
+  return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, deckCollisions: decks.collisionsAt }
 }
 
 /** Tells the loading screen a part is on screen. It sits beside the part, so it only mounts once the part has. */
@@ -430,7 +440,7 @@ export function World() {
   const data = use(loadMapData())
   const rapier = use(loadRapier())
 
-  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand } =
+  const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, deckCollisions } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
@@ -479,7 +489,7 @@ export function World() {
         <Part name="fences"><Fences runs={fences} /></Part>
         <Part name="boundary"><Boundary /><Skyline /></Part>
         {isDebug() && <SurfaceDebug surface={surfaceMap} />}
-        <Part name="player"><Player stores={stores} collisions={collisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} home={home} /></Part>
+        <Part name="player"><Player stores={stores} collisions={collisions} deckCollisions={deckCollisions} graph={graph} traffic={traffic} surface={surface} bunks={fuel} spawn={spawn} home={home} /></Part>
       </WarmAssets>
     </Suspense>
   )

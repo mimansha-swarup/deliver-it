@@ -251,7 +251,7 @@ function nearestLyingRoll(roll: number): number {
 function stepThrownRider(state: ScooterState, collisions: CollisionWorld, surface: Surface, dt: number) {
   const rider = state.rider
   rider.time += dt
-  rider.ground += (surface.heightAt(rider.x, rider.z) - rider.ground) * (1 - Math.exp(-20 * dt))
+  rider.ground += (surface.heightAt(rider.x, rider.z, rider.ground) - rider.ground) * (1 - Math.exp(-20 * dt))
   const seatX = state.x - Math.sin(state.heading) * SEAT_BACK
   const seatZ = state.z - Math.cos(state.heading) * SEAT_BACK
 
@@ -711,7 +711,7 @@ function updateWheelContacts(state: ScooterState, surface: Surface, wetness: num
   for (const [wheel, axle] of [[state.frontWheel, SCOOTER.frontAxle], [state.rearWheel, SCOOTER.rearAxle]] as const) {
     const x = state.x + forwardX * axle
     const z = state.z + forwardZ * axle
-    landing = Math.max(landing, followGround(wheel, surface.heightAt(x, z), travelled, dt))
+    landing = Math.max(landing, followGround(wheel, surface.heightAt(x, z, wheel.height), travelled, dt))
 
     // Into a puddle fast throws up water. It needs rain to have filled it.
     const wet = surface.wetAt(x, z) * wetness
@@ -763,6 +763,11 @@ function updateBodyMotion(state: ScooterState, input: DriveInput, dt: number) {
     targetPitch = -SCOOTER.pitchUnderPower
   }
   state.pitch = moveToward(state.pitch, targetPitch, SCOOTER.pitchRate * dt)
+}
+
+/** How high the scooter is: its lower wheel, or the rider's ground while they're off it. Up on a flyover, metres above the street. */
+export function scooterLevel(state: ScooterState): number {
+  return state.rider.phase === 'on' ? Math.min(state.frontWheel.height, state.rearWheel.height) : Math.min(state.rider.ground, state.frontWheel.height)
 }
 
 /** Advances the scooter by `dt` seconds. Updates `state` in place. */

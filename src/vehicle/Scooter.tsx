@@ -28,7 +28,8 @@ import { BRAND_DYE, createBoxLogoTexture } from './brandPrint'
 import { Rider, STEERING_Z } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
-import { HOLD_INPUT, stepScooter, type ScooterState } from './ScooterController'
+import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
+import { UP_ON_DECK } from '../world/transitPlacement'
 import { useDriveInput } from './useDriveInput'
 import { NitroFlame } from './NitroFlame'
 
@@ -312,11 +313,14 @@ export function Scooter({
   ref,
   scooterState,
   collisions,
+  deckCollisions,
   surface,
 }: {
   ref: RefObject<Group | null>
   scooterState: RefObject<ScooterState>
   collisions: CollisionWorld
+  /** Up on a flyover, only its edges are solid. */
+  deckCollisions?: (height: number) => CollisionWorld
   surface: Surface
 }) {
   const input = useDriveInput()
@@ -381,7 +385,9 @@ export function Scooter({
     if (started) {
       const handingOver = phase === 'collecting' || phase === 'handingOver'
       const controls = handingOver ? HOLD_INPUT : input.current
-      stepScooter(state, controls, collisions, surface, Math.min(delta, MAX_FRAME_TIME), water.level)
+      const level = scooterLevel(state)
+      const solid = deckCollisions && level > UP_ON_DECK ? deckCollisions(level) : collisions
+      stepScooter(state, controls, solid, surface, Math.min(delta, MAX_FRAME_TIME), water.level)
     }
 
     if (!ref.current || !terrain.current || !lean.current || !body.current || !riderRoot.current) return

@@ -20,7 +20,14 @@ export const EDGING = { width: 0.12, height: 0.07 }
  * How high the ground is at any point, for wheels and feet to stand on, and how
  * much of a puddle's hollow is there (see `RoadFeatures.wetAt`).
  */
-export type Surface = { heightAt: (x: number, z: number) => number; wetAt: (x: number, z: number) => number }
+export type Surface = {
+  /**
+   * The ground's height at (x, z). Where a flyover passes over, `near` (how high the wheel or body
+   * already is) picks the level: a deck no more than a step above it, or else the ground.
+   */
+  heightAt: (x: number, z: number, near?: number) => number
+  wetAt: (x: number, z: number) => number
+}
 
 /** A world with no roads: flat soil everywhere. */
 export const FLAT_SURFACE: Surface = { heightAt: () => 0, wetAt: () => 0 }

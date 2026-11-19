@@ -31,6 +31,8 @@ type PlayerProps = {
   /** The home store first, then the rest across the map. */
   stores: DarkStore[]
   collisions: CollisionWorld
+  /** What's solid up on the flyovers: their edges (transitPlacement.ts). */
+  deckCollisions: (height: number) => CollisionWorld
   graph: RoadGraph
   traffic: TrafficWorld
   /** Where the rider lives, where sleeping ends the day. */
@@ -42,7 +44,7 @@ type PlayerProps = {
   spawn?: Spawn | null
 }
 
-export function Player({ stores, collisions, graph, traffic, surface, bunks, spawn, home }: PlayerProps) {
+export function Player({ stores, collisions, deckCollisions, graph, traffic, surface, bunks, spawn, home }: PlayerProps) {
   const started = useGameStore((state) => state.started)
   const scooter = useRef<Group>(null)
   const scooterState = useRef(createScooterState())
@@ -57,14 +59,14 @@ export function Player({ stores, collisions, graph, traffic, surface, bunks, spa
 
   return (
     <>
-      <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} surface={surface} />
+      <Scooter ref={scooter} scooterState={scooterState} collisions={collisions} deckCollisions={deckCollisions} surface={surface} />
       <Headlight scooter={scooterState} />
       <DevTeleport scooter={scooterState} />
       <PlayerSounds scooter={scooterState} />
       <SkidMarks scooter={scooterState} />
       <Splashes scooter={scooterState} />
       {started ? (
-        <FollowCamera scooter={scooterState} collisions={collisions} />
+        <FollowCamera scooter={scooterState} collisions={collisions} deckCollisions={deckCollisions} />
       ) : (
         <TitleCamera />
       )}

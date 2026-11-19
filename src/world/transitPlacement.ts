@@ -477,10 +477,10 @@ export function planFlyovers({ decks, surface, collisions }: { decks: Flyover[];
     // Nothing tall under the deck.
     for (const outline of pathFootprint(path, deck.width / 2 + FOOTPRINT_MARGIN)) surface.markOverhead(outline)
 
-    // The ramps are solid: walled along both edges where the deck is too low to ride under, and a
-    // barrier across the foot, so a road at ground level ends at it rather than running into it.
+    // The ramps are solid embankments: walled along both edges where the deck is too low to ride
+    // under (and high enough to see), so they're ridden up from the foot, not onto from the side.
     for (let i = 1; i < path.points.length; i++) {
-      if (Math.min(deck.heights[i - 1], deck.heights[i]) >= RIDE_UNDER) continue
+      if (Math.min(deck.heights[i - 1], deck.heights[i]) >= RIDE_UNDER || Math.max(deck.heights[i - 1], deck.heights[i]) < DECK_STEP_UP) continue
       const [ax, az] = path.points[i - 1]
       const [bx, bz] = path.points[i]
       const length = Math.hypot(bx - ax, bz - az) || 1
@@ -488,14 +488,6 @@ export function planFlyovers({ decks, surface, collisions }: { decks: Flyover[];
       const sz = (-(bx - ax) / length) * (deck.width / 2)
       for (const side of [1, -1]) addWall(collisions, [ax + sx * side, az + sz * side], [bx + sx * side, bz + sz * side], 0.4)
     }
-    for (const [low, s] of [[deck.startsLow, 0.5], [deck.endsLow, path.length - 0.5]] as const) {
-      if (!low) continue
-      const { x, z, dirX, dirZ } = pointOnPath(path, s)
-      const half = deck.width / 2
-      addWall(collisions, [x + dirZ * half, z - dirX * half], [x - dirZ * half, z + dirX * half], 0.6)
-      flyovers.barriers.push({ x, z, rotation: Math.atan2(dirX, dirZ), width: deck.width })
-    }
-
     // Pillars along the raised part, where the ground allows; under the highest, life.
     let sinceStall = 60
     for (let s = FLYOVER_PILLAR_EVERY / 2; s < path.length; s += FLYOVER_PILLAR_EVERY) {
@@ -664,4 +656,112 @@ export function planBusStand({ data, surface, roads, collisions, routes }: { dat
     stand.people.push({ x: px, z: pz, heading: Math.atan2(dirZ * side * roadSide, -dirX * side * roadSide) })
   }
   return stand
+}
+
+// ---------------------------------------------------------------------------
+// Riding the flyovers
+
+/*
+ * The scooter rides the flyovers (World.tsx, Scooter.tsx): up a ramp from the road at its foot,
+ * along the deck and down the far end, or on to the flyover it joins. Which level a wheel is on
+ * comes from how high it already is: a deck counts if it's no more than a step above the wheel,
+ * so riding up a ramp from its foot carries it up, and riding under a deck keeps it on the ground.
+ * Up on a deck, only the deck's edges are solid (`collisions`), and the traffic below ignores the
+ * rider (trafficLogic.ts). The traffic and deliveries stay on the ground.
+ */
+
+/** A wheel steps onto a deck no more than this far above it, in metres. */
+export const DECK_STEP_UP = 0.6
+/** Above this, the scooter is up on a deck: the deck's own collisions, and the ground's traffic ignores it. */
+export const UP_ON_DECK = 2.2
+/** The barriers along a deck's edges stand this far in from its sides, and are this thick. */
+const EDGE_INSET = 0.35
+
+export type DeckLevels = {
+  /** The highest deck at (x, z) no higher than `below`, or null where there's none. */
+  heightAt: (x: number, z: number, below: number) => number | null
+  /**
+   * What's solid up on a deck at this height: the edges of the decks at about that height, and
+   * their ends that stop in the air. Banded by height, so a deck crossing above or below isn't.
+   */
+  collisionsAt: (height: number) => CollisionWorld
+}
+
+/** Deck walls are sorted into bands of this height; a wall counts in every band its stretch reaches, give or take `BAND_SLACK`. */
+const BAND = 1.5
+const BAND_SLACK = 1.2
+
+const DECK_CELL = 16
+
+export function createDeckLevels(decks: Flyover[]): DeckLevels {
+  type Segment = { deck: Flyover; i: number }
+  const cells = new Map<string, Segment[]>()
+  const bands = new Map<number, CollisionWorld>()
+  const empty: CollisionWorld = new Map()
+  /** A wall, in each band from `low` to `high` metres up. */
+  const wall = (from: GroundPoint, to: GroundPoint, thickness: number, low: number, high: number) => {
+    for (let band = Math.floor((low - BAND_SLACK) / BAND); band <= Math.floor((high + BAND_SLACK) / BAND); band++) {
+      const world = bands.get(band) ?? new Map()
+      addWall(world, from, to, thickness)
+      bands.set(band, world)
+    }
+  }
+  const endKey = ([x, z]: GroundPoint) => `${Math.round(x)},${Math.round(z)}`
+  const ends = new Map<string, number>()
+  for (const deck of decks) for (const end of [deck.path.points[0], deck.path.points[deck.path.points.length - 1]]) ends.set(endKey(end), (ends.get(endKey(end)) ?? 0) + 1)
+
+  for (const deck of decks) {
+    const { points } = deck.path
+    const half = deck.width / 2
+    for (let i = 1; i < points.length; i++) {
+      const [ax, az] = points[i - 1]
+      const [bx, bz] = points[i]
+      for (let cx = Math.floor((Math.min(ax, bx) - half) / DECK_CELL); cx <= Math.floor((Math.max(ax, bx) + half) / DECK_CELL); cx++) {
+        for (let cz = Math.floor((Math.min(az, bz) - half) / DECK_CELL); cz <= Math.floor((Math.max(az, bz) + half) / DECK_CELL); cz++) {
+          const key = `${cx},${cz}`
+          const list = cells.get(key) ?? []
+          list.push({ deck, i })
+          cells.set(key, list)
+        }
+      }
+      // The crash barriers along both edges.
+      const length = Math.hypot(bx - ax, bz - az) || 1
+      const sx = ((bz - az) / length) * (half - EDGE_INSET)
+      const sz = (-(bx - ax) / length) * (half - EDGE_INSET)
+      const low = Math.min(deck.heights[i - 1], deck.heights[i])
+      const high = Math.max(deck.heights[i - 1], deck.heights[i])
+      for (const side of [1, -1]) wall([ax + sx * side, az + sz * side], [bx + sx * side, bz + sz * side], 0.4, low, high)
+    }
+    // An end up in the air that meets no other flyover (the one under construction): closed off.
+    for (const [index, s] of [[0, 0.3], [points.length - 1, deck.path.length - 0.3]] as const) {
+      const low = index === 0 ? deck.startsLow : deck.endsLow
+      if (low || (ends.get(endKey(points[index])) ?? 0) > 1) continue
+      const { x, z, dirX, dirZ } = pointOnPath(deck.path, s)
+      const height = heightOnFlyover(deck, s)
+      wall([x + dirZ * half, z - dirX * half], [x - dirZ * half, z + dirX * half], 0.6, height, height)
+    }
+  }
+
+  return {
+    collisionsAt: (height) => bands.get(Math.floor(height / BAND)) ?? empty,
+    heightAt(x, z, below) {
+      let best: number | null = null
+      for (const { deck, i } of cells.get(`${Math.floor(x / DECK_CELL)},${Math.floor(z / DECK_CELL)}`) ?? []) {
+        const [ax, az] = deck.path.points[i - 1]
+        const [bx, bz] = deck.path.points[i]
+        const ex = bx - ax
+        const ez = bz - az
+        const lengthSquared = ex * ex + ez * ez
+        if (lengthSquared < 0.01) continue
+        const t = ((x - ax) * ex + (z - az) * ez) / lengthSquared
+        if (t < -0.02 || t > 1.02) continue
+        const off = Math.abs((x - ax) * ez - (z - az) * ex) / Math.sqrt(lengthSquared)
+        if (off > deck.width / 2 - 0.1) continue
+        const clamped = Math.max(0, Math.min(1, t))
+        const height = deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * clamped + 0.05
+        if (height <= below && (best === null || height > best)) best = height
+      }
+      return best
+    },
+  }
 }

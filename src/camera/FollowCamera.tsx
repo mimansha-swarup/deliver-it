@@ -4,7 +4,8 @@ import { useFrame } from '@react-three/fiber'
 import { PerspectiveCamera, Vector3 } from 'three'
 import { liveShot } from '../game/livePlayer'
 import type { ScooterState } from '../vehicle/ScooterController'
-import { getTravelSpeed } from '../vehicle/ScooterController'
+import { getTravelSpeed, scooterLevel } from '../vehicle/ScooterController'
+import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 
@@ -89,10 +90,14 @@ if (isDebug()) (window as unknown as { __deliverItPhoto?: typeof photo }).__deli
 export function FollowCamera({
   scooter,
   collisions,
+  deckCollisions,
 }: {
   scooter: RefObject<ScooterState>
   collisions: CollisionWorld
+  deckCollisions?: (height: number) => CollisionWorld
 }) {
+  /** How high the scooter is (up on a flyover), eased, so the camera rises with it smoothly. */
+  const level = useRef(0)
   const cameraHeading = useRef<number | null>(null)
   const cameraDistance = useRef(DISTANCE_BEHIND)
   const introStart = useRef<Vector3 | null>(null)
@@ -128,7 +133,10 @@ export function FollowCamera({
     const forwardX = Math.sin(heading)
     const forwardZ = Math.cos(heading)
 
-    const clearDistance = findClearDistance(collisions, focusX, focusZ, forwardX, forwardZ)
+    const height = scooterLevel(state)
+    level.current += (height - level.current) * (1 - Math.exp(-8 * delta))
+    const up = height > UP_ON_DECK
+    const clearDistance = findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ)
     const distance =
       clearDistance < cameraDistance.current
         ? clearDistance // Snap in, or the wall would be visible for a moment.
@@ -136,7 +144,7 @@ export function FollowCamera({
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
 
-    camera.position.set(focusX - forwardX * distance, HEIGHT, focusZ - forwardZ * distance)
+    camera.position.set(focusX - forwardX * distance, HEIGHT + level.current, focusZ - forwardZ * distance)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -153,7 +161,7 @@ export function FollowCamera({
     // On the rider, look at them rather than ahead of them.
     const lookAhead = LOOK_AHEAD * (1 - follow)
     let lookX = focusX + forwardX * lookAhead
-    let lookY: number = LOOK_HEIGHT + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT) * follow
+    let lookY: number = LOOK_HEIGHT + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT) * follow + level.current
     let lookZ = focusZ + forwardZ * lookAhead
 
     // Eases across to a set shot and back, so that it never cuts.

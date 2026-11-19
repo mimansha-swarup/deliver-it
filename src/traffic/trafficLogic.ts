@@ -1928,6 +1928,20 @@ export function easeDensity(world: TrafficWorld, target: number, dt: number) {
   world.density += (target - world.density) * Math.min(1, dt * 0.2)
 }
 
+/** Above this, the rider is up on a flyover (transitPlacement.ts' UP_ON_DECK). */
+const RIDER_UP = 2.2
+
+function riderUpOnDeck(rider: ScooterState): boolean {
+  const wheels = Math.min(rider.frontWheel.height, rider.rearWheel.height)
+  return rider.rider.phase === 'on' ? wheels > RIDER_UP : Math.min(wheels, rider.rider.ground) > RIDER_UP
+}
+
+/** The rider, as the traffic below a flyover sees them: somewhere far off, where nothing reaches. */
+function farRider(rider: ScooterState): ScooterState {
+  const far = 1e6
+  return { ...rider, x: rider.x + far, z: rider.z + far, rider: { ...rider.rider, x: rider.rider.x + far, z: rider.rider.z + far } }
+}
+
 export function stepTraffic(
   world: TrafficWorld,
   rider: ScooterState,
@@ -1937,9 +1951,12 @@ export function stepTraffic(
 ) {
   const { roadLanes, walkLanes, random } = world
   const rules = TRAFFIC_RULES
+  // Up on a flyover, the traffic and people below don't meet the rider: they deal with a stand-in
+  // far away. Where traffic appears and goes still follows the real rider.
+  const contact = riderUpOnDeck(rider) ? farRider(rider) : rider
   const activeVehicles = world.vehicles.slice(0, vehicleCount)
   world.signalClock += dt
-  listDowned(world, rider, activeVehicles, pedestrianCount)
+  listDowned(world, contact, activeVehicles, pedestrianCount)
 
   const outNow = Math.round(vehicleCount * world.density)
   for (const [index, vehicle] of activeVehicles.entries()) {
@@ -1992,25 +2009,25 @@ export function stepTraffic(
 
     if (vehicle.body) {
       stepCrashedVehicle(world, vehicle, rider, dt)
-      if (vehicle.lane !== -1) blockRider(vehicle, rider, dt)
+      if (vehicle.lane !== -1) blockRider(vehicle, contact, dt)
       continue
     }
     if (vehicle.fallen) {
       stepRightingVehicle(vehicle, dt)
-      blockRider(vehicle, rider, dt)
+      blockRider(vehicle, contact, dt)
       continue
     }
 
     if (mustGiveWay(vehicle, activeVehicles)) {
       vehicle.speed = 0
-      maybeHonk(world, vehicle, rider, false, dt)
+      maybeHonk(world, vehicle, contact, false, dt)
       continue
     }
     // Never into another vehicle: a step that would push this one further into another's
     // footprint is taken back, and it waits (see `overlapWithTraffic`).
     const before = overlapWithTraffic(vehicle, activeVehicles)
     const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, shift: vehicle.shift }
-    stepVehicle(world, vehicle, activeVehicles, rider, dt)
+    stepVehicle(world, vehicle, activeVehicles, contact, dt)
     if (vehicle.lane === -1) continue
     if (!vehicle.body && overlapWithTraffic(vehicle, activeVehicles) > before + 0.001) {
       Object.assign(vehicle, kept)
@@ -2018,7 +2035,7 @@ export function stepTraffic(
       // A two-wheeler squeezing sideways into something beside it gives up that gap.
       vehicle.shiftTarget = vehicle.shift
     }
-    hitRider(world, vehicle, rider, dt)
+    hitRider(world, vehicle, contact, dt)
     for (const person of world.pedestrians.slice(0, pedestrianCount)) {
       if (person.lane === -1 || person.body || person.fallen) continue
       if (Math.abs(person.x - vehicle.x) > 4 || Math.abs(person.z - vehicle.z) > 4) continue
@@ -2026,10 +2043,10 @@ export function stepTraffic(
     }
   }
 
-  updateLoose(world, rider, dt)
-  updatePushers(world, activeVehicles, rider)
+  updateLoose(world, contact, dt)
+  updatePushers(world, activeVehicles, contact)
   world.physics.step(dt)
-  blockThrownRider(world, rider, activeVehicles)
+  blockThrownRider(world, contact, activeVehicles)
 
   for (const person of world.pedestrians.slice(0, pedestrianCount)) {
     const tooFar = Math.hypot(person.x - rider.x, person.z - rider.z) > rules.pedestrianRemoveAt
@@ -2052,8 +2069,8 @@ export function stepTraffic(
       continue
     }
 
-    stepPedestrian(world, person, rider, dt)
-    hitPedestrian(world, person, rider)
+    stepPedestrian(world, person, contact, dt)
+    hitPedestrian(world, person, contact)
   }
   separatePeople(world.pedestrians.slice(0, pedestrianCount), dt)
 }
