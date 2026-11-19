@@ -134,3 +134,66 @@ export function clearOverheads(surface: SurfaceMap, props: RoadsideProps, collis
   report.lampsRemoved = removedLamps.size
   return report
 }
+
+/** The view of a landmark from a deck is kept over this long a stretch of it, either side of the nearest point, in metres. */
+const VIEW_STRETCH = 90
+/** Trees in the view may stand this far above the deck there, in metres: about the barrier's top. */
+const VIEW_HEADROOM = 1
+
+/**
+ * Keeps the view of a landmark (Agara's statue) from a flyover: trees standing in the wedge between
+ * the landmark and the nearest stretch of the deck, tall enough to hide it from a rider up there, are
+ * made smaller, down to SMALLEST, or taken out. Returns how many of each.
+ */
+export function keepViewClear(
+  props: RoadsideProps,
+  collisions: CollisionWorld,
+  landmark: { x: number; z: number },
+  deck: { points: [number, number][]; heights: number[]; at: number[] },
+): { lowered: number; removed: number } {
+  const report = { lowered: 0, removed: 0 }
+  let nearest = 0
+  let nearestDistance = Infinity
+  deck.points.forEach(([x, z], i) => {
+    const distance = Math.hypot(x - landmark.x, z - landmark.z)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearest = i
+    }
+  })
+  let first = nearest
+  let last = nearest
+  while (first > 0 && deck.at[nearest] - deck.at[first] < VIEW_STRETCH) first--
+  while (last < deck.points.length - 1 && deck.at[last] - deck.at[nearest] < VIEW_STRETCH) last++
+  const [ax, az] = deck.points[first]
+  const [bx, bz] = deck.points[last]
+  const deckHeight = Math.min(deck.heights[first], deck.heights[nearest], deck.heights[last])
+  // Inside the triangle landmark, a, b: on the same side of each edge.
+  const side = (px: number, pz: number, qx: number, qz: number, x: number, z: number) => (qx - px) * (z - pz) - (qz - pz) * (x - px)
+  const inWedge = (x: number, z: number) => {
+    const d1 = side(landmark.x, landmark.z, ax, az, x, z)
+    const d2 = side(ax, az, bx, bz, x, z)
+    const d3 = side(bx, bz, landmark.x, landmark.z, x, z)
+    return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))
+  }
+  const kept: Prop[] = []
+  for (const tree of props.trees) {
+    if (!inWedge(tree.x, tree.z)) {
+      kept.push(tree)
+      continue
+    }
+    const top = treeExtent(kindOf(tree)).top * drawnScale(tree)
+    const allowed = deckHeight + VIEW_HEADROOM
+    if (top <= allowed) kept.push(tree)
+    else if (allowed / top >= SMALLEST) {
+      tree.size = ((tree.size ?? 1) * allowed) / top
+      kept.push(tree)
+      report.lowered++
+    } else {
+      removePost(collisions, tree.x, tree.z)
+      report.removed++
+    }
+  }
+  props.trees.splice(0, props.trees.length, ...kept)
+  return report
+}

@@ -45,6 +45,8 @@ export type Agara = {
   spawn: { name: string; x: number; z: number; heading: number } | null
   /** Where `?spawn=agara-temple` starts: on the road outside the temple's door. */
   templeSpawn: { name: string; x: number; z: number; heading: number } | null
+  /** The flyover decks near the statue (both carriageways), whose view of him is kept clear of trees. */
+  viewDecks: Flyover[]
   /** The Jagannath temple nearest the statue, for the map. */
   jagannath: { x: number; z: number; name: string } | null
   report: Record<string, number>
@@ -80,7 +82,7 @@ export function planAgara({
   /** Agara Lake's middle, if the map has it: the flyover's approach nearest it is the Agara junction's. */
   lake: GroundPoint | null
 }): Agara {
-  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, templeSpawn: null, jagannath: null, report: {}, temple: '' }
+  const agara: Agara = { statue: null, stalls: [], footwear: [], autos: [], people: [], crowd: [], spawn: null, templeSpawn: null, viewDecks: [], jagannath: null, report: {}, temple: '' }
 
   // The temple: a Hanuman (Anjaneya) temple near an Outer Ring Road flyover. The nearest such pair is Agara's.
   const ringRoad = decks.filter(({ name }) => /outer ring road/i.test(name))
@@ -185,6 +187,7 @@ export function planAgara({
     }
     const rotation = Math.atan2(nearest[0] - x, nearest[1] - z)
     agara.statue = { x, z, rotation }
+    agara.viewDecks = ringRoad.filter((candidate) => candidate.path.points.some(([px, pz]) => Math.hypot(px - x, pz - z) < 160))
     // The plinth is solid, and its ground is taken: nothing is planted or built on it.
     const h = PLINTH / 2
     const cos = Math.cos(rotation)

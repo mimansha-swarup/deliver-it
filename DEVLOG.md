@@ -10300,3 +10300,29 @@ traffic.glb 1.1 → 1.3 MB compressed.
 ### Left
 The SUV's windscreen is a little unevenly shaded close up, and the cars' wheels (still wrapped, about
 530 triangles) are angular at 3 m.
+
+## 2026-11-20: Entry 204, review fixes: Agara spawns and markers, the statue's view, traffic's cost
+
+### What I did
+- **`?spawn=agara-flyover`** was 12 m back from a deck's first point, wherever that fell (a footpath by a
+  wall). It's now on the ground road leading to the ramp nearest Agara Lake, in the left lane, facing up
+  the ramp (Outer Ring Road). **`?spawn=agara-temple`** is on 1st Cross Road a little short of the temple's
+  door, the autos waiting ahead of it.
+- **On the maps**: the Anjaneya statue and the Jagannath temple each have a diamond and a name on the
+  minimap and the full map (game/mapMarkers.ts).
+- **The statue's view from the flyover**: trees in the wedge between him and either carriageway's
+  nearest 180 m, taller than the deck, are lowered or taken out (9 removed; overheadClearance.ts
+  `keepViewClear`).
+- **The auto** keeps all 7,512 of its original triangles (was cut to 5,000).
+- **Traffic's cost**: every copy of every vehicle model went to the GPU each frame, the ones on the other
+  level of detail shrunk to nothing, which still costs all their corners. Only the copies in range are
+  drawn now (`writePacked`). On 13th Cross traffic was 1,100k triangles with nothing within 60 m; it's 623k
+  (835k before the roads were widened).
+- **Two costs I'd added**: parked vehicles were all looked at every 6 frames (over 8,000 of them): now
+  from a nearby list remade every 60 frames. The flyovers' far stand-in traffic looked its place up
+  twice a vehicle on paths I'd made twice as fine: once now, by binary search.
+
+### Measured (13th Cross, High, 17:30, riding; back to back with the build before the roads were widened)
+One clean pair, before this Mac got busy again (load over 4): 71 fps, worst 25 ms, 5.8 ms of the game's
+own work a frame, against 68 fps, 25 ms and 6.0 ms. Not confirmed at 80: the old build doesn't reach
+it on this machine today either.

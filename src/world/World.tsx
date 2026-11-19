@@ -59,7 +59,7 @@ import { SurfaceDebug } from '../dev/SurfaceDebug'
 import { HOME_FACING, HOME_NEAR, MAIN_STORE_NEAR, MAIN_STORE_SEARCH, nearestHouseGate, petrolPumpSpawn, startAtGate } from './homeStart'
 import { forcedTutorial } from '../game/tutorial'
 import { plantContextTrees } from './treeSpecies'
-import { clearOverheads } from './overheadClearance'
+import { clearOverheads, keepViewClear } from './overheadClearance'
 import { HouseKitMesh } from './HouseKitMesh'
 import { Kerbs } from './Kerbs'
 import { RestrictedWall } from './RestrictedWall'
@@ -344,6 +344,17 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Every tree and lamp post is in: none comes up through a flyover or the viaduct (overheadClearance.ts).
   const overhead = clearOverheads(surfaceMap, props, collisions)
   worldSurface.report.overhead = overhead
+  // The flyover's view of Agara's statue: no tall tree between the deck and him.
+  if (agara.statue) {
+    const view = { lowered: 0, removed: 0 }
+    for (const deck of agara.viewDecks) {
+      const cleared = keepViewClear(props, collisions, agara.statue, { ...deck.path, heights: deck.heights })
+      view.lowered += cleared.lowered
+      view.removed += cleared.removed
+    }
+    worldSurface.report.agara = { ...agara.report, viewTreesLowered: view.lowered, viewTreesRemoved: view.removed }
+    lap(`statue view: ${JSON.stringify(view)}`)
+  }
   lap(`overhead clearance: ${JSON.stringify(overhead)}`)
   // Carts and name boards take what room the trees, lamps and parked scooters have left.
   const life = placeStreetLife(data.roads, collisions, props)
