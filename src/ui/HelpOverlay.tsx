@@ -47,7 +47,10 @@ export function KeyList({ editable = false }: { editable?: boolean }) {
         </section>
       ))}
       <p className="key-fixed">
-        <kbd>Enter</kbd> unlocks the phone · <kbd>Esc</kbd> goes back
+        <kbd>Enter</kbd> unlocks the phone · <kbd>Esc</kbd> goes back · <kbd>V</kbd> driver's seat view (cab vehicles)
+      </p>
+      <p className="key-fixed">
+        <kbd>Right mouse</kbd> hold and move to look around · <kbd>Click</kbd> the view to lock the pointer (<kbd>Esc</kbd> frees it) · on foot, <kbd>W A S D</kbd> walk and the run key is the nitro key
       </p>
       {editable && (
         <button type="button" className="key-reset" onClick={(event) => { reset(); event.currentTarget.blur() }}>
@@ -58,7 +61,7 @@ export function KeyList({ editable = false }: { editable?: boolean }) {
   )
 }
 
-/** F1 or ? shows every key, over the game. Esc or the same key closes it. */
+/** F1 or ? shows every control, over the game: the keys as they're bound, and the mouse. Esc or the same key closes it. */
 export function HelpOverlay() {
   const [open, setOpen] = useState(false)
   useEffect(() => {
@@ -73,9 +76,9 @@ export function HelpOverlay() {
   }, [])
   if (!open) return null
   return (
-    <section className="help-overlay" role="dialog" aria-label="Keys">
+    <section className="help-overlay" role="dialog" aria-label="Controls">
       <header>
-        <h2>Keys</h2>
+        <h2>Controls</h2>
         <button type="button" onClick={() => setOpen(false)}>
           Close · Esc
         </button>

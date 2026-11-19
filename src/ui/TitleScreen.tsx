@@ -10,9 +10,11 @@ const KEYBOARD_CONTROLS = [
   ['W A S D or arrows', 'Ride'],
   ['S or down', 'Brake'],
   ['Hold Space and steer', 'Drift, then let go to boost'],
+  ['F', 'Get off and on your vehicle'],
+  ['E', 'Pick up, ring the bell, hand over'],
   ['P', 'Bring up your phone'],
-  ['H', 'Honk'],
-  ['R', 'Change radio station'],
+  ['Right mouse', 'Look around'],
+  ['F1 or ?', 'Every control, in the game'],
 ]
 
 /** Screenshots from the game itself, shown one after another behind the title. */
