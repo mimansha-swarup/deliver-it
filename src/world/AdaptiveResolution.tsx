@@ -19,6 +19,21 @@ const LATE = 1.3
 const SLOWEST_REFRESH = 1 / 60
 const FASTEST_REFRESH = 1 / 60
 /**
+ * On a screen faster than 60 Hz, High is held above this many frames a second (or just under the
+ * screen's own rate, if that's lower): below it for `DROP_BATCHES` batches, the resolution drops a
+ * step. A 120 Hz laptop in its low-power mode gives High about 70 FPS at full resolution and 90 a
+ * step down, and 70 on a 120 Hz screen is every other frame shown twice. Above it (a sharp 85-110
+ * FPS) the picture is left alone, as before.
+ *
+ * The frames' own times can't tell such a screen from a 75 Hz one: slowed, they come evenly. So the
+ * screen's rate is read from the browser's frame stamps, which stay on its refresh.
+ */
+const TARGET_FPS = 80
+/** On a fast screen the drop waits for this many slow batches running: a step's own hitch costs more than a few seconds a little under the target. */
+const DROP_BATCHES_FAST = 5
+/** A step up is only tried from this much above the target, as it will cost about a fifth of the frame rate. */
+const RAISE_HEADROOM = 1.25
+/**
  * Every change of resolution costs: the canvas and every buffer of the effects behind it are
  * made again, and for a second or so after, frames take 90 ms or more (measured on High; with
  * the sun's haze effect in the chain, though not from its depth read). So it changes rarely.
@@ -41,6 +56,16 @@ const WARM_UP = 6
 /** After a change, its own slow frames aren't judged: they'd only call for another change. In seconds. */
 const SETTLE = 2.5
 
+/** Gaps between frame stamps this short, in seconds, are a faster screen's own refresh (under 4 ms is two callbacks in one frame). */
+const SHORT_GAP = [0.004, 0.014]
+const ENOUGH_GAPS = 40
+function noteGap(screen: { refresh: number; sum: number; count: number }, gap: number) {
+  if (gap <= SHORT_GAP[0] || gap >= SHORT_GAP[1] || screen.count > 2000) return
+  screen.sum += gap
+  screen.count++
+  if (screen.count >= ENOUGH_GAPS) screen.refresh = screen.sum / screen.count
+}
+
 /**
  * Keeps the frame rate steady by lowering the resolution when frames come in
  * late, and raising it again once things are calm.
@@ -55,6 +80,21 @@ export function AdaptiveResolution() {
   const quality = useGameStore((state) => state.quality)
   const lowScale = useGameStore((state) => state.lowScale)
   const batch = useRef({ time: 0, frames: [] as number[], slow: 0, calm: 0, ceiling: Infinity, ceilingAge: 0, sinceRaise: Infinity, sinceChange: Infinity, warmUp: WARM_UP, refresh: SLOWEST_REFRESH })
+  /**
+   * The screen's refresh, in seconds, if it's faster than 60 Hz: the average of the short gaps between
+   * the browser's frame stamps, once enough have been seen that it isn't a stray one. Otherwise 1/60.
+   */
+  const screen = useRef({ refresh: SLOWEST_REFRESH, sum: 0, count: 0 })
+  useEffect(() => {
+    let last = 0
+    let id = requestAnimationFrame(function watch(stamp) {
+      const gap = (stamp - last) / 1000
+      last = stamp
+      noteGap(screen.current, gap)
+      id = requestAnimationFrame(watch)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [])
   /** A resolution waiting to be applied at the start of the next frame. See `applyRatio`. */
   const pending = useRef<number | null>(null)
 
@@ -110,7 +150,16 @@ export function AdaptiveResolution() {
     const sorted = [...state.frames].sort((a, b) => a - b)
     state.refresh = Math.min(state.refresh, Math.max(FASTEST_REFRESH, sorted[Math.floor(sorted.length * 0.1)]))
     const lateShare = state.frames.filter((frame) => frame > state.refresh * LATE).length / state.frames.length
+    // A fast screen is judged by its frame rate, a 60 Hz one by its late frames.
+    const fps = state.frames.length / state.time
+    const { refresh } = screen.current
+    const fast = refresh < SLOWEST_REFRESH * 0.95
+    const target = Math.min(TARGET_FPS, 0.94 / refresh)
+    const tooSlow = fast ? fps < target : lateShare > DROP_SHARE
+    const calm = lateShare <= CALM_SHARE && (!fast || fps >= target * RAISE_HEADROOM)
     if (state.ceilingAge > CEILING_SECONDS) state.ceiling = Infinity
+    // Debug: what the last batch measured (`__deliverItScaler`, with ?debug).
+    if (isDebug()) (window as unknown as { __deliverItScaler?: unknown }).__deliverItScaler = { fps: Math.round(fps), target: Math.round(target), screenHz: Math.round(1 / refresh), lateShare: +lateShare.toFixed(2), slow: state.slow }
     state.time = 0
     state.frames = []
     state.sinceRaise++
@@ -121,10 +170,10 @@ export function AdaptiveResolution() {
     // Never below the quality's own lowest resolution: 1x on High and Medium, 0.75x on Low.
     const lowest = Math.min(ratioRange(quality)[0], best)
 
-    state.slow = lateShare > DROP_SHARE ? state.slow + 1 : 0
-    state.calm = lateShare <= CALM_SHARE ? state.calm + 1 : 0
+    state.slow = tooSlow ? state.slow + 1 : 0
+    state.calm = calm ? state.calm + 1 : 0
 
-    if (state.slow >= DROP_BATCHES && pixelRatio > lowest) {
+    if (state.slow >= (fast ? DROP_BATCHES_FAST : DROP_BATCHES) && pixelRatio > lowest) {
       // Too much just after a step up: that level isn't tried again for a while,
       // so the picture doesn't keep sharpening and blurring.
       if (state.sinceRaise <= 3) {

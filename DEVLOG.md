@@ -10648,3 +10648,29 @@ one, and everything else added is a handful of small meshes.
 ### Not verified
 Nothing here was listened to: the new sounds, the RJ's voice and every volume need an ear. The walking
 was driven by script, not by hand. See the report for the rest.
+
+## 2026-11-20: Entry 215, review fixes before merging overnight-1
+
+From a review of the preview:
+
+- **Frame rate on a 120 Hz laptop in its low-power mode.** The preview measured 68 to 75 FPS on High
+  there, against 103 to 111 the night before on mains: the same build, the GPU throttled. The scaler
+  (world/AdaptiveResolution.tsx) only chased 60, so it held full resolution. It now reads the screen's
+  rate from the browser's frame stamps (the frames' own times come evenly when slowed, and can't tell
+  a slowed 120 Hz screen from a 75 Hz one), and on a fast screen drops a step when High is under 80 FPS
+  for five seconds. In low-power mode: High 88 to 98 FPS at 1.25x, worst frame 18 ms, none over 20 ms;
+  Low 120. Load there is still 8.0 to 8.4 s (it is the CPU's planning, slowed about 1.8 times); the
+  loading screen's fade is halved, which is all that was cheap.
+- **On foot** the speed and fuel panel is a small "On foot" badge; walking is 2.8 m/s and running 6.
+- **Kerbside handover**: at a street address, stopped within 20 m of the door, E from the vehicle calls
+  the customer out (missions/Errand.tsx). Flats, the gated society and the dark store stay on foot.
+  Settings has "Always walk to the door".
+- **Traffic and the rider on foot** (traffic/trafficLogic.ts): they were counted as someone lying in
+  the road, and inside a room as standing under it. Now standing, and not at all indoors; vehicles
+  slow, horn sooner, and cars and buses ease out around them and the parked vehicle.
+- **People in rooms** glow with a share of their own colours (traffic/Traffic.tsx `indoors`).
+- **Leaving a building** returns the rider to where they stood to go in, not a step outside the door,
+  where a fence's thickness could push them out on the wrong side (world/roomShapes.ts).
+
+scripts/bench.mjs gains `--wait <seconds>` (to let the scaler settle before a ride is measured) and
+reports each run's frame pacing and the scaler's last reading.

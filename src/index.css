@@ -1666,7 +1666,7 @@ body,
   color: var(--loading-chalk);
   background: var(--loading-ink);
   font-family: 'Baloo Tamma 2', system-ui, sans-serif;
-  transition: opacity 0.9s ease;
+  transition: opacity 0.45s ease;
 }
 
 .loading-screen[data-leaving='true'] {

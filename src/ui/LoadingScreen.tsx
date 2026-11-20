@@ -133,7 +133,7 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
   // The fade is a CSS transition. If it doesn't run, as with reduced motion, this ends it anyway.
   useEffect(() => {
     if (!started) return
-    const timer = window.setTimeout(onGone, 1400)
+    const timer = window.setTimeout(onGone, 900)
     return () => window.clearTimeout(timer)
   }, [started, onGone])
 

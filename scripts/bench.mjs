@@ -54,6 +54,8 @@ const PORT = 9333
 /** Each quality is measured at its top resolution: Low's is 1, High's 1.5 (qualitySettings.ts); Low also at its optional 0.75×. */
 const QUALITIES = [['Low', 1], ['Low', 0.75], ['High', 1.5]]
 const SAMPLE_MS = 6000
+/** --wait 20: seconds stood on the street before a --ride is measured, so the game's own resolution scaler has settled. */
+const WAIT = Number(option('wait', '0'))
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -194,6 +196,7 @@ const RIDE_RUN = (quality) => `(async () => {
     ;(window.__deliverItQuality ? window.__deliverItQuality('${quality}'.toLowerCase()) : [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '${quality}')?.click())
     await sleep(3000)
   }
+  await sleep(${WAIT * 1000})
   const { gl } = window.__deliverIt
   const raf = window.requestAnimationFrame
   const frames = []
@@ -231,6 +234,9 @@ const RIDE_RUN = (quality) => `(async () => {
     longWithCompile: long.filter((f) => f.compiled > 0).length,
     programs: programs(),
     vehicles: window.__deliverItTraffic?.vehicles?.length ?? null,
+    scaler: window.__deliverItScaler ?? null,
+    // How many frames came at each interval, to the millisecond: a screen pacing evenly reads differently from one doubling frames.
+    pacing: Object.entries(intervals.reduce((n, t) => { const ms = Math.round(t); n[ms] = (n[ms] ?? 0) + 1; return n }, {})).map(([ms, n]) => ms + 'ms×' + n).join(' '),
     workMean: +(work.reduce((n, t) => n + t, 0) / work.length).toFixed(1),
     workP95: +work[Math.floor(work.length * 0.95)].toFixed(1),
     workOver20: work.filter((t) => t > 20).length,
