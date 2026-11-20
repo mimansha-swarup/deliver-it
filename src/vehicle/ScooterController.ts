@@ -118,6 +118,16 @@ export type ThrownRider = {
   pace: number
   /** The height of the ground under them, eased so a kerb isn't a jump. */
   ground: number
+  /**
+   * Walking (`stepOnFoot`): how fast they're going over the ground each way, in m/s; the way they
+   * mean to go, around Y; how far they lean into a turn (radians, positive to their left) and tip
+   * forward setting off or back pulling up (radians, positive forward).
+   */
+  walkX: number
+  walkZ: number
+  aim: number
+  lean: number
+  tip: number
 }
 
 export function createScooterState(): ScooterState {
@@ -162,6 +172,11 @@ export function createScooterState(): ScooterState {
       limp: 0,
       stride: 0,
       pace: 0,
+      walkX: 0,
+      walkZ: 0,
+      aim: 0,
+      lean: 0,
+      tip: 0,
       ground: ROAD_HEIGHT,
     },
     // It starts on a road.
@@ -378,8 +393,14 @@ export function isAfoot(state: ScooterState): boolean {
 /**
  * On foot. `walk` is a brisk walk and `run` (the nitro key held) a jog, in m/s: at 2.8 and 6 they
  * were a run and a sprint, and no walk's legs could keep up with the ground without skating.
+ *
+ * `ease`: how long they take to get up to speed and to pull up, in seconds (most of the way in that
+ * time, then settling). `facing`: how quickly the body comes round to the way it's going (per
+ * second), no faster than `turnMost` radians a second. `lean`: how far they lean into a turn, in
+ * radians for each radian a second of turning at a jog, up to `leanMost`; `tip`: how far they tip
+ * forward for each m/s² of setting off (and back, pulling up), up to `tipMost`.
  */
-export const FOOT = { walk: 1.9, run: 4.3, back: 1.3, speedUp: 9, turn: 2.7, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
+export const FOOT = { walk: 1.9, run: 4.3, back: 1.3, ease: 0.24, turn: 2.7, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
 const DISMOUNT_SPEED = 2
 
@@ -417,6 +438,11 @@ export function getOff(state: ScooterState, collisions: CollisionWorld): boolean
   rider.ground = (state.frontWheel.height + state.rearWheel.height) / 2
   rider.y = rider.ground + RIDER_HIP_HEIGHT
   rider.heading = state.heading
+  rider.aim = state.heading
+  rider.walkX = 0
+  rider.walkZ = 0
+  rider.lean = 0
+  rider.tip = 0
   rider.roll = 0
   rider.rollSpeed = 0
   rider.limp = 0
@@ -452,6 +478,38 @@ export function getOn(state: ScooterState): boolean {
  * else, up and down kerbs with the ground; inside a room (game/rooms.ts), kept within its walls
  * and off its furniture.
  */
+/**
+ * Eases a walker's speed towards the speed wanted, turns their body to the way they're going, and
+ * works out their lean. Nothing snaps: the speed closes most of the gap in `FOOT.ease` seconds
+ * (setting off and pulling up alike), and the body comes round at a rate that's quick at first
+ * and gentle at the end, never faster than a person can turn. `facing` is a way to face whatever
+ * the direction of travel (walking backwards), or null to face the way they're going.
+ */
+function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, facing: number | null, dt: number) {
+  const before = Math.hypot(rider.walkX, rider.walkZ)
+  const blend = 1 - Math.exp(-dt / (FOOT.ease / 2.3))
+  rider.walkX += (wishX - rider.walkX) * blend
+  rider.walkZ += (wishZ - rider.walkZ) * blend
+  const speed = Math.hypot(rider.walkX, rider.walkZ)
+  if (speed < 0.03 && wishX === 0 && wishZ === 0) {
+    rider.walkX = 0
+    rider.walkZ = 0
+  }
+  // Round to the way they're going, once they're going anywhere; standing, they keep facing as they were.
+  const towards = facing ?? (speed > 0.25 ? Math.atan2(rider.walkX, rider.walkZ) : rider.heading)
+  const off = Math.atan2(Math.sin(towards - rider.heading), Math.cos(towards - rider.heading))
+  const turn = Math.max(-FOOT.turnMost * dt, Math.min(FOOT.turnMost * dt, off * (1 - Math.exp(-FOOT.facing * dt))))
+  rider.heading += turn
+  // Into the turn, the more the faster they're going; forward as they set off, back as they pull up.
+  const settle = 1 - Math.exp(-8 * dt)
+  const turning = dt > 0 ? turn / dt : 0
+  const lean = Math.max(-FOOT.leanMost, Math.min(FOOT.leanMost, turning * FOOT.lean * Math.min(1, speed / FOOT.run + 0.35)))
+  rider.lean += (lean - rider.lean) * settle
+  const gaining = dt > 0 ? (speed - before) / dt : 0
+  const tip = Math.max(-FOOT.tipMost, Math.min(FOOT.tipMost, gaining * FOOT.tip))
+  rider.tip += (tip - rider.tip) * settle
+}
+
 function stepOnFoot(state: ScooterState, input: DriveInput, collisions: CollisionWorld, surface: Surface, dt: number) {
   const rider = state.rider
   rider.time += dt
@@ -467,15 +525,16 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   rider.off = 1
   rider.limp = 0
   rider.roll = 0
-  rider.heading += (Number(input.left) - Number(input.right)) * FOOT.turn * dt
-  // On foot `velocityX` is the walking speed along the way they face (backwards negative): there's no sideways.
+  // The way they mean to go: the turning keys swing it round, and the body follows.
+  rider.aim += (Number(input.left) - Number(input.right)) * FOOT.turn * dt
   const wanted = liveRoom.frozen ? 0 : input.forward ? (input.nitro ? FOOT.run : FOOT.walk) : input.backward ? -FOOT.back : 0
-  rider.velocityX = moveToward(rider.velocityX, wanted, FOOT.speedUp * dt)
-  const step = rider.velocityX * dt
+  const wishX = Math.sin(rider.aim) * wanted
+  const wishZ = Math.cos(rider.aim) * wanted
+  walkTowards(rider, wishX, wishZ, rider.aim, dt)
   const fromX = rider.x
   const fromZ = rider.z
-  rider.x += Math.sin(rider.heading) * step
-  rider.z += Math.cos(rider.heading) * step
+  rider.x += rider.walkX * dt
+  rider.z += rider.walkZ * dt
   if (liveRoom.kind) {
     liveRoom.keepInside(rider, FOOT.radius)
     rider.ground = liveRoom.floorY

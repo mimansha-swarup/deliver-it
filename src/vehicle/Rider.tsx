@@ -265,7 +265,8 @@ export function Rider({
     const bob = -(gait.crouch + gait.sink * Math.max(leftStep.load, rightStep.load)) * moving * off + BREATH.rise * breath * still
     const sway = gait.sway * (leftStep.load - rightStep.load) * moving * off
     // Leans into a bend harder than the scooter. Off it, they stand up straight, tip a little into a walk, more into a jog.
-    const torso = (seat.lean + crouch * (seat.footDown ? 0.16 : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off
+    const afoot = state.rider.phase === 'afoot' ? off : 0
+    const torso = (seat.lean + crouch * (seat.footDown ? 0.16 : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off + state.rider.tip * afoot
     // Stopped, the hips shift over to the side the foot goes down on.
     const shift = footDown.current * (1 - off)
 
@@ -277,7 +278,9 @@ export function Rider({
       HIP.y + (seat.hip[1] - HIP.y) * on + bob + FOOT_DOWN_HIP_SHIFT.y * shift,
       HIP.z + (seat.hip[2] - HIP.z) * on,
     )
-    group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off))
+    // On foot they lean into a turn from the feet, which stay where they are: the hips move over with the lean.
+    group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off) - state.rider.lean * afoot)
+    group.position.x += state.rider.lean * afoot * 0.5
     group.updateMatrix()
     // The model's own space: the body group's, with the hips raised to where the model has them.
     toRider.copy(group.matrix).multiply(lowerToFeet.makeTranslation(0, -hipsUp, 0))

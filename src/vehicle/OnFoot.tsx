@@ -54,6 +54,9 @@ export function OnFoot({ scooter, collisions, deckCollisions }: { scooter: RefOb
       rider.x = x
       rider.z = z
       rider.heading = heading
+      rider.aim = heading
+      rider.walkX = 0
+      rider.walkZ = 0
       rider.velocityX = 0
       rider.pace = 0
       // Straight onto that floor, or back up onto the street (the ground there is found on the next step).
