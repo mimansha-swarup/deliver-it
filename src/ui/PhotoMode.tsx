@@ -1,3 +1,4 @@
+import { FILE_PREFIX } from '../game/brand'
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -109,7 +110,7 @@ export function PhotoCamera() {
     if (!input.save || !pose.current) return
     input.save = false
     const link = document.createElement('a')
-    link.download = `deliver-it-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`
+    link.download = `${FILE_PREFIX}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`
     link.href = gl.domElement.toDataURL('image/png')
     link.click()
   }, 2)

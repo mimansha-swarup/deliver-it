@@ -1,75 +1,45 @@
-# React + TypeScript + Vite
+# Swalpa Fast · ಸ್ವಲ್ಪ ಫಾಸ್ಟ್
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**A delivery rider's Bengaluru.** Be a delivery rider in a real, living HSR Layout: go online,
+take an order, ride it through real streets, handle whatever the city throws at you, hand it over,
+get rated and paid. Free in the browser, no download; progress saves on the device.
 
-Currently, two official plugins are available:
+"Swalpa Fast" is the game. "Deliver It" is the delivery company inside it: the jacket, the box,
+the dark store and the rider's app.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Read first
 
-## React Compiler
+- [VISION.md](VISION.md): what the game is and isn't, and how a new feature is decided on.
+- [ART_DIRECTION.md](ART_DIRECTION.md): the look, and the two rules every visual change follows.
+- [DEVLOG.md](DEVLOG.md): what changed and why, entry by entry.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Running it
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```sh
+npm install
+npm run dev        # the game at http://localhost:5173 (add ?debug for the debug save and tools)
+npm run build      # type-check and build into dist/
+npm run preview    # serve the build, as players get it
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+The frame benchmark runs against the built game:
+`node --experimental-websocket scripts/bench.mjs --streets shop-street`, with `npm run preview`
+on port 4173 and no other game tab open.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## How it's made
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+React, three.js through @react-three/fiber, Rapier for physics, zustand for state, Vite and
+TypeScript. The city is built in the browser from OpenStreetMap and open building data
+(`public/data`, credits in `public/data/CREDITS.txt`); models are credited in
+`public/models/CREDITS.txt`.
 
-```
+- `src/game`: the rules and saved state (orders, money, the family, the fleet, `brand.ts` for the name).
+- `src/world`, `src/traffic`, `src/vehicle`, `src/camera`, `src/sky`: the city and everything moving in it.
+- `src/ui`: the title screen, menus, HUD and the rider's phone.
+- `art/logo`: the logo's source and exports.
+
+## The brand
+
+Name "Swalpa Fast", Kannada "ಸ್ವಲ್ಪ ಫಾಸ್ಟ್", tagline "A delivery rider's Bengaluru". Yellow
+`#f6b32b`, charcoal `#0e1116`, cream `#fff6e6`. No real brand names appear in the game.

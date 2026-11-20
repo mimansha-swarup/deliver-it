@@ -4,6 +4,7 @@ import { unlockAudio } from '../audio/audioEngine'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch } from '../game/launch'
 import { levelFromXp } from '../game/progression'
+import { GAME_NAME, GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
 import { QualityPicker } from './QualityPicker'
 
 const KEYBOARD_CONTROLS = [
@@ -105,13 +106,13 @@ export function TitleScreen() {
 
       <section className="title-main">
         <h1 className="title-wordmark">
-          Deliver It
+          {GAME_NAME}
           <RoadUnderline />
         </h1>
         <p className="title-kannada" lang="kn">
-          ಡೆಲಿವರ್ ಇಟ್
+          {GAME_NAME_KANNADA}
         </p>
-        <p className="title-lede">Ride orders through HSR Layout, Bengaluru.</p>
+        <p className="title-lede">{TAGLINE}</p>
 
         <div className="title-actions">
           {failed ? (

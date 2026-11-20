@@ -1,3 +1,4 @@
+import { GAME_NAME } from '../game/brand'
 import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useGameStore } from '../game/gameStore'
@@ -185,7 +186,7 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
         ))}
       </div>
 
-      <p className="loading-wordmark">Deliver It</p>
+      <p className="loading-wordmark">{GAME_NAME}</p>
 
       <footer className="loading-footer">
         <ul className="loading-tips">

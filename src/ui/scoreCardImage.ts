@@ -1,3 +1,4 @@
+import { GAME_NAME } from '../game/brand'
 import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
 import { levelFromXp } from '../game/progression'
@@ -162,9 +163,9 @@ export async function buildScoreCard(): Promise<HTMLCanvasElement> {
   context.translate(60, 138)
   context.rotate((-3 * Math.PI) / 180)
   context.font = `800 108px ${FONT}`
-  context.fillText('Deliver It', 0, 0)
+  context.fillText(GAME_NAME, 0, 0)
   context.fillStyle = CHILLI
-  context.fillRect(4, 18, 430, 12)
+  context.fillRect(4, 18, 520, 12)
   context.restore()
   context.fillStyle = INK
   context.font = `700 36px ${FONT}`
@@ -247,5 +248,5 @@ export function scoreCardText(): string {
   const { stats } = useToday.getState()
   const challenge = challengeFor(stats.date)
   const done = challenge.progress(stats) >= challenge.target
-  return `Deliver It daily challenge: ${challenge.text} ${done ? '✅ done!' : '⏳ on it'} ${stats.orders} orders, ₹${stats.earnings} today.`
+  return `${GAME_NAME} daily challenge: ${challenge.text} ${done ? '✅ done!' : '⏳ on it'} ${stats.orders} orders, ₹${stats.earnings} today.`
 }

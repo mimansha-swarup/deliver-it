@@ -1,3 +1,4 @@
+import { FILE_PREFIX } from '../game/brand'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CHALLENGE_BONUS, challengeFor, useToday } from '../game/today'
@@ -41,7 +42,7 @@ function ScoreCardView({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', handleKey, { capture: true })
   }, [onClose])
 
-  const file = () => (card ? new File([card.blob], `deliver-it-${useToday.getState().stats.date}.png`, { type: 'image/png' }) : null)
+  const file = () => (card ? new File([card.blob], `${FILE_PREFIX}-${useToday.getState().stats.date}.png`, { type: 'image/png' }) : null)
   const canShare = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && card !== null && navigator.canShare({ files: [file() as File] })
   const share = async () => {
     const picture = file()
@@ -73,7 +74,7 @@ function ScoreCardView({ onClose }: { onClose: () => void }) {
             </button>
           )}
           {card && (
-            <a className="score-card-save" href={card.url} download={`deliver-it-${useToday.getState().stats.date}.png`}>
+            <a className="score-card-save" href={card.url} download={`${FILE_PREFIX}-${useToday.getState().stats.date}.png`}>
               Save the picture
             </a>
           )}

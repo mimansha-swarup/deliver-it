@@ -70,7 +70,11 @@ function preloadFirstFiles(): PluginOption {
 const wasm = wasmModule as unknown as () => PluginOption
 
 // https://vite.dev/config/
+const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
+
 export default defineConfig({
+  // The game's version, shown on the title screen (src/game/brand.ts).
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // Rapier's standard build imports its .wasm file directly (src/physics/rapier.ts).
   plugins: [react(), wasm(), packMapData(), preloadFirstFiles()],
 })

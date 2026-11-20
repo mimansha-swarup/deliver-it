@@ -1,4 +1,8 @@
-# Vision: the delivery rider's Bengaluru
+# Vision: Swalpa Fast, the delivery rider's Bengaluru
+
+**The name.** The game is "Swalpa Fast" (ಸ್ವಲ್ಪ ಫಾಸ್ಟ್, "a little fast": what every customer asks of
+every rider). "Deliver It" is the delivery company inside the game, on the jacket, the box, the
+dark store and the rider's app, and nowhere else.
 
 ## In one line
 Be a delivery rider in a real, living Bengaluru. Beat the clock, keep customers happy,
@@ -49,7 +53,7 @@ If the answer to 1–3 is no, it waits for later.
 - **Now:** a polished core loop and a great first five minutes (open on an order,
   ride, a funny doorstep scene, a tip, then "you're free to explore"). Fix mouse-look,
   getting stuck, and the safety net so players never get stuck broke.
-- **Next:** the name and logo, sound and voices, daily challenge and share card,
+- **Next:** sound and voices, daily challenge and share card,
   touch controls for phones, then a public launch.
 - **Later:** multiplayer rooms, Explore mode with any vehicle, more neighbourhoods,
   parody delivery brands, the van and bulk orders.

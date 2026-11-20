@@ -1,5 +1,5 @@
 /**
- * Whether this is a phone or tablet. Deliver It is played with a keyboard on a
+ * Whether this is a phone or tablet. Swalpa Fast is played with a keyboard on a
  * computer, so a phone or tablet gets a short page saying so instead of the game.
  *
  * Two things must both be true:

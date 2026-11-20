@@ -1,4 +1,4 @@
-# Art direction: Deliver It
+# Art direction: Swalpa Fast
 
 **Style: stylized realism.** HSR Layout, Bengaluru, as a rider sees it: real proportions,
 real colours and real clutter, with detail simplified to what reads at riding speed.

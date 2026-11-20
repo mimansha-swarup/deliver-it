@@ -1,7 +1,8 @@
+import { GAME_NAME, GAME_NAME_KANNADA } from '../game/brand'
 import { useState } from 'react'
 
 /**
- * What a phone or tablet sees instead of the game. Deliver It needs a keyboard,
+ * What a phone or tablet sees instead of the game. Swalpa Fast needs a keyboard,
  * so this says where to play it and makes the link easy to pass on. It's
  * deliberately light: none of the game's code or files are downloaded on a phone.
  */
@@ -27,16 +28,16 @@ export function MobileNotice() {
 
       <section className="title-main">
         <h1 className="title-wordmark">
-          Deliver It
+          {GAME_NAME}
           <svg className="title-road" viewBox="0 0 400 34" aria-hidden="true" preserveAspectRatio="none">
             <path d="M6 24 C 120 30, 260 30, 394 8" className="title-road-surface" />
             <path d="M6 24 C 120 30, 260 30, 394 8" className="title-road-lines" />
           </svg>
         </h1>
         <p className="title-kannada" lang="kn">
-          ಡೆಲಿವರ್ ಇಟ್
+          {GAME_NAME_KANNADA}
         </p>
-        <p className="title-lede">Deliver It is played on a computer, with a keyboard.</p>
+        <p className="title-lede">{GAME_NAME} is played on a computer, with a keyboard.</p>
         <p className="mobile-notice-text">
           Open this page on a laptop or desktop to ride. Send yourself the link so it's there when you are.
         </p>
@@ -47,7 +48,7 @@ export function MobileNotice() {
               type="button"
               className="title-start"
               data-ready="true"
-              onClick={() => void navigator.share({ title: 'Deliver It', url: address }).catch(() => undefined)}
+              onClick={() => void navigator.share({ title: GAME_NAME, url: address }).catch(() => undefined)}
             >
               <span className="title-start-label">Share the link</span>
             </button>

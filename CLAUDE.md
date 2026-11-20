@@ -1,4 +1,7 @@
-# Deliver It
+# Swalpa Fast
+
+The game is "Swalpa Fast" (ಸ್ವಲ್ಪ ಫಾಸ್ಟ್). "Deliver It" is only the delivery company inside the game:
+the jacket, the box, the dark store and the rider's app. The names are in `src/game/brand.ts`.
 
 ## Vision
 
