@@ -11239,3 +11239,23 @@ mouse coming onto a button now makes the same tick, once per button: the main me
 menu's buttons, everything usable in the Settings, Controls and Credits panels, and the story's
 buttons. Browsers allow no sound until the page has been clicked or a key pressed, so a hover
 before the first click is silent.
+
+## 2026-11-21: Entry 240, four more people on the pavements
+
+Four downloaded models (all CC BY 4.0, credited in `public/models/CREDITS.txt` and on the Credits
+screen) join the man in the kurta and the teenager: a heavy man in a striped shirt, a man in a
+plain shirt, an office-goer in a formal shirt, and a woman in a saree. They're baked by
+`prepare_traffic_models.mjs` like the first two (flattened, colours sampled from their textures,
+arms down, each corner told its limb) into a file of their own, `people.glb` (250 KB compressed),
+so the vehicles weren't rebaked.
+
+- The striped shirt and the saree keep their own colours; the other two take each person's tint.
+- The saree is one cloth over both legs, so her legs swing only 30% as far, or it parted like
+  trousers. Her original is 236,000 triangles in loose pieces, which the simplifier wouldn't take
+  under 13,700; a second, cruder pass that joins pieces brings her to 4,500.
+- Pedestrians are now eight kinds (these four, the first two, and the two women made from the
+  kurta man). Shop-front people use six of them, picked by each person's tint.
+- Customers at the door and the staff are unchanged.
+
+Seen in the game, close up, walking: all four. Four more kinds is four more draw calls for
+pedestrians; the frame benchmark wasn't run.

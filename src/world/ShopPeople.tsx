@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { STRIDE_PER_METRE } from '../traffic/gait'
-import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
+import { getModel, TRAFFIC_MODELS_URL, EXTRA_PEOPLE, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
 import { People } from '../traffic/Traffic'
 import type { Pedestrian } from '../traffic/trafficLogic'
 import { livePlayer } from '../game/livePlayer'
@@ -108,7 +108,12 @@ function stepWalker(walker: Walking, delta: number) {
 
 export function ShopPeople({ people }: { people: ShopLife }) {
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
-  const bodies = useMemo(() => [getModel(scene, 'man'), getModel(scene, 'teen')], [scene])
+  const { scene: extraPeople } = useGLTF(PEOPLE_MODELS_URL)
+  // The plans say one of two bodies; each stands for three here, picked by the person's own tint, so
+  // the same plan gives a mixed crowd: the man, the striped shirt or the office-goer; the teenager,
+  // the man in a plain shirt or the woman in a saree.
+  const bodies = useMemo(() => [getModel(scene, 'man'), getModel(scene, 'teen'), ...EXTRA_PEOPLE.map((name) => getModel(extraPeople, name))], [scene, extraPeople])
+  const bodyOf = (body: number, tint: number) => (body + Math.floor((tint % 1) * 2.999) * 2) % bodies.length
   const low = useGameStore((state) => QUALITY_PRESETS[state.quality].kitDetail === 0)
   const reach = low ? LOW_REACH : REACH
 
@@ -130,8 +135,8 @@ export function ShopPeople({ people }: { people: ShopLife }) {
     // A walker may be anywhere on their stretch by the next pick, so they count from its middle.
     moving.current = shown.filter(({ plan, length }) => isNear((plan.from[0] + plan.to[0]) / 2, (plan.from[1] + plan.to[1]) / 2, length / 2))
     setNear([
-      ...standing.filter(({ person }) => isNear(person.x, person.z)).map(({ person, drawn }) => ({ body: person.body, drawn })),
-      ...moving.current.map(({ plan, person }) => ({ body: plan.body, drawn: person })),
+      ...standing.filter(({ person }) => isNear(person.x, person.z)).map(({ person, drawn }) => ({ body: bodyOf(person.body, person.tint), drawn })),
+      ...moving.current.map(({ plan, person }) => ({ body: bodyOf(plan.body, plan.tint), drawn: person })),
     ])
   })
   const groups = useMemo(() => bodies.map((_, body) => near.filter((item) => item.body === body).map((item) => item.drawn)), [near, bodies])

@@ -1,6 +1,14 @@
 import * as THREE from 'three'
 
 export const TRAFFIC_MODELS_URL = '/models/traffic.glb'
+/**
+ * More people for the pavements, in a file of their own so adding one never rebakes the vehicles
+ * (scripts/prepare_traffic_models.mjs): a man in a striped shirt, a man in a plain one, an
+ * office-goer and a woman in a saree.
+ */
+export const PEOPLE_MODELS_URL = '/models/people.glb'
+export const EXTRA_PEOPLE = ['uncle', 'guy', 'office', 'saree'] as const
+
 /** Kept apart from the rest, because its licence is different. See `models/CREDITS.txt`. */
 export const YAMAHA_MODEL_URL = '/models/yamaha.glb'
 

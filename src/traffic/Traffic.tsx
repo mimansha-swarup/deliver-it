@@ -23,7 +23,7 @@ import { isDebug } from '../dev/spawn'
 import { createRiderModel, createSeatedRiderGeometry, type RiderLook, type Seat } from '../vehicle/riderModel'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
-import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
+import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL, EXTRA_PEOPLE, PEOPLE_MODELS_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanFrom } from './peopleShapes'
 import { createBusGeometry } from './bus'
@@ -919,6 +919,7 @@ export function Traffic({
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
+  const { scene: extraPeople } = useGLTF(PEOPLE_MODELS_URL)
 
   // The bus is built in code (bus.ts), so it needs freeing.
   const busShape = useMemo(() => createBusGeometry(), [])
@@ -951,8 +952,8 @@ export function Traffic({
   // Two women, made from the modelled man in a kurta (peopleShapes.ts): they need freeing, the loaded models don't.
   const women = useMemo(() => [createWomanFrom(getModel(scene, 'man'), 'elder'), createWomanFrom(getModel(scene, 'man'), 'young')], [scene])
   const bodies = useMemo(
-    () => [getModel(scene, 'man'), getModel(scene, 'teen'), ...women],
-    [scene, women],
+    () => [getModel(scene, 'man'), getModel(scene, 'teen'), ...EXTRA_PEOPLE.map((name) => getModel(extraPeople, name)), ...women],
+    [scene, extraPeople, women],
   )
   // These two are still built in code, so they need freeing. Loaded models don't.
   const drawn = useMemo(

@@ -5,6 +5,10 @@
  * The game draws each of these many times, so each must be a few thousand.
  *
  *     node scripts/prepare_traffic_models.mjs <folder of unzipped models>
+ *     node scripts/prepare_traffic_models.mjs <folder> uncle,guy,office,saree   # only these (here, people.glb alone)
+ *
+ * The people added after the first two go in public/models/people.glb, so adding one doesn't
+ * rebake the vehicles. Run scripts/compress_models.mjs afterwards.
  *
  * Each model is flattened into one mesh with no textures: colour is sampled from
  * the texture onto each corner, which also removes printed badges. Interiors go,
@@ -142,6 +146,9 @@ const VEHICLES = [
   },
 ]
 
+/** The file the people added after the first two go in. */
+const PEOPLE_FILE = 'people.glb'
+
 const PEOPLE = [
   {
     name: 'man',
@@ -165,6 +172,53 @@ const PEOPLE = [
     triangles: 3500,
     clothes: /outfit_top/,
     dropMaterial: /Teeth|Cornea|Eyelashes/,
+  },
+  // More people for the pavements, in a file of their own (people.glb), so adding one never rebakes
+  // the vehicles. Their titles and makers are in public/models/CREDITS.txt.
+  {
+    // "Indian Overweight Man Striped Shirt": the same avatar skeleton as the teenager.
+    name: 'uncle',
+    folder: 'indian_overweight_man_striped_shirt',
+    file: PEOPLE_FILE,
+    height: 1.68,
+    triangles: 3800,
+    // His striped shirt is the point of him: it keeps its own colours, and nothing takes a person's tint.
+    clothes: /^$/,
+    dropMaterial: /Teeth|Cornea|Eyelashes/,
+  },
+  {
+    // "Indian Gangster" is the model's title; here he's a man in a shirt on the pavement, like anyone.
+    name: 'guy',
+    folder: 'indian_gangster',
+    file: PEOPLE_FILE,
+    height: 1.74,
+    triangles: 3800,
+    clothes: /outfit_top/,
+    dropMaterial: /Teeth|Cornea|Eyelashes/,
+  },
+  {
+    // "Indian male metaverse avatar in formal Dress": an office-goer.
+    name: 'office',
+    folder: 'indian_male_metaverse_avatar_in_formal_dress',
+    file: PEOPLE_FILE,
+    height: 1.73,
+    triangles: 3500,
+    clothes: /Outfit_Top/,
+    dropMaterial: /Teeth/,
+  },
+  {
+    // "Sareewoman": one material for all of her, so nothing is tinted; and her saree is one cloth
+    // over both legs, so the legs swing only a little under it, or it would part like trousers.
+    name: 'saree',
+    folder: 'sareewoman',
+    file: PEOPLE_FILE,
+    height: 1.6,
+    triangles: 5000,
+    clothes: /^$/,
+    legSwing: 0.3,
+    // A quarter of a million triangles in many loose pieces: she's allowed to drift further from
+    // the original than the others to get down to a pedestrian's share.
+    simplify: { maxError: 0.08, colorWeight: 0.05, normalWeight: 0.02 },
   },
 ]
 
@@ -1229,7 +1283,7 @@ function bakePerson(spec, folder) {
 
   // The swing the game's walking shader reads: one side forward, the other back.
   for (const [corner, share] of shares) {
-    const legs = (share.leftLeg - share.rightLeg) * leftSide
+    const legs = (share.leftLeg - share.rightLeg) * leftSide * (spec.legSwing ?? 1)
     const arms = -(share.leftArm - share.rightArm) * leftSide * (spec.armSwing ?? 1)
     const isArm = share.leftArm + share.rightArm > share.leftLeg + share.rightLeg
     const at = corner * 3
@@ -1337,7 +1391,8 @@ async function main() {
   const farMeshes = []
   for (const [specs, bake] of [[VEHICLES, bakeVehicle], [PEOPLE, bakePerson]]) {
     for (const spec of specs) {
-      if (only && only !== spec.name) continue
+      // One name, or several with commas between: only those are baked, and only their files written.
+      if (only && !only.split(',').includes(spec.name)) continue
       const baked = bake(spec, folder)
       const broken = ['positions', 'normals', 'colors', 'limbs'].filter((field) =>
         baked[field].some((value) => !Number.isFinite(value)),
@@ -1351,7 +1406,14 @@ async function main() {
       // material's exact edge. (The far version still comes from the wrap: one skin, no insides.)
       const { result, error } = spec.nearTriangles
         ? simplify(weld(baked), spec.nearTriangles, { ...DIRECT_SIMPLIFY, colorWeight: spec.nearColorWeight ?? DIRECT_SIMPLIFY.colorWeight })
-        : simplify(welded, spec.triangles, specs === VEHICLES && spec.name !== 'delivery' ? NEAR_SIMPLIFY : {})
+        : simplify(welded, spec.triangles, specs === VEHICLES && spec.name !== 'delivery' ? NEAR_SIMPLIFY : (spec.simplify ?? {}))
+      // A model in many loose pieces (the saree woman) stops far short of its target, as the
+      // simplifier won't join pieces. A second, cruder pass that does join them finishes the job.
+      if (specs === PEOPLE && result.indices.length / 3 > spec.triangles * 1.3) {
+        const cruder = simplify(result, spec.triangles, { sloppy: true, maxError: 0.06 }).result
+        console.log(`  ${spec.name}: ${result.indices.length / 3} -> ${cruder.indices.length / 3} triangles by the cruder pass`)
+        for (const field of ['positions', 'normals', 'colors', 'limbs', 'paints', 'indices']) result[field] = cruder[field]
+      }
       if (spec.wrapCell && !spec.nearTriangles) smoothNormals(result, CREASE)
       const size = getBounds(result).getSize(new THREE.Vector3())
       console.log(

@@ -1,4 +1,4 @@
-3D models in traffic.glb. Each was changed for this game: interiors removed, rebuilt as a
+3D models in traffic.glb and people.glb. Each was changed for this game: interiors removed, rebuilt as a
 simplified low-detail mesh, rescaled, and textures replaced by colours. Vehicle badges are removed.
 The game has no connection with, or endorsement from, any vehicle maker.
 
@@ -20,6 +20,19 @@ All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
   https://sketchfab.com/3d-models/indian-male-character-a311adcb82a3457db16a548a8d261114
 "Indian Teenager" by Pixel_Monster
   https://sketchfab.com/3d-models/indian-teenager-b2804b40f671431ca7b5cc53b239175e
+
+people.glb: more people for the pavements. Each was changed for this game in the same way:
+rebuilt as a simplified low-detail mesh, posed with the arms down, rescaled, and textures replaced
+by colours. All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+"Indian Overweight Man Striped Shirt" by Pixel_Monster
+  https://sketchfab.com/3d-models/indian-overweight-man-striped-shirt-0a6adb6858464e3eb4ffcd2a99d7ba91
+"Indian Gangster" by Pixel_Monster (used as an ordinary passer-by)
+  https://sketchfab.com/3d-models/indian-gangster-76553b4f0dc84c6386e997c80b9b0017
+"Indian male metaverse avatar in formal Dress" by Aashutosh Dabhade
+  https://sketchfab.com/3d-models/indian-male-metaverse-avatar-in-formal-dress-6601baa7ba42442799df5b848400ec69
+"Sareewoman" by dk8026854
+  https://sketchfab.com/3d-models/sareewoman-c686c80a3fc84465b1dad642d3b21fa3
 
 city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
 
