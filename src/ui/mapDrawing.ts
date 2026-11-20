@@ -349,7 +349,8 @@ export function fitCanvas(canvas: HTMLCanvasElement): [number, number] {
  * the map's edge when it's further than the map shows, so it can always be walked back to.
  */
 export function drawParkedVehicle(context: CanvasRenderingContext2D, view: View) {
-  if (!livePlayer.onFoot) return
+  // Also while driving one off the street: their own is still where they left it.
+  if (!livePlayer.awayFromOwn) return
   let [x, y] = toScreen(view, livePlayer.vehicleX, livePlayer.vehicleZ)
   const reach = Math.hypot(x, y)
   const edge = (view.radius ?? Math.min(view.width, view.height) / 2) - 14

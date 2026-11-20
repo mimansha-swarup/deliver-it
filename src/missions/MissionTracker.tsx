@@ -1,5 +1,6 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { borrow } from '../game/borrow'
 import { useGameStore } from '../game/gameStore'
 import { liveMission, livePlayer, liveSky, useOnFoot } from '../game/livePlayer'
 import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
@@ -93,9 +94,11 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     livePlayer.onFoot = afoot
     if (useOnFoot.getState().onFoot !== afoot) useOnFoot.setState({ onFoot: afoot })
     livePlayer.indoors = liveRoom.kind !== null
-    livePlayer.vehicleX = state.x
-    livePlayer.vehicleZ = state.z
-    livePlayer.vehicleHeading = state.heading
+    // The vehicle on the map is the rider's own: where it was left, while they're on one off the street.
+    livePlayer.vehicleX = borrow.own?.x ?? state.x
+    livePlayer.vehicleZ = borrow.own?.z ?? state.z
+    livePlayer.vehicleHeading = borrow.own?.heading ?? state.heading
+    livePlayer.awayFromOwn = afoot || borrow.own !== null
     livePlayer.x = afoot ? state.rider.x : state.x
     livePlayer.z = afoot ? state.rider.z : state.z
     livePlayer.heading = afoot ? state.rider.heading : state.heading

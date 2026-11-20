@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { tuning } from '../vehicle/tuning'
-import { VEHICLES, type VehicleId, type VehicleSpec } from '../vehicle/vehicleCatalog'
+import { liveVehicle, VEHICLES, type VehicleId, type VehicleSpec } from '../vehicle/vehicleCatalog'
 import { useGameStore } from './gameStore'
 import { saveKey } from './saveKeys'
 
@@ -103,6 +103,11 @@ export const serviceState = (km: number): ServiceState => (km >= UPKEEP.overdueK
 
 /** Sets what the upkeep does to the handling: an empty tank crawls, an overdue service is a little slow. */
 function applyToHandling(state: Pick<Upkeep, 'fuel' | 'sinceService' | 'broken'>, id: VehicleId) {
+  // A borrowed vehicle isn't the rider's to fuel or service: it simply runs.
+  if (liveVehicle.spec.borrowed) {
+    tuning.limp = 1
+    return
+  }
   const spec = VEHICLES[id]
   const empty = energyOf(spec) !== 'none' && fuelLevel(state.fuel, id) <= 0
   // Broken down, it doesn't go at all.
@@ -259,4 +264,9 @@ useGameStore.subscribe((state, previous) => {
 // Debug: the upkeep, for scripts (with ?debug).
 if (typeof location !== 'undefined' && (import.meta.env.DEV || new URLSearchParams(location.search).has('debug'))) {
   ;(window as unknown as { __deliverItUpkeep?: typeof useUpkeep }).__deliverItUpkeep = useUpkeep
+}
+
+/** The handling's share of fuel and servicing, worked out again: after the vehicle in use changes hands (game/borrow.ts). */
+export function refreshHandling() {
+  applyToHandling(useUpkeep.getState(), useGameStore.getState().vehicleId)
 }

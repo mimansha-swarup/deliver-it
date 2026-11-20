@@ -53,7 +53,9 @@ export function TitleScreen() {
   const [shown, setShown] = useState(0)
   const [helpOpen, setHelpOpen] = useState(false)
 
-  const play = () => {
+  const play = (explore = false) => {
+    // Explore: the city to roam, with no orders and any vehicle to drive (game/borrow.ts). Play: the career.
+    useGameStore.getState().setExplore(explore)
     // Sound is only allowed after a click or key press, and this is one.
     unlockAudio()
     markLoad('play pressed')
@@ -117,9 +119,14 @@ export function TitleScreen() {
               Download failed. Try again
             </button>
           ) : (
-            <button type="button" className="title-start" data-ready="true" onClick={play}>
+            <button type="button" className="title-start" data-ready="true" onClick={() => play()}>
               <span className="title-start-label">Play</span>
               <kbd>Enter</kbd>
+            </button>
+          )}
+          {!failed && (
+            <button type="button" className="title-help-button title-explore" title="Roam the city: no orders, no fuel, and any vehicle to drive" onClick={() => play(true)}>
+              Explore
             </button>
           )}
           <button

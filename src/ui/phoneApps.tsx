@@ -966,6 +966,9 @@ function SettingsApp({ nav }: { nav: PhoneNav }) {
   const setMusic = useGameStore((state) => state.setMusicOn)
   const setHorns = useGameStore((state) => state.setHornsOn)
   const alwaysWalk = useGameStore((state) => state.alwaysWalk)
+  const explore = useGameStore((state) => state.explore)
+  const anyVehicle = useGameStore((state) => (state.explore ? state.anyVehicleExplore : state.anyVehicle))
+  const setAnyVehicle = useGameStore((state) => state.setAnyVehicle)
   const setAlwaysWalk = useGameStore((state) => state.setAlwaysWalk)
   return (
     <div className="app">
@@ -989,6 +992,17 @@ function SettingsApp({ nav }: { nav: PhoneNav }) {
             <input type="checkbox" checked={hornsOn} onChange={(event) => { setHorns(event.target.checked); event.currentTarget.blur() }} />
             Sound effects
           </label>
+        </section>
+        <section className="app-card">
+          <p className="app-card-title">Vehicles</p>
+          <label className="phone-switch">
+            <input type="checkbox" checked={anyVehicle} onChange={(event) => { setAnyVehicle(event.target.checked); event.currentTarget.blur() }} />
+            Use any vehicle
+          </label>
+          <p className="app-muted">
+            On foot, walk up to any vehicle on the street and press F to drive it: it stops, and its driver steps out to the footpath. Yours stays where you parked it.
+            {explore ? ' On by default in Explore.' : ' Borrowed vehicles can’t carry orders and cost nothing to run.'}
+          </p>
         </section>
         <section className="app-card">
           <p className="app-card-title">Deliveries</p>

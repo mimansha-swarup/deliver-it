@@ -5,6 +5,7 @@ import {
   HEADLIGHT_RANGE,
   HEADLIGHT_SOFTNESS,
 } from '../vehicle/Headlight'
+import { borrow } from '../game/borrow'
 import { playHorn } from '../audio/horns'
 import { playImpact, updateTrafficSounds } from '../audio/trafficSounds'
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
@@ -1013,6 +1014,14 @@ export function Traffic({
     [drawn, lights, woman],
   )
 
+  // "Use any vehicle" looks for one to take among the vehicles in play (game/borrow.ts).
+  useEffect(() => {
+    borrow.world = world
+    borrow.count = vehicles
+    return () => {
+      borrow.world = null
+    }
+  }, [world, vehicles])
   const inPlay = useMemo(() => world.vehicles.slice(0, vehicles), [world, vehicles])
   const people = useMemo(() => world.pedestrians.slice(0, pedestrians), [world, pedestrians])
   // Bike riders who can be thrown off. They're hidden while they're on the bike.
@@ -1106,6 +1115,8 @@ export function Traffic({
         <People key={body.uuid} items={crowds[group]} body={body} />
       ))}
       {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} ground={ROAD_HEIGHT} />}
+      {/* Drivers who have got out of a vehicle the player took ("Use any vehicle"). */}
+      <People items={world.drivers} body={bodies[0]} ground={ROAD_HEIGHT} />
       <CarHeadlights items={inPlay} count={carLights} />
     </>
   )

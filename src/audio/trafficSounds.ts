@@ -57,7 +57,8 @@ export function updateTrafficSounds(vehicles: Vehicle[], listener: Listener, dt:
       let best: Vehicle | null = null
       let bestDistance = HEARING
       for (const vehicle of vehicles) {
-        if (vehicle.lane === -1 || vehicle.body || vehicle.fallen || heard.includes(vehicle)) continue
+        // One the player has taken makes no traffic sound: empty it's switched off, driven it's the player's own engine.
+        if (vehicle.lane === -1 || vehicle.body || vehicle.fallen || vehicle.taken === 'empty' || vehicle.taken === 'driven' || heard.includes(vehicle)) continue
         const distance = Math.hypot(vehicle.x - listener.x, vehicle.z - listener.z)
         if (distance < bestDistance) {
           best = vehicle

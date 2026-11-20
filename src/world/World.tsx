@@ -1,6 +1,7 @@
 import { Suspense, use, useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
+import { borrow } from '../game/borrow'
 import { markPartBuilt, useLaunch, WORLD_PART_COUNT, type WorldPart } from '../game/launch'
 import { useThree } from '@react-three/fiber'
 import { worldPlanner } from './planAhead'
@@ -532,7 +533,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
       worldSurface.report.agara = { ...(worldSurface.report.agara ?? {}), policeMetresFromJunction: Math.round(nearest.distance) }
     }
   }
-  if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic })
+  if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic, __deliverItBorrow: borrow })
   lap('road features and traffic')
   yield STEP
   // After the lanes, so parked cars don't count as blocking them: traffic eases out around them instead.

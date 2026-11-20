@@ -31,6 +31,7 @@ import { tuning } from './tuning'
 import { liveSeat } from './riderSeat'
 import { createBuiltVehicle, disposeBuilt } from './vehicleBodies'
 import { liveVehicle, VEHICLES } from './vehicleCatalog'
+import { borrow } from '../game/borrow'
 import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { useDriveInput } from './useDriveInput'
@@ -382,6 +383,12 @@ export function Scooter({
   const lean = useRef<Group>(null)
   const body = useRef<Group>(null)
   const riderRoot = useRef<Group>(null)
+  // On a vehicle off the street (game/borrow.ts), the traffic draws what the rider drives: their own
+  // vehicle isn't drawn here under them, but standing where they left it.
+  const ownOuter = useRef<Group>(null)
+  const ownInner = useRef<Group>(null)
+  const parked = useRef<Group>(null)
+  const restLift = useRef(0)
 
   useFrame((_, delta) => {
     const state = scooterState.current
@@ -439,16 +446,47 @@ export function Scooter({
       if (dent) dent.visible = index < tuning.dents
     })
     // From the driver's seat the driver themself isn't drawn: the camera is where their head is.
-    riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null)
+    const borrowing = borrow.vehicle !== null
+    // Inside a borrowed car, auto or bus, the driver isn't seen; on a borrowed two-wheeler they ride it.
+    riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null) && !(borrowing && state.rider.phase === 'on' && liveVehicle.spec.size.cab)
+    if (ownOuter.current) ownOuter.current.visible = !borrowing
+    if (ownInner.current) ownInner.current.visible = !borrowing
+    if (!borrowing && Math.abs(state.lean) < 0.02 && state.crashLeft === 0) restLift.current = lean.current.position.y
+    if (parked.current) {
+      parked.current.visible = borrowing && borrow.own !== null
+      if (borrow.own) {
+        parked.current.position.set(borrow.own.x, restLift.current, borrow.own.z)
+        parked.current.rotation.y = borrow.own.heading
+      }
+    }
   })
 
   return (
+    <>
+    {/* The rider's own vehicle, standing where they left it, while they drive one off the street. */}
+    <group ref={parked} visible={false}>
+      {built.wheels.map(({ geometry, at }, index) => (
+        <mesh key={index} position={at} geometry={geometry} material={materials.bike} />
+      ))}
+      {built.crank && <mesh position={built.crank.at} geometry={built.crank.geometry} material={materials.bike} />}
+      <mesh geometry={built.body} material={materials.bike} />
+      {built.glass && <mesh geometry={built.glass} material={glass} renderOrder={2} />}
+      {built.column && <mesh geometry={built.column.geometry} material={materials.bike} />}
+      {built.logoBox && <BoxLogos bounds={new THREE.Box3(new Vector3(...built.logoBox.min), new Vector3(...built.logoBox.max))} />}
+      {ownScooter && (
+        <>
+          <mesh geometry={parts.box} material={materials.box} />
+          <BoxLogos bounds={boxBounds} />
+        </>
+      )}
+    </group>
     <group ref={ref}>
       {/* Tilts with the ground under the wheels, about the point between the axles. */}
       <group ref={terrain}>
         <group position={[0, 0, -axleMiddle]}>
           <BlobShadow />
           <group ref={lean}>
+            <group ref={ownOuter}>
             {built.wheels.map(({ geometry, at, steers }, index) =>
               steers && built.column ? null : (
                 // A wheel on its axle: one that steers (a car's) turns about its own middle first.
@@ -464,9 +502,11 @@ export function Scooter({
                 <mesh geometry={built.crank.geometry} material={materials.bike} />
               </group>
             )}
+            </group>
 
             {/* Everything the suspension carries, which pitches under braking and power. */}
             <group ref={body}>
+              <group ref={ownInner}>
               <mesh geometry={built.body} material={materials.bike} />
               {built.glass && <mesh geometry={built.glass} material={glass} renderOrder={2} />}
               {spec.size.cab &&
@@ -500,6 +540,7 @@ export function Scooter({
                   <NitroFlame scooter={scooterState} />
                 </>
               )}
+              </group>
               <group ref={riderRoot} matrixAutoUpdate={false}>
                 <Rider
                   scooter={scooterState}
@@ -513,5 +554,6 @@ export function Scooter({
         </group>
       </group>
     </group>
+    </>
   )
 }

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useBorrow } from '../game/borrow'
+import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { VEHICLES } from '../vehicle/vehicleCatalog'
 import { useOnFoot } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
@@ -140,7 +142,10 @@ function Speedometer() {
   const atBunk = useGameStore((state) => state.atBunk)
   // The vehicle in use: its name, how it's driven, and the speed as a share of its own top speed.
   const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
-  const share = Math.min(1, speedKmh / spec.topSpeed)
+  // On one off the street (game/borrow.ts): its name, and no tank to show, as it isn't the rider's to fill.
+  const borrowedName = useBorrow((state) => state.name)
+  const top = borrowedName ? liveVehicle.spec.topSpeed : spec.topSpeed
+  const share = Math.min(1, speedKmh / top)
   // Off the vehicle, its speed and tank say nothing: only a small badge.
   const onFoot = useOnFoot((state) => state.onFoot)
   if (onFoot) {
@@ -165,9 +170,9 @@ function Speedometer() {
       <span className="hud-speed-scale" aria-hidden="true">
         <span className="hud-speed-scale-fill" style={{ width: `${share * 100}%` }} />
       </span>
-      <p className="hud-speed-vehicle">{spec.name} · {spec.drive} · top {spec.topSpeed}</p>
-      <FuelGauge />
-      {spec.feel.nitro && <NitroGauge nitro={nitro} burning={nitroOn} />}
+      <p className="hud-speed-vehicle">{borrowedName ? `${borrowedName} · top ${top}` : `${spec.name} · ${spec.drive} · top ${spec.topSpeed}`}</p>
+      {!borrowedName && <FuelGauge />}
+      {!borrowedName && spec.feel.nitro && <NitroGauge nitro={nitro} burning={nitroOn} />}
     </section>
   )
 }

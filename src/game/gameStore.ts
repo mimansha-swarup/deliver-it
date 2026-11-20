@@ -126,6 +126,16 @@ type GameState = Telemetry & {
   /** Settings: every order is walked to its door, with no quick handover at the kerb. */
   alwaysWalk: boolean
   setAlwaysWalk: (on: boolean) => void
+  /**
+   * Settings: "Use any vehicle" (game/borrow.ts). Off by default in the career, on by default in Explore;
+   * each mode keeps its own choice.
+   */
+  anyVehicle: boolean
+  anyVehicleExplore: boolean
+  setAnyVehicle: (on: boolean) => void
+  /** Explore: started from the title screen to roam the city with no orders, no fuel and any vehicle. Not saved. */
+  explore: boolean
+  setExplore: (on: boolean) => void
   /** The Garage: upgrade levels, the paint and helmet in use, and the colours owned. */
   upgrades: UpgradeLevels
   /** The vehicle in use (vehicle/vehicleCatalog.ts): the rider's own scooter, or one from GaadiGo. */
@@ -467,6 +477,9 @@ export const useGameStore = create<GameState>()(
       musicOn: true,
       hornsOn: true,
       alwaysWalk: false,
+      anyVehicle: false,
+      anyVehicleExplore: true,
+      explore: false,
       atStore: false,
       upgrades: { engine: 0, tyres: 0, brakes: 0 },
       vehicleId: 'scooter',
@@ -665,6 +678,8 @@ export const useGameStore = create<GameState>()(
   goOnline: () =>
     set((state) => {
       if (state.duty === 'online') return state
+      // Explore is for roaming: no orders come. The career is a Play away.
+      if (state.explore) return { messages: replaceTagged(state.messages, [{ tag: 'online', text: 'Explore mode: no orders here, maga. Just ride. For work, start from Play.' }]) }
       const period = dayPeriod(liveSky.hours)
       const goal = createShiftGoal(liveSky.hours, levelFromXp(state.xp), Math.random)
       const rate = acceptanceRate(state.answers)
@@ -864,6 +879,8 @@ export const useGameStore = create<GameState>()(
   setMusicOn: (musicOn) => set({ musicOn }),
   setHornsOn: (hornsOn) => set({ hornsOn }),
   setAlwaysWalk: (alwaysWalk) => set({ alwaysWalk }),
+  setAnyVehicle: (on) => set((state) => (state.explore ? { anyVehicleExplore: on } : { anyVehicle: on })),
+  setExplore: (explore) => set({ explore }),
   buyUpgrade: (kind) =>
     set((state) => {
       const level = state.upgrades[kind]
@@ -910,6 +927,8 @@ export const useGameStore = create<GameState>()(
         musicOn: state.musicOn,
         hornsOn: state.hornsOn,
         alwaysWalk: state.alwaysWalk,
+        anyVehicle: state.anyVehicle,
+        anyVehicleExplore: state.anyVehicleExplore,
         upgrades: state.upgrades,
         vehicleId: state.vehicleId,
         paintId: state.paintId,

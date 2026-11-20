@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { borrow, driveOffer, followWanted } from '../game/borrow'
 import { useGameStore } from '../game/gameStore'
 import { isNearInterest, spotInReach } from '../game/interact'
 import { isKey } from '../game/keyBindings'
@@ -37,7 +38,10 @@ export function OnFoot({ scooter, collisions, deckCollisions }: { scooter: RefOb
       if (state.rider.phase === 'on') {
         const level = scooterLevel(state)
         if (getOff(state, level > UP_ON_DECK ? deckCollisions(level) : collisions)) liveVehicle.cockpit = false
-      } else getOn(state)
+      } else if (!getOn(state) && state.rider.phase === 'afoot' && !liveRoom.kind) {
+        // Away from the vehicle they came on: their own, if it's the one beside them, or one off the street ("Use any vehicle").
+        driveOffer(state)?.run()
+      }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -68,8 +72,14 @@ export function OnFoot({ scooter, collisions, deckCollisions }: { scooter: RefOb
     const stopped = state.rider.phase === 'on' && state.crashLeft === 0 && getTravelSpeed(state) < 0.6
     // Off: stopped near something to walk to. On: beside the vehicle.
     if (stopped && isNearInterest(state.x, state.z)) setPrompt('mount', { action: 'mount', text: liveVehicle.spec.size.cab ? 'Get out' : 'Get off', priority: 1 })
+    else if (stopped && borrow.vehicle) setPrompt('mount', { action: 'mount', text: 'Get out', priority: 1 })
     else if (afoot && isBesideVehicle(state)) setPrompt('mount', { action: 'mount', text: name, priority: 1 })
-    else setPrompt('mount', null)
+    else {
+      // "F · Drive" by any vehicle on the street while the setting is on; "F · Get on your scooter" back at their own.
+      const offer = afoot && !liveRoom.kind ? driveOffer(state) : null
+      setPrompt('mount', offer ? { action: 'mount', text: offer.text, priority: 1 } : null)
+    }
+    followWanted(state)
 
     const spot = state.rider.phase === 'afoot' && !liveRoom.frozen ? spotInReach(state.rider.x, state.rider.z, liveRoom.kind) : null
     setPrompt('interact', spot ? { action: 'interact', text: spot.text, run: spot.run, priority: 2 } : null)
