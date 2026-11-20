@@ -28,6 +28,51 @@ export const JOG = {
 export const JOG_STRIDE_PER_METRE = (Math.PI * 2 * JOG.stance) / (2 * JOG.reach)
 
 /**
+ * How the rider moves on foot, as a set of cycles blended by speed: standing (idle), a turn on the
+ * spot, a walk and a jog. Each is the same planted-foot stride as `JOG` with its own numbers, so
+ * one blends into the next with no change of footing.
+ *
+ * `stance`: the share of a stride each foot is on the ground (over half in a walk, when both feet
+ * are down between steps; under half in a jog, which has a moment in the air). `reach`: how far a
+ * foot lands ahead of the hip. `armSwing`: how far a hand swings, and `armBend`: how much the
+ * elbows are held bent (a jog) instead of hanging (a walk). `lean`: how far the body tips
+ * forward, in radians. `sway`: how far the hips move over the standing foot, in metres.
+ */
+export type Gait = { stance: number; reach: number; footLift: number; crouch: number; sink: number; armSwing: number; armBend: number; lean: number; sway: number; feetApart: number }
+
+export const WALK: Gait = { stance: 0.62, reach: 0.44, footLift: 0.075, crouch: 0.012, sink: 0.014, armSwing: 0.17, armBend: 0, lean: 0.035, sway: 0.022, feetApart: 0.09 }
+export const JOG_GAIT: Gait = { stance: JOG.stance, reach: JOG.reach, footLift: JOG.footLift, crouch: JOG.crouch, sink: JOG.sink, armSwing: 0.22, armBend: 1, lean: 0.2, sway: 0.008, feetApart: 0.11 }
+/** A step taken turning on the spot: short and low. */
+export const SHUFFLE = { reach: 0.1, footLift: 0.045, pace: 0.5 }
+
+/**
+ * The walk gives way to the jog between these speeds, in m/s; below `full` a walk's steps shorten
+ * with the speed, down to `shortest` of their length, so setting off and pulling up are small steps
+ * and not full strides taken slowly; and under `still` there's no stride at all.
+ */
+export const GAIT_SPEEDS = { walkTo: 2.5, jogFrom: 3.6, full: 1.7, shortest: 0.4, still: 0.45 }
+
+const GAIT_KEYS = Object.keys(WALK) as (keyof Gait)[]
+
+/** The gait for a speed on foot, into `gait`, and how much of a stride there is at all (0 standing, 1 moving). */
+export function gaitAt(pace: number, gait: Gait): number {
+  const amount = Math.min(1, pace / GAIT_SPEEDS.still)
+  const jog = Math.min(1, Math.max(0, (pace - GAIT_SPEEDS.walkTo) / (GAIT_SPEEDS.jogFrom - GAIT_SPEEDS.walkTo)))
+  const blend = jog * jog * (3 - 2 * jog)
+  for (const key of GAIT_KEYS) gait[key] = WALK[key] + (JOG_GAIT[key] - WALK[key]) * blend
+  const short = GAIT_SPEEDS.shortest + (1 - GAIT_SPEEDS.shortest) * Math.min(1, pace / GAIT_SPEEDS.full)
+  gait.reach *= short + (1 - short) * blend
+  return amount
+}
+
+/** Radians of stride per metre at a speed on foot: what keeps the planted foot still on the ground, whatever the gait. */
+export function stridePerMetre(pace: number): number {
+  gaitAt(pace, scratchGait)
+  return (Math.PI * 2 * scratchGait.stance) / (2 * scratchGait.reach)
+}
+const scratchGait: Gait = { ...WALK }
+
+/**
  * A ball that stands for part of a body or bike when checking what touches the
  * ground: its middle, in the space of whatever it belongs to, and its radius.
  * Checking a few dozen balls is far cheaper than every corner of the shapes.
