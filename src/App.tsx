@@ -39,7 +39,8 @@ import { Minimap } from './ui/Minimap'
 import { FullMap } from './ui/FullMap'
 import { PhotoModeUi } from './ui/PhotoMode'
 import { HelpOverlay } from './ui/HelpOverlay'
-import { setMapOpen } from './ui/uiState'
+import { PauseClock, PauseMenu } from './ui/PauseMenu'
+import { setMapOpen, usePause } from './ui/uiState'
 import { ChatBubbles } from './ui/ChatBubbles'
 import { Attribution } from './ui/Credits'
 
@@ -77,9 +78,11 @@ function GameUi() {
 function RidingUi() {
   // Photo mode hides all of it but the sounds and its own overlay.
   const photoMode = useGameStore((state) => state.photoMode)
+  // The pause menu has the screen to itself too.
+  const paused = usePause((state) => state.open)
   return (
     <>
-      <div className="riding-ui" hidden={photoMode}>
+      <div className="riding-ui" hidden={photoMode || paused}>
       <Hud />
       <DutyUi />
       <Objective />
@@ -103,6 +106,7 @@ function RidingUi() {
       <RoomFade />
       <FpsOverlay />
       <HelpOverlay />
+      <PauseMenu />
     </>
   )
 }
@@ -132,6 +136,7 @@ function App() {
           <ViewDistance />
           <AdaptiveResolution />
           <DevStats />
+          <PauseClock />
           <PostEffects />
           {buildWorld && (
             <Suspense fallback={null}>

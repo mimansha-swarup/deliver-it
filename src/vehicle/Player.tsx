@@ -23,6 +23,7 @@ import { PlayerSounds } from '../audio/PlayerSounds'
 import { BunkRefill } from './BunkRefill'
 import { FleetClock } from './FleetClock'
 import { OnFoot } from './OnFoot'
+import { Unstuck } from './Unstuck'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
@@ -83,6 +84,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <DoorMarker />
       <HomeMarker />
       <PhotoCamera />
+      <Unstuck scooter={scooterState} traffic={traffic} />
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
       <Errand scooter={scooterState} stores={stores} />
       <Eating scooter={scooterState} />
