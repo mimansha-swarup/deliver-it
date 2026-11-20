@@ -1,7 +1,7 @@
 import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useState } from 'react'
 import { unlockAudio } from '../audio/audioEngine'
-import { GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
+import { GAME_NAME_KANNADA, NOW_RIDING, TAGLINE } from '../game/brand'
 import { averageRating } from '../game/fleet'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch } from '../game/launch'
@@ -107,6 +107,7 @@ export function TitleScreen() {
           {GAME_NAME_KANNADA}
         </p>
         <p className="title-lede">{TAGLINE}</p>
+        <p className="title-where">{NOW_RIDING}</p>
       </header>
 
       {view === 'story' ? (

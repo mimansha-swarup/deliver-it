@@ -1,4 +1,4 @@
-import { GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
+import { GAME_NAME_KANNADA, NOW_RIDING, TAGLINE } from '../game/brand'
 import { Logo } from './Logo'
 import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
@@ -179,6 +179,7 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
           {GAME_NAME_KANNADA}
         </p>
         <p className="title-lede">{TAGLINE}</p>
+        <p className="title-where">{NOW_RIDING}</p>
       </header>
 
       <footer className="loading-footer">

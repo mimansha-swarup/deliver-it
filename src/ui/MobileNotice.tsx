@@ -1,4 +1,4 @@
-import { GAME_NAME, GAME_NAME_KANNADA } from '../game/brand'
+import { GAME_NAME, GAME_NAME_KANNADA, NOW_RIDING } from '../game/brand'
 import { Logo } from './Logo'
 import { useState } from 'react'
 
@@ -34,6 +34,7 @@ export function MobileNotice() {
         <p className="title-kannada" lang="kn">
           {GAME_NAME_KANNADA}
         </p>
+        <p className="title-where">{NOW_RIDING}</p>
         <p className="title-lede">{GAME_NAME} is played on a computer, with a keyboard.</p>
         <p className="mobile-notice-text">
           Open this page on a laptop or desktop to ride. Send yourself the link so it's there when you are.

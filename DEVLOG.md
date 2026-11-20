@@ -11223,3 +11223,11 @@ Asked for on foot, Unstuck moved the vehicle to the road and left the rider stan
 were: they were marked as riding but still drawn off the seat. They're now seated on it, at the
 road, facing along it. From inside a room they're out of it at once, by the door they came in at,
 and the road nearest that door is the one used.
+
+## 2026-11-21: Entry 238, "Now riding: HSR Layout"
+
+The tagline says Bengaluru and the map is HSR Layout and Agara. The tagline stays (the game's
+feel is the city's, and more neighbourhoods are planned), with a line under it that says where
+the game is set so far: "Now riding: HSR Layout" (`NOW_RIDING` in brand.ts), on a small yellow tag
+on the title, loading and phone-notice screens and the share image, and in the share description.
+When a neighbourhood is added, that one line changes.

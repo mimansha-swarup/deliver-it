@@ -6,6 +6,8 @@
 export const GAME_NAME = 'Swalpa Fast'
 export const GAME_NAME_KANNADA = 'ಸ್ವಲ್ಪ ಫಾಸ್ಟ್'
 export const TAGLINE = 'A delivery rider’s Bengaluru'
+/** Where in Bengaluru the game is set so far: said under the tagline, so the name doesn't promise the whole city. */
+export const NOW_RIDING = 'Now riding: HSR Layout'
 /** The game's version, from package.json (vite.config.ts). */
 export const VERSION: string = __APP_VERSION__
 /** A file name's start for anything saved from the game (photos, the score card). */

@@ -128,7 +128,7 @@ export const brandExport = {
   },
 
   /** The share image, 1200 by 630: the game's picture as it is now, shaded on the left, with the logo and the tagline. */
-  async share(tagline: string, kannada: string, name = 'share') {
+  async share(tagline: string, kannada: string, where: string, name = 'share') {
     const { canvas, context } = await frame(1200, 630)
     const shade = context.createLinearGradient(0, 0, 760, 0)
     shade.addColorStop(0, 'rgb(8 10 14 / 78%)')
@@ -136,15 +136,24 @@ export const brandExport = {
     context.fillStyle = shade
     context.fillRect(0, 0, 1200, 630)
     const logo = await picture(await logoSvg())
-    context.drawImage(logo, 36, 110, 576, 320)
+    context.drawImage(logo, 36, 70, 576, 320)
     await document.fonts.load("800 40px 'Baloo Tamma 2'", `${kannada}${tagline}`)
     context.textBaseline = 'alphabetic'
     context.fillStyle = BRAND.yellow
     context.font = "800 40px 'Baloo Tamma 2'"
-    context.fillText(kannada, 72, 492)
+    context.fillText(kannada, 72, 452)
     context.fillStyle = BRAND.cream
     context.font = "800 34px 'Baloo Tamma 2'"
-    context.fillText(tagline, 72, 546)
+    context.fillText(tagline, 72, 506)
+    // Where the game is set so far, on a yellow tag under the tagline.
+    context.font = "800 24px 'Baloo Tamma 2'"
+    const wide = context.measureText(where).width + 28
+    context.fillStyle = BRAND.yellow
+    context.beginPath()
+    context.roundRect(72, 526, wide, 36, 18)
+    context.fill()
+    context.fillStyle = BRAND.charcoal
+    context.fillText(where, 86, 552)
     return send(`${name}.jpg`, await blobOf(canvas, 'image/jpeg', 0.86))
   },
 
