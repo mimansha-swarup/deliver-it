@@ -11185,3 +11185,14 @@ real site (the tags give the picture as `/share.jpg`, which some sites want as a
 - The icon is now the logo's leaning S in charcoal on yellow, with the logo's three speed lines
   (the letter alone at 16 and 32, where the lines were only smudges). It was the Kannada letter ಸ.
   All six sizes and `art/logo/icon.svg` were made again by `dev/brandExport.ts`.
+
+## 2026-11-21: Entry 234, the loading screen in the new look
+
+The loading screen still had the old look: screenshots in comic panels with black gutters and the
+name on a tilted yellow tag. It now carries on from the main menu: the same three pictures, each
+filling the screen and drifting, in the same order, with the logo, Kannada name and tagline exactly
+where the title has them, so choosing Continue changes the buttons and nothing else. The tips are
+marked "Tip" and rewritten for the game as it is (the phone, pausing and Unstuck, speed breakers,
+getting off to walk in); the two progress bars are a little thicker and the spinner is yellow.
+Everything that moves is still a CSS animation of position or opacity, as the city's building
+keeps the page busy. Checked: the screen shows, and the ride starts from it as before.

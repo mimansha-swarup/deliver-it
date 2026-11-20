@@ -2084,18 +2084,19 @@ body,
 }
 
 /*
- * The loading screen, between Play and riding: the game's screenshots in panels
- * with black gutters, each drifting slowly, scenes taking turns, and tips and
- * progress along the bottom. Building the city keeps the page's JavaScript busy
+ * The loading screen, between the menu and riding: the title's pictures filling the
+ * screen, each drifting slowly and taking turns, the logo where the title has it, and
+ * tips and progress along the bottom. Building the city keeps the page's JavaScript busy
  * for seconds at a time, so everything that moves here animates only transform
  * and opacity, which the browser can keep running on its own.
  */
 .loading-screen {
-  --loading-ink: #0b0709;
+  --loading-ink: #0e1116;
   --loading-chalk: #fff6e6;
   --loading-muted: rgb(255 246 230 / 70%);
   --loading-marigold: #f6b32b;
-  --loading-gutter: clamp(6px, 0.8vw, 12px);
+  /* The pictures fill the screen now: no gutters between panels. */
+  --loading-gutter: 0px;
 
   position: fixed;
   inset: 0;
@@ -2126,24 +2127,6 @@ body,
   opacity: 0;
   animation: loading-scene 27s linear infinite both;
   will-change: opacity;
-}
-
-.loading-scene[data-layout='feature'] {
-  grid-template-columns: 3fr 2fr;
-  grid-template-rows: 1fr 1fr;
-}
-
-.loading-scene[data-layout='feature'] .loading-panel:first-child {
-  grid-row: span 2;
-}
-
-.loading-scene[data-layout='banner'] {
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 3fr 2fr;
-}
-
-.loading-scene[data-layout='banner'] .loading-panel:first-child {
-  grid-column: span 2;
 }
 
 @keyframes loading-scene {
@@ -2244,18 +2227,35 @@ body,
   }
 }
 
-.loading-wordmark {
+/* The brand, where the title screen has it (ui/TitleScreen.tsx), over the same shade on the left. */
+.loading-brand {
   position: absolute;
-  top: clamp(16px, 4vh, 36px);
-  left: clamp(16px, 4vw, 48px);
+  top: clamp(12px, 3.5vh, 44px);
+  left: var(--title-left);
+}
+
+.loading-brand p {
   margin: 0;
-  padding: 2px 14px 0;
-  color: #2a1300;
-  background: var(--loading-marigold);
-  font-size: clamp(20px, 2.4vw, 30px);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  transform: rotate(-2deg);
+}
+
+.loading-art::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(8 10 14 / 72%) 0%, rgb(8 10 14 / 38%) 32%, rgb(8 10 14 / 0%) 55%);
+  content: '';
+}
+
+.loading-panel img {
+  filter: saturate(1.25) contrast(1.06) brightness(1.04);
+}
+
+.loading-tip-label {
+  display: block;
+  color: var(--title-kannada);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .loading-footer {
@@ -2267,8 +2267,8 @@ body,
   gap: 32px;
   align-items: flex-end;
   justify-content: space-between;
-  padding: 120px clamp(16px, 4vw, 48px) clamp(16px, 4vh, 36px);
-  background: linear-gradient(0deg, rgb(11 7 9 / 92%) 0%, rgb(11 7 9 / 70%) 45%, rgb(11 7 9 / 0%) 100%);
+  padding: 120px var(--title-left) clamp(16px, 4vh, 36px);
+  background: linear-gradient(0deg, rgb(8 10 14 / 92%) 0%, rgb(8 10 14 / 70%) 45%, rgb(8 10 14 / 0%) 100%);
 }
 
 /* Six tips of seven seconds each, one at a time. */
@@ -2288,8 +2288,9 @@ body,
   position: absolute;
   bottom: 0;
   left: 0;
-  padding-left: 14px;
-  border-left: 3px solid var(--loading-marigold);
+  padding-left: 16px;
+  border-left: 5px solid var(--loading-marigold);
+  font-weight: 600;
   opacity: 0;
   animation: loading-tip 42s linear infinite both;
 }
@@ -2341,9 +2342,10 @@ body,
 .loading-bar {
   position: relative;
   display: block;
-  height: 3px;
+  height: 5px;
   overflow: hidden;
-  background: rgb(255 246 230 / 16%);
+  border-radius: 3px;
+  background: rgb(255 246 230 / 18%);
 }
 
 .loading-bar span {
@@ -2388,7 +2390,7 @@ body,
   width: 20px;
   height: 20px;
   border: 3px solid rgb(255 246 230 / 25%);
-  border-top-color: var(--loading-chalk);
+  border-top-color: var(--loading-marigold);
   border-radius: 50%;
   animation: loading-spin 0.9s linear infinite;
   will-change: transform;
@@ -2417,15 +2419,6 @@ body,
   .loading-footer {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .loading-scene[data-layout='feature'] {
-    grid-template-columns: 1fr;
-    grid-template-rows: 2fr 1fr 1fr;
-  }
-
-  .loading-scene[data-layout='feature'] .loading-panel:first-child {
-    grid-row: auto;
   }
 }
 

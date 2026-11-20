@@ -1,4 +1,5 @@
-import { GAME_NAME } from '../game/brand'
+import { GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
+import { Logo } from './Logo'
 import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useGameStore } from '../game/gameStore'
@@ -8,31 +9,14 @@ import { useLaunch, WORLD_PART_COUNT, WORLD_PARTS } from '../game/launch'
 const NEAR_WAIT_MS = 4000
 
 /**
- * The pictures, laid out as panels. Each scene is a few crops of the game's own
- * screenshots, and the scenes take turns. `x` and `y` pick which part of the
- * shot the panel shows, and `pan` which way it drifts.
+ * The pictures behind: the title screen's own three, in the same order and each filling the screen,
+ * so going from the menu to here the picture stays and only the buttons change. `x` and `y` pick
+ * which part of the shot shows on a narrow window, and `pan` which way it drifts.
  */
 const SCENES = [
-  {
-    layout: 'feature',
-    panels: [
-      { src: '/title/27th-main-morning.jpg', x: 55, y: 55, pan: 'left' },
-      { src: '/title/agara-flyover-golden-hour.jpg', x: 75, y: 50, pan: 'up' },
-      { src: '/title/night-rain.jpg', x: 70, y: 55, pan: 'right' },
-    ],
-  },
-  {
-    layout: 'banner',
-    panels: [
-      { src: '/title/agara-flyover-golden-hour.jpg', x: 72, y: 55, pan: 'in' },
-      { src: '/title/night-rain.jpg', x: 70, y: 50, pan: 'right' },
-      { src: '/title/27th-main-morning.jpg', x: 88, y: 40, pan: 'left' },
-    ],
-  },
-  {
-    layout: 'full',
-    panels: [{ src: '/title/night-rain.jpg', x: 65, y: 55, pan: 'in' }],
-  },
+  { layout: 'agara', panels: [{ src: '/title/agara-flyover-golden-hour.jpg', x: 70, y: 55, pan: 'in' }] },
+  { layout: 'morning', panels: [{ src: '/title/27th-main-morning.jpg', x: 55, y: 55, pan: 'left' }] },
+  { layout: 'rain', panels: [{ src: '/title/night-rain.jpg', x: 55, y: 55, pan: 'right' }] },
 ] as const
 
 /** Each scene stays this long, in seconds. Kept in step with the CSS. */
@@ -40,10 +24,10 @@ const SCENE_SECONDS = 9
 
 const TIPS = [
   'Hold Space while you turn to drift. Let go to get a boost.',
-  'Press P for your phone: the route, the next stop and what you have earned.',
-  'Every delivery pays its base reward, however the ride goes.',
-  'R changes the radio station, and H sounds the horn.',
-  'N skips ahead in time, and M changes the weather.',
+  'P brings up your phone: orders, messages from home, the map and your wallet.',
+  'Stuck somewhere? Esc pauses, and Unstuck puts you back on the nearest road.',
+  'Slow down for speed breakers. The parcel feels every one of them.',
+  'F gets you off the scooter. Flats and the dark store are walked into.',
   "The streets, buildings and parks are HSR Layout's own, mapped by OpenStreetMap volunteers.",
 ]
 /** Each tip stays this long, in seconds. Kept in step with the CSS. */
@@ -65,8 +49,8 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
 }
 
 /**
- * Between Play and riding: the game's screenshots in panels, drifting, with tips
- * underneath and a spinner. It shows the download, if it hasn't finished, and
+ * Between the menu and riding: the title's pictures filling the screen and drifting, the logo
+ * where the title has it, tips underneath and a spinner. It shows the download, if it hasn't finished, and
  * the city being built, side by side, and starts the ride once both are done.
  *
  * Building the city keeps the page busy for seconds at a time, and nothing
@@ -162,7 +146,7 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
   return (
     <main
       ref={root}
-      className="loading-screen"
+      className="loading-screen menu-skin"
       data-leaving={started}
       onTransitionEnd={(event) => {
         if (event.target === event.currentTarget && started) onGone()
@@ -186,12 +170,22 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
         ))}
       </div>
 
-      <p className="loading-wordmark">{GAME_NAME}</p>
+      {/* The brand, where the title screen has it, so it doesn't move between the two. */}
+      <header className="title-brand loading-brand">
+        <p className="title-logo">
+          <Logo />
+        </p>
+        <p className="title-kannada" lang="kn">
+          {GAME_NAME_KANNADA}
+        </p>
+        <p className="title-lede">{TAGLINE}</p>
+      </header>
 
       <footer className="loading-footer">
         <ul className="loading-tips">
           {TIPS.map((tip, index) => (
             <li key={tip} style={{ animationDelay: `${index * TIP_SECONDS}s` }}>
+              <span className="loading-tip-label">Tip</span>
               {tip}
             </li>
           ))}
