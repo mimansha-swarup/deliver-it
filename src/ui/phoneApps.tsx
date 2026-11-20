@@ -653,6 +653,7 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
   const credits = useGameStore((state) => state.credits)
   const ledger = useGameStore((state) => state.ledger)
   const fresh = useGameStore((state) => state.fresh)
+  const dues = useGameStore((state) => state.dues)
   const day = useGameStore((state) => state.day)
   const today = ledger.filter((entry) => entry.day === day)
   const sum = (kinds: string[]) => today.filter((entry) => kinds.includes(entry.kind)).reduce((total, entry) => total + entry.amount, 0)
@@ -665,6 +666,13 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
           <p className="app-big">{credits} credits</p>
           {fresh > 0 && <p className="app-line">Fresh from a meal: +15% tips on the next {fresh} {fresh === 1 ? 'delivery' : 'deliveries'}</p>}
         </section>
+        {dues > 0 && (
+          <section className="app-card">
+            <p className="app-card-title">Owed to Ravi</p>
+            <p className="app-big">{dues} credits</p>
+            <p className="app-line app-muted">He paid when you couldn’t. Half of each order’s pay goes back to him until it’s square. No interest, and your tips stay yours.</p>
+          </section>
+        )}
         <section className="app-card app-totals">
           <p className="app-card-title">Today · day {day}</p>
           <dl>

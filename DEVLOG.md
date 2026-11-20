@@ -10742,3 +10742,18 @@ chains; each playback's rate varies by 3.5% either way.
 
 ### Performance (low-power mode)
 High 89 to 100 FPS, worst frame 18 ms; Low 120; load 6.2 to 7.6 s. Unchanged.
+
+## 2026-11-20: Entry 218, the broke safety net
+
+VISION.md: "setbacks, never dead ends". A breakdown with under ₹180 in the wallet was one: the
+mechanic and the rental were both refused, and the vehicle didn't move.
+
+Ravi's tab (`dues` in gameStore.ts, saved). What a rider can't ride on without is never refused for
+want of money: `payEssential` takes what the wallet has and puts the rest on the tab. That covers the
+roadside mechanic, the roadside can of petrol with an empty tank, and at a pump with no money and
+under 15% in the tank, 30% of a tank (game/upkeep.ts). Half of each order's pay (not its tip) goes
+back until it's square; no interest. Ravi says so each time, the Wallet app shows what's owed, and the
+prompts say "Ravi covers the rest" when the wallet is short.
+
+Rentals, food, servicing and everything else still need money: the net is for getting moving again,
+not for spending.

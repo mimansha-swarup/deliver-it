@@ -46,6 +46,9 @@ export const UPKEEP = {
   serviceCost: { scooter: 120, bicycle: 40, ev: 100, bike: 160, trike: 220, car: 320, van: 420 } as Record<VehicleId, number>,
   /** Out of fuel on the road: this much (a share of a tank) brought to the rider, for this much. */
   rescue: { share: 0.25, price: 90 },
+  /** With no money at the pump and less than this in the tank, this much is filled on Ravi's tab (the safety net: gameStore's `dues`). */
+  advanceBelow: 0.15,
+  advanceFill: 0.3,
   /**
    * Breakdowns: the chance of one in each kilometre, by how the servicing stands (rare when it's kept
    * up: about one in 250 km; overdue, about one in 11). Never in the first kilometres, nor soon after
@@ -126,7 +129,8 @@ export const useUpkeep = create<Upkeep>()(
       callMechanic: () => {
         const broken = get().broken
         if (!broken || broken.mending) return null
-        if (!game().spend(`Roadside mechanic · ${VEHICLES[broken.id].name}`, UPKEEP.mechanic.price)) return `The mechanic wants ₹${UPKEEP.mechanic.price}: not enough in the wallet.`
+        // Never refused for want of money: what the wallet can't pay goes on Ravi's tab (gameStore's `dues`).
+        game().payEssential(`Roadside mechanic · ${VEHICLES[broken.id].name}`, UPKEEP.mechanic.price)
         set({ broken: { ...broken, mending: true } })
         game().raviSays(`A mechanic is on his way to your ${VEHICLES[broken.id].name}: ${broken.fault}. ₹${UPKEEP.mechanic.price}. Stay with it.`)
         window.setTimeout(() => {
@@ -205,9 +209,18 @@ export const useUpkeep = create<Upkeep>()(
         const full = fullPrice(spec)
         // As much as the wallet covers.
         const share = Math.min(1 - level, credits / full)
-        if (share < 0.03) return 'Not enough in the wallet.'
+        const what = `${energy === 'charge' ? 'Charging' : spec.drive.startsWith('Diesel') ? 'Diesel' : 'Petrol'} · ${spec.name}`
+        if (share < 0.03) {
+          // Broke at the pump with the tank nearly dry: enough to work on, on Ravi's tab. With fuel still in it, come back with money.
+          if (level >= UPKEEP.advanceBelow) return 'Not enough in the wallet.'
+          const advance = Math.min(1 - level, UPKEEP.advanceFill)
+          game().payEssential(what, Math.ceil(advance * full))
+          told.delete(`low ${id}`)
+          set({ filling: { id, to: Math.min(1, level + advance), rate: 1 / UPKEEP.fillSeconds[energy] } })
+          return null
+        }
         const price = Math.min(credits, Math.ceil(share * full))
-        game().spend(`${energy === 'charge' ? 'Charging' : spec.drive.startsWith('Diesel') ? 'Diesel' : 'Petrol'} · ${spec.name}`, price)
+        game().spend(what, price)
         told.delete(`low ${id}`)
         set({ filling: { id, to: Math.min(1, level + share), rate: 1 / UPKEEP.fillSeconds[energy] } })
         return null
@@ -216,7 +229,7 @@ export const useUpkeep = create<Upkeep>()(
       rescue: (id) => {
         const spec = VEHICLES[id]
         if (fuelLevel(get().fuel, id) > 0) return 'There is still some in it.'
-        if (!game().spend(`Roadside top-up · ${spec.name}`, UPKEEP.rescue.price)) return `A roadside top-up is ₹${UPKEEP.rescue.price}: not enough in the wallet.`
+        game().payEssential(`Roadside top-up · ${spec.name}`, UPKEEP.rescue.price)
         const next = { fuel: { ...get().fuel, [id]: UPKEEP.rescue.share }, sinceService: get().sinceService, broken: get().broken }
         set({ fuel: next.fuel })
         applyToHandling(next, id)

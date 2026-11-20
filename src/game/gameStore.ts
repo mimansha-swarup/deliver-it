@@ -253,6 +253,14 @@ type GameState = Telemetry & {
   eat: (what: string, price: number) => boolean
   /** Pays for something if the wallet has it: written in the ledger. False (and nothing taken) if it hasn't. */
   spend: (label: string, amount: number) => boolean
+  /**
+   * What the rider owes Ravi: the safety net. Something they can't ride on without (a roadside
+   * mechanic, a can of petrol) is never refused for want of money: the wallet pays what it can, Ravi
+   * pays the rest, and half of each order's pay goes back to him until it's square. No interest.
+   */
+  dues: number
+  /** Pays for such a thing: from the wallet first, the rest onto Ravi's tab. Returns how much went on the tab. */
+  payEssential: (label: string, amount: number) => number
   /** Changes the vehicle in use (GaadiGo's handovers, game/fleet.ts). */
   setVehicle: (vehicleId: VehicleId) => void
   /** A fine: taken from the wallet (never below zero), written in the ledger, with word of it. */
@@ -278,6 +286,9 @@ function addLedger(ledger: LedgerEntry[], day: number, entries: Omit<LedgerEntry
 }
 
 export type ChatLine = { id: number; from: 'customer' | 'dispatch'; name: string; text: string; at: number; urgent?: boolean }
+
+/** The share of an order's pay (not its tip) that goes to what the rider owes Ravi. */
+const DUES_SHARE = 0.5
 
 /** How many chat lines are kept; the HUD shows the last few. */
 const CHAT_KEPT = 12
@@ -477,6 +488,7 @@ export const useGameStore = create<GameState>()(
       musicOn: true,
       hornsOn: true,
       alwaysWalk: false,
+      dues: 0,
       anyVehicle: false,
       anyVehicleExplore: true,
       explore: false,
@@ -623,12 +635,18 @@ export const useGameStore = create<GameState>()(
             after.credits += shiftStep.bonus
             if (shiftStep.goalMessage) progress.messages = addMessages(progress.messages ?? state.messages, [shiftStep.goalMessage])
           }
+          // What's owed to Ravi comes out of the order's pay, half of it at a time; the tip is the rider's.
+          const back = Math.min(state.dues, Math.floor((earned - reward.tipCredits) * DUES_SHARE))
+          after.credits -= back
+          const dues = state.dues - back
+          if (back > 0) progress.messages = addMessages(progress.messages ?? state.messages, [dues > 0 ? `₹${back} of that came to me, maga. ₹${dues} left.` : `₹${back} of that came to me, and we're square. Sakkath.`])
           const customer = reward.customer
           const ledger = addLedger(state.ledger, state.day, [
             { label: `Delivery · ${customer}`, amount: earned - reward.tipCredits, kind: 'earning' },
             { label: `Tip · ${customer}`, amount: reward.tipCredits, kind: 'tip' },
             { label: 'Shift goal bonus', amount: shiftStep?.bonus ?? 0, kind: 'bonus' },
             { label: 'Daily challenges / career', amount: progress.credits !== undefined ? progress.credits - paid.credits : 0, kind: 'bonus' },
+            { label: 'Paid back to Ravi', amount: -back, kind: 'expense' },
           ])
           const record: DeliveryRecord = { id: nextMessageId++, day: state.day, customer, item: state.mission?.story.item ?? '', stars: reward.stars, earned, tip: reward.tipCredits }
           return {
@@ -647,6 +665,7 @@ export const useGameStore = create<GameState>()(
             fiveStarStreak: reward.stars === 5 ? state.fiveStarStreak + 1 : 0,
             fresh: Math.max(0, state.fresh - 1),
             credits: after.credits,
+            dues,
             xp: after.xp,
           }
         }),
@@ -796,6 +815,24 @@ export const useGameStore = create<GameState>()(
   setLastPosition: (lastPosition) => set({ lastPosition }),
   setWaypoint: (waypoint) => set({ waypoint }),
   raviSays: (text) => set((state) => ({ messages: addMessages(state.messages, [text]) })),
+  payEssential: (label, amount) => {
+    const { credits } = get()
+    const fromWallet = Math.min(credits, amount)
+    const onTab = amount - fromWallet
+    set((state) => {
+      const dues = state.dues + onTab
+      return {
+        credits: state.credits - fromWallet,
+        dues,
+        ledger: addLedger(state.ledger, state.day, [{ label, amount: -fromWallet, kind: 'expense' }]),
+        messages:
+          onTab > 0
+            ? addMessages(state.messages, [`I've paid ₹${onTab} for you, maga: ${label.toLowerCase()}. No tension. Half of each order's pay comes to me till it's square: ₹${dues} now.`])
+            : state.messages,
+      }
+    })
+    return onTab
+  },
   spend: (label, amount) => {
     if (useGameStore.getState().credits < amount) return false
     set((state) => ({ credits: state.credits - amount, ledger: addLedger(state.ledger, state.day, [{ label, amount: -amount, kind: 'expense' }]) }))
@@ -927,6 +964,7 @@ export const useGameStore = create<GameState>()(
         musicOn: state.musicOn,
         hornsOn: state.hornsOn,
         alwaysWalk: state.alwaysWalk,
+        dues: state.dues,
         anyVehicle: state.anyVehicle,
         anyVehicleExplore: state.anyVehicleExplore,
         upgrades: state.upgrades,

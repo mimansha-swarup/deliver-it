@@ -15,6 +15,8 @@ import { MARKET, VEHICLES } from '../vehicle/vehicleCatalog'
 export function BreakdownCard() {
   const vehicleId = useGameStore((state) => state.vehicleId)
   const broken = useUpkeep((state) => state.broken)
+  // Short of the mechanic's price, it still gets mended: the rest goes on Ravi's tab (gameStore's `dues`).
+  const credits = useGameStore((state) => state.credits)
   const rental = useFleet((state) => state.rental)
   const delivery = useFleet((state) => state.delivery)
   const interactKey = useKeyName('interact')
@@ -56,6 +58,7 @@ export function BreakdownCard() {
         <p className="breakdown-buttons">
           <button type="button" onClick={(event) => { setNote(useUpkeep.getState().callMechanic() ?? ''); event.currentTarget.blur() }}>
             <kbd>{interactKey}</kbd> Roadside mechanic · ₹{UPKEEP.mechanic.price}
+            {credits < UPKEEP.mechanic.price && ' · Ravi covers the rest'}
           </button>
           {offer && !delivery && !rental && (
             <button

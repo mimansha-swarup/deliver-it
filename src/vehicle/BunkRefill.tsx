@@ -2,7 +2,7 @@ import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
 import { setPrompt } from '../game/prompts'
-import { energyOf, fillPrice, fuelLevel, UPKEEP, useUpkeep } from '../game/upkeep'
+import { energyOf, fillPrice, fuelLevel, UPKEEP, useUpkeep, fullPrice } from '../game/upkeep'
 import { bunkAt, chargerAt, FUEL_BRANDS, type FuelStation } from '../world/fuelStationData'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { liveVehicle } from './vehicleCatalog'
@@ -58,9 +58,9 @@ export function BunkRefill({ scooter, stations }: { scooter: RefObject<ScooterSt
     setPrompt(
       'fuel',
       canFill
-        ? { action: 'interact', text: `${energy === 'charge' ? 'Charge' : 'Fill up'} · ₹${Math.min(game.credits, fillPrice(spec, level))}`, priority: 3, run: () => say(useUpkeep.getState().fill(spec.id)) }
+        ? { action: 'interact', text: `${energy === 'charge' ? 'Charge' : 'Fill up'} · ${Math.min(1 - level, game.credits / fullPrice(spec)) < 0.03 && level < UPKEEP.advanceBelow ? 'on Ravi’s tab' : `₹${Math.min(game.credits, fillPrice(spec, level))}`}`, priority: 3, run: () => say(useUpkeep.getState().fill(spec.id)) }
         : energy !== 'none' && level <= 0 && stopped && !filling
-          ? { action: 'interact', text: `Roadside top-up · ₹${UPKEEP.rescue.price}`, priority: 3, run: () => say(useUpkeep.getState().rescue(spec.id)) }
+          ? { action: 'interact', text: `Roadside top-up · ₹${UPKEEP.rescue.price}${game.credits < UPKEEP.rescue.price ? ' · Ravi covers the rest' : ''}`, priority: 3, run: () => say(useUpkeep.getState().rescue(spec.id)) }
           : null,
     )
   })
