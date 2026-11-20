@@ -50,7 +50,7 @@ export function KeyList({ editable = false }: { editable?: boolean }) {
         <kbd>Enter</kbd> unlocks the phone · <kbd>Esc</kbd> goes back · <kbd>V</kbd> driver's seat view (cab vehicles)
       </p>
       <p className="key-fixed">
-        <kbd>Right mouse</kbd> hold and move to look around · <kbd>Click</kbd> the view to lock the pointer (<kbd>Esc</kbd> frees it) · on foot, <kbd>W A S D</kbd> walk and the run key is the nitro key
+        <kbd>Right mouse</kbd> hold and move to look around · <kbd>Click</kbd> the view to lock the pointer (<kbd>Esc</kbd> frees it) · on foot, <kbd>W</kbd> walks the way the camera is looking, <kbd>S</kbd> towards it and <kbd>A</kbd> <kbd>D</kbd> across it; hold the nitro key to jog
       </p>
       {editable && (
         <button type="button" className="key-reset" onClick={(event) => { reset(); event.currentTarget.blur() }}>

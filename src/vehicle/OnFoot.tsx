@@ -6,6 +6,7 @@ import { isNearInterest, spotInReach } from '../game/interact'
 import { isKey } from '../game/keyBindings'
 import { setPrompt } from '../game/prompts'
 import { liveRoom, roomMover } from '../game/rooms'
+import { liveView } from '../game/livePlayer'
 import type { CollisionWorld } from '../world/collision'
 import { getOff, getOn, getTravelSpeed, isAfoot, isBesideVehicle, scooterLevel, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
@@ -13,7 +14,7 @@ import { liveVehicle } from './vehicleCatalog'
 
 /*
  * Getting off and on (F), and using things on foot (E). The walking itself is in the controller
- * (`stepOnFoot`); this listens for the two keys and keeps their prompts honest: "F · Get off" only
+ * (`stepOnFoot`: the riding keys, read against the camera); this listens for the two keys and keeps their prompts honest: "F · Get off" only
  * stopped near something worth walking to, "F · Get on" beside the vehicle, "E · …" in reach of a
  * door, a counter or a bell (game/interact.ts).
  */
@@ -54,7 +55,8 @@ export function OnFoot({ scooter, collisions, deckCollisions }: { scooter: RefOb
       rider.x = x
       rider.z = z
       rider.heading = heading
-      rider.aim = heading
+      // Through a door, the view comes round behind them: forward is the way they came in.
+      liveView.snapBehind = true
       rider.walkX = 0
       rider.walkZ = 0
       rider.velocityX = 0

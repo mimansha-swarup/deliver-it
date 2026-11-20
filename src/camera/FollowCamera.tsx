@@ -3,7 +3,7 @@ import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { PerspectiveCamera, Vector3 } from 'three'
-import { liveShot } from '../game/livePlayer'
+import { liveShot, liveView } from '../game/livePlayer'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getTravelSpeed, isAfoot, scooterLevel } from '../vehicle/ScooterController'
 import { liveRoom, ROOM } from '../game/rooms'
@@ -84,6 +84,12 @@ const RIDER_LOOK_HEIGHT = 0.6
 const FOOT_VIEW = { distance: 0.86, height: 0.98, look: 0.9 }
 const FOOT_LOOK_AHEAD = 3
 const FOOT_LOOK_HEIGHT = 1.3
+/**
+ * On foot the view comes round behind the rider only when they walk ahead and to one side of it:
+ * at this rate at the most (radians a second, at 45° off), faster than `from` m/s, and not for
+ * this long after the mouse last moved the view (ms).
+ */
+const FOOT_DRIFT = { rate: 1.5, from: 0.5, afterMouse: 1200 }
 /** In a room, the camera keeps this far inside its walls and under its ceiling, in metres. */
 const ROOM_MARGIN = 0.35
 /** Nearer the rider than this, in a room, the camera climbs. */
@@ -176,11 +182,28 @@ export function FollowCamera({
     // While the rider is off, the camera holds its direction instead of spinning with the fallen scooter.
     // On foot by choice, it stays behind the rider as they turn.
     const afoot = isAfoot(state)
-    const targetHeading = afoot ? state.rider.heading : riderOff ? previous : state.heading - slipAngle * SLIDE_FOLLOW
+    const targetHeading = riderOff ? previous : state.heading - slipAngle * SLIDE_FOLLOW
 
     // Moves a fraction of the remaining gap, in a way that doesn't depend on frame rate, the short way round.
-    const heading = previous + Math.atan2(Math.sin(targetHeading - previous), Math.cos(targetHeading - previous)) * (1 - Math.exp(-TURN_RESPONSE * delta))
+    let heading = previous + Math.atan2(Math.sin(targetHeading - previous), Math.cos(targetHeading - previous)) * (1 - Math.exp(-TURN_RESPONSE * delta))
+    if (afoot) {
+      // On foot the view is the player's: it stays where the mouse put it, and the keys walk the
+      // rider about in front of it (ScooterController's `stepOnFoot`). Walking ahead and to one
+      // side, it comes round after them, so the keys alone can steer; walking straight across it or
+      // towards it, it stays put. Not while the mouse is being used.
+      heading = previous
+      if (liveView.snapBehind) {
+        heading = state.rider.heading
+        liveLook.yaw = 0
+      } else if (state.rider.pace > FOOT_DRIFT.from && performance.now() - liveLook.movedAt > FOOT_DRIFT.afterMouse) {
+        const going = Math.atan2(state.rider.walkX, state.rider.walkZ)
+        const round = Math.atan2(Math.sin(going - previous - liveLook.yaw), Math.cos(going - previous - liveLook.yaw))
+        if (Math.abs(round) < Math.PI / 2) heading += Math.sin(2 * round) * FOOT_DRIFT.rate * delta
+      }
+    }
+    liveView.snapBehind = false
     cameraHeading.current = heading
+    liveView.cameraYaw = heading + liveLook.yaw
 
     // Mouse-look turns the view round the rider from there, and comes back behind them while riding.
     settleLook(travelSpeed, riderOff, delta)

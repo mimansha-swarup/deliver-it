@@ -31,6 +31,10 @@ export const liveMission = { elapsed: 0 }
 export const liveView = {
   /** Nothing further than this from the rider is drawn, in metres. */
   drawDistance: 1300,
+  /** The way the camera is looking, around Y, in radians: on foot, W walks this way (FollowCamera.tsx keeps it). */
+  cameraYaw: 0,
+  /** Set to swing the camera straight round behind the rider (they've stepped through a door): FollowCamera does it and clears it. */
+  snapBehind: false,
 }
 
 export const liveRoute = {

@@ -3,6 +3,7 @@ import { ROAD_HEIGHT, type Surface } from '../world/surface'
 import { JOG, stridePerMetre } from './riderShape'
 import { currentGrip, tuning } from './tuning'
 import { liveRoom } from '../game/rooms'
+import { liveView } from '../game/livePlayer'
 import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMITS } from './vehicleConfig'
 
 export type DriveInput = {
@@ -119,13 +120,12 @@ export type ThrownRider = {
   /** The height of the ground under them, eased so a kerb isn't a jump. */
   ground: number
   /**
-   * Walking (`stepOnFoot`): how fast they're going over the ground each way, in m/s; the way they
-   * mean to go, around Y; how far they lean into a turn (radians, positive to their left) and tip
-   * forward setting off or back pulling up (radians, positive forward).
+   * Walking (`stepOnFoot`): how fast they're going over the ground each way, in m/s; how far they
+   * lean into a turn (radians, positive to their left) and tip forward setting off or back pulling
+   * up (radians, positive forward).
    */
   walkX: number
   walkZ: number
-  aim: number
   lean: number
   tip: number
 }
@@ -174,7 +174,6 @@ export function createScooterState(): ScooterState {
       pace: 0,
       walkX: 0,
       walkZ: 0,
-      aim: 0,
       lean: 0,
       tip: 0,
       ground: ROAD_HEIGHT,
@@ -400,7 +399,7 @@ export function isAfoot(state: ScooterState): boolean {
  * radians for each radian a second of turning at a jog, up to `leanMost`; `tip`: how far they tip
  * forward for each m/s² of setting off (and back, pulling up), up to `tipMost`.
  */
-export const FOOT = { walk: 1.9, run: 4.3, back: 1.3, ease: 0.24, turn: 2.7, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
+export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
 const DISMOUNT_SPEED = 2
 
@@ -438,7 +437,6 @@ export function getOff(state: ScooterState, collisions: CollisionWorld): boolean
   rider.ground = (state.frontWheel.height + state.rearWheel.height) / 2
   rider.y = rider.ground + RIDER_HIP_HEIGHT
   rider.heading = state.heading
-  rider.aim = state.heading
   rider.walkX = 0
   rider.walkZ = 0
   rider.lean = 0
@@ -482,10 +480,9 @@ export function getOn(state: ScooterState): boolean {
  * Eases a walker's speed towards the speed wanted, turns their body to the way they're going, and
  * works out their lean. Nothing snaps: the speed closes most of the gap in `FOOT.ease` seconds
  * (setting off and pulling up alike), and the body comes round at a rate that's quick at first
- * and gentle at the end, never faster than a person can turn. `facing` is a way to face whatever
- * the direction of travel (walking backwards), or null to face the way they're going.
+ * and gentle at the end, never faster than a person can turn.
  */
-function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, facing: number | null, dt: number) {
+function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, dt: number) {
   const before = Math.hypot(rider.walkX, rider.walkZ)
   const blend = 1 - Math.exp(-dt / (FOOT.ease / 2.3))
   rider.walkX += (wishX - rider.walkX) * blend
@@ -496,7 +493,7 @@ function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, facing: n
     rider.walkZ = 0
   }
   // Round to the way they're going, once they're going anywhere; standing, they keep facing as they were.
-  const towards = facing ?? (speed > 0.25 ? Math.atan2(rider.walkX, rider.walkZ) : rider.heading)
+  const towards = speed > 0.25 ? Math.atan2(rider.walkX, rider.walkZ) : rider.heading
   const off = Math.atan2(Math.sin(towards - rider.heading), Math.cos(towards - rider.heading))
   const turn = Math.max(-FOOT.turnMost * dt, Math.min(FOOT.turnMost * dt, off * (1 - Math.exp(-FOOT.facing * dt))))
   rider.heading += turn
@@ -525,12 +522,20 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   rider.off = 1
   rider.limp = 0
   rider.roll = 0
-  // The way they mean to go: the turning keys swing it round, and the body follows.
-  rider.aim += (Number(input.left) - Number(input.right)) * FOOT.turn * dt
-  const wanted = liveRoom.frozen ? 0 : input.forward ? (input.nitro ? FOOT.run : FOOT.walk) : input.backward ? -FOOT.back : 0
-  const wishX = Math.sin(rider.aim) * wanted
-  const wishZ = Math.cos(rider.aim) * wanted
-  walkTowards(rider, wishX, wishZ, rider.aim, dt)
+  // The keys are read against the camera, as in any third-person game: forward walks the way the
+  // camera is looking, back towards it, left and right across it, and the body turns to the way
+  // it's going. Turning the view with the mouse turns where forward is.
+  const ahead = Number(input.forward) - Number(input.backward)
+  const across = Number(input.left) - Number(input.right)
+  const yaw = liveView.cameraYaw
+  // The camera's forward is (sin, cos) of its yaw, and its left (cos, -sin).
+  let wishX = Math.sin(yaw) * ahead + Math.cos(yaw) * across
+  let wishZ = Math.cos(yaw) * ahead - Math.sin(yaw) * across
+  const any = Math.hypot(wishX, wishZ)
+  const wanted = liveRoom.frozen || any === 0 ? 0 : input.nitro ? FOOT.run : FOOT.walk
+  wishX = any > 0 ? (wishX / any) * wanted : 0
+  wishZ = any > 0 ? (wishZ / any) * wanted : 0
+  walkTowards(rider, wishX, wishZ, dt)
   const fromX = rider.x
   const fromZ = rider.z
   rider.x += rider.walkX * dt
