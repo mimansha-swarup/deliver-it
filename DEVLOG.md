@@ -10963,3 +10963,56 @@ vehicles, street furniture). They show their shading again in rain, but have no 
 Checked on the production build: the Agara flyover's wall from the road beside it, two frames
 apart, in rain. The flicker itself was seen only in the reported screenshot, not reproduced before
 the fix.
+
+## 2026-11-20: Entry 227, walking that feels like walking
+
+Asked for: walking felt off; make it natural. Seven steps, a commit each (branch `walking-feel`).
+
+1. **A set of cycles, blended by speed.** On foot the rider had one cycle, the jog back to the
+   scooter after a crash, at every speed. Now: standing (breathing), a turn on the spot (a shuffle
+   of short steps), a walk (both feet down between steps, arms hanging and swinging, hips over the
+   standing foot) and the jog (elbows bent), blended by speed (`gaitAt` in riderShape.ts), steps
+   shortening as he sets off and pulls up. **Not an imported skeleton with recorded clips**, which
+   was the ask: there are none in the project, and I can't fetch Mixamo's. It's the game's own rig
+   (the man model bent by a shader, hands and feet placed, joints solved each frame), given the
+   cycles such clips would have. Swapping in recorded clips later needs a skinned model in
+   traffic.glb and the clips' files.
+2. **Feet that don't slide.** The stride advances by the ground really covered, at the gait's own
+   stride per metre for that speed: a planted foot stays planted in a walk, a jog, between the two,
+   and along a wall. The speeds are ones legs can keep up with: a brisk walk at 1.9 m/s, a jog at
+   4.3 with the run key (they were 2.8 and 6). Orders allow 40% longer for their walking.
+3. **Eased.** Speed closes on what's wanted in about a quarter of a second, setting off and
+   pulling up; the body comes round to the way it's going, quickly then gently, never faster than
+   9 rad/s; it leans into turns and tips forward setting off, from planted feet.
+4. **Camera-relative keys.** W walks the way the camera looks, S towards it, A and D across it.
+   The view stays where the mouse put it; walking ahead and to a side it comes round after the
+   rider, so the keys alone can steer.
+5. **The camera on foot.** Shoulder height (1.5 m, was 2), 3.5 m back, following a little behind.
+   A building behind the rider no longer pushes it in: it stays inside the building and sees out
+   through the wall, which is drawn from outside only, so the wall is simply gone from behind. Thin
+   things solid from both sides (a compound wall, a tree, a parked car) bring it forward quickly,
+   not at once, no nearer than 1.3 m, rising to look over the shoulder.
+6. **A capsule that slides.** The body moves in pieces shorter than its radius, is pushed out of
+   what it's in, and loses the speed that was into it. Kerbs and steps to 0.45 m are walked up;
+   higher is a ledge.
+7. **Footsteps, bob, fidgets.** A step is heard as each foot lands: asphalt, pavers, tile indoors,
+   earth. The picture dips a centimetre with each. Standing, a look round, a shift of weight, or
+   the phone checked.
+
+Checked in the game, scripted through the keys and the mouse: W covers 3.6 m in 2 s along the
+camera's forward and stops within half a second of letting go; A walks across and the body turns a
+quarter turn; in eight directions from the dark store's kerb the pace held at 1.9 m/s up and down
+kerbs and the body was never inside a wall; and the whole pickup (off the scooter, to the door, in,
+to the counter, the bag, out, back on) ran in 25 s with no errors.
+
+Frame benchmark (scripts/bench.mjs, shop-street, riding), the commit before the walking against the
+branch's head, run back to back on the same machine: Low 20.2 against 20.4 ms a frame, High 28.7
+against 28.7; with the CPU slowed four times, Low 34.8 against 33.0 and High 63.4 against 62.9.
+No change. (An earlier baseline that hour read 8.3 ms on Low: the machine, not the code, as the
+same commit measured again gave 20.2.) The benchmark rides and doesn't walk; on foot the new work
+is a few dozen sums a frame and a short sound per step.
+
+A clip of the pickup on foot (off the scooter, into the dark store, the bag, out, back on), 21 s,
+recorded from the game's own canvas on the production build: `clips/walk-to-dark-store.mp4` (not
+in git). In it, the moment after stepping through the door the camera is close and high over the
+rider for a second before it settles: the room's walls hold it in. Left as it is for now.

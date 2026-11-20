@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Recorded clips of the game, kept beside the code but not in it
+clips
