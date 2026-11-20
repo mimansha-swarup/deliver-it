@@ -3639,6 +3639,123 @@ body,
   list-style: none;
 }
 
+/* GaadiGo (phoneApps.tsx): one short line for each vehicle, so the whole app fits without scrolling. */
+.gg-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  background: #24272e;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.gg-row[data-current='true'] {
+  box-shadow: inset 3px 0 0 #3ddc97;
+}
+
+.gg-head {
+  cursor: pointer;
+}
+
+.gg-item[data-open='true'] .gg-head {
+  border-radius: 10px 10px 0 0;
+}
+
+.gg-name {
+  min-width: 0;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.gg-name small,
+.gg-small small {
+  display: block;
+  color: var(--phone-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.gg-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #10231a;
+  background: #3ddc97;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.gg-tag[data-locked='true'] {
+  color: var(--phone-muted);
+  background: rgb(255 255 255 / 10%);
+}
+
+.gg-small {
+  flex: none;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 9px;
+  color: #10231a;
+  background: #3ddc97;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.15;
+  cursor: pointer;
+}
+
+.gg-small small {
+  color: rgb(16 35 26 / 75%);
+}
+
+.gg-more {
+  display: grid;
+  gap: 6px;
+  padding: 6px 10px 8px;
+  border-radius: 0 0 10px 10px;
+  background: #1d2026;
+}
+
+.gg-more .app-line {
+  font-size: 12px;
+}
+
+.gg-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.gg-buttons .gg-small {
+  padding: 6px 4px;
+  text-align: center;
+}
+
+.gg-insure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--phone-muted);
+  font-size: 11px;
+}
+
 .app-wide-button {
   width: 100%;
   padding: 10px;

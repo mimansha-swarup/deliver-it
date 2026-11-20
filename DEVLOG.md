@@ -11359,3 +11359,19 @@ windscreen is blotchy close up.
 The app listed the whole catalogue and only then "Your Garage" and your EMIs, so getting at a
 vehicle you own meant scrolling past everything for sale. Yours come first now: a rental or a
 delivery on its way, your Garage, your EMIs, and then the catalogue.
+
+## 2026-11-21: Entry 246, GaadiGo fits on one screen, and switching your own vehicles is free
+
+- **No long scroll.** Every vehicle was a card with a wide button and two or three lines, so the
+  app ran to several screens. Now each is one line: in "Your Garage", the name and a Switch
+  button; under "Rent or buy", the name, what it is, and its hourly rent, opening on a tap (one
+  at a time) to its details and four small buttons (rent an hour, rent a day, buy, EMI) with
+  the insurance tick under them. Vehicles already owned aren't listed again in the shop. With
+  three owned and four for sale it fits the phone with nothing to scroll; one opened adds about
+  a quarter of a screen.
+- **Switching is free.** Taking one of your own vehicles out of the Garage cost the ₹40 delivery
+  fee each time, away from the hub. It costs nothing now, anywhere; it still comes to you as a
+  delivery does. The fee stays on renting and buying.
+
+Checked in the game: no scroll with everything closed, and Switch left the wallet at ₹5,000 with
+the bicycle on its way.

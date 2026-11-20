@@ -179,7 +179,8 @@ export const useFleet = create<Fleet>()(
   persist(
     (set, get) => {
       /** Hands a vehicle over now, or sends it to where the rider is. Null if sent or handed over; else why not. */
-      const dispatch = (id: VehicleId, how: 'deliver' | 'hub', rental: Rental | null, own: boolean): string | null => {
+      // `free`: no delivery fee: one of the rider's own vehicles, brought out of their Garage.
+      const dispatch = (id: VehicleId, how: 'deliver' | 'hub', rental: Rental | null, own: boolean, free = false): string | null => {
         if (how === 'hub') {
           if (!atHub()) return 'Free pickup is at the hub: ride to your dark store.'
           game().setVehicle(id)
@@ -188,7 +189,7 @@ export const useFleet = create<Fleet>()(
           return null
         }
         if (get().delivery) return 'A delivery is already on its way.'
-        if (!game().spend('GaadiGo delivery fee', FLEET_RULES.deliveryFee)) return `Delivery is ₹${FLEET_RULES.deliveryFee}: not enough in the wallet.`
+        if (!free && !game().spend('GaadiGo delivery fee', FLEET_RULES.deliveryFee)) return `Delivery is ₹${FLEET_RULES.deliveryFee}: not enough in the wallet.`
         const [low, high] = FLEET_RULES.deliveryMinutes
         const minutes = low + Math.random() * (high - low)
         // Brought to the road beside the rider, at the kerb, facing the way they face: never onto the footpath.
@@ -267,7 +268,8 @@ export const useFleet = create<Fleet>()(
           if (id !== 'scooter' && !get().owned.includes(id)) return "That one isn't in your Garage."
           if (game().vehicleId === id) return "You're on it."
           if (get().rental) return 'End your rental first: it has to go back.'
-          return dispatch(id, how, null, true)
+          // Switching between what's already theirs costs nothing, wherever they are: the fee is for renting and buying.
+          return dispatch(id, how, null, true, true)
         },
 
         endRental: () => {

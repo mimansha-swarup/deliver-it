@@ -805,7 +805,6 @@ function GaadiGoApp({ nav }: { nav: PhoneNav }) {
   const act = (result: string | null, done: string) => setNote(result ?? done)
   const hub = atHub()
   const how = hub ? 'hub' : 'deliver'
-  const howText = hub ? 'Free pickup: you are at the hub' : `Delivered to you (${rupees(FLEET_RULES.deliveryFee)}, 1 to 3 min)`
 
   return (
     <div className="app">
@@ -833,73 +832,82 @@ function GaadiGoApp({ nav }: { nav: PhoneNav }) {
           </section>
         )}
 
-        {/* What the rider already has comes first: it's what they open the app for most. The shop is under it. */}
-        <p className="app-card-title">Your Garage</p>
-        {(['scooter', ...fleet.owned] as VehicleId[]).map((id) => (
-          <section className="app-card" key={id}>
-            <p className="app-line">{VEHICLES[id].name}{vehicleId === id ? ' · in use' : ''}</p>
-            {vehicleId !== id && (
-              <button type="button" className="app-wide-button" onClick={() => act(fleet.takeOut(id, how), hub ? 'Swapped at the hub.' : 'It is on its way.')}>
-                Take it out · {hub ? 'free at the hub' : `delivered, ${rupees(FLEET_RULES.deliveryFee)}`}
-              </button>
-            )}
-          </section>
-        ))}
-
-        {fleet.emis.length > 0 && <p className="app-card-title">Your EMIs (weekly, from the Wallet)</p>}
-        {fleet.emis.map((emi) => (
-          <section className="app-card" key={emi.id}>
-            <p className="app-line">{VEHICLES[emi.id].name}: {rupees(emi.weekly)} a week, {emi.weeksLeft} to go, next on day {emi.nextDueDay}{emi.missed > 0 ? ' · MISSED: pay by then or it is taken back' : ''}</p>
-          </section>
-        ))}
-        <p className="app-card-title">Catalogue · {howText}</p>
-        {MARKET.map((id) => {
-          const spec = VEHICLES[id]
-          const why = locked(spec)
-          const owned = fleet.owned.includes(id)
-          return (
-            <section className="app-card" key={id}>
-              <button type="button" className="app-wide-button" onClick={() => setOpen(open === id ? null : id)}>
-                {spec.name} · {spec.kind}
-              </button>
-              <p className="app-line">{spec.blurb}</p>
-              <p className="app-line">
-                {spec.topSpeed} km/h · carries {spec.capacity} · {spec.costPerKm === 0 ? 'free to run' : `${rupees(spec.costPerKm)}/km`} · rent {rupees(spec.rentHour)}/h
-              </p>
-              {open === id && (
-                <>
-                  <p className="app-line">Handling: turns ×{spec.turn.toFixed(2)}, grip ×{spec.grip.toFixed(2)}, brakes ×{spec.brake.toFixed(2)}, pull ×{spec.pull.toFixed(2)} (against your scooter)</p>
-                  <p className="app-line">Unlocks: {spec.unlocks.map((type) => ORDER_TYPE_NAMES[type]).join('; ')}</p>
-                  <p className="app-line">Needs level {spec.minLevel}{spec.minRating > 0 ? ` and ${spec.minRating.toFixed(1)}★` : ''}{spec.cockpit ? " · driver's-seat view (V)" : ''}</p>
-                  {why ? (
-                    <p className="app-line"><strong>Locked: {why}</strong></p>
-                  ) : owned ? (
-                    <p className="app-line"><strong>Yours. Take it out from the Garage below.</strong></p>
-                  ) : (
-                    <>
-                      <label className="app-line">
-                        <input type="checkbox" checked={insured} onChange={(event) => setInsured(event.target.checked)} /> Rental insurance (+15%): no damage charges
-                      </label>
-                      <button type="button" className="app-wide-button" onClick={() => act(fleet.rent(id, 'hour', insured, how), hub ? 'Rented. Ride safe.' : 'Rented. It is on its way.')}>
-                        Rent 1 hour · {rupees(rentPrice(spec, 'hour', insured))}
-                      </button>
-                      <button type="button" className="app-wide-button" onClick={() => act(fleet.rent(id, 'day', insured, how), hub ? 'Rented for the day.' : 'Rented for the day. It is on its way.')}>
-                        Rent 1 day · {rupees(rentPrice(spec, 'day', insured))}
-                      </button>
-                      <button type="button" className="app-wide-button" onClick={() => act(fleet.buy(id, 'full', how), hub ? 'Bought. It is yours.' : 'Bought. It is on its way.')}>
-                        Buy · {rupees(spec.price)}
-                      </button>
-                      <button type="button" className="app-wide-button" onClick={() => act(fleet.buy(id, 'emi', how), hub ? 'Bought on EMI.' : 'Bought on EMI. It is on its way.')}>
-                        Buy on EMI · {rupees(downPayment(spec))} now, then {rupees(weeklyEmi(spec))} × {FLEET_RULES.emiWeeks} weeks
-                      </button>
-                    </>
-                  )}
-                </>
+        {/*
+          Short enough to see without scrolling: what the rider has is one line each with a Switch
+          button (their own vehicles come free), and the shop is one line each that opens on a tap,
+          one at a time, to its details and four small buttons.
+        */}
+        <p className="app-card-title">Your Garage · switching is free</p>
+        <ul className="gg-list">
+          {(['scooter', ...fleet.owned] as VehicleId[]).map((id) => (
+            <li className="gg-row" key={id} data-current={vehicleId === id}>
+              <span className="gg-name">{VEHICLES[id].name}</span>
+              {vehicleId === id ? (
+                <span className="gg-tag">In use</span>
+              ) : (
+                <button type="button" className="gg-small" onClick={() => act(fleet.takeOut(id, how), hub ? 'Swapped at the hub.' : 'It is on its way, free.')}>
+                  Switch
+                </button>
               )}
-            </section>
-          )
-        })}
+            </li>
+          ))}
+          {fleet.emis.map((emi) => (
+            <li className="gg-row gg-emi" key={`emi-${emi.id}`}>
+              <span className="gg-name">
+                EMI · {VEHICLES[emi.id].name}
+                <small>{rupees(emi.weekly)} a week, {emi.weeksLeft} to go, next on day {emi.nextDueDay}{emi.missed > 0 ? ' · MISSED: pay by then or it is taken back' : ''}</small>
+              </span>
+            </li>
+          ))}
+        </ul>
 
+        <p className="app-card-title">Rent or buy · {hub ? 'free pickup at the hub' : `delivery ${rupees(FLEET_RULES.deliveryFee)}`}</p>
+        <ul className="gg-list">
+          {MARKET.filter((id) => !fleet.owned.includes(id)).map((id) => {
+            const spec = VEHICLES[id]
+            const why = locked(spec)
+            const shown = open === id
+            return (
+              <li className="gg-item" key={id} data-open={shown}>
+                <button type="button" className="gg-row gg-head" aria-expanded={shown} onClick={() => setOpen(shown ? null : id)}>
+                  <span className="gg-name">
+                    {spec.name}
+                    <small>{spec.kind} · {spec.topSpeed} km/h · carries {spec.capacity}</small>
+                  </span>
+                  <span className="gg-tag" data-locked={why ? 'true' : undefined}>{why ? `Level ${spec.minLevel}` : `${rupees(spec.rentHour)}/h`}</span>
+                </button>
+                {shown && (
+                  <div className="gg-more">
+                    <p className="app-line">{spec.blurb} {spec.costPerKm === 0 ? 'Free to run.' : `${rupees(spec.costPerKm)}/km.`} Carries: {spec.unlocks.map((type) => ORDER_TYPE_NAMES[type]).join('; ')}.{spec.cockpit ? " Driver's-seat view (V)." : ''}</p>
+                    {why ? (
+                      <p className="app-line"><strong>Locked: {why}</strong></p>
+                    ) : (
+                      <>
+                        <div className="gg-buttons">
+                          <button type="button" className="gg-small" onClick={() => act(fleet.rent(id, 'hour', insured, how), hub ? 'Rented. Ride safe.' : 'Rented. It is on its way.')}>
+                            Rent 1 h<small>{rupees(rentPrice(spec, 'hour', insured))}</small>
+                          </button>
+                          <button type="button" className="gg-small" onClick={() => act(fleet.rent(id, 'day', insured, how), hub ? 'Rented for the day.' : 'Rented for the day. It is on its way.')}>
+                            Rent 1 day<small>{rupees(rentPrice(spec, 'day', insured))}</small>
+                          </button>
+                          <button type="button" className="gg-small" onClick={() => act(fleet.buy(id, 'full', how), hub ? 'Bought. It is yours.' : 'Bought. It is on its way.')}>
+                            Buy<small>{rupees(spec.price)}</small>
+                          </button>
+                          <button type="button" className="gg-small" onClick={() => act(fleet.buy(id, 'emi', how), hub ? 'Bought on EMI.' : 'Bought on EMI. It is on its way.')}>
+                            EMI<small>{rupees(downPayment(spec))} + {rupees(weeklyEmi(spec))} × {FLEET_RULES.emiWeeks}</small>
+                          </button>
+                        </div>
+                        <label className="gg-insure">
+                          <input type="checkbox" checked={insured} onChange={(event) => setInsured(event.target.checked)} /> Rental insurance (+15%): no damage charges
+                        </label>
+                      </>
+                    )}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
       </div>
     </div>
   )
