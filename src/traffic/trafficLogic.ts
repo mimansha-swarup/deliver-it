@@ -3,6 +3,7 @@ import { tuning } from '../vehicle/tuning'
 import { addDeckLanes, deckHeightOn, UP_ON_DECK_TRAFFIC } from './deckLanes'
 import type { Flyover } from '../world/transitPlacement'
 import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics'
+import { liveRoom } from '../game/rooms'
 import { applyImpact, getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
 import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
@@ -1221,6 +1222,10 @@ function squeezeThrough(
   easeShift(vehicle, dt)
 }
 
+/** A rider on foot in the way is honked at from this far, in metres. */
+const WALKER_HONK_GAP = 9
+const aheadIsRider = (ahead: { gap: number; blockedBy: string | null }) => ahead.blockedBy === 'rider' && ahead.gap < TRAFFIC_RULES.squeezeLookAt
+
 function easeShift(vehicle: Vehicle, dt: number) {
   const change = vehicle.shiftTarget - vehicle.shift
   vehicle.shift += Math.sign(change) * Math.min(Math.abs(change), TRAFFIC_RULES.squeezeSpeed * dt)
@@ -1338,7 +1343,10 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const limit = parkedLimit(vehicle, lane)
   // Up on a deck, nobody lying in the road below is in the way.
   const downed = (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC ? [] : world.downed
-  if (vehicle.nimble) squeezeThrough(vehicle, lane, active, rider, downed, dt, limit)
+  // With the rider on foot, cars and buses too ease out around them and their parked vehicle, as around anyone in the road.
+  const afoot = rider.rider.phase === 'afoot'
+  const aroundWalker = afoot && !vehicle.nimble && (vehicle.shiftTarget !== 0 || aheadIsRider(findGapAhead(vehicle, lane, active, rider, downed)))
+  if (vehicle.nimble || aroundWalker) squeezeThrough(vehicle, lane, active, rider, downed, dt, limit)
   else {
     vehicle.shiftTarget = Math.min(0, limit)
     easeShift(vehicle, dt)
@@ -1388,7 +1396,11 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   vehicle.waiting = vehicle.speed < 0.3 && !atLight && !((vehicle.busDwell ?? 0) > 0) ? vehicle.waiting + dt : 0
   if (hasWaited) vehicle.waiting = rules.patience + 1
 
-  maybeHonk(world, vehicle, rider, blockedBy === 'rider' && gap < 3, dt)
+  // On foot they're honked at from further back: a horn as it slows, not only once it has stopped.
+  const walkerInWay = afoot && blockedBy === 'rider' && gap < WALKER_HONK_GAP
+  // The first sight of them in the way brings the horn forward, so it sounds as the vehicle slows.
+  if (walkerInWay && vehicle.blockedTime === 0) vehicle.honkWait = Math.min(vehicle.honkWait, 0.5)
+  maybeHonk(world, vehicle, rider, walkerInWay || (blockedBy === 'rider' && gap < 3), dt)
 
   if (!advance(vehicle, roadLanes, vehicle.speed * dt, random)) {
     vehicle.lane = -1
@@ -1972,8 +1984,10 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
   for (const { thrownRider, riderOff } of vehicles) {
     if (thrownRider && riderOff) add(thrownRider.x, thrownRider.z, true)
   }
+  // The rider off the vehicle: lying after a crash, standing when walking (and out of it altogether indoors).
   const { phase, x, z } = rider.rider
-  if (phase !== 'on') add(x, z, phase !== 'walking')
+  const upright = phase === 'walking' || phase === 'afoot' || phase === 'dismounting' || phase === 'mounting'
+  if (phase !== 'on' && !liveRoom.kind) add(x, z, !upright)
   downed.length = count
 }
 
