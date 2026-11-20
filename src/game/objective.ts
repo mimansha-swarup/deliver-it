@@ -19,6 +19,8 @@ export type ObjectiveInput = {
   /** A GaadiGo vehicle is on its way (`coming`) or standing at the kerb waiting for the rider (`here`), by name. */
   vehicle: { name: string; here: boolean } | null
   goingOffline: boolean
+  /** Explore mode: no orders, so the line is about roaming. */
+  explore?: boolean
   /** On-foot steps of the order, when there's one to say (the doorstep and the dark store's counter): it replaces the riding line. */
   step: string | null
 }
@@ -29,7 +31,9 @@ export function theItem(item: string): string {
 }
 
 export function objectiveFor(input: ObjectiveInput): string {
-  const { duty, hasOffer, phase, order, delivered, atHome, vehicle, goingOffline, step } = input
+  const { duty, hasOffer, phase, order, delivered, atHome, vehicle, goingOffline, step, explore } = input
+  // Explore has no work in it: it says what there is to do instead, and how to get to the career.
+  if (explore) return step ?? `Explore: ride anywhere. On foot, ${keyFor('mount')} drives any vehicle. Esc for the menu`
   if (vehicle?.here) return `Pull up beside your ${vehicle.name} and stop for the keys`
   if (delivered) return goingOffline ? 'Delivered. Close the summary to go offline' : 'Delivered. Close the summary for the next order'
   if (order) {
@@ -40,6 +44,8 @@ export function objectiveFor(input: ObjectiveInput): string {
     if (phase === 'handingOver') return `Handing over to ${order.customer}`
   }
   if (hasOffer) return `New order: ${keyFor('accept')} to accept, ${keyFor('decline')} to decline`
+  // With no order on, a step still says where to go: back down from a customer's floor, say.
+  if (step) return step
   if (vehicle) return `Wait where you are: your ${vehicle.name} is on its way`
   if (duty === 'online') return goingOffline ? 'Going offline' : 'Wait for an order: ride anywhere meanwhile'
   if (atHome) return `Go online with ${keyFor('online')}, or sleep with ${keyFor('sleep')}`

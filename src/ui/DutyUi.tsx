@@ -58,6 +58,7 @@ export function GoalLine({ goal }: { goal: ShiftGoal }) {
 /** Off duty or online, at a glance, with the key to change it. */
 function DutyBadge() {
   const duty = useGameStore((state) => state.duty)
+  const explore = useGameStore((state) => state.explore)
   const goal = useGameStore((state) => state.shift?.goal ?? null)
   const finishing = useGameStore((state) => state.offlineAfterOrder)
   const skyTime = useGameStore((state) => state.skyTime)
@@ -65,6 +66,14 @@ function DutyBadge() {
   const period = dayPeriod(liveSky.hours)
   void skyTime
 
+  // Explore isn't off duty: there's no duty in it. It says which mode this is, so it's never taken for the career.
+  if (explore) {
+    return (
+      <p className="duty-badge" data-duty="explore" role="status">
+        <strong>Explore mode</strong> <span>No orders · no fuel · any vehicle</span>
+      </p>
+    )
+  }
   if (duty === 'off') {
     return (
       <p className="duty-badge" data-duty="off" role="status">

@@ -55,6 +55,23 @@ type Stage = { door: DoorPlan | null; step: 'approach' | 'rung' | 'out'; at: num
 function aimAt(spot: { x: number; z: number }, indoors = false) {
   errandLive.goal = { x: spot.x, z: spot.z, y: indoors ? liveRoom.floorY : 0, kind: 'door', indoors }
 }
+/**
+ * Upstairs or in a lobby with nothing left to do there (the order's handed over, or the next drop
+ * is at another building): the way out is pointed at and said, and from anywhere in a corridor the
+ * interact key goes down, so nobody is left looking for an unmarked corner by the lift.
+ */
+function showWayOut(say: boolean) {
+  if (liveRoom.kind === 'corridor') {
+    const { down } = ROOM_SPOTS.corridor
+    aimAt({ x: liveRoom.x + down.x, z: liveRoom.z + down.z }, true)
+    setSpot('room:down-anywhere', { x: liveRoom.x, z: liveRoom.z, radius: 12, room: 'corridor', priority: -1, text: 'Go down to the street', run: () => leaveRoom('Down to the street') })
+    if (say) setStep('Go back down to the street')
+  } else if (liveRoom.kind === 'lobby') {
+    aimAt({ x: liveRoom.x + ROOM_DOOR.x, z: liveRoom.z + ROOM_DOOR.z + 0.45 }, true)
+    if (say) setStep('Leave by the door, back to the street')
+  }
+}
+
 /** Wandered off on foot: the way back to the vehicle. */
 function aimAtVehicle() {
   errandLive.goal = { x: livePlayer.vehicleX, z: livePlayer.vehicleZ, y: 0, kind: 'vehicle', indoors: false }
@@ -69,6 +86,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     if (isDebug()) Object.assign(window, { __deliverItFoot: { errand: errandLive, room: liveRoom, view: liveView, exit: ROOM_DOOR } })
   }, [])
   const stage = useRef<Stage>({ door: null, step: 'approach', at: 0 })
+  /** Whose building the lobby or corridor the rider is in belongs to. */
+  const roomFor = useRef<DoorPlan | null>(null)
 
   useEffect(
     () => () => {
@@ -101,6 +120,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
         stage.current = { door: null, step: 'approach', at: 0 }
         errandLive.customerAt = null
       }
+      // Still up in the flats after the hand-over: the way down. (Behind the result card the line is the card's.)
+      if (afoot && phase !== 'handingOver' && phase !== 'collecting') showWayOut(!game.lastReward)
       return
     }
 
@@ -321,13 +342,22 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
         text: 'Go in',
         run: () => {
           if (blocked) sayLine('guard.stop', `Security · ${name}`, { after: ' OTP and the register.', urgent: true })
-          else enterRoom('lobby', door, { x: door.outX, z: door.outZ }, name, name)
+          else {
+            roomFor.current = door
+            enterRoom('lobby', door, { x: door.outX, z: door.outZ }, name, name)
+          }
         },
       })
       setStep(away > PARK_RANGE * 1.5 ? `Get back on your ${vehicleWord()}` : blocked ? (stage.current.step === 'approach' ? `Show the guard at ${name}’s gate your OTP: ${door.otp}` : 'Sign the visitors’ register') : `Walk in to ${name}: flat ${door.flat}, floor ${door.floor}`)
       return
     }
     setSpot('errand:lobby', null)
+    // In a building that isn't this order's (a double order's first drop was here): out first.
+    if (roomFor.current !== door) {
+      clearSpots('errand:')
+      showWayOut(true)
+      return
+    }
     if (liveRoom.kind === 'lobby') {
       setSpot('errand:bell', null)
       setSpot('errand:hand', null)

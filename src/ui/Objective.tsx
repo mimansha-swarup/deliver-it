@@ -12,6 +12,7 @@ import { useSteps } from './uiState'
  */
 export function Objective() {
   const duty = useGameStore((state) => state.duty)
+  const explore = useGameStore((state) => state.explore)
   const hasOffer = useGameStore((state) => state.offer !== null)
   const phase = useGameStore((state) => state.phase)
   const mission = useGameStore((state) => state.mission)
@@ -34,6 +35,7 @@ export function Objective() {
     vehicle: delivery ? { name: VEHICLES[delivery.id].name, here: delivery.here } : null,
     goingOffline,
     step,
+    explore,
   })
   return (
     <p className="objective" role="status" aria-live="polite" key={text}>

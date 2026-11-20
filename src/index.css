@@ -2478,6 +2478,18 @@ body,
   border-radius: 12px;
 }
 
+.duty-badge[data-duty='explore'] {
+  border: 1px solid rgb(94 162 255 / 55%);
+}
+
+.duty-badge[data-duty='explore'] strong::before {
+  background: #5ea2ff;
+}
+
+.duty-badge[data-duty='explore'] ~ .objective {
+  top: calc(var(--edge) + 44px);
+}
+
 .duty-badge[data-duty='online'] strong::before {
   background: #3ddc97;
 }

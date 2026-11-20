@@ -537,7 +537,10 @@ export const useGameStore = create<GameState>()(
           if (quiet.length !== state.messages.length) changes.messages = quiet
           // A new rider gets the tutorial, which greets them itself; a returning one skips it.
           // Explore is for roaming: no tutorial, and the career isn't begun by it.
-          if (state.explore) return changes
+          if (state.explore) {
+            changes.messages = replaceTagged(changes.messages ?? state.messages, [{ tag: 'online', text: 'Explore mode: the whole layout is yours, maga. No orders, no fuel to buy, and any vehicle on the street is yours to drive. For work, quit to the menu and choose Continue.' }])
+            return changes
+          }
           const tutorial = shouldStartTutorial(state.career.started || state.xp > 0 || state.credits > 0)
           if (tutorial) useTutorial.getState().start()
           if (!state.career.started) {
