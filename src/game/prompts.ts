@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Action } from './keyBindings'
+import { saveKey } from './saveKeys'
 
 /*
  * Context prompts: bottom centre, only while they apply ("F · Get off", "E · Pick up", "Space · Drift").
@@ -43,7 +44,7 @@ export function shownPrompts(list: Prompt[]): Prompt[] {
 }
 
 /** Hints shown once, ever (the drift hint): which have been learnt, kept on this device. */
-const HINTS_KEY = 'deliver-it-hints'
+const HINTS_KEY = saveKey('swalpa-fast-hints')
 export function hintLearnt(id: string): boolean {
   try {
     return (JSON.parse(localStorage.getItem(HINTS_KEY) ?? '[]') as string[]).includes(id)

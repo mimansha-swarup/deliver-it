@@ -223,7 +223,7 @@ export const useFamily = create<Family>()(
       }
     },
     {
-      name: saveKey('deliver-it-family'),
+      name: saveKey('swalpa-fast-family'),
       version: 1,
       partialize: (state) => ({ saved: state.saved, introduced: state.introduced, lines: state.lines, nextDaily: state.nextDaily, lastDay: state.lastDay, nextAsk: state.nextAsk, sinceAsk: state.sinceAsk, helped: state.helped }),
     },

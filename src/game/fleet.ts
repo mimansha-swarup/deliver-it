@@ -350,7 +350,7 @@ export const useFleet = create<Fleet>()(
       }
     },
     {
-      name: saveKey('deliver-it-fleet'),
+      name: saveKey('swalpa-fast-fleet'),
       version: 1,
       partialize: (state) => ({ owned: state.owned, rental: state.rental, emis: state.emis, uncharged: state.uncharged }),
     },

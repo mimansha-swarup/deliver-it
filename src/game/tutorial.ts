@@ -36,7 +36,7 @@ export const useTutorial = create<TutorialState>()(
       },
       finish: () => set({ step: null, done: true }),
     }),
-    { name: saveKey('deliver-it-tutorial'), partialize: (state) => ({ done: state.done }) },
+    { name: saveKey('swalpa-fast-tutorial'), partialize: (state) => ({ done: state.done }) },
   ),
 )
 

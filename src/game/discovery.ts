@@ -24,7 +24,7 @@ export const NAMMA_SPOTS: { id: SpotId; name: string; how: string; found: string
 /** Where the spots that are simply places are, for finding them by being there. The world fills these in (World.tsx). */
 export const spotPlaces: { busstand: { x: number; z: number } | null; metro: { x: number; z: number }[] } = { busstand: null, metro: [] }
 
-const KEY = saveKey('deliver-it-spots')
+const KEY = saveKey('swalpa-fast-spots')
 
 function load(): Record<SpotId, boolean> {
   const none: Record<SpotId, boolean> = { statue: false, lake: false, temple: false, busstand: false, metro: false, shops: false, adda: false, society: false }

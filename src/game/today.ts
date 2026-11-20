@@ -108,7 +108,7 @@ export const useToday = create<Today>()(
         },
       }
     },
-    { name: saveKey('deliver-it-today'), version: 1, partialize: (state) => ({ stats: state.stats }) },
+    { name: saveKey('swalpa-fast-today'), version: 1, partialize: (state) => ({ stats: state.stats }) },
   ),
 )
 

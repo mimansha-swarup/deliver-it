@@ -264,7 +264,7 @@ export const useUpkeep = create<Upkeep>()(
         applyToHandling({ fuel, sinceService: get().sinceService, broken: get().broken }, game().vehicleId)
       },
     }),
-    { name: saveKey('deliver-it-upkeep'), version: 1, partialize: (state) => ({ fuel: state.fuel, sinceService: state.sinceService, broken: state.broken ? { ...state.broken, mending: false } : null, sinceBreakdown: state.sinceBreakdown }) },
+    { name: saveKey('swalpa-fast-upkeep'), version: 1, partialize: (state) => ({ fuel: state.fuel, sinceService: state.sinceService, broken: state.broken ? { ...state.broken, mending: false } : null, sinceBreakdown: state.sinceBreakdown }) },
   ),
 )
 

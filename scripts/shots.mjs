@@ -101,7 +101,7 @@ try {
   await send('Page.navigate', { url: `${BASE}/?debug=1` })
   await sleep(1500)
   // With ?debug the game saves to its "-debug" copies (src/game/saveKeys.ts): both are set.
-  await evaluate(`for (const key of ['deliver-it-tutorial', 'deliver-it-tutorial-debug']) localStorage.setItem(key, JSON.stringify({ state: { done: true }, version: 0 })); 'ok'`)
+  await evaluate(`for (const key of ['swalpa-fast-tutorial', 'swalpa-fast-tutorial-debug']) localStorage.setItem(key, JSON.stringify({ state: { done: true }, version: 0 })); 'ok'`)
   for (const spot of SPOTS) {
     await send('Page.navigate', { url: `${BASE}/?spawn=${spot}&debug=1&hour=${HOUR}&weather=clear` })
     await sleep(1500)

@@ -57,7 +57,7 @@ export const useAchievements = create<Achievements>()(
         }, 2600)
       },
     }),
-    { name: saveKey('deliver-it-awards'), version: 1, partialize: (state) => ({ unlocked: state.unlocked, deliveries: state.deliveries, rushRun: state.rushRun }) },
+    { name: saveKey('swalpa-fast-awards'), version: 1, partialize: (state) => ({ unlocked: state.unlocked, deliveries: state.deliveries, rushRun: state.rushRun }) },
   ),
 )
 

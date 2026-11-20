@@ -436,7 +436,7 @@ function tallyDelivery(shift: ShiftStats, reward: Reward, earned: number, onTime
 /** Where progress is saved in the browser. */
 /** Progress saved under the project's earlier name is moved across once, before anything reads it. */
 migrateSave('slikk-it-progress', 'deliver-it-progress')
-const SAVE_KEY = saveKey('deliver-it-progress')
+const SAVE_KEY = saveKey('swalpa-fast-progress')
 
 /**
  * Whether this is a first visit: no progress saved yet when the page loaded. Read before the

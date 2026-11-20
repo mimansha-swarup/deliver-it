@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { migrateSave } from './saveKeys'
 
 /*
  * Every key the game listens for, by action, changeable in the phone's Settings (Controls) and
@@ -83,6 +84,10 @@ type KeyStore = {
   reset: () => void
 }
 
+/** The keys are saved under their own name, real or debug visit alike, moved from the game's earlier name once. */
+const KEYS_SAVE = 'swalpa-fast-keys'
+migrateSave('deliver-it-keys', KEYS_SAVE)
+
 export const useKeys = create<KeyStore>()(
   persist(
     (set) => ({
@@ -101,7 +106,7 @@ export const useKeys = create<KeyStore>()(
       reset: () => set({ bindings: DEFAULT_KEYS }),
     }),
     {
-      name: 'deliver-it-keys',
+      name: KEYS_SAVE,
       // A save from before an action existed gets that action's default keys.
       merge: (saved, current) => ({ ...current, bindings: { ...DEFAULT_KEYS, ...((saved as Partial<KeyStore>)?.bindings ?? {}) } }),
     },

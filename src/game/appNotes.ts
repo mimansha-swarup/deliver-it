@@ -65,7 +65,7 @@ export const useAppNotes = create<AppNotes>()(
         if (get().pending[app]) set((state) => ({ pending: { ...state.pending, [app]: 0 } }))
       },
     }),
-    { name: saveKey('deliver-it-app-notes'), version: 1, partialize: (state) => ({ sent: state.sent, pending: state.pending }) },
+    { name: saveKey('swalpa-fast-app-notes'), version: 1, partialize: (state) => ({ sent: state.sent, pending: state.pending }) },
   ),
 )
 
