@@ -107,6 +107,9 @@ import { fillShopUnits, generateShopFronts } from './shopFrontPlacement'
 import { typeByChance, typeByChanceOnMainRoad } from './signboards'
 import { addParkedCarWalls, markParkedOnLanes, parkedFootprints, planStreetParking, STREET_CAR_MODELS } from './streetParking'
 
+/** A door the rider walks in at is kept clear this far round it, and this far either side of the walk to it from the road, in metres. */
+const DOORWAY = { clear: 3, path: 1.6 }
+
 /** Cars parked along the kerb are drawn this far, in metres: further than those under buildings, as they're in the open. */
 const STREET_PARKING_DRAW = 150
 /** No parking this close to where the ride starts, in metres. */
@@ -391,6 +394,42 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Menu boards on the pavement are solid too.
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
   const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
+  // The doors the rider walks in at (the dark stores, and the chai stalls and darshinis), each with
+  // the way to it from the road. They're kept clear: no tree, pole, parked vehicle or person standing
+  // within `DOORWAY.clear` metres of the door, or on the walk to it from where the rider parks.
+  const doorways = [
+    ...stores.map(({ x, z, rotation, node }) => ({ x: x + Math.sin(rotation) * 1.1, z: z + Math.cos(rotation) * 1.1, fromX: graph.xs[node], fromZ: graph.zs[node] })),
+    ...shopFronts
+      .filter(({ type }) => type === 'chai' || type === 'darshini')
+      .map(({ x, z, rotation }) => ({ x: x + Math.sin(rotation) * 0.9, z: z + Math.cos(rotation) * 0.9, fromX: x + Math.sin(rotation) * 9, fromZ: z + Math.cos(rotation) * 9 })),
+  ]
+  const inDoorway = (x: number, z: number, clear: number = DOORWAY.clear, path: number = DOORWAY.path) =>
+    doorways.some((door) => {
+      if (Math.abs(x - door.x) > 40 || Math.abs(z - door.z) > 40) return false
+      if (Math.hypot(x - door.x, z - door.z) < clear) return true
+      const wayX = door.fromX - door.x
+      const wayZ = door.fromZ - door.z
+      const along = Math.max(0, Math.min(1, ((x - door.x) * wayX + (z - door.z) * wayZ) / (wayX * wayX + wayZ * wayZ || 1)))
+      return Math.hypot(x - door.x - wayX * along, z - door.z - wayZ * along) < path
+    })
+  const clearedFromDoorways = { trees: 0, poles: 0, scooters: 0, people: 0 }
+  const keepOffDoorways = (list: typeof props.trees, count: 'trees' | 'poles') =>
+    list.filter((prop) => {
+      if (!inDoorway(prop.x, prop.z)) return true
+      removePost(collisions, prop.x, prop.z)
+      clearedFromDoorways[count]++
+      return false
+    })
+  props.trees = keepOffDoorways(props.trees, 'trees')
+  props.lamps = keepOffDoorways(props.lamps, 'poles')
+  // A cable needs both its poles.
+  props.postPairs = props.postPairs.filter(({ from, to }) => !inDoorway(from.x, from.z) && !inDoorway(to.x, to.z))
+  // Scooters parked by a door are part of the street; only the ones on the walk itself go.
+  props.parkedScooters = props.parkedScooters.filter((prop) => {
+    if (!inDoorway(prop.x, prop.z, DOORWAY.path, DOORWAY.path)) return true
+    clearedFromDoorways.scooters++
+    return false
+  })
   lap('shop units and roadside props')
   yield STEP
   // Hedges inside the compound walls join the median shrubs, drawn together.
@@ -493,7 +532,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     graph,
     gates: houses.gates,
     collisions,
-    keepClear: (x, z) => isOnForecourt(fuel, x, z) || starts.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < SPAWN_CLEAR),
+    // Nor across a door the rider walks in at, or the walk to it.
+    keepClear: (x, z) => isOnForecourt(fuel, x, z) || starts.some(([sx, sz]) => Math.hypot(x - sx, z - sz) < SPAWN_CLEAR) || inDoorway(x, z, DOORWAY.clear, DOORWAY.path + 1.2),
     roadIndex,
   })
   lap(`street parking: ${parking.cars.length} cars, ${parking.bikes.length} bikes; refused ${JSON.stringify(parking.rejected)}`)
@@ -576,6 +616,12 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const newSoilArea = findNewGroundArea(roadPieces.filter((piece) => usesNewGround(data.roads[piece.road])))
   // Shopkeepers, customers and walkers at the shops, as many as each street's preset says.
   const shopPeople = planShopPeople(shopFronts, data.roads, roadIndex)
+  // Nobody stands about in a doorway the rider walks in at, or paces across one.
+  const peopleBefore = shopPeople.standing.length + shopPeople.walkers.length
+  shopPeople.standing = shopPeople.standing.filter((person) => !inDoorway(person.x, person.z))
+  shopPeople.walkers = shopPeople.walkers.filter(({ from, to }) => !inDoorway(from[0], from[1]) && !inDoorway(to[0], to[1]) && !inDoorway((from[0] + to[0]) / 2, (from[1] + to[1]) / 2))
+  clearedFromDoorways.people = peopleBefore - shopPeople.standing.length - shopPeople.walkers.length
+  worldSurface.report.doorways = { doors: doorways.length, ...clearedFromDoorways }
   // The sellers and devotees at Agara's temple door stand with the rest.
   // Traffic police at the major junctions too: the widest signal junctions (they're listed widest first), spaced apart (game/police.ts).
   policePosts.list = agaraPlaces.police && agara.police ? [{ ...agaraPlaces.police, rotation: agara.police.rotation, name: 'Agara junction' }] : []

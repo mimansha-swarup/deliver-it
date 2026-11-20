@@ -23,6 +23,7 @@ import {
 } from './foliage'
 import { windUniforms } from './wind'
 import { groundLift } from './groundLift'
+import { seeThrough } from '../camera/seeThrough'
 
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'
@@ -62,6 +63,9 @@ const GLOW_OFFSET = 1.5
  * Adds a little GLSL to the standard material. Everything moves sideways, more
  * the higher up it is, and each tree starts at a different point in the sway.
  */
+const SEEN_THROUGH = seeThrough()
+const SWAY_SEEN_THROUGH = seeThrough((shader) => addSway(shader))
+
 function addSway(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.uniforms.uWindPhase = windUniforms.uWindPhase
   shader.uniforms.uWindStrength = windUniforms.uWindStrength
@@ -545,6 +549,8 @@ export function PropInstances({
   const fadeKey = fade?.join(',') ?? ''
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the fade's numbers, not its array, matter
   const look = useMemo(() => leafLook(fade), [fadeKey])
+  // Leaves, things that sway, and the rest: each lets the camera see the rider on foot through it (camera/seeThrough.ts). Not what lies flat on the ground.
+  const hooks = useMemo(() => [seeThrough(look), SWAY_SEEN_THROUGH, SEEN_THROUGH] as const, [look])
 
   useFrame(({ gl }) => {
     const instances = mesh.current
@@ -644,7 +650,7 @@ export function PropInstances({
           alphaMap={leaves?.alpha ?? null}
           alphaTest={leaves ? SHARPENED_CUTOFF : 0}
           side={leaves ? THREE.DoubleSide : THREE.FrontSide}
-          onBeforeCompile={leaves ? look : sway ? addSway : undefined}
+          onBeforeCompile={flat ? undefined : hooks[leaves ? 0 : sway ? 1 : 2]}
         />
       )}
     </instancedMesh>

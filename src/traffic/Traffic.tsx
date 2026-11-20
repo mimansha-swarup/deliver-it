@@ -47,6 +47,7 @@ import {
 } from './vehicleShapes'
 import { CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
 import { groundLift } from '../world/groundLift'
+import { seeThrough } from '../camera/seeThrough'
 import { createMotorcycleGeometry, createScooterGeometry } from './twoWheelers'
 import { createProxyGeometry } from './vehicleProxies'
 import { createPlateAtlas, createPlateGeometry, plateCell, showPlateCell, type PlateFit } from './numberPlates'
@@ -331,7 +332,7 @@ function MovingInstances({
         // caught a different bit of sky in every dent, which read as speckled paint.
         roughness={cloth ? 0.85 : baked ? 0.5 : 0.45}
         metalness={cloth ? 0 : baked ? 0.15 : 0.1}
-        onBeforeCompile={baked || cloth ? tintPaintOnly : undefined}
+        onBeforeCompile={baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
       />
     </instancedMesh>
   )
@@ -802,6 +803,12 @@ function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
  * as lit by the room's tube lights: about as bright as the walls around them.
  */
 const INDOOR_GLOW = 0.62
+// People and traffic give way to the camera's view of the rider on foot (camera/seeThrough.ts).
+const WALKING_SEEN_THROUGH = seeThrough((shader) => addWalking(shader))
+const WALKING_INDOORS_SEEN_THROUGH = seeThrough((shader) => addWalkingIndoors(shader))
+const PAINT_SEEN_THROUGH = seeThrough(tintPaintOnly)
+const SEEN_THROUGH = seeThrough()
+
 function addWalkingIndoors(shader: Parameters<typeof addWalking>[0]) {
   addWalking(shader)
   shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * ${INDOOR_GLOW.toFixed(2)};`)
@@ -844,7 +851,7 @@ export function People({
       args={[geometry, undefined, items.length]}
       frustumCulled={false}
     >
-      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={indoors ? addWalkingIndoors : addWalking} />
+      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={indoors ? WALKING_INDOORS_SEEN_THROUGH : WALKING_SEEN_THROUGH} />
     </instancedMesh>
   )
 }

@@ -321,7 +321,9 @@ export function Rider({
       HIP.z + (seat.hip[2] - HIP.z) * on,
     )
     // On foot they lean into a turn from the feet, which stay where they are: the hips move over with the lean.
-    group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off) - state.rider.lean * afoot - FIDGET.tilt * shifted)
+    // The shoulders turn with each step, against the legs: what makes a walk look loose from behind.
+    const twist = gait.twist * Math.cos(phase) * moving * afoot
+    group.rotation.set(torso, twist, -state.lean * 0.35 * (1 - off) - state.rider.lean * afoot - FIDGET.tilt * shifted)
     group.position.x += state.rider.lean * afoot * 0.5
     group.updateMatrix()
     // The model's own space: the body group's, with the hips raised to where the model has them.
@@ -355,7 +357,8 @@ export function Rider({
 
     // Looks where it's going: the head turns back against the torso's lean, so the eyes stay level.
     if (head.current) {
-      head.current.rotation.y = state.steer * 0.3 * (1 - off) + looking
+      // The head stays facing the way they're going while the shoulders turn under it.
+      head.current.rotation.y = state.steer * 0.3 * (1 - off) + looking - twist
       head.current.rotation.z = state.lean * 0.45 * (1 - off) + FIDGET.tilt * shifted
       head.current.rotation.x = -torso - crouch * 0.02 * (1 - off) + 0.08 + FIDGET.nod * phone
     }

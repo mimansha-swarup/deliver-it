@@ -82,9 +82,11 @@ const FADE_MS = 280
 
 /**
  * Through a door, up a lift: the screen goes dark with a word about where to, `then` happens in the
- * dark, and it comes back. The rider can't walk meanwhile. `hold`: extra time in the dark, in ms.
+ * dark, and it comes back. The rider can't walk meanwhile. `hold`: extra time in the dark, in ms:
+ * long enough for the place beyond the door to be drawn and the camera to be where it will be, so
+ * what comes back is never a blank or half-made picture.
  */
-export function goThrough(text: string, then: () => void, hold = 120) {
+export function goThrough(text: string, then: () => void, hold = 240) {
   if (liveRoom.frozen) return
   liveRoom.frozen = true
   useRoom.setState({ fading: true, fadeText: text })

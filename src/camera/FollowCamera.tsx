@@ -11,6 +11,7 @@ import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
 import { blocksView, type CollisionWorld } from '../world/collision'
 import { liveLook, settleLook, useMouseLook } from './mouseLook'
+import { liveSight } from './seeThrough'
 
 /*
  * Low and close: just over the rider's helmet and a few metres back, so buildings and trees
@@ -95,14 +96,23 @@ const FOOT_LOOK_HEIGHT = 1.3
  */
 const FOOT_FOLLOW = { response: 9, snap: 3 }
 /**
- * On foot, what comes between the camera and the rider. A building doesn't move the camera at
- * all: its walls are drawn from outside only, so from inside one the camera sees straight out
- * through the wall to the rider, as if that wall had faded away. A thin wall, a fence, a tree or a
- * parked car, which are solid from both sides, bring the camera in front of them: this quickly
- * (per second, not at once), no nearer than `nearest` metres, and rising by `rise` metres for each
- * metre it has come in, to look over the rider's shoulder and never from inside them.
+ * On foot, what comes between the camera and the rider. A wall or a building brings the camera in
+ * front of it: this quickly (per second, not at once), no nearer than `nearest` metres, and rising
+ * by `rise` metres for each metre it has come in, to look over the rider's shoulder and never from
+ * inside them. Everything else (a tree, a pole, a parked vehicle, a person) leaves the camera
+ * where it is and is seen through instead: the part of it within `sight` metres of the line from
+ * the camera to the rider is faded out (seeThrough.ts).
  */
-const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22 }
+const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22, sight: 0.6 }
+/** Getting off and on, the view changes between the vehicle's and the walker's over this long, in seconds, eased at both ends: never a cut. */
+const FOOT_BLEND = 0.5
+/**
+ * In a room the camera stays inside the walls, and keeps the rider in the picture: `distance`
+ * metres from them where the room allows (when the wall behind them is nearer, it moves along that
+ * wall until it is), at `height` above the floor, looking at them; it gets to where it should be
+ * this quickly (per second), and changes side only when the other has `swap` metres more room.
+ */
+const ROOM_VIEW = { distance: 2.7, height: 1.85, response: 5, swap: 1.2 }
 /** The camera's bob with each step on foot: this far up and down at a walk (metres), in full from `fullAt` m/s, and this much more for each m/s past it. */
 const FOOT_BOB = { walk: 0.011, fullAt: 1.6, jog: 0.3 }
 /**
@@ -113,8 +123,6 @@ const FOOT_BOB = { walk: 0.011, fullAt: 1.6, jog: 0.3 }
 const FOOT_DRIFT = { rate: 1.5, from: 0.5, afterMouse: 1200 }
 /** In a room, the camera keeps this far inside its walls and under its ceiling, in metres. */
 const ROOM_MARGIN = 0.35
-/** Nearer the rider than this, in a room, the camera climbs. */
-const ROOM_CLOSE = 1.7
 
 /** Walks backwards from the scooter and returns how far the camera can go. */
 function findClearDistance(
@@ -126,11 +134,11 @@ function findClearDistance(
   reach = DISTANCE_BEHIND,
   /** The camera is down among the walls and parked cars, not above them. */
   low = false,
-  /** On foot: poles and trunks count (standing still behind one hides the rider), and buildings don't (`FOOT_WALLS`). */
+  /** On foot: parked vehicles don't count either (they're seen through, with the poles and trees: `FOOT_WALLS`). */
   walking = false,
 ): number {
   const nearest = walking ? FOOT_WALLS.nearest : MIN_DISTANCE
-  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, walking ? 0 : CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, !walking)
+  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, walking ? false : low)
   for (let distance = nearest; distance < reach; distance += PROBE_STEP) {
     if (!blocked(distance)) continue
     // Then to within a few centimetres of the wall, so that swinging the view along it moves the
@@ -151,6 +159,9 @@ function findClearDistance(
  * Keeps the camera behind the target, lagging slightly through turns, and moves
  * it closer when a building would otherwise block the view.
  */
+const view = { distance: 1, height: 1, look: 1 }
+const sight = new Vector3()
+
 /** A camera held still at a spot, looking at a point, while `active`: for taking the title pictures. */
 const photo = { active: false, position: [0, 0, 0] as [number, number, number], target: [0, 0, 0] as [number, number, number] }
 if (isDebug()) (window as unknown as { __deliverItPhoto?: typeof photo }).__deliverItPhoto = photo
@@ -176,6 +187,10 @@ export function FollowCamera({
   const sway = useRef(0)
   /** On foot: where the camera takes the rider to be, a little behind where they are. */
   const followed = useRef<{ x: number; z: number } | null>(null)
+  /** How far the view has changed from the vehicle's to the walker's, 0 to 1. */
+  const onFoot = useRef(0)
+  /** In a room: where the camera is, and which side of the rider it went to along a wall. */
+  const roomCamera = useRef<{ x: number; z: number; side: number } | null>(null)
 
   useMouseLook()
 
@@ -191,6 +206,7 @@ export function FollowCamera({
 
   useFrame(({ camera, clock }, delta) => {
     const state = scooter.current
+    const snapped = liveView.snapBehind
     introStart.current ??= new Vector3().copy(camera.position)
     const travelSpeed = getTravelSpeed(state)
 
@@ -249,7 +265,14 @@ export function FollowCamera({
     level.current += (height - level.current) * (1 - Math.exp(-8 * delta))
     const up = height > UP_ON_DECK
     // The vehicle's own chase view: a van is followed from further back and higher than a scooter.
-    const view = afoot ? FOOT_VIEW : liveVehicle.spec.camera
+    // Getting off and on, it changes to the walker's and back over half a second.
+    const offVehicle = afoot || state.rider.phase === 'dismounting'
+    onFoot.current = Math.max(0, Math.min(1, onFoot.current + ((offVehicle ? 1 : -1) * delta) / FOOT_BLEND))
+    const walk = onFoot.current * onFoot.current * (3 - 2 * onFoot.current)
+    const ride = liveVehicle.spec.camera
+    view.distance = ride.distance + (FOOT_VIEW.distance - ride.distance) * walk
+    view.height = ride.height + (FOOT_VIEW.height - ride.height) * walk
+    view.look = ride.look + (FOOT_VIEW.look - ride.look) * walk
     const indoors = afoot && liveRoom.kind !== null
     // In a room the walls are the room's own (the camera is kept inside them, below); the street's don't apply.
     const reach = DISTANCE_BEHIND * view.distance
@@ -263,7 +286,7 @@ export function FollowCamera({
           : clearDistance // Snap in, or the wall would be visible for a moment.
         : cameraDistance.current +
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
-    cameraDistance.current = distance
+    cameraDistance.current = snapped ? clearDistance : distance
     // Brought in by a wall on foot, it rises to look over their shoulder.
     const risen = afoot && !indoors ? Math.max(0, reach - distance) * FOOT_WALLS.rise : 0
 
@@ -295,8 +318,10 @@ export function FollowCamera({
     }
 
     // On the rider, look at them rather than ahead of them.
-    const lookAhead = afoot ? FOOT_LOOK_AHEAD : LOOK_AHEAD * (1 - follow)
-    const lookAbove = (afoot ? FOOT_LOOK_HEIGHT : LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow) - pivot
+    const rideAhead = LOOK_AHEAD * (1 - follow)
+    const rideHeight = LOOK_HEIGHT * ride.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * ride.look) * follow
+    const lookAhead = rideAhead + (FOOT_LOOK_AHEAD - rideAhead) * walk
+    const lookAbove = rideHeight + (FOOT_LOOK_HEIGHT - rideHeight) * walk - pivot
     const lookAlong = lookAhead * cos + lookAbove * sin
     let lookX = focusX + forwardX * lookAlong
     let lookY: number = pivot - lookAhead * sin + lookAbove * cos + level.current
@@ -315,15 +340,46 @@ export function FollowCamera({
       lookZ += (liveShot.lookZ - lookZ) * amount
     }
 
-    // In a room, the camera stays inside its walls and under its ceiling, whatever the shot.
+    // In a room the camera stays inside its walls, and keeps the rider in the picture (`ROOM_VIEW`).
     if (indoors) {
-      camera.position.x = Math.max(liveRoom.x - ROOM.width / 2 + ROOM_MARGIN, Math.min(liveRoom.x + ROOM.width / 2 - ROOM_MARGIN, camera.position.x))
-      camera.position.z = Math.max(liveRoom.z - ROOM.depth / 2 + ROOM_MARGIN, Math.min(liveRoom.z + ROOM.depth / 2 - ROOM_MARGIN, camera.position.z))
-      // Backed against a wall, it rises to look over the rider's helmet rather than sit inside it.
-      const behind = Math.hypot(camera.position.x - focusX, camera.position.z - focusZ)
-      if (behind < ROOM_CLOSE) camera.position.y += (ROOM_CLOSE - behind) * 0.75
-      camera.position.y = Math.min(camera.position.y, liveRoom.floorY + ROOM.height - ROOM_MARGIN)
-    }
+      const minX = liveRoom.x - ROOM.width / 2 + ROOM_MARGIN
+      const maxX = liveRoom.x + ROOM.width / 2 - ROOM_MARGIN
+      const minZ = liveRoom.z - ROOM.depth / 2 + ROOM_MARGIN
+      const maxZ = liveRoom.z + ROOM.depth / 2 - ROOM_MARGIN
+      const riderX = state.rider.x
+      const riderZ = state.rider.z
+      let wantX = Math.max(minX, Math.min(maxX, camera.position.x))
+      let wantZ = Math.max(minZ, Math.min(maxZ, camera.position.z))
+      const far = Math.min(reach, ROOM_VIEW.distance)
+      const last = snapped ? null : roomCamera.current
+      let side = last?.side ?? 1
+      if (Math.hypot(wantX - riderX, wantZ - riderZ) < far) {
+        // The wall behind them is too near: along it, to the side with more room, until it's far enough.
+        const alongX = wantZ !== camera.position.z
+        const [low, high, at] = alongX ? [minX, maxX, riderX] : [minZ, maxZ, riderZ]
+        const roomAbove = high - at
+        const roomBelow = at - low
+        if (side > 0 ? roomBelow > roomAbove + ROOM_VIEW.swap : roomAbove > roomBelow + ROOM_VIEW.swap) side = -side
+        const off = alongX ? wantZ - riderZ : wantX - riderX
+        const along = Math.max(low, Math.min(high, at + side * Math.sqrt(Math.max(0, far * far - off * off))))
+        if (alongX) wantX = along
+        else wantZ = along
+      }
+      const held = last ?? { x: wantX, z: wantZ, side }
+      held.x += (wantX - held.x) * (1 - Math.exp(-ROOM_VIEW.response * delta))
+      held.z += (wantZ - held.z) * (1 - Math.exp(-ROOM_VIEW.response * delta))
+      held.side = side
+      roomCamera.current = held
+      camera.position.set(held.x, Math.min(liveRoom.floorY + ROOM_VIEW.height, liveRoom.floorY + ROOM.height - ROOM_MARGIN), held.z)
+      // It looks at the rider, and forward on the keys is the way it looks.
+      const toX = riderX - held.x
+      const toZ = riderZ - held.z
+      const away = Math.hypot(toX, toZ) || 1
+      lookX = riderX + (toX / away) * 0.7
+      lookY = liveRoom.floorY + 1.15
+      lookZ = riderZ + (toZ / away) * 0.7
+      liveView.cameraYaw = Math.atan2(toX, toZ)
+    } else roomCamera.current = null
 
     camera.lookAt(lookX, lookY, lookZ)
     // From the driver's seat, where the vehicle has one (V): the eye's place in the vehicle, looking
@@ -342,6 +398,12 @@ export function FollowCamera({
     const swayTarget = Math.max(-SWAY_MAX, Math.min(SWAY_MAX, state.lean * SWAY_SHARE)) * (1 - follow) * (1 - amount)
     sway.current += (swayTarget - sway.current) * (1 - Math.exp(-SWAY_RESPONSE * delta))
     camera.rotateZ(sway.current)
+    // On foot, whatever stands between the camera and the rider's chest gives way (seeThrough.ts): where they are, as the camera sees them.
+    if (walk > 0.01 && follow > 0.5) {
+      camera.updateMatrixWorld()
+      sight.set(state.rider.x, state.rider.y + 0.25, state.rider.z).applyMatrix4(camera.matrixWorldInverse)
+      liveSight.value.set(sight.x, sight.y, sight.z, FOOT_WALLS.sight * walk)
+    } else liveSight.value.w = 0
     // Debug: a camera held still, for taking pictures (`__deliverItPhoto` with ?debug).
     if (photo.active) {
       camera.position.set(...photo.position)

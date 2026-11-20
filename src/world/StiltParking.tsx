@@ -9,6 +9,10 @@ import { createParkedCarGeometry, createParkedScooterGeometry } from '../traffic
 import { STEERING_Z } from '../vehicle/Rider'
 import type { StiltVehicle } from './houseKit'
 import { cameraDistance, isDetailed, lodCamera } from '../traffic/vehicleLod'
+import { seeThrough } from '../camera/seeThrough'
+
+/** Parked vehicles give way to the camera's view of the rider on foot (camera/seeThrough.ts). */
+const PAINT_SEEN_THROUGH = seeThrough(tintPaintOnly)
 
 /** Parked vehicles further than this aren't drawn, in metres. Under a building, they're hard to see from further. */
 const DRAW_DISTANCE = 75
@@ -94,7 +98,7 @@ function Parked({
         envMapIntensity={0.5}
         roughness={0.35}
         metalness={0.3}
-        onBeforeCompile={tintPaintOnly}
+        onBeforeCompile={PAINT_SEEN_THROUGH}
       />
     </instancedMesh>
   )

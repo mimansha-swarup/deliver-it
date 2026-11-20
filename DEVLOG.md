@@ -11016,3 +11016,38 @@ A clip of the pickup on foot (off the scooter, into the dark store, the bag, out
 recorded from the game's own canvas on the production build: `clips/walk-to-dark-store.mp4` (not
 in git). In it, the moment after stepping through the door the camera is close and high over the
 rider for a second before it settles: the room's walls hold it in. Left as it is for now.
+
+## 2026-11-20: Entry 228, the camera on foot, after watching the clip
+
+The first clip was reviewed frame by frame: the walking looked odd mainly because of the camera.
+
+1. **Nothing between the camera and the rider.** Trees, poles, parked vehicles and people no
+   longer move the camera, and no longer hide the rider: the part of one that lies in the line from
+   the camera to the rider's chest (0.6 m wide) is drawn as a scatter of dots thinning to nothing
+   (`seeThrough.ts`, added to the materials of the street's props and trees, people, traffic and
+   parked vehicles; one shared value says where the rider is). Only walls and buildings bring the
+   camera in, and smoothly. (Entry 227's trick of leaving the camera inside a building is gone.)
+2. **No cuts.** Getting off and on, the view changes between the vehicle's and the walker's over
+   half a second, eased. Through a door the screen fades to dark and back, with the camera already
+   in place. In a room the camera keeps the rider in the picture: 2.7 m from them where the room
+   allows, moving along the wall behind them when it's too near, looking at them, and W walks the
+   way it looks. (It used to be squeezed against the door's wall over the rider's head.)
+3. **The blank frame leaving the store** was the moment of the swap, which the game hides behind
+   its dark fade; the first clip was recorded from the 3D picture alone, without the fade, so it
+   showed. The fade now holds 240 ms in the dark (was 120), and the new clip is recorded with it.
+4. **Doorways are clear.** At every door the rider walks in at (9 dark stores, and the chai stalls
+   and darshinis): no tree, pole or person standing within 3 m, none of those or a parked vehicle
+   within 1.6 m of the walk from the road to the door (`doorways` in World.tsx; the count is in the
+   planning report). The dark store's man outside stands at the far end of its front, not at the door.
+5. **The walk.** The arms swing further (0.25 m), the shoulders turn with each step against the
+   legs, the head staying forward, and the hips move over the standing foot a little more. It is
+   still the game's own rig, not an imported skeleton with recorded clips: none exist in the project.
+
+Checked on the production build: with a parked motorbike right against the camera, the rider is
+whole and the bike is dissolved where it covered them; the walk into the dark store and back, where
+the rider is in the picture in every frame, the only dark frames are the two fades, and nothing
+stands in the way. Frame benchmark, this against the commit before, back to back: Low 16.1 against
+20.5 ms, High 22.8 against 26.6, CPU slowed four times 37.5 against 36.3 and 80.9 against 82.1: no
+slower. It rides and doesn't walk, so the see-through's own cost on foot isn't in it.
+
+New clip: `clips/walk-to-dark-store.mp4`, 21 s, the fades included, no HUD.

@@ -36,6 +36,8 @@ const SIGNAL_CLEARANCE = 35
 const EDGE_MARGIN = 40
 const BIKE_RADIUS = 0.5
 const STAFF_FROM_WALL = 1.2
+/** And at least this far along the front from the door, in metres: an entrance is kept clear (World.tsx' doorways). */
+const STAFF_FROM_DOOR = 3.2
 const BIKES_FROM_WALL = 1.5
 const BIKE_SPACING = 1.5
 
@@ -148,8 +150,9 @@ function findStoreIn(
         rotation: Math.atan2(normalX, normalZ),
         width: frontWidth,
         node,
-        staffX: x + normalX * STAFF_FROM_WALL,
-        staffZ: z + normalZ * STAFF_FROM_WALL,
+        // Along the front from the door, on the side away from the bikes: never in the doorway, or on the way to it.
+        staffX: x + normalX * STAFF_FROM_WALL - alongX * Math.max(STAFF_FROM_DOOR, frontWidth / 2 - 0.8),
+        staffZ: z + normalZ * STAFF_FROM_WALL - alongZ * Math.max(STAFF_FROM_DOOR, frontWidth / 2 - 0.8),
         bikes: [0, 1].map((slot) => ({
           x: x + normalX * BIKES_FROM_WALL + alongX * (bikeOffset - slot * BIKE_SPACING),
           z: z + normalZ * BIKES_FROM_WALL + alongZ * (bikeOffset - slot * BIKE_SPACING),

@@ -36,12 +36,13 @@ export const JOG_STRIDE_PER_METRE = (Math.PI * 2 * JOG.stance) / (2 * JOG.reach)
  * are down between steps; under half in a jog, which has a moment in the air). `reach`: how far a
  * foot lands ahead of the hip. `armSwing`: how far a hand swings, and `armBend`: how much the
  * elbows are held bent (a jog) instead of hanging (a walk). `lean`: how far the body tips
- * forward, in radians. `sway`: how far the hips move over the standing foot, in metres.
+ * forward, in radians. `sway`: how far the hips move over the standing foot, in metres. `twist`:
+ * how far the shoulders turn with each step, in radians, the right one forward as the left foot is.
  */
-export type Gait = { stance: number; reach: number; footLift: number; crouch: number; sink: number; armSwing: number; armBend: number; lean: number; sway: number; feetApart: number }
+export type Gait = { stance: number; reach: number; footLift: number; crouch: number; sink: number; armSwing: number; armBend: number; lean: number; sway: number; twist: number; feetApart: number }
 
-export const WALK: Gait = { stance: 0.62, reach: 0.44, footLift: 0.075, crouch: 0.012, sink: 0.014, armSwing: 0.17, armBend: 0, lean: 0.035, sway: 0.022, feetApart: 0.09 }
-export const JOG_GAIT: Gait = { stance: JOG.stance, reach: JOG.reach, footLift: JOG.footLift, crouch: JOG.crouch, sink: JOG.sink, armSwing: 0.22, armBend: 1, lean: 0.2, sway: 0.008, feetApart: 0.11 }
+export const WALK: Gait = { stance: 0.62, reach: 0.44, footLift: 0.075, crouch: 0.012, sink: 0.014, armSwing: 0.25, armBend: 0, lean: 0.035, sway: 0.03, twist: 0.085, feetApart: 0.09 }
+export const JOG_GAIT: Gait = { stance: JOG.stance, reach: JOG.reach, footLift: JOG.footLift, crouch: JOG.crouch, sink: JOG.sink, armSwing: 0.24, armBend: 1, lean: 0.2, sway: 0.008, twist: 0.12, feetApart: 0.11 }
 /** A step taken turning on the spot: short and low. */
 export const SHUFFLE = { reach: 0.1, footLift: 0.045, pace: 0.5 }
 
