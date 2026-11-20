@@ -42,6 +42,12 @@ by colours. All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
 "Bull" by stealth86 (the animal standing in the road)
   https://sketchfab.com/3d-models/bull-d0f2ff31252a4c9cb084b1ac3a2e4d8b
 
+scooter.glb: the rider's own scooter. Changed for this game: rescaled, cut into a body, a steering
+front and two wheels, simplified, its texture replaced by colours, its orange panels made
+repaintable and the maker's lettering removed. The game has no connection with any scooter maker.
+"Vespa scooty" by yogendraprajapati298, CC BY 4.0
+  https://sketchfab.com/3d-models/vespa-scooty-3faa866d4e764e93af4e03d402cf6c61
+
 city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
 
 REPLACE BEFORE ANY MONETISATION: yamaha.glb is non-commercial (CC BY-NC-SA). While the game is

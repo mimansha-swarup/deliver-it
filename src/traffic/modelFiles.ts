@@ -11,6 +11,9 @@ export const TRAFFIC_MODELS_URL = '/models/traffic.glb'
 export const PEOPLE_MODELS_URL = '/models/people.glb'
 export const EXTRA_PEOPLE = ['uncle', 'guy', 'office', 'saree'] as const
 
+/** The rider's own scooter, cut into the pieces that move (vehicle/vehicleBodies.ts). */
+export const SCOOTER_MODEL_URL = '/models/scooter.glb'
+
 /** Kept apart from the rest, because its licence is different. See `models/CREDITS.txt`. */
 export const YAMAHA_MODEL_URL = '/models/yamaha.glb'
 

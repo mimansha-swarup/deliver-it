@@ -11299,3 +11299,27 @@ benchmark wasn't run, and a thrown suited rider (after a crash) wasn't looked at
   never slept is on Day 1 at any level.
 - **The sports bike is non-commercial.** Said on the Credits screen, at the top of its entry in
   models/CREDITS.txt and in the README under "Before any monetisation": replace it first.
+
+## 2026-11-21: Entry 243, the Deliver It scooter is a modelled scooter
+
+The rider's scooter was built in code from lumps and tubes. It's now a downloaded model ("Vespa
+scooty" by yogendraprajapati298, CC BY 4.0, credited), in a file of its own, `scooter.glb`
+(261 KB).
+
+- The model is one mesh with one texture, and the game needs wheels that spin and a front that
+  steers. `bakeScooter` in the baking script fits it to the old scooter (the same 1.28 m
+  wheelbase, wheels on the ground), finds its axles from where it touches the ground, and cuts
+  it into four: the body, what turns with the bars (the headset with bars, lamp and mirrors,
+  and the mudguard and fork), and each wheel about its own axle.
+- Its orange panels are marked as paint, keeping a little of their light and shade, so the
+  Garage's colours still apply (it starts in Midnight, as before). The maker's lettering on
+  the panels goes with the paint, as no real brand is shown in the game.
+- `vehicleBodies.ts` builds the scooter from the model once it's loaded, with a small rack
+  behind the seat for the yellow box, and falls back to the code-built one if the file doesn't come.
+- The rider's seat was moved to fit it: the bars are 12 cm nearer than the old ones.
+
+Seen in the game: from the side, front and back with the rider and the box on, and with the
+steering held over. Where the mudguard was cut from the apron a few ragged triangles show
+at full lock. Not looked at: the other paints, a crash (the scooter on its side), the Garage's
+preview, and the frame benchmark (about 22,000 triangles for the one scooter, where the built
+one had a few hundred).

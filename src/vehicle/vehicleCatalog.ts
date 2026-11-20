@@ -111,7 +111,9 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     minLevel: 1, minRating: 0, rentHour: 0, rentDay: 0, price: 0, engine: 'scooter', engineVolume: 1, horn: 'scooter',
     camera: { distance: 1, height: 1, look: 1 }, cockpit: null, body: 'scooter', paint: null,
     // Upright, feet flat on the footboard.
-    seat: { hip: [0, 0.94, -0.3], lean: 0.14, column: 0.42, grip: [0.3, 1.04, -0.05], foot: [0.13, 0.41, 0.12], footDown: true, pedals: false, side: 0 },
+    // Fitted to the modelled scooter (the baking script prints these): its bars are at 1.05 m, 0.25 m
+    // ahead of the middle, its floorboard's top at 0.39 m and its column at 0.285 m.
+    seat: { hip: [0, 0.94, -0.34], lean: 0.12, column: 0.285, grip: [0.29, 1.07, -0.04], foot: [0.13, 0.43, 0.1], footDown: true, pedals: false, side: 0 },
   },
   bicycle: {
     id: 'bicycle', name: 'Pedalu City', kind: 'Bicycle', blurb: 'Slow, silent, free to run. Squeezes through anything.',

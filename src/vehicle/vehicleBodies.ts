@@ -110,11 +110,90 @@ const mudguard = (at: [number, number, number], radius: number, color: string, a
   tint(new THREE.TorusGeometry(radius, 0.016, 4, 14, Math.PI * arc).rotateY(Math.PI / 2).rotateX(Math.PI * start).translate(...at), color)
 
 /**
+ * The Deliver It scooter as modelled (models/scooter.glb, cut into its moving pieces by
+ * scripts/prepare_traffic_models.mjs): the body, what turns with the bars, and the two wheels about
+ * their own axles, with where the axles and the steering column are. Set once the file has loaded
+ * (Scooter.tsx); every scooter built after that is this one.
+ */
+type ScooterModel = {
+  body: THREE.BufferGeometry
+  front: THREE.BufferGeometry
+  wheelFront: THREE.BufferGeometry
+  wheelRear: THREE.BufferGeometry
+  frontAt: [number, number, number]
+  rearAt: [number, number, number]
+  pivot: [number, number]
+}
+let scooterModel: ScooterModel | null = null
+
+export function setScooterModel(scene: THREE.Object3D) {
+  if (scooterModel) return
+  const piece = (name: string) => {
+    let geometry: THREE.BufferGeometry | undefined
+    scene.getObjectByName(name)?.traverse((child) => {
+      if (child instanceof THREE.Mesh) geometry = child.geometry
+    })
+    return geometry
+  }
+  const body = piece('scooty')
+  const front = piece('scooty-front')
+  const wheelFront = piece('scooty-wheel-front')
+  const wheelRear = piece('scooty-wheel-rear')
+  const data = scene.getObjectByName('scooty')?.userData as { front?: [number, number, number]; rear?: [number, number, number]; pivot?: [number, number] } | undefined
+  if (!body || !front || !wheelFront || !wheelRear || !data?.front || !data.rear || !data.pivot) return
+  scooterModel = { body, front, wheelFront, wheelRear, frontAt: data.front, rearAt: data.rear, pivot: data.pivot }
+}
+
+/**
+ * A piece of the modelled scooter in a paint: its painted panels (`_paint`) take the colour, under
+ * their own light and shade, and the rest keeps its colours. Plain corners, as the built shapes are.
+ */
+function paintPiece(piece: THREE.BufferGeometry, paint: string): THREE.BufferGeometry {
+  const flat = piece.index ? piece.toNonIndexed() : piece.clone()
+  const { r, g, b } = new THREE.Color(paint)
+  const color = flat.getAttribute('color')
+  const painted = flat.getAttribute('_paint')
+  const colors = new Float32Array(color.count * 3)
+  for (let i = 0; i < color.count; i++) {
+    const shade = color.getX(i)
+    if (painted && painted.getX(i) > 0.5) colors.set([r * shade, g * shade, b * shade], i * 3)
+    else colors.set([color.getX(i), color.getY(i), color.getZ(i)], i * 3)
+  }
+  const out = new THREE.BufferGeometry()
+  out.setAttribute('position', flat.getAttribute('position').clone())
+  out.setAttribute('normal', flat.getAttribute('normal').clone())
+  out.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  flat.dispose()
+  return out
+}
+
+/**
  * The Deliver It scooter, its front to +z: a Bengaluru family scooter. A step-through frame with a
  * flat footboard, a wide front apron, the handlebar cowl with a small round headlamp, a long seat
  * over rounded side panels, and a rack at the back for the yellow box (drawn by Scooter.tsx, with its logos).
  */
 function createScooter(paint: string): BuiltVehicle {
+  // The modelled scooter, once its file is in (below); until then, and if it never comes, the one built here.
+  if (scooterModel) {
+    const { body, front, wheelFront, wheelRear, frontAt, rearAt, pivot } = scooterModel
+    return {
+      // With a rack behind the seat for the yellow box to stand on (the model has none): a plate on two stays.
+      body: join([
+        paintPiece(body, paint),
+        boxAt([0.4, 0.02, 0.44], [0, 0.815, -0.73], '#3a3d42'),
+        tube([-0.15, 0.81, -0.9], [-0.1, 0.64, -0.8], 0.014, STEEL),
+        tube([0.15, 0.81, -0.9], [0.1, 0.64, -0.8], 0.014, STEEL),
+      ]),
+      column: { geometry: paintPiece(front, paint), pivot },
+      wheels: [
+        { geometry: paintPiece(wheelRear, paint), at: rearAt, steers: false },
+        { geometry: paintPiece(wheelFront, paint), at: frontAt, steers: true },
+      ],
+      crank: null,
+      glass: null,
+      lock: 0.5,
+    }
+  }
   const radius = 0.24
   const rear: [number, number, number] = [0, radius, -0.62]
   const front: [number, number, number] = [0, radius, 0.66]

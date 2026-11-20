@@ -19,6 +19,7 @@ import { splitDeliveryBox } from '../traffic/vehicleShapes'
 import {
   getModel,
   paintModel,
+  SCOOTER_MODEL_URL,
   TRAFFIC_MODELS_URL,
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
@@ -29,7 +30,7 @@ import { Rider } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
 import { liveSeat } from './riderSeat'
-import { createBuiltVehicle, disposeBuilt } from './vehicleBodies'
+import { createBuiltVehicle, disposeBuilt, setScooterModel } from './vehicleBodies'
 import { liveVehicle, VEHICLES } from './vehicleCatalog'
 import { borrow } from '../game/borrow'
 import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
@@ -323,7 +324,12 @@ export function Scooter({
   const paint = spec.paint ?? findColour(PAINTS, paintId).color
   // Every vehicle is built in pieces (vehicleBodies.ts): its wheels spin, the front ones steer, the
   // bars turn about the column, and a bicycle's cranks go round.
-  const built = useMemo(() => createBuiltVehicle(spec.body, paint), [spec, paint])
+  // The scooter's own body is a model (models/scooter.glb): handed to the builder before anything is built.
+  const { scene: scooterScene } = useGLTF(SCOOTER_MODEL_URL)
+  const built = useMemo(() => {
+    setScooterModel(scooterScene)
+    return createBuiltVehicle(spec.body, paint)
+  }, [spec, paint, scooterScene])
   useEffect(() => () => disposeBuilt(built), [built])
   const builtWheels = useRef<(Group | null)[]>([])
   const steered = useRef<(Group | null)[]>([])
