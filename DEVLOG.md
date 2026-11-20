@@ -10674,3 +10674,36 @@ From a review of the preview:
 
 scripts/bench.mjs gains `--wait <seconds>` (to let the scaler settle before a ride is measured) and
 reports each run's frame pacing and the scaler's last reading.
+
+## 2026-11-20: Entry 216, load time
+
+Load missed its 8 s target on a laptop in low-power mode (8.0 to 8.4 s on a repeat visit, 11 s on a
+first). Two causes, and neither was the one first suspected (shader compiling: holding the first
+frames back for a parallel warm-up was tried, saved 0.1 s, and was dropped).
+
+**Downloads waited on each other.** The page loaded its entry script, which asked for the game's
+script, which once running asked for the map, then the physics script, then its .wasm: a chain of
+round trips. And the other 25 files came four at a time, each next one asked for "as one finished",
+which, with the page busy planning for hundreds of milliseconds at a stretch, meant when the page
+next looked: the last textures arrived a second after planning was done, with the world waiting on
+them. Now the page itself asks for the game's script, the map's files and the physics engine as it
+is read (`preloadFirstFiles` in vite.config.ts), the rest are asked for together
+(game/preload.ts), and hashed assets are cached for good (public/_headers), which a repeat visit
+used to re-check one by one.
+
+**Planning scanned the whole city where a few squares would do.** Building kinds compared every
+mapped place with all 20,000 buildings (map read: 0.61 s to 0.27 s); every piece of every wall was
+checked against every shop front (city kit: 256 ms to 46 ms); shop units against every mapped place
+(313 ms to 141 ms). These use grids now. The three most-called checks take exact shortcuts: a
+footprint's box is kept on the footprint (not in a WeakMap), `isClearOfRoads` is written out with a
+box test, the infill's keep-out outlines are boxed and its cache keyed by small integers (infill
+1.0 s to 0.86 s, house kit 0.78 s to 0.70 s).
+
+The planned city is unchanged: `?check=1` prints a checksum of every building's outline and kind and
+of everything placed (1.2 million numbers), the same before and after each change.
+
+### Measured (low-power mode, High, back to back, an emulated 120 ms / 30 Mbps connection)
+First visit, Play to riding: 9.3 to 9.6 s before, 7.2 s after. Repeat visit: 7.9 to 8.0 s before, 6.1
+to 6.9 s after. On a local server: 6.0 to 7.2 s. Riding is unchanged (High 86 to 92 FPS, Low 120).
+
+scripts/bench.mjs gains `--latency`, `--mbps`, `--query`, and profiles loading from page open.
