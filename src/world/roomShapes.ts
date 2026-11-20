@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { livePlayer } from '../game/livePlayer'
 import { goThrough, ROOM, setRoom, type Block, type RoomKind } from '../game/rooms'
 import { box, colored, merge } from './simpleShapes'
 
@@ -273,9 +274,15 @@ export function planRoom(kind: RoomKind): RoomPlan {
 }
 
 /** Goes into a room through its street door, with the fade: `at` is the door on the street, `out` the way it faces. */
+/** A door is used from within this of it, in metres: further, the rider wasn't walked there (a test's jump), and the door's own step is used. */
+const ENTRY_REACH = 5
+
 export function enterRoom(kind: RoomKind, at: { x: number; z: number }, out: { x: number; z: number }, label: string, fadeText: string) {
   goThrough(fadeText, () => {
-    // Back out on the street: a step outside the door, facing away from it.
-    setRoom(kind, at, { x: at.x + out.x * 0.6, z: at.z + out.z * 0.6, heading: Math.atan2(out.x, out.z) }, label, planRoom(kind).blocks)
+    // Back out on the street: where the rider stood to come in, facing away from the door. That spot was
+    // walked to, so it's on the street's side of any gate, fence or compound wall. (A step outside the
+    // door instead could land in a fence's thickness, and be pushed out of it on the wrong side.)
+    const stood = livePlayer.onFoot && Math.hypot(livePlayer.x - at.x, livePlayer.z - at.z) < ENTRY_REACH ? { x: livePlayer.x, z: livePlayer.z } : { x: at.x + out.x * 0.6, z: at.z + out.z * 0.6 }
+    setRoom(kind, at, { ...stood, heading: Math.atan2(out.x, out.z) }, label, planRoom(kind).blocks)
   })
 }
