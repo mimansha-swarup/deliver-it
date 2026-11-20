@@ -965,6 +965,8 @@ function SettingsApp({ nav }: { nav: PhoneNav }) {
   const hornsOn = useGameStore((state) => state.hornsOn)
   const setMusic = useGameStore((state) => state.setMusicOn)
   const setHorns = useGameStore((state) => state.setHornsOn)
+  const alwaysWalk = useGameStore((state) => state.alwaysWalk)
+  const setAlwaysWalk = useGameStore((state) => state.setAlwaysWalk)
   return (
     <div className="app">
       <AppBar title="Settings" nav={nav} />
@@ -987,6 +989,14 @@ function SettingsApp({ nav }: { nav: PhoneNav }) {
             <input type="checkbox" checked={hornsOn} onChange={(event) => { setHorns(event.target.checked); event.currentTarget.blur() }} />
             Sound effects
           </label>
+        </section>
+        <section className="app-card">
+          <p className="app-card-title">Deliveries</p>
+          <label className="phone-switch">
+            <input type="checkbox" checked={alwaysWalk} onChange={(event) => { setAlwaysWalk(event.target.checked); event.currentTarget.blur() }} />
+            Always walk to the door
+          </label>
+          <p className="app-muted">Off: at a house on the street, stop by the gate and hand over from your vehicle. Flats, gated societies and the dark store are always on foot.</p>
         </section>
         <section className="app-card">
           <p className="app-card-title">Language</p>

@@ -123,6 +123,9 @@ type GameState = Telemetry & {
   stationId: string
   musicOn: boolean
   hornsOn: boolean
+  /** Settings: every order is walked to its door, with no quick handover at the kerb. */
+  alwaysWalk: boolean
+  setAlwaysWalk: (on: boolean) => void
   /** The Garage: upgrade levels, the paint and helmet in use, and the colours owned. */
   upgrades: UpgradeLevels
   /** The vehicle in use (vehicle/vehicleCatalog.ts): the rider's own scooter, or one from GaadiGo. */
@@ -463,6 +466,7 @@ export const useGameStore = create<GameState>()(
       stationId: STATIONS[0].id,
       musicOn: true,
       hornsOn: true,
+      alwaysWalk: false,
       atStore: false,
       upgrades: { engine: 0, tyres: 0, brakes: 0 },
       vehicleId: 'scooter',
@@ -859,6 +863,7 @@ export const useGameStore = create<GameState>()(
     }),
   setMusicOn: (musicOn) => set({ musicOn }),
   setHornsOn: (hornsOn) => set({ hornsOn }),
+  setAlwaysWalk: (alwaysWalk) => set({ alwaysWalk }),
   buyUpgrade: (kind) =>
     set((state) => {
       const level = state.upgrades[kind]
@@ -904,6 +909,7 @@ export const useGameStore = create<GameState>()(
         stationId: state.stationId,
         musicOn: state.musicOn,
         hornsOn: state.hornsOn,
+        alwaysWalk: state.alwaysWalk,
         upgrades: state.upgrades,
         vehicleId: state.vehicleId,
         paintId: state.paintId,

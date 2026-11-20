@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import { playPing } from '../audio/uiSounds'
 import { useGameStore } from '../game/gameStore'
 import { clearSpots, setInterest, setSpot } from '../game/interact'
+import { setPrompt } from '../game/prompts'
 import { liveMission } from '../game/livePlayer'
 import { theItem } from '../game/objective'
 import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
@@ -11,7 +12,7 @@ import { discover } from '../game/discovery'
 import type { DoorPlan } from '../game/gameTypes'
 import { playBarks, playDoorbell, playLift, playPen, playStairs } from '../audio/doorSounds'
 import { setStep } from '../ui/uiState'
-import { isAfoot, type ScooterState } from '../vehicle/ScooterController'
+import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import type { DarkStore } from '../world/darkStore'
 import { enterRoom, planRoom, ROOM_SPOTS } from '../world/roomShapes'
@@ -24,6 +25,9 @@ import { enterRoom, planRoom, ROOM_SPOTS } from '../world/roomShapes'
  *             wait for them, hand over), or a flat (in at the lobby, the lift or the stairs to the
  *             floor, the bell at their door). In the gated society the guard comes first (item 13).
  *             With no door near the stop, the customer waits at the kerb.
+ *             A street address (a house, or a customer at the kerb) needn't be walked: stopped by the
+ *             gate, E from the vehicle calls them out and hands over there. Flats, the gated society
+ *             and the dark store are always on foot; so is everything with "Always walk to the door" on.
  *
  * It keeps the interact spots (game/interact.ts) and the objective's step (ui/uiState.ts) in line
  * with where the rider is, a few times a second. Nothing here draws anything.
@@ -35,6 +39,10 @@ const PARK_RANGE = 45
 /** How far out from its front wall a dark store's door spot is, and how near the rider must be to use it. */
 const STORE_DOOR_OUT = 1.1
 const DOOR_REACH = 2.2
+/** A kerbside handover is offered stopped within this of the door, in metres, and slower than this, in m/s. */
+const KERB_RANGE = 20
+const KERB_SPEED = 1.2
+const KERB_LINES = ['Coming, coming! Stay there, I’ll come to the gate.', 'One second, I’m coming out!', 'Wait there only, I’ll come down.']
 
 /** How long after the bell the customer comes to the door, by what's going on behind it, in milliseconds. */
 const WAIT_MS = { plain: 1700, tryOn: 1700, dog: 3600, outside: 2600 }
@@ -53,6 +61,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     () => () => {
       clearSpots('errand:')
       setInterest('errand', null)
+      setPrompt('kerbside', null)
       setStep(null)
     },
     [],
@@ -69,6 +78,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     const here = afoot ? state.rider : state
 
     if (!mission || (phase !== 'toPickup' && phase !== 'toCustomer')) {
+      setPrompt('kerbside', null)
       clearSpots('errand:')
       setInterest('errand', null)
       setStep(null)
@@ -80,6 +90,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     }
 
     if (phase === 'toPickup') {
+      setPrompt('kerbside', null)
       const store = stores.find(({ node }) => node === mission.pickup.node) ?? stores[0]
       const outX = Math.sin(store.rotation)
       const outZ = Math.cos(store.rotation)
@@ -177,9 +188,31 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
       setStep(leaveIt ? 'Leave the order at the door' : `Hand ${theItem(story.item)} to ${story.customer}`)
     }
 
+    // A street address from the vehicle: stopped near enough, E calls them out to the kerb and hands over there.
+    const street = door.kind === 'kerb' || door.kind === 'house'
+    const kerbside = street && !afoot && !game.alwaysWalk && state.rider.phase === 'on' && stage.current.step === 'approach'
+    const spot = door.kind === 'house' ? (door.atGate ? 'gate' : 'door') : 'spot'
+    if (kerbside && away < KERB_RANGE && getTravelSpeed(state) < KERB_SPEED) {
+      setPrompt('kerbside', {
+        action: 'interact',
+        text: 'Hand over at the kerb',
+        priority: 3,
+        run: () => {
+          setPrompt('kerbside', null)
+          // Whatever was going on behind the door, they come out for it themselves.
+          errandLive.scene = 'plain'
+          errandLive.customerOut = true
+          stage.current = { ...stage.current, step: 'out' }
+          if (door.kind === 'house') say(KERB_LINES[Math.floor(Math.random() * KERB_LINES.length)])
+          handOver()
+        },
+      })
+    } else setPrompt('kerbside', null)
+
     if (door.kind === 'kerb') {
       setSpot('errand:hand', { x: waiting.x, z: waiting.z, radius: 2.6, priority: 2, text: 'Hand over', run: handOver })
       if (afoot) setStep(away < PARK_RANGE ? `Walk up to ${story.customer} and hand it over` : `Get back on your ${vehicleWord()}`)
+      else if (kerbside) setStep(away < KERB_RANGE ? `Stop by ${story.customer} and hand over ${theItem(story.item)}` : null)
       else setStep(away < PARK_RANGE ? `Park and walk ${theItem(story.item)} to ${story.customer}` : null)
       return
     }
@@ -187,7 +220,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     if (door.kind === 'house') {
       if (!afoot) {
         clearSpots('errand:')
-        setStep(away < PARK_RANGE ? `Park and walk to ${story.customer}’s ${door.atGate ? 'gate' : 'door'}` : null)
+        if (kerbside) setStep(away < KERB_RANGE ? `Stop and hand over at the kerb, or walk it to ${story.customer}’s ${spot}` : away < PARK_RANGE ? `Stop by ${story.customer}’s ${spot}` : null)
+        else setStep(away < PARK_RANGE ? `Park and walk to ${story.customer}’s ${door.atGate ? 'gate' : 'door'}` : null)
         return
       }
       if (away > PARK_RANGE * 1.5) {
