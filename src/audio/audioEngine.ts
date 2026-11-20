@@ -14,11 +14,20 @@ const MUSIC_VOLUME = 0.32
 /** How long a mute or unmute fades over, in seconds, so it doesn't click. */
 const FADE = 0.15
 
-export type AudioBuses = { context: AudioContext; sfx: GainNode; music: GainNode }
+/** `ui`: the menus' own sounds, which keep playing while the game's are hushed behind the pause menu. */
+export type AudioBuses = { context: AudioContext; sfx: GainNode; music: GainNode; ui: GainNode }
 
 let buses: AudioBuses | null = null
 let musicOn = true
 let sfxOn = true
+/** The player's own volumes, 0 to 1 (game/settings.ts): a share of each bus's level. */
+let musicShare = 1
+let sfxShare = 1
+/** The game's own sounds are hushed while the pause menu is up. */
+let hushed = false
+const sfxLevel = () => (sfxOn && !hushed ? SFX_VOLUME * sfxShare : 0)
+const uiLevel = () => (sfxOn ? SFX_VOLUME * sfxShare : 0)
+const musicLevel = () => (musicOn ? MUSIC_VOLUME * musicShare : 0)
 
 /**
  * Browsers only allow sound after the player has tapped or pressed something.
@@ -33,12 +42,15 @@ export function unlockAudio() {
     limiter.connect(context.destination)
 
     const sfx = context.createGain()
-    sfx.gain.value = sfxOn ? SFX_VOLUME : 0
+    sfx.gain.value = sfxLevel()
     sfx.connect(limiter)
     const music = context.createGain()
-    music.gain.value = musicOn ? MUSIC_VOLUME : 0
+    music.gain.value = musicLevel()
     music.connect(limiter)
-    buses = { context, sfx, music }
+    const ui = context.createGain()
+    ui.gain.value = uiLevel()
+    ui.connect(limiter)
+    buses = { context, sfx, music, ui }
 
     // Nothing plays while the game is in the background, which saves the battery.
     document.addEventListener('visibilitychange', () => {
@@ -67,10 +79,32 @@ function fadeTo(gain: GainNode, value: number) {
 
 export function setMusicOn(on: boolean) {
   musicOn = on
-  if (buses) fadeTo(buses.music, on ? MUSIC_VOLUME : 0)
+  if (buses) fadeTo(buses.music, musicLevel())
 }
 
 export function setSfxOn(on: boolean) {
   sfxOn = on
-  if (buses) fadeTo(buses.sfx, on ? SFX_VOLUME : 0)
+  if (buses) {
+    fadeTo(buses.sfx, sfxLevel())
+    fadeTo(buses.ui, uiLevel())
+  }
+}
+
+export function setMusicVolume(share: number) {
+  musicShare = Math.max(0, Math.min(1, share))
+  if (buses) fadeTo(buses.music, musicLevel())
+}
+
+export function setSfxVolume(share: number) {
+  sfxShare = Math.max(0, Math.min(1, share))
+  if (buses) {
+    fadeTo(buses.sfx, sfxLevel())
+    fadeTo(buses.ui, uiLevel())
+  }
+}
+
+/** The pause menu is up (or gone again): the engine, horns and street go quiet behind it; the music plays on. */
+export function setHushed(on: boolean) {
+  hushed = on
+  if (buses) fadeTo(buses.sfx, sfxLevel())
 }

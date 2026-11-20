@@ -17,3 +17,9 @@ export const useSteps = create<{ step: string | null }>(() => ({ step: null }))
 export function setStep(step: string | null) {
   if (useSteps.getState().step !== step) useSteps.setState({ step })
 }
+
+/**
+ * The pause menu (PauseMenu.tsx): while it's open the game's clock is stopped and its keys don't
+ * reach the game. `unstuck` counts the times the rider asked to be put back on a road (vehicle/Unstuck.tsx).
+ */
+export const usePause = create<{ open: boolean; unstuck: number }>(() => ({ open: false, unstuck: 0 }))

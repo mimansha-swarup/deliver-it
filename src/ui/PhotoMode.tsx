@@ -1,4 +1,5 @@
 import { FILE_PREFIX } from '../game/brand'
+import { pauseClock, resumeClock } from '../game/clock'
 import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -22,20 +23,6 @@ const MAX_FOV = 80
 const input = { keys: new Set<string>(), dragging: false, lookX: 0, lookY: 0, zoom: 0, save: false }
 
 type Pose = { position: THREE.Vector3; yaw: number; pitch: number; fov: number }
-
-/** Stops the game's clock: with auto-start off, a stopped clock gives every frame a delta of 0. Returns how far it had run. */
-function pauseClock(clock: THREE.Clock): number {
-  const elapsed = clock.elapsedTime
-  clock.autoStart = false
-  clock.stop()
-  return elapsed
-}
-
-function resumeClock(clock: THREE.Clock, elapsed: number) {
-  clock.start()
-  clock.elapsedTime = elapsed
-  clock.autoStart = true
-}
 
 function poseOf(camera: THREE.PerspectiveCamera): Pose {
   const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ')

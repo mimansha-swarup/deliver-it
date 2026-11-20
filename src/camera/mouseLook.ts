@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useThree } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
 import { isKey } from '../game/keyBindings'
+import { useSettings } from '../game/settings'
+import { usePause } from '../ui/uiState'
 
 /*
  * Mouse-look: hold the right mouse button and move, or click the view to lock the pointer (Esc lets
@@ -55,7 +57,7 @@ export function useMouseLook() {
   useEffect(() => {
     const playing = () => {
       const game = useGameStore.getState()
-      return game.started && !game.photoMode
+      return game.started && !game.photoMode && !usePause.getState().open
     }
     const down = (event: MouseEvent) => {
       if (!playing()) return
@@ -68,20 +70,32 @@ export function useMouseLook() {
     }
     const move = (event: MouseEvent) => {
       if (!liveLook.held || !playing()) return
-      liveLook.yaw -= event.movementX * SENSITIVITY.yaw
+      const { lookSpeed, invertY } = useSettings.getState()
+      liveLook.yaw -= event.movementX * SENSITIVITY.yaw * lookSpeed
       // Kept within a turn either way, so coming back never spins the long way round.
       liveLook.yaw = Math.atan2(Math.sin(liveLook.yaw), Math.cos(liveLook.yaw))
-      liveLook.pitch = Math.max(PITCH.min, Math.min(PITCH.max, liveLook.pitch + event.movementY * SENSITIVITY.pitch))
+      liveLook.pitch = Math.max(PITCH.min, Math.min(PITCH.max, liveLook.pitch + event.movementY * SENSITIVITY.pitch * lookSpeed * (invertY ? -1 : 1)))
       liveLook.movedAt = performance.now()
     }
+    // Esc with the pointer locked only frees the pointer: the browser keeps that key to itself. So
+    // losing the lock without the game having asked to (Esc, or switching to another window) brings
+    // up the pause menu, as Esc does when the pointer is free.
+    let letGo = false
+    const release = () => {
+      letGo = true
+      document.exitPointerLock()
+    }
     const lockChanged = () => {
+      const was = liveLook.locked
       liveLook.locked = document.pointerLockElement === canvas
       liveLook.held = liveLook.locked
+      if (was && !liveLook.locked && !letGo && playing()) usePause.setState({ open: true })
+      letGo = false
     }
     const menu = (event: Event) => event.preventDefault()
     // The phone and the map need the pointer back.
     const key = (event: KeyboardEvent) => {
-      if (liveLook.locked && (isKey('phone', event.code) || isKey('map', event.code) || isKey('help', event.code))) document.exitPointerLock()
+      if (liveLook.locked && (isKey('phone', event.code) || isKey('map', event.code) || isKey('help', event.code))) release()
     }
     const blur = () => {
       liveLook.held = liveLook.locked
@@ -96,7 +110,7 @@ export function useMouseLook() {
     // Anything that needs a click (a result card, an order offer's buttons) frees the pointer.
     const unsubscribe = useGameStore.subscribe((state, previous) => {
       if (!liveLook.locked) return
-      if ((state.lastReward && !previous.lastReward) || (state.shiftSummary && !previous.shiftSummary) || (state.askingOffline && !previous.askingOffline) || (state.photoMode && !previous.photoMode)) document.exitPointerLock()
+      if ((state.lastReward && !previous.lastReward) || (state.shiftSummary && !previous.shiftSummary) || (state.askingOffline && !previous.askingOffline) || (state.photoMode && !previous.photoMode)) release()
     })
     return () => {
       canvas.removeEventListener('mousedown', down)
