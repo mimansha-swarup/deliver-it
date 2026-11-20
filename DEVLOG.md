@@ -11231,3 +11231,11 @@ feel is the city's, and more neighbourhoods are planned), with a line under it t
 the game is set so far: "Now riding: HSR Layout" (`NOW_RIDING` in brand.ts), on a small yellow tag
 on the title, loading and phone-notice screens and the share image, and in the share description.
 When a neighbourhood is added, that one line changes.
+
+## 2026-11-21: Entry 239, a tick when the mouse comes onto a menu button
+
+The menus ticked when the arrow keys moved between buttons and were silent under the mouse. The
+mouse coming onto a button now makes the same tick, once per button: the main menu and pause
+menu's buttons, everything usable in the Settings, Controls and Credits panels, and the story's
+buttons. Browsers allow no sound until the page has been clicked or a key pressed, so a hover
+before the first click is silent.

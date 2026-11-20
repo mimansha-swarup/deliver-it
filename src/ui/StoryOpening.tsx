@@ -46,7 +46,20 @@ export function StoryOpening({ onDone }: { onDone: () => void }) {
   }, [card, onDone, born])
 
   return (
-    <section className="story" aria-label="How your day starts" aria-live="polite">
+    <section
+      className="story"
+      aria-label="How your day starts"
+      aria-live="polite"
+      // The same tick as the menus' when the mouse comes onto a button.
+      onMouseOver={(event) => {
+        const over = (event.target as Element).closest('button')
+        const from = (event.relatedTarget as Element | null)?.closest?.('button') ?? null
+        if (over && over !== from) {
+          unlockAudio()
+          playPing('menuMove')
+        }
+      }}
+    >
       <p className="story-time">{CARDS[card].time}</p>
       {/* The key replays the card's arrival for each one. */}
       <p className="story-text" key={card}>

@@ -20,7 +20,24 @@ import { useT, type TextKey } from './menuText'
 
 const USABLE = 'button:not(:disabled), input:not(:disabled), a[href]'
 
-/** A menu sound. Sound is only allowed after a click or key press, and every caller is one. */
+/**
+ * The tick as the mouse comes onto something usable inside a panel (a button, a slider, a switch, a
+ * link): once per thing, not for every move across it.
+ */
+function useHoverSound() {
+  const last = useRef<Element | null>(null)
+  return (event: React.MouseEvent) => {
+    const over = (event.target as Element).closest(USABLE)
+    if (over === last.current) return
+    last.current = over
+    if (over) sound('menuMove')
+  }
+}
+
+/**
+ * A menu sound. Browsers only allow sound once the page has been clicked or a key pressed, so the
+ * very first hover after the page opens is silent; everything after the first click or key is heard.
+ */
 function sound(kind: 'menuMove' | 'menuSelect' | 'menuBack') {
   unlockAudio()
   playPing(kind)
@@ -80,7 +97,12 @@ export function MenuList({ items, label }: { items: MenuItem[]; label: string })
             // `title-start` is the name the benchmark and screenshot scripts press to start a ride.
             className={primary ? 'menu-button menu-primary title-start' : 'menu-button'}
             data-item={id}
-            onMouseEnter={(event) => event.currentTarget.focus({ preventScroll: true })}
+            // The mouse over a button chooses it as the arrow keys do, with the same tick (once, on arriving).
+            onMouseEnter={(event) => {
+              if (document.activeElement === event.currentTarget) return
+              event.currentTarget.focus({ preventScroll: true })
+              sound('menuMove')
+            }}
             onClick={() => {
               sound('menuSelect')
               onSelect()
@@ -102,9 +124,10 @@ export function MenuPanel({ title, onBack, children, wide = false }: { title: st
   const root = useRef<HTMLElement>(null)
   const back = useRef<HTMLButtonElement>(null)
   useArrowKeys(root, onBack)
+  const hover = useHoverSound()
   useEffect(() => back.current?.focus({ preventScroll: true }), [])
   return (
-    <section className="menu-panel" data-wide={wide || undefined} ref={root} role="dialog" aria-label={title}>
+    <section className="menu-panel" data-wide={wide || undefined} ref={root} role="dialog" aria-label={title} onMouseOver={hover}>
       <header className="menu-panel-top">
         <h2>{title}</h2>
         <button
