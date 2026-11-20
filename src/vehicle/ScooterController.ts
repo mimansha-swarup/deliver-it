@@ -1,6 +1,6 @@
 import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
 import { ROAD_HEIGHT, type Surface } from '../world/surface'
-import { JOG, JOG_STRIDE_PER_METRE } from './riderShape'
+import { JOG, stridePerMetre } from './riderShape'
 import { currentGrip, tuning } from './tuning'
 import { liveRoom } from '../game/rooms'
 import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMITS } from './vehicleConfig'
@@ -359,7 +359,7 @@ function stepThrownRider(state: ScooterState, collisions: CollisionWorld, surfac
     rider.x += Math.sin(rider.heading) * step
     rider.z += Math.cos(rider.heading) * step
     rider.y = rider.ground + RIDER_HIP_HEIGHT
-    rider.stride += step * JOG_STRIDE_PER_METRE
+    rider.stride += step * stridePerMetre(rider.pace)
     return
   }
 
@@ -375,7 +375,11 @@ export function isAfoot(state: ScooterState): boolean {
 }
 
 /** On foot: walking and running speeds (m/s), how fast they're reached, turning, and how near the seat counts as beside the vehicle. */
-export const FOOT = { walk: 2.8, run: 6, back: 1.6, speedUp: 9, turn: 2.7, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
+/**
+ * On foot. `walk` is a brisk walk and `run` (the nitro key held) a jog, in m/s: at 2.8 and 6 they
+ * were a run and a sprint, and no walk's legs could keep up with the ground without skating.
+ */
+export const FOOT = { walk: 1.9, run: 4.3, back: 1.3, speedUp: 9, turn: 2.7, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
 const DISMOUNT_SPEED = 2
 
@@ -468,7 +472,8 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   const wanted = liveRoom.frozen ? 0 : input.forward ? (input.nitro ? FOOT.run : FOOT.walk) : input.backward ? -FOOT.back : 0
   rider.velocityX = moveToward(rider.velocityX, wanted, FOOT.speedUp * dt)
   const step = rider.velocityX * dt
-  rider.pace = Math.abs(rider.velocityX)
+  const fromX = rider.x
+  const fromZ = rider.z
   rider.x += Math.sin(rider.heading) * step
   rider.z += Math.cos(rider.heading) * step
   if (liveRoom.kind) {
@@ -490,7 +495,13 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
     rider.ground += (surface.heightAt(rider.x, rider.z, rider.ground) - rider.ground) * (1 - Math.exp(-14 * dt))
   }
   rider.y = rider.ground + RIDER_HIP_HEIGHT
-  rider.stride += Math.abs(step) * JOG_STRIDE_PER_METRE
+  // The legs go by the ground actually covered, not the speed asked for: walking into a wall, or
+  // along one, the feet keep to what the body really does and don't skate. The stride per metre is
+  // the gait's own at that speed (riderShape.ts), so a planted foot stays planted in a walk, a jog
+  // and anything between.
+  const covered = Math.hypot(rider.x - fromX, rider.z - fromZ)
+  rider.pace += (covered / Math.max(dt, 0.001) - rider.pace) * (1 - Math.exp(-18 * dt))
+  rider.stride += covered * stridePerMetre(rider.pace)
 }
 
 /**

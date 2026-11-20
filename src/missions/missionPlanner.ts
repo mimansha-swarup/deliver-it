@@ -17,6 +17,9 @@ import { doorsteps, findDoorstep } from '../game/doorsteps'
 import { CARGO } from './cargo'
 import type { DoorPlan, DoorScene } from '../game/gameTypes'
 
+/** How much longer the time allowed for an order's walking is than the allowances were written for: the walk is 1.9 m/s where it was 2.8. */
+const WALK_ALLOWANCE = 1.4
+
 export type MissionPlanner = {
   collisions: CollisionWorld
   graph: RoadGraph
@@ -284,7 +287,8 @@ export function createMissionPlanner(
     let routeLength = fromStore.distance[start] + fromStore.distance[customer]
     if (second !== null) routeLength += getRouteField(customer).distance[second]
     // The ride, plus the walking at each end: into the dark store and out, and to each door.
-    const walking = MISSION_RULES.pickupWalkSeconds + firstDoor.extraSeconds + (secondDoor?.extraSeconds ?? 0)
+    // (Those allowances were set when a walk was 2.8 m/s; it's a real walk now, 1.9, so they're longer by as much.)
+    const walking = (MISSION_RULES.pickupWalkSeconds + firstDoor.extraSeconds + (secondDoor?.extraSeconds ?? 0)) * WALK_ALLOWANCE
     const normalTime = Math.max(
       MISSION_RULES.minOnTimeSeconds,
       Math.ceil(routeLength / MISSION_RULES.onTimeRouteSpeed),
