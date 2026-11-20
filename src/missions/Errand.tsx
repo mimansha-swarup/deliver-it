@@ -11,6 +11,7 @@ import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
 import { doorsteps, errandLive, useGuard } from '../game/doorsteps'
 import { discover } from '../game/discovery'
 import type { DoorPlan } from '../game/gameTypes'
+import { sayLine } from '../audio/voiceCues'
 import { playBarks, playDoorbell, playLift, playPen, playStairs } from '../audio/doorSounds'
 import { setStep } from '../ui/uiState'
 import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterController'
@@ -43,12 +44,9 @@ const DOOR_REACH = 2.2
 /** A kerbside handover is offered stopped within this of the door, in metres, and slower than this, in m/s. */
 const KERB_RANGE = 20
 const KERB_SPEED = 1.2
-const KERB_LINES = ['Coming, coming! Stay there, I’ll come to the gate.', 'One second, I’m coming out!', 'Wait there only, I’ll come down.']
 
 /** How long after the bell the customer comes to the door, by what's going on behind it, in milliseconds. */
 const WAIT_MS = { plain: 1700, tryOn: 1700, dog: 3600, outside: 2600 }
-const DOG_LINES = ['Bruno! Quiet! Sorry, he only barks, he never bites. Coming!', 'Tiger, inside! Inside! One minute, I am tying him.', 'Don’t mind the dog, he is just saying hello. Coming!']
-const OUTSIDE_LINES = ['I’m on a call, please keep it outside the door. Thank you!', 'Baby is sleeping, don’t ring again please! Just leave it at the door.', 'Hands are full in the kitchen. Keep it outside na, I’ll take it.']
 
 type Stage = { door: DoorPlan | null; step: 'approach' | 'rung' | 'out'; at: number }
 
@@ -122,7 +120,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
             }
             useGameStore.getState().collectOrder()
             playPing('message')
-            useGameStore.getState().postChat('customer', 'Dark store', `${mission.story.item} for ${mission.story.customer}. Jopana, maga!`)
+            sayLine('store.ready', 'Dark store', { before: `${mission.story.item} for ${mission.story.customer}. ` })
           },
         })
         setStep(`Collect ${theItem(mission.story.item)} from the counter`)
@@ -153,7 +151,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
       return
     }
     const now = performance.now()
-    const say = (text: string) => useGameStore.getState().postChat('customer', story.customer, text)
+    // What the customer says, from the voice script (audio/voiceCues.ts): in the chat, and aloud where it's recorded.
+    const say = (line: string) => sayLine(line, story.customer)
     const handOver = () => useGameStore.getState().arriveAtStop(liveMission.elapsed)
 
     // The bell, the wait, and the hand-over, wherever the door is: on the street, or along a corridor upstairs.
@@ -172,9 +171,9 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
             stage.current = { ...current, step: 'rung', at: performance.now() }
             if (door.scene === 'dog') {
               window.setTimeout(() => playBarks(4), 500)
-              window.setTimeout(() => say(DOG_LINES[Math.floor(Math.random() * DOG_LINES.length)]), 1400)
-            } else if (door.scene === 'outside') window.setTimeout(() => say(OUTSIDE_LINES[Math.floor(Math.random() * OUTSIDE_LINES.length)]), 900)
-            else window.setTimeout(() => say('Coming, coming! One second.'), 700)
+              window.setTimeout(() => say('cust.dog'), 1400)
+            } else if (door.scene === 'outside') window.setTimeout(() => say('cust.outside'), 900)
+            else window.setTimeout(() => say('cust.coming'), 700)
           },
         })
         setStep(room ? `Ring the bell at flat ${door.flat}` : `Ring the bell at ${story.customer}’s ${door.atGate ? 'gate' : 'door'}`)
@@ -209,7 +208,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           errandLive.scene = 'plain'
           errandLive.customerOut = true
           stage.current = { ...stage.current, step: 'out' }
-          if (door.kind === 'house') say(KERB_LINES[Math.floor(Math.random() * KERB_LINES.length)])
+          if (door.kind === 'house') say('cust.kerb')
           handOver()
         },
       })
@@ -245,7 +244,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     const society = doorsteps.society
     if (door.kind === 'society' && society && !errandLive.cleared && afoot && !liveRoom.kind) {
       const asked = stage.current.step !== 'approach'
-      const security = (text: string) => useGameStore.getState().postChat('customer', `Security · ${society.name}`, text)
+      const security = (line: string, after = '') => sayLine(line, `Security · ${society.name}`, { after })
       setSpot('errand:guard', {
         x: society.guard.x,
         z: society.guard.z,
@@ -256,11 +255,11 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           const card = { otp: door.otp, flat: door.flat, society: society.name, time: useGameStore.getState().skyTime }
           liveRoom.frozen = true
           if (!asked) {
-            security(`Delivery? OTP please, for flat ${door.flat}.`)
+            security('guard.otp', ` Flat ${door.flat}.`)
             useGuard.setState({ card: { step: 'otp', ...card } })
             window.setTimeout(() => {
               stage.current = { ...stage.current, step: 'rung' }
-              security('Okay, it matches. Sign the register.')
+              security('guard.match')
               useGuard.setState({ card: null })
               liveRoom.frozen = false
             }, 2300)
@@ -271,7 +270,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
               stage.current = { ...stage.current, step: 'approach' }
               errandLive.cleared = true
               discover('society')
-              security(`Go ahead: floor ${door.floor}. Your vehicle stays outside the gate.`)
+              security('guard.go', ` Floor ${door.floor}.`)
               useGuard.setState({ card: null })
               liveRoom.frozen = false
             }, 2000)
@@ -294,7 +293,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
         radius: DOOR_REACH,
         text: 'Go in',
         run: () => {
-          if (blocked) useGameStore.getState().postChat('customer', `Security · ${name}`, 'Hello! Delivery? Come to the gate first: OTP and the register.', true)
+          if (blocked) sayLine('guard.stop', `Security · ${name}`, { after: ' OTP and the register.', urgent: true })
           else enterRoom('lobby', door, { x: door.outX, z: door.outZ }, name, name)
         },
       })
@@ -325,7 +324,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
         text: door.liftWorks ? `Lift to floor ${door.floor}` : 'Lift: out of order',
         run: () => {
           if (door.liftWorks) goUp('lift')
-          else useGameStore.getState().postChat('customer', story.customer, 'Sorry, the lift is not working since morning! Please take the stairs.')
+          else say('cust.lift')
         },
       })
       setSpot('errand:stairs', { x: liveRoom.x + stairs.x, z: liveRoom.z + stairs.z, radius: 1.4, room: 'lobby', priority: 2, text: `Stairs to floor ${door.floor}`, run: () => goUp('stairs') })

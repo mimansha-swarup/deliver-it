@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { sayLine } from '../audio/voiceCues'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -246,7 +247,6 @@ function getStandingSpot(boxX: number, boxZ: number, person: Pedestrian): [numbe
 const HELD = { forward: 0.34, height: 1.06 }
 /** How long a customer is inside trying something on, in seconds, and what they say going in. */
 const TRY_ON_SECONDS = 3.8
-const TRYING_LINES = ['Wait, wait! Trying them on. One minute!', 'Hold on, let me try it. If it doesn’t fit you take it back, okay?', 'One second, I’ll just check the size!']
 
 /** Where the parcel is before it's handed over: on top of the vehicle's box, or held in front of the rider on foot. */
 function carrier(state: ScooterState): { x: number; y: number; z: number } {
@@ -480,8 +480,8 @@ export function Handoff({
           if (joy < 0) {
             if (saidTrying.current !== game.missionNumber && joy > -trying + 0.3) {
               saidTrying.current = game.missionNumber
-              game.postChat('customer', game.mission?.story.customer ?? 'Customer', TRYING_LINES[Math.floor(Math.random() * TRYING_LINES.length)])
-              window.setTimeout(() => useGameStore.getState().postChat('customer', game.mission?.story.customer ?? 'Customer', 'Perfect fit! I’m keeping it.'), (trying - 0.4) * 1000)
+              sayLine('cust.tryon', game.mission?.story.customer ?? 'Customer')
+              window.setTimeout(() => sayLine('cust.fits', game.mission?.story.customer ?? 'Customer'), (trying - 0.4) * 1000)
             }
             // Gone in to try it; back out by the end.
             if (joy > -trying + 0.5 && joy < -0.45) {
