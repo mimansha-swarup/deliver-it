@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
 import { livePlayer, liveSky } from '../game/livePlayer'
@@ -9,6 +10,8 @@ import { ROAD_TEXTURES } from './assetUrls'
 import { patchAsphalt } from './groundShaders'
 import { useCompressedTextures } from './ktx2'
 import { prepareSurfaceTextures } from './surfaceMaterial'
+import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
+import { addWeathering } from './weathering'
 import { isInsideBounds } from './worldUtils'
 import { PropInstances } from './RoadsideProps'
 import { StiltParking } from './StiltParking'
@@ -284,6 +287,31 @@ function stepTrain(train: Train, stops: number[], length: number, delta: number,
 }
 
 const carTransform = new THREE.Object3D()
+
+/** How the concrete photo is laid on the flyovers, the metro's viaduct and the bus stand: metres a repeat, and how strongly. */
+const TRANSIT_CONCRETE = { tile: 4, strength: 1.6 }
+/** And how weathered they are: rain streaks and grime, a little more than a house's walls. */
+const TRANSIT_WEATHER = 0.6
+
+/**
+ * Cast concrete for everything here that's built from coloured boxes (flyover decks, pillars and
+ * barriers, the viaduct, stations, the bus stand): the kerbs' concrete photo laid on by position
+ * (plaster.ts), and the houses' grime and streaks (weathering.ts). They had only their flat colour,
+ * and a flyover was the largest plain surface in the city. Low keeps flat paint, as everywhere.
+ */
+function useConcrete(settings: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
+  const { surfaces } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const photo = useTexture(CONCRETE_PHOTO, preparePlasterPhoto)
+  const material = useMemo(() => {
+    const made = surfaces === 'plain' ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, ...settings }) : createPlasterMaterial(photo, TRANSIT_CONCRETE, { roughness: 0.9, ...settings })
+    addWeathering(made, { weather: TRANSIT_WEATHER })
+    return made
+    // The settings are the same object's worth each time: only the photo and the quality change it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photo, surfaces])
+  useEffect(() => () => material.dispose(), [material])
+  return material
+}
 
 function MetroTrains({ metro }: { metro: Metro }) {
   const geometry = useMemo(() => createCarGeometry(), [])
@@ -645,11 +673,14 @@ function createDeckSurfaces(decks: Flyover[]) {
           const o = side * (deck.width / 2 - out)
           return [x + sx * o, deck.heights[k] + up, z + sz * o]
         }
-        // Inner face, top and outer face, each a quad between points i - 1 and i.
+        // Inner face, top and outer face, each a quad between points i - 1 and i. The outer face
+        // comes down over the edge of the deck's slab, so it stands a little proud of it (`PROUD`):
+        // flush with the slab's own side, the two fought for the same place and the wall flickered
+        // in a band along every flyover.
         const faces: [number, number, number, number][] = [
           [BARRIER.width, 0, BARRIER.width, BARRIER.height],
-          [BARRIER.width, BARRIER.height, 0, BARRIER.height],
-          [0, BARRIER.height, 0, -0.5],
+          [BARRIER.width, BARRIER.height, -PROUD, BARRIER.height],
+          [-PROUD, BARRIER.height, -PROUD, -0.5],
         ]
         for (const [o0, u0, o1, u1] of faces) {
           const a0 = corner(i - 1, o0, u0)
@@ -715,6 +746,8 @@ const deckLightMaterial = new THREE.MeshStandardMaterial({ color: '#d8d2c2', emi
 
 /** The crash barriers along a deck's edges: how thick and high, in metres. */
 const BARRIER = { width: 0.35, height: 0.95 }
+/** How far a barrier's outer face stands out past the deck's edge, in metres. */
+const PROUD = 0.03
 
 /** Metres per repeat of the road photo: the same as the streets' (StreetEdges.tsx), as they share it. */
 const DECK_ASPHALT_TILE = 6
@@ -752,10 +785,10 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   const posters = useMemo(() => createPillarPosters(flyovers.pillars), [flyovers])
   const atlas = useMemo(() => createPosterAtlas(), [])
   const stall = useMemo(() => createTeaStallGeometry(), [])
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), [])
+  const material = useConcrete()
   useEffect(() => () => {
-    for (const thing of [structure, posters, atlas, stall, material]) thing?.dispose()
-  }, [structure, posters, atlas, stall, material])
+    for (const thing of [structure, posters, atlas, stall]) thing?.dispose()
+  }, [structure, posters, atlas, stall])
   return (
     <>
       {structure && <mesh geometry={structure} material={material} castShadow receiveShadow />}
@@ -859,10 +892,10 @@ function BusStandScenery({ stand }: { stand: BusStand }) {
     for (const end of [-1, 1]) parts.push(boardPart(6, 1.1, [0, 0, 1, 192 / 512]).rotateY(end > 0 ? 0 : Math.PI).translate(0, 4.4, end * (half + 1.05)))
     return merge(parts)
   }, [stand])
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), [])
+  const material = useConcrete({ roughness: 0.85 })
   useEffect(() => () => {
-    for (const thing of [structure, texture, bus, boards, material]) thing.dispose()
-  }, [structure, texture, bus, boards, material])
+    for (const thing of [structure, texture, bus, boards]) thing.dispose()
+  }, [structure, texture, bus, boards])
   const turn = Math.atan2(stand.dirX, stand.dirZ)
   return (
     <>
@@ -881,10 +914,10 @@ export function Transit({ metro, flyovers, busStand }: { metro: Metro; flyovers:
   const track = useMemo(() => createTrackGeometry(metro), [metro])
   const stations = useMemo(() => (metro.stations.length ? merge(metro.stations.map(createStationGeometry)) : null), [metro])
   const cart = useMemo(() => createCartGeometry(), [])
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }), [])
+  const material = useConcrete({ roughness: 0.85, side: THREE.DoubleSide })
   useEffect(() => () => {
-    for (const thing of [track, stations, cart, material]) thing?.dispose()
-  }, [track, stations, cart, material])
+    for (const thing of [track, stations, cart]) thing?.dispose()
+  }, [track, stations, cart])
   return (
     <>
       <FlyoverScenery flyovers={flyovers} />

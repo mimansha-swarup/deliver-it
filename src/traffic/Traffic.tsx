@@ -471,7 +471,7 @@ function SignalLamps({ items }: { items: Vehicle[] }) {
     for (const item of items) {
       // Not one being thrown about or lying on its side, nor one the player has taken.
       if (item.lane === -1 || item.rotation || item.fallen || item.taken || Math.abs(item.x) > NOWHERE) continue
-      if (!item.braking && !item.indicator) continue
+      if (!item.braking && !item.indicator && !item.hazard) continue
       if (cameraDistance(item.x, item.z) > SIGNAL_LAMP_REACH) continue
       const { front, back, apart, indicator } = LAMPS[item.kind]
       const ground = (item.deck ? ROAD_HEIGHT : Math.max(ROAD_HEIGHT, groundLift.at(item.x, item.z))) + item.lift
@@ -480,9 +480,12 @@ function SignalLamps({ items }: { items: Vehicle[] }) {
         else for (const side of [-apart, apart]) place(item, ground, side, back - 0.07, BRAKE_COLOR)
       }
       // Each vehicle flashes in its own time, as no two cars' indicators ever keep step.
-      if (item.indicator && (clock.elapsedTime * BLINK_RATE + item.tint * 7) % 1 < BLINK_ON) {
-        place(item, ground, indicator * item.indicator, front + 0.07, INDICATOR_COLOR)
-        place(item, ground, indicator * item.indicator, back - 0.07, INDICATOR_COLOR)
+      // Hazard lamps (a breakdown) are both sides at once.
+      if ((item.indicator || item.hazard) && (clock.elapsedTime * BLINK_RATE + item.tint * 7) % 1 < BLINK_ON) {
+        for (const side of item.hazard ? [1, -1] : [item.indicator ?? 0]) {
+          place(item, ground, indicator * side, front + 0.07, INDICATOR_COLOR)
+          place(item, ground, indicator * side, back - 0.07, INDICATOR_COLOR)
+        }
       }
     }
     instances.count = drawn
@@ -492,8 +495,8 @@ function SignalLamps({ items }: { items: Vehicle[] }) {
 
   if (items.length === 0) return null
   return (
-    // Up to four lamps lit on each: two brake lamps, and an indicator front and back.
-    <instancedMesh key={items.length} ref={mesh} args={[lamp, undefined, items.length * 4]} frustumCulled={false}>
+    // Up to six lamps lit on each: two brake lamps, and an indicator front and back, on both sides for hazards.
+    <instancedMesh key={items.length} ref={mesh} args={[lamp, undefined, items.length * 6]} frustumCulled={false}>
       <meshBasicMaterial vertexColors transparent side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
     </instancedMesh>
   )

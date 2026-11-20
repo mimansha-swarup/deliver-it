@@ -12,7 +12,7 @@ import type { Lane } from '../traffic/lanes'
 import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { createPerson } from '../traffic/person'
 import { People } from '../traffic/Traffic'
-import { closeLanes, type Pedestrian, type TrafficWorld } from '../traffic/trafficLogic'
+import { closeLanes, isPlainRoad, setObstacle, type Pedestrian, type TrafficWorld } from '../traffic/trafficLogic'
 import { createBrokenBus, createCow, createDigSite, createWeddingCar } from './cityEventShapes'
 import { addPost, addWall, removeFootprint, removePost, type CollisionWorld, type Footprint } from './collision'
 import { setClosedLinks, type RoadGraph } from './roadGraph'
@@ -21,11 +21,11 @@ import { setClosedLinks, type RoadGraph } from './roadGraph'
  * Things that happen on the roads, one at a time, somewhere ahead of the rider (game/cityEvents.ts
  * says what's on):
  *
- *   bus      a city bus broken down in its lane: solid; traffic keeps off that lane; ride round it
+ *   bus      a city bus broken down in its lane: solid; traffic queues behind it and pulls out round it
  *   dig      a road dug up for pipe work: closed to everything; the GPS routes round it
  *   wedding  a wedding procession walking a street behind its band: slow and solid; the street is
  *            closed to traffic while it passes, and a rider can ease past along its side
- *   cow      a cow sitting in a lane: solid, unbothered; go round her
+ *   cow      a cow sitting in a lane: solid, unbothered; traffic queues and goes round her, as you do
  *
  * Each lasts a few minutes and then clears. They're scenery with consequences, shown with good
  * humour and respect; nobody in them can be knocked over. `?event=dig` (with ?debug) stages one now,
@@ -89,7 +89,8 @@ function stage(kind: CityEventKind, traffic: TrafficWorld, collisions: Collision
   const base = { kind, from, until: from }
 
   if (kind === 'bus' || kind === 'cow') {
-    const lanes = traffic.roadLanes.filter((lane) => !lane.deck && !lane.closed && lane.length >= 7 && spotAllowed((lane.startX + lane.endX) / 2, (lane.startZ + lane.endZ) / 2, forced))
+    // On a plain stretch of road: by a junction, the queue behind it would stand in the junction.
+    const lanes = traffic.roadLanes.filter((lane, index) => !lane.deck && !lane.closed && lane.length >= 7 && isPlainRoad(traffic, index) && spotAllowed((lane.startX + lane.endX) / 2, (lane.startZ + lane.endZ) / 2, forced))
     const wanted = kind === 'bus' ? lanes.filter((lane) => lane.buses) : lanes.filter((lane) => !lane.buses)
     const options = wanted.length > 0 ? wanted : lanes
     if (options.length === 0) return null
@@ -105,19 +106,12 @@ function stage(kind: CityEventKind, traffic: TrafficWorld, collisions: Collision
       addPost(collisions, x, z, 0.95)
       undoSolid = () => removePost(collisions, x, z)
     }
-    // Its own lane, and (a bus being longer than one stretch of lane) the stretches before and after it, the same way.
-    const reach = kind === 'bus' ? 11 : 1
-    closeLanes(
-      traffic,
-      (other) => {
-        if (other === lane) return true
-        const mx = (other.startX + other.endX) / 2 - x
-        const mz = (other.startZ + other.endZ) / 2 - z
-        return other.forwardX * dirX + other.forwardZ * dirZ > 0.9 && Math.abs(mx * dirX + mz * dirZ) < reach && Math.abs(mx * dirZ - mz * dirX) < 1.5
-      },
-      'event',
-    )
-    return { ...base, x, z, dirX, dirZ, road: graph.roadNames[lane.startNode] ?? '', closes: false, width: 3, path: null, undo: () => { undoSolid(); closeLanes(traffic, null, 'event') } }
+    // It stands in the lane, and the traffic deals with it as traffic does (trafficLogic.ts'
+    // `setObstacle`): a queue behind it, two-wheelers squeezing by, cars pulling out round it when
+    // the other side is clear. (The lane used to be closed to traffic instead, so the road by a
+    // broken-down bus was oddly empty.)
+    setObstacle(traffic, 'event', kind === 'bus' ? { x, z, halfLength: 5.4, radius: 1.3 } : { x, z, halfLength: 1, radius: 0.95 })
+    return { ...base, x, z, dirX, dirZ, road: graph.roadNames[lane.startNode] ?? '', closes: false, width: 3, path: null, undo: () => { undoSolid(); setObstacle(traffic, 'event', null) } }
   }
 
   // A link of a named side street, not too wide: for the dig, or the start of a procession's walk.

@@ -6,14 +6,14 @@ import { blendRotation, uprightness, yawRotation } from '../physics/crashPhysics
 import { liveRoom } from '../game/rooms'
 import { applyImpact, getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { SCOOTER } from '../vehicle/vehicleConfig'
-import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import { hasClearLine, pushOutOfBuildings, type CollisionWorld } from '../world/collision'
 import { BREAKER, breakerHeight } from '../world/roadFeatures'
 import type { Prop } from '../world/props'
 import type { RoadGraph } from '../world/roadGraph'
 import { STRIDE_PER_METRE } from './gait'
 import { createJunctions, indicatorFor, planJunctions, type Crossing, type Junctions } from './junctions'
 import { createLanes, type Lane } from './lanes'
-import { createTrafficSignals, findStopAhead, type TrafficSignals } from './trafficSignals'
+import { createTrafficSignals, findStopAhead, getLight, type TrafficSignals } from './trafficSignals'
 
 export const TRAFFIC_RULES = {
   maxVehicles: 40,
@@ -167,6 +167,52 @@ export const TRAFFIC_RULES = {
   ringPatience: 3,
   pushAfter: 12,
   bargeSpeed: 1.5,
+  /**
+   * Real hold-ups (`startHalts`). Now and then a vehicle stops for a reason: an auto or a car pulls
+   * in to the kerb to let someone out, for `dropOff` seconds, or a car breaks down where it is,
+   * hazard lamps flashing, for `breakdown` seconds. One is started every `haltEvery` seconds (lowest
+   * to highest), `haltEveryRush` at the heart of a rush-hour jam, with at most `halts` at once and
+   * `haltsRush` more in a jam, between `haltNear` and `haltFar` metres from the rider.
+   */
+  dropOff: [7, 14],
+  breakdown: [25, 45],
+  breakdownShare: 0.3,
+  haltEvery: [9, 18],
+  haltEveryRush: [3, 6],
+  halts: 1,
+  haltsRush: 3,
+  haltNear: 30,
+  haltFar: 130,
+  /**
+   * Traffic stops this far short of something standing in its lane (a breakdown, a cow, a bus
+   * broken down), in metres: room to swing out round it. Cars and buses go round `passWide` metres
+   * out (negative is right, over the middle of the road), and only with the other side clear of
+   * oncoming traffic for `passClear` metres.
+   */
+  standingGap: 5,
+  passWide: -2.5,
+  passClear: 45,
+  passClearNimble: 20,
+  /** A two-wheeler or auto caught out on the wrong side, nose to nose with something, is paddled back towards its own lane at this speed, in m/s. */
+  paddleSpeed: 0.7,
+  /**
+   * People cross the road. Walking along a footpath, one decides to every `crossEvery` seconds or
+   * so (lowest to highest), and `zebraShare` of those passing a zebra crossing at the lights take
+   * it. They stop at the kerb and look: they go when everything coming would reach their line
+   * `crossMargin` seconds or more after they're clear of it, a margin that shrinks as they wait
+   * (down to `crossLeast`), and at a zebra only while the light holds the traffic. After `kerbWait`
+   * seconds at the kerb (`zebraWait` at a zebra) they give up and walk on. They cross at
+   * `crossPace` times their walk, hand raised to the traffic, and stop short of a vehicle that isn't slowing.
+   */
+  crossEvery: [180, 420],
+  zebraShare: 0.45,
+  crossMargin: 1.6,
+  crossLeast: 0.3,
+  kerbWait: 10,
+  zebraWait: 30,
+  crossPace: 1.3,
+  /** A driver takes this long to set off once the way opens, in seconds (lowest to highest): a queue moves off from its front, one after another. */
+  setOff: [0.2, 0.55],
   /** A thrown bike rider walks back at this speed, in m/s, and gets on within this distance, in metres. */
   walkBackSpeed: 1.6,
   remountDistance: 1,
@@ -430,6 +476,14 @@ export type Vehicle = Mover & {
   heldBy?: Vehicle | null
   /** What is limiting its speed, in words (only with `trafficDebug.reasons`). */
   reason?: string
+  /** Stopped for a reason of its own (`startHalts`): which, how long is left, and whether it has pulled up yet. */
+  halt?: { kind: 'dropOff' | 'breakdown'; left: number } | null
+  /** Its hazard lamps are on: both indicators flashing. */
+  hazard?: boolean
+  /** Backing up from something standing in its lane, for the room to swing out round it. */
+  reversing?: boolean
+  /** Seconds until its driver sets off, counted while it stands with the way open (`setOff`). */
+  setOffIn?: number
   /** What its lamps show (Traffic.tsx): the side it's indicating (1 left, -1 right, 0 neither), and whether it's on the brakes. */
   indicator?: -1 | 0 | 1
   braking?: boolean
@@ -470,6 +524,14 @@ export type Pedestrian = Mover & {
   skin: number
   /** Not drawn. Used for a bike rider who is still on the bike. */
   hidden?: boolean
+  /**
+   * Crossing the road (`stepCrossing`): waiting at the kerb, or on the way over, to a place on the
+   * footpath opposite; how long they've waited; and the light that holds the traffic, at a zebra.
+   */
+  cross?: { stage: 'wait' | 'go'; toX: number; toZ: number; lane: number; along: number; waited: number; light: { junction: number; group: number } | null } | null
+  /** Seconds until they next think of crossing, and the lane on which they last passed a zebra and chose. */
+  crossIn?: number
+  zebraSeen?: number
 }
 
 /** Something standing loose on the ground, which anything can knock about. */
@@ -494,7 +556,8 @@ export type TrafficWorld = {
   /** The flyovers whose lanes are among `roadLanes` (deckLanes.ts). */
   decks: Flyover[]
   /**
-   * A rush-hour jam: traffic within `reach` of it crawls, the more the nearer and the higher
+   * A rush-hour jam: within `reach` of it more of the traffic appears, and more of it stops for
+   * one reason or another (`startHalts`), so the queues are real ones, the more the higher
    * `amount` (0 to 1), and more of the traffic appears there. Null when there's none.
    */
   jam: { x: number; z: number; reach: number; amount: number } | null
@@ -517,6 +580,14 @@ export type TrafficWorld = {
   downed: Obstacle[]
   /** For each road lane, where along it buses stop, in metres (`setBusStops`). */
   busStops?: number[][]
+  /** Things standing in the road that aren't traffic (a cow, a bus broken down: CityEvents.tsx), by who put them there. */
+  obstacles: Map<string, RoadObstacle>
+  /** Seconds until the next hold-up may start (`startHalts`). */
+  haltIn: number
+  /** For each footpath lane, the one along the other side of the same stretch of road (-1 if there's none). */
+  walkAcross: Int32Array
+  /** The zebra crossings at the lights, by the footpath lane that passes each: where along it, and the light of the road it crosses. */
+  zebras: Map<number, { along: number; junction: number; group: number }>
 }
 
 function angleBetween(from: number, to: number): number {
@@ -565,9 +636,6 @@ function findLaneInRing(
   }
   return -1
 }
-
-/** At the heart of a rush-hour jam at its height, traffic's speed is cut by this share. */
-const JAM_SLOWS = 0.68
 
 /** The busiest street's traffic weight: a lane is picked in proportion to its own weight against this. */
 const MAX_LANE_WEIGHT = 10
@@ -659,6 +727,31 @@ export function createTrafficWorld(
     clearance: 0.4,
   })
 
+  // The footpath opposite each footpath: the same stretch of road walked the other way.
+  const walkByEnds = new Map<number, number>()
+  walkLanes.forEach((lane, index) => walkByEnds.set(lane.startNode * 1_000_000 + lane.endNode, index))
+  const walkAcross = Int32Array.from(walkLanes, (lane) => walkByEnds.get(lane.endNode * 1_000_000 + lane.startNode) ?? -1)
+  // And where each zebra crossing meets the footpaths either side of its road.
+  const zebras: TrafficWorld['zebras'] = new Map()
+  const walkGrid = getLaneGrid(walkLanes)
+  for (const post of signals.posts) {
+    const alongX = Math.sin(post.rotation)
+    const alongZ = Math.cos(post.rotation)
+    for (let cellX = Math.floor((post.crossX - 15) / LANE_CELL); cellX <= Math.floor((post.crossX + 15) / LANE_CELL); cellX++) {
+      for (let cellZ = Math.floor((post.crossZ - 15) / LANE_CELL); cellZ <= Math.floor((post.crossZ + 15) / LANE_CELL); cellZ++) {
+        for (const index of walkGrid.get(laneCellKey(cellX, cellZ)) ?? []) {
+          const lane = walkLanes[index]
+          // A footpath along the road the zebra crosses, beside it.
+          if (Math.abs(lane.forwardX * alongX + lane.forwardZ * alongZ) < 0.8) continue
+          const along = (post.crossX - lane.startX) * lane.forwardX + (post.crossZ - lane.startZ) * lane.forwardZ
+          if (along < 1 || along > lane.length - 1) continue
+          const beside = Math.hypot(post.crossX - lane.startX - lane.forwardX * along, post.crossZ - lane.startZ - lane.forwardZ * along)
+          if (beside < post.crossWidth / 2 + 1.5) zebras.set(index, { along, junction: post.junction, group: post.group })
+        }
+      }
+    }
+  }
+
   const vehicles: Vehicle[] = Array.from({ length: TRAFFIC_RULES.maxVehicles }, (_, index) => {
     const kind = VEHICLE_MIX[index % VEHICLE_MIX.length]
     const { speed, halfLength, radius, crash } = VEHICLE_SHAPES[kind]
@@ -739,6 +832,10 @@ export function createTrafficWorld(
     physics,
     collisions,
     junctions: createJunctions(roadLanes),
+    obstacles: new Map(),
+    haltIn: 8,
+    walkAcross,
+    zebras,
     breakers: roadLanes.map((lane) => (lane.startNode < 0 ? [] : breakersOnLink(lane.startNode, lane.endNode))),
     decks,
     jam: null,
@@ -1048,8 +1145,47 @@ const RIDER_HALF_LENGTH = 1
 const DOWNED_HALF_LENGTH = 0.9
 const DOWNED_RADIUS = 0.9
 
-/** A person traffic must not drive into. `lying` makes them a body's length; standing, they're narrow. */
-type Obstacle = { x: number; z: number; lying: boolean }
+/**
+ * Something in the road that traffic must not drive into. A person: `lying` makes them a body's
+ * length; standing, they're narrow; `crossing`, they're on their way over the road, and traffic
+ * gives them room on either side. Or a thing with a size of its own (`halfLength` along the road,
+ * `radius` across it): it stands there, and traffic goes round it.
+ */
+type Obstacle = { x: number; z: number; lying: boolean; crossing?: boolean; halfLength?: number; radius?: number }
+
+/** Something standing in the road that isn't traffic: where, and its size along the road and across it, in metres. */
+export type RoadObstacle = { x: number; z: number; halfLength: number; radius: number }
+
+/**
+ * Whether a lane is a plain stretch of road, with no junction on it or within two lanes either
+ * way: somewhere a thing can stand in the road and be queued behind and gone round. Right by a
+ * junction, the queue would stand in the junction, and nothing could get round anything.
+ */
+export function isPlainRoad(world: TrafficWorld, index: number): boolean {
+  const { junctions, roadLanes } = world
+  const near = (lane: number) => junctions.junctionOf[lane] >= 0 || junctions.clearAt[lane] > 0
+  if (near(index)) return false
+  for (const next of roadLanes[index].next) {
+    if (near(next) || roadLanes[next].next.some(near)) return false
+  }
+  return true
+}
+
+/** Puts something in the road for traffic to queue behind and go round (or takes it away, with null). */
+export function setObstacle(world: TrafficWorld, owner: string, obstacle: RoadObstacle | null) {
+  if (obstacle) world.obstacles.set(owner, obstacle)
+  else world.obstacles.delete(owner)
+}
+
+/** A person on their way across the road is given this much room either side by traffic, in metres. */
+const CROSSING_ROOM = 1.4
+/**
+ * What's in a vehicle's way: the rider (or a person, or a vehicle standing empty for them), a
+ * queue, something standing in the lane that won't move for a while (a breakdown, a drop-off, a
+ * cow), or traffic crossing in front.
+ */
+type Blocked = 'rider' | 'queue' | 'standing' | 'crossing' | null
+
 /**
  * The space between this vehicle's front bumper and the back of whatever is in
  * its way, or Infinity. `sideways` asks "what if I moved over this far?", which
@@ -1062,16 +1198,16 @@ function findGapAhead(
   rider: ScooterState,
   downed: Obstacle[],
   sideways = 0,
-): { gap: number; blockedBy: 'rider' | 'queue' | 'crossing' | null; blocker: Vehicle | null } {
+): { gap: number; blockedBy: Blocked; blocker: Vehicle | null } {
   let gap = Infinity
-  let blockedBy: 'rider' | 'queue' | 'crossing' | null = null
+  let blockedBy: Blocked = null
   let blocker: Vehicle | null = null
   let checking: Vehicle | null = null
   const noseX = Math.sin(vehicle.heading)
   const noseZ = Math.cos(vehicle.heading)
   const turning = sideways === 0 && noseX * lane.forwardX + noseZ * lane.forwardZ < TURNING
 
-  const check = (x: number, z: number, halfLength: number, radius: number, isRider: boolean, oncoming = false) => {
+  const check = (x: number, z: number, halfLength: number, radius: number, kind: 'rider' | 'queue' | 'standing', oncoming = false) => {
     const offsetX = x - vehicle.x
     const offsetZ = z - vehicle.z
     const ahead = offsetX * lane.forwardX + offsetZ * lane.forwardZ
@@ -1095,7 +1231,7 @@ function findGapAhead(
     if (vehicle.barging && checking && space < 0) return
     if (space < gap) {
       gap = space
-      blockedBy = isRider ? 'rider' : 'queue'
+      blockedBy = kind
       blocker = checking
     }
   }
@@ -1126,11 +1262,12 @@ function findGapAhead(
   }
 
   // The rider's vehicle at its real size: traffic queues behind a van's tail, and leaves a van's width.
-  check(rider.x, rider.z, Math.max(RIDER_HALF_LENGTH, tuning.halfLength), tuning.radius, true)
+  check(rider.x, rider.z, Math.max(RIDER_HALF_LENGTH, tuning.halfLength), tuning.radius, 'rider')
   // Nobody drives over someone lying in the road. Stuck behind them, they lean on the horn.
   for (const body of downed) {
-    if (body.lying) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, true)
-    else check(body.x, body.z, PERSON_RADIUS, PERSON_RADIUS, true)
+    if (body.halfLength !== undefined) check(body.x, body.z, body.halfLength, body.radius ?? body.halfLength, 'standing')
+    else if (body.lying) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, 'rider')
+    else check(body.x, body.z, PERSON_RADIUS, PERSON_RADIUS + (body.crossing ? CROSSING_ROOM : 0), 'rider')
   }
   const ownPlace = others.indexOf(vehicle)
   const inLane = sideways === 0 && Math.abs(vehicle.shift) < 0.3
@@ -1140,7 +1277,7 @@ function findGapAhead(
     // Keeping to its lane, that is: a two-wheeler out in the other side of the road still looks for everything.
     const oncoming = inLane && other.speed > 0.2 && Math.sin(other.heading) * lane.forwardX + Math.cos(other.heading) * lane.forwardZ < ONCOMING
     checking = other
-    check(other.x, other.z, other.halfLength, other.radius, other.taken === 'empty', oncoming)
+    check(other.x, other.z, other.halfLength, other.radius, other.taken === 'empty' ? 'rider' : other.halt ? 'standing' : 'queue', oncoming)
     checking = null
     if (place > ownPlace) checkCrossing(other)
   })
@@ -1346,7 +1483,11 @@ function squeezeThrough(
   if (here < rules.squeezeLookAt) {
     let best = vehicle.shiftTarget
     let bestRoom = here
-    for (const shift of [0, rules.squeezeRight, rules.squeezeLeft]) {
+    // Cars and buses need more room to get by, and take the other side of the road only when nothing is coming along it.
+    const shifts = vehicle.nimble ? NIMBLE_SHIFTS : WIDE_SHIFTS
+    for (const shift of shifts) {
+      // Two-wheelers and autos look a shorter way: they're past in a moment, but not into the face of something coming.
+      if (shift < vehicle.shiftTarget - 0.1 && !otherSideClear(vehicle, lane, active, shift, vehicle.nimble ? rules.passClearNimble : rules.passClear)) continue
       const room = roomAt(shift)
       // A clear margin is needed to change, or it would dither between two gaps.
       if (room > bestRoom + 1.5) {
@@ -1362,9 +1503,31 @@ function squeezeThrough(
   easeShift(vehicle, dt)
 }
 
+const NIMBLE_SHIFTS = [0, TRAFFIC_RULES.squeezeRight, TRAFFIC_RULES.passWide, TRAFFIC_RULES.squeezeLeft]
+const WIDE_SHIFTS = [0, TRAFFIC_RULES.squeezeRight, TRAFFIC_RULES.passWide, TRAFFIC_RULES.passWide - 0.6, TRAFFIC_RULES.squeezeLeft]
+
+/**
+ * Whether the way is clear of oncoming traffic, for pulling out `shift` metres to the right to pass
+ * something: nothing coming this way within `passClear` metres along the strip it would drive in.
+ */
+function otherSideClear(vehicle: Vehicle, lane: Lane, others: Vehicle[], shift: number, reach: number): boolean {
+  for (const other of others) {
+    if (other === vehicle || other.lane === -1 || other.speed < 0.5) continue
+    if (Math.sin(other.heading) * lane.forwardX + Math.cos(other.heading) * lane.forwardZ > ONCOMING) continue
+    const offsetX = other.x - vehicle.x
+    const offsetZ = other.z - vehicle.z
+    const ahead = offsetX * lane.forwardX + offsetZ * lane.forwardZ
+    if (ahead < 0 || ahead > reach) continue
+    const side = offsetX * lane.forwardZ - offsetZ * lane.forwardX - shift
+    if (Math.abs(side) < vehicle.radius + other.radius + 0.5) return false
+  }
+  return true
+}
+
 /** A rider on foot in the way is honked at from this far, in metres. */
 const WALKER_HONK_GAP = 9
 const aheadIsRider = (ahead: { gap: number; blockedBy: string | null }) => ahead.blockedBy === 'rider' && ahead.gap < TRAFFIC_RULES.squeezeLookAt
+const aheadIsStanding = (ahead: { gap: number; blockedBy: string | null }) => ahead.blockedBy === 'standing' && ahead.gap < TRAFFIC_RULES.squeezeLookAt + TRAFFIC_RULES.standingGap
 
 function easeShift(vehicle: Vehicle, dt: number) {
   const change = vehicle.shiftTarget - vehicle.shift
@@ -1491,8 +1654,14 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const downed = (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC ? [] : world.downed
   // With the rider on foot, cars and buses too ease out around them and their parked vehicle, as around anyone in the road.
   const afoot = rider.rider.phase === 'afoot'
-  const aroundWalker = (afoot || world.anyEmpty) && !vehicle.nimble && (vehicle.shiftTarget !== 0 || aheadIsRider(findGapAhead(vehicle, lane, active, rider, downed)))
-  if (vehicle.nimble || aroundWalker) squeezeThrough(vehicle, lane, active, rider, downed, dt, limit)
+  // And round anything standing in the lane: a breakdown, someone being let out, a cow.
+  const look = vehicle.nimble || vehicle.halt ? null : findGapAhead(vehicle, lane, active, rider, downed)
+  const aroundWalker = look !== null && (vehicle.shiftTarget !== 0 || aheadIsStanding(look) || ((afoot || world.anyEmpty) && aheadIsRider(look)))
+  if (vehicle.halt) {
+    // Letting someone out, it pulls in to the kerb; broken down, it stops where it is.
+    vehicle.shiftTarget = Math.min(vehicle.halt.kind === 'dropOff' ? rules.squeezeLeft : 0, limit)
+    easeShift(vehicle, dt)
+  } else if (vehicle.nimble || aroundWalker) squeezeThrough(vehicle, lane, active, rider, downed, dt, limit)
   else {
     vehicle.shiftTarget = Math.min(0, limit)
     easeShift(vehicle, dt)
@@ -1500,11 +1669,42 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
 
   const { gap, blockedBy, blocker } = findGapAhead(vehicle, lane, active, rider, downed)
   const hasWaited = blockedBy === 'crossing' && vehicle.waiting > rules.patience
-  const keep = vehicle.nimble ? rules.nimbleGap : rules.carGap
-  // In a rush-hour jam it crawls: down to about a third of its speed at the jam's heart.
-  const jam = world.jam
-  const jammed = jam ? jam.amount * Math.max(0, 1 - Math.hypot(vehicle.x - jam.x, vehicle.z - jam.z) / jam.reach) : 0
-  const cruise = vehicle.cruiseSpeed * (1 - JAM_SLOWS * jammed)
+  // Behind something standing in the lane, traffic leaves room to swing out round it; once it's
+  // pulling out, it closes up as it goes.
+  const pullingOut = Math.abs(vehicle.shiftTarget) > 0.5
+  const keep = blockedBy !== 'standing' ? (vehicle.nimble ? rules.nimbleGap : rules.carGap) : vehicle.nimble ? rules.standingGap / 2 : pullingOut ? rules.carGap : rules.standingGap
+
+  // Two fixes for a vehicle that's stopped with no room to steer where it wants to go.
+  const tryMove = (stepX: number, stepZ: number): boolean => {
+    const fromX = vehicle.x
+    const fromZ = vehicle.z
+    const before = overlapWithTraffic(vehicle, active)
+    vehicle.x += stepX
+    vehicle.z += stepZ
+    if (overlapWithTraffic(vehicle, active) <= before + 0.001) return true
+    vehicle.x = fromX
+    vehicle.z = fromZ
+    return false
+  }
+  const noseToNose = blocker !== null && gap < 2 && Math.sin(blocker.heading) * lane.forwardX + Math.cos(blocker.heading) * lane.forwardZ < ONCOMING
+  const tooClose = blockedBy === 'standing' && pullingOut && gap < keep + 0.4
+  if (vehicle.speed < 0.2 && vehicle.nimble && ((vehicle.shift < -0.4 && noseToNose) || tooClose)) {
+    // A two-wheeler or an auto is paddled sideways, the only time anything moves that way: back
+    // towards its own lane from in front of something coming, or out round what's standing in front.
+    const wanted = noseToNose ? 0 : vehicle.shiftTarget
+    const lateral = (vehicle.x - lane.startX) * lane.forwardZ - (vehicle.z - lane.startZ) * lane.forwardX
+    const step = Math.max(-rules.paddleSpeed * dt, Math.min(rules.paddleSpeed * dt, wanted - lateral))
+    if (Math.abs(step) > 0.0005 && tryMove(lane.forwardZ * step, -lane.forwardX * step) && noseToNose) {
+      vehicle.shift = Math.min(0, vehicle.shift + Math.abs(step))
+      vehicle.shiftTarget = Math.max(vehicle.shiftTarget, vehicle.shift)
+    }
+  } else if (!vehicle.nimble && vehicle.speed < 0.2 && (vehicle.reversing || tooClose)) {
+    // A car or a bus backs up for the room to swing out, if there's nothing behind it.
+    const step = rules.backOffSpeed * dt
+    vehicle.reversing = blockedBy === 'standing' && gap < rules.standingGap && tryMove(-Math.sin(vehicle.heading) * step, -Math.cos(vehicle.heading) * step)
+    if (vehicle.reversing) vehicle.along = Math.max(0, vehicle.along - step)
+  } else vehicle.reversing = false
+  const cruise = vehicle.cruiseSpeed
   const free = hasWaited ? cruise : Math.min(cruise, Math.max(0, gap - keep))
 
   // Patience never overrules a red light, unless this one doesn't stop for them at all.
@@ -1535,17 +1735,32 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const hailed = vehicle.taken === 'hailed'
   // At a junction: slow to look, and stop at the line until the way through is clear (junctions.ts).
   const forJunction = vehicle.junctionSpeed ?? Infinity
-  const target = hailed ? 0 : Math.min(free, held, forBend, forBump, forStop, forJunction) * vehicle.recovery
+  const halt = vehicle.halt
+  let target = hailed || halt || vehicle.reversing ? 0 : Math.min(free, held, forBend, forBump, forStop, forJunction) * vehicle.recovery
+  // Its own hold-up runs out once it has pulled up: then it's ordinary traffic again.
+  if (halt && vehicle.speed < 0.1) {
+    halt.left -= dt
+    if (halt.left <= 0) {
+      vehicle.halt = null
+      vehicle.hazard = false
+    }
+  }
+  // A driver takes a moment to set off once the way opens, so a queue moves off from its front, one after another.
+  if (vehicle.speed < 0.15 && target > 0.5) {
+    vehicle.setOffIn ??= (rules.setOff[0] + vehicle.tint * (rules.setOff[1] - rules.setOff[0])) * (vehicle.nimble ? 0.5 : 1)
+    vehicle.setOffIn -= dt
+    if (vehicle.setOffIn > 0) target = 0
+  } else if (vehicle.speed > 0.5) vehicle.setOffIn = undefined
 
   if (trafficDebug.reasons) {
     vehicle.reason = `gap ${gap.toFixed(1)} (${blockedBy ?? 'clear'}), light ${held.toFixed(1)}, bend ${forBend.toFixed(1)}, bus stop ${forStop.toFixed(1)}, junction ${forJunction.toFixed(1)}${vehicle.claim ? ' going' : vehicle.atLine ? ' at line' : ''}${vehicle.crossing ? ' crossing' : ''}`
   }
   // Stopped by what's in front of it, not by a line or a light: it isn't about to go anywhere (junctions.ts).
-  vehicle.stalled = free < 0.3 && vehicle.speed < 0.5
+  vehicle.stalled = free < 0.3 && vehicle.speed < 0.5 && !halt
   vehicle.blocker = vehicle.stalled ? blocker : null
   // The brake lamps: slowing down, or standing with a foot on the brake.
   vehicle.braking = target < vehicle.speed - 0.05 || (vehicle.speed < 0.2 && target < 0.2)
-  const rate = target < vehicle.speed ? rules.braking * (hailed ? HAIL_BRAKING : 1) : rules.acceleration
+  const rate = target < vehicle.speed ? (halt ? rules.signalBraking : rules.braking * (hailed ? HAIL_BRAKING : 1)) : rules.acceleration
   const change = target - vehicle.speed
   vehicle.speed += Math.sign(change) * Math.min(Math.abs(change), rate * dt)
 
@@ -1553,7 +1768,7 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const atLight = toStop !== Infinity
   // Nor is waiting at a junction's line for a gap.
   const atJunction = forJunction < 0.3
-  vehicle.waiting = vehicle.speed < 0.3 && !atLight && !atJunction && !((vehicle.busDwell ?? 0) > 0) ? vehicle.waiting + dt : 0
+  vehicle.waiting = vehicle.speed < 0.3 && !atLight && !atJunction && !halt && !((vehicle.busDwell ?? 0) > 0) ? vehicle.waiting + dt : 0
   if (hasWaited) vehicle.waiting = rules.patience + 1
 
   // On foot they're honked at from further back: a horn as it slows, not only once it has stopped.
@@ -1573,7 +1788,7 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   }
 
   // The indicator: for its turn at the junction ahead, from a little way off, and on until it's through.
-  vehicle.indicator = indicatorFor(world.junctions, roadLanes, vehicle, (mover, steps) => laneAhead(mover, roadLanes, steps, random), INDICATE_FROM)
+  vehicle.indicator = vehicle.halt?.kind === 'dropOff' ? 1 : indicatorFor(world.junctions, roadLanes, vehicle, (mover, steps) => laneAhead(mover, roadLanes, steps, random), INDICATE_FROM)
 
   // Corners are rounded to about the vehicle's turning circle (see `findCorner`), and it follows that
   // curve. It turns no tighter than a little inside that circle, so the slower it goes, the slower it turns.
@@ -1872,9 +2087,205 @@ function updatePushers(world: TrafficWorld, vehicles: Vehicle[], rider: ScooterS
   }
 }
 
-function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterState, dt: number) {
+/** A place on the road and the way it's moving, for someone at the kerb judging the traffic. */
+type Coming = { x: number; z: number; dirX: number; dirZ: number; speed: number; halfLength: number; radius: number }
+const coming: Coming[] = []
+
+/** Everything on the road near a person, as they see it: the traffic, and the rider. */
+function listComing(person: Pedestrian, vehicles: Vehicle[], rider: ScooterState): Coming[] {
+  let count = 0
+  const add = (x: number, z: number, dirX: number, dirZ: number, speed: number, halfLength: number, radius: number) => {
+    if (Math.abs(x - person.x) > 70 || Math.abs(z - person.z) > 70) return
+    const entry = (coming[count] ??= { x: 0, z: 0, dirX: 0, dirZ: 0, speed: 0, halfLength: 0, radius: 0 })
+    Object.assign(entry, { x, z, dirX, dirZ, speed, halfLength, radius })
+    count++
+  }
+  for (const vehicle of vehicles) {
+    if (vehicle.lane === -1 || vehicle.body || (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC) continue
+    add(vehicle.x, vehicle.z, Math.sin(vehicle.heading), Math.cos(vehicle.heading), vehicle.speed, vehicle.halfLength, vehicle.radius)
+  }
+  if (rider.rider.phase === 'on') {
+    const speed = Math.hypot(rider.velocityX, rider.velocityZ)
+    const dirX = speed > 0.5 ? rider.velocityX / speed : Math.sin(rider.heading)
+    const dirZ = speed > 0.5 ? rider.velocityZ / speed : Math.cos(rider.heading)
+    add(rider.x, rider.z, dirX, dirZ, speed, Math.max(RIDER_HALF_LENGTH, tuning.halfLength), tuning.radius)
+  }
+  coming.length = count
+  return coming
+}
+
+/**
+ * Where something on the road meets the line a person is crossing along: `at` metres along the
+ * crossing from the person, and `ahead` metres in front of the thing's middle. Null if it's going
+ * the same way as the crossing, near enough, and never meets it.
+ */
+function meetsCrossing(thing: Coming, fromX: number, fromZ: number, dirX: number, dirZ: number): { at: number; ahead: number } | null {
+  const turn = thing.dirX * dirZ - thing.dirZ * dirX
+  if (Math.abs(turn) < 0.2) return null
+  const offsetX = fromX - thing.x
+  const offsetZ = fromZ - thing.z
+  return { ahead: (offsetX * dirZ - offsetZ * dirX) / turn, at: (offsetX * thing.dirZ - offsetZ * thing.dirX) / turn }
+}
+
+const approach = (value: number, target: number, step: number) => value + Math.max(-step, Math.min(step, target - value))
+
+/**
+ * Someone crossing the road: at the kerb, looking, until there's a gap (or, at a zebra, until the
+ * light holds the traffic and there's a gap); then straight over to the footpath opposite, a hand
+ * up to the traffic, stopping short of anything that isn't slowing for them. Traffic slows for
+ * someone on their way across as it does for anyone in the road (`listDowned`).
+ */
+function stepCrossing(world: TrafficWorld, person: Pedestrian, vehicles: Vehicle[], rider: ScooterState, dt: number) {
+  const rules = TRAFFIC_RULES
+  const cross = person.cross
+  if (!cross) return
+  const awayX = cross.toX - person.x
+  const awayZ = cross.toZ - person.z
+  const width = Math.hypot(awayX, awayZ)
+  const dirX = awayX / (width || 1)
+  const dirZ = awayZ / (width || 1)
+  const pace = person.speed * rules.crossPace
+  const traffic = listComing(person, vehicles, rider)
+  // They face the way they're going, or about to.
+  const turn = angleBetween(person.heading, Math.atan2(dirX, dirZ))
+  person.heading += Math.max(-rules.walkTurnRate * dt, Math.min(rules.walkTurnRate * dt, turn))
+
+  if (cross.stage === 'wait') {
+    cross.waited += dt
+    person.walking = approach(person.walking ?? 1, 0, dt * 4)
+    const margin = Math.max(rules.crossLeast, rules.crossMargin - cross.waited * 0.13)
+    let clear = cross.waited > 0.7
+    // At a zebra they wait for the light to hold the traffic coming up to it.
+    if (clear && cross.light && getLight(world.signals.junctions[cross.light.junction], cross.light.group, world.signalClock) !== 'red') clear = false
+    for (const thing of traffic) {
+      if (!clear) break
+      const meets = meetsCrossing(thing, person.x, person.z, dirX, dirZ)
+      // Going along the kerb beside them, it's only in the way if it's close.
+      if (!meets) continue
+      if (meets.at < -1.5 || meets.at > width + 1.5) continue
+      const nose = meets.ahead - thing.halfLength
+      // Gone past already.
+      if (meets.ahead < -thing.halfLength - 1) continue
+      if (thing.speed < 0.8) {
+        // Standing traffic is walked between, but not through: not here, if one stands on the line.
+        if (nose < 1.2) clear = false
+        continue
+      }
+      // It would be at their line before they're past its strip of road, with the margin they want.
+      const past = (Math.max(0, Math.min(width, meets.at)) + thing.radius + 1) / pace
+      if (nose / thing.speed < past + margin) clear = false
+    }
+    if (clear) {
+      cross.stage = 'go'
+      person.lane = cross.lane
+      person.along = cross.along
+      person.nextLane = -1
+      person.prevLane = -1
+      if (person.onward) person.onward.length = 0
+    } else if (cross.waited > (cross.light ? rules.zebraWait : rules.kerbWait)) {
+      // No gap: they give up, and walk on.
+      person.cross = null
+      person.walking = 1
+      person.crossIn = 15 + world.random() * 30
+    }
+    return
+  }
+
+  // On the way over. Anything still coming fast at the strip of road just ahead of them, they let pass.
+  let wait = false
+  let near = false
+  for (const thing of traffic) {
+    if (Math.hypot(thing.x - person.x, thing.z - person.z) < 30 && thing.speed > 1) near = true
+    if (thing.speed < 1.5) continue
+    const meets = meetsCrossing(thing, person.x, person.z, dirX, dirZ)
+    if (!meets || meets.at < thing.radius + 0.4 || meets.at > thing.radius + 2.2) continue
+    const nose = meets.ahead - thing.halfLength
+    if (nose > -thing.halfLength * 2 && nose / thing.speed < 1.3) wait = true
+  }
+  person.walking = approach(person.walking ?? 1, wait ? 0 : 1, dt * 5)
+  person.wave = approach(person.wave ?? 0, near ? 1 : 0, dt * 3)
+  if (!wait) {
+    const step = Math.min(width, pace * dt)
+    person.x += dirX * step
+    person.z += dirZ * step
+    person.stride += step * STRIDE_PER_METRE
+  }
+  if (width < 0.4) {
+    // Over. They walk on along the far footpath, and don't think of crossing again for a while.
+    person.cross = null
+    person.wave = 0
+    person.walking = 1
+    person.crossIn = rules.crossEvery[0] + world.random() * (rules.crossEvery[1] - rules.crossEvery[0])
+  }
+}
+
+/** Whether a point on the ground has a flyover's deck or ramp over it (or through it, at a ramp's foot). */
+function underDeck(decks: Flyover[], x: number, z: number): boolean {
+  for (const deck of decks) {
+    const { points } = deck.path
+    const reach = deck.width / 2 + 0.5
+    for (let i = 1; i < points.length; i++) {
+      const [ax, az] = points[i - 1]
+      const [bx, bz] = points[i]
+      // Quickly past the pieces nowhere near.
+      if (x < Math.min(ax, bx) - reach || x > Math.max(ax, bx) + reach || z < Math.min(az, bz) - reach || z > Math.max(az, bz) + reach) continue
+      const lengthSquared = (bx - ax) ** 2 + (bz - az) ** 2
+      const along = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (z - az) * (bz - az)) / lengthSquared))
+      if (Math.hypot(x - ax - (bx - ax) * along, z - az - (bz - az) * along) > reach) continue
+      if (deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * along > 0.1) return true
+    }
+  }
+  return false
+}
+
+/** Now and then someone walking along decides to cross: here, or at the zebra they're passing. */
+function thinkOfCrossing(world: TrafficWorld, person: Pedestrian, dt: number) {
+  const rules = TRAFFIC_RULES
+  const { walkLanes, random } = world
+  person.crossIn = (person.crossIn ?? 5 + random() * rules.crossEvery[1]) - dt
+  const opposite = world.walkAcross[person.lane]
+  if (opposite < 0) return
+  const lane = walkLanes[person.lane]
+  if (person.along < 1 || person.along > lane.length - 1 || Math.hypot(person.dodgeX, person.dodgeZ) > 0.2) return
+
+  const zebra = world.zebras.get(person.lane)
+  let light: { junction: number; group: number } | null = null
+  if (zebra && Math.abs(person.along - zebra.along) < 0.7) {
+    // One choice each time they pass it.
+    if (person.zebraSeen === person.lane) return
+    person.zebraSeen = person.lane
+    if (random() > rules.zebraShare) return
+    light = zebra
+  } else {
+    if (person.crossIn > 0) return
+    person.crossIn = rules.crossEvery[0] + random() * (rules.crossEvery[1] - rules.crossEvery[0])
+  }
+
+  // The same place along the road, on the footpath opposite.
+  const other = walkLanes[opposite]
+  const along = Math.max(0.5, Math.min(other.length - 0.5, other.length - person.along))
+  const toX = other.startX + other.forwardX * along
+  const toZ = other.startZ + other.forwardZ * along
+  const width = Math.hypot(toX - person.x, toZ - person.z)
+  // Not where there's nothing to cross, nor a highway's width; nor through a median, a railing or a parked car.
+  if (width < 4 || width > 26 || !hasClearLine(world.collisions, person.x, person.z, toX, toZ, 0.25)) return
+  // Nor where a flyover or its ramp is in the way: the road they'd be walking over is up in the
+  // air, or rising out of the ground, and they'd wade through it.
+  for (let step = 0; step <= width; step += 1) {
+    if (underDeck(world.decks, person.x + ((toX - person.x) * step) / width, person.z + ((toZ - person.z) * step) / width)) return
+  }
+  person.cross = { stage: 'wait', toX, toZ, lane: opposite, along, waited: 0, light }
+}
+
+function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterState, vehicles: Vehicle[], dt: number) {
   const { walkLanes, random } = world
   const rules = TRAFFIC_RULES
+
+  if (person.cross) {
+    stepCrossing(world, person, vehicles, rider, dt)
+    return
+  }
+  thinkOfCrossing(world, person, dt)
 
   if (!advance(person, walkLanes, person.speed * dt, random)) {
     person.lane = -1
@@ -2082,7 +2493,7 @@ function mustGiveWay(vehicle: Vehicle, others: Vehicle[]): Vehicle | null {
  * or a vehicle standing empty for the player.
  */
 function mayBarge(vehicle: Vehicle, other: Vehicle, places: Vehicle[]): boolean {
-  if (other.body || other.fallen || other.taken === 'empty' || other.taken === 'driven') return false
+  if (other.body || other.fallen || other.halt || other.taken === 'empty' || other.taken === 'driven') return false
   return outranks(vehicle, other, places)
 }
 
@@ -2105,7 +2516,7 @@ function ringToBreak(vehicle: Vehicle, places: Vehicle[]): Vehicle | null {
       for (let other = first; other && other !== vehicle; other = waitsFor(other)) if (outranks(other, vehicle, places)) return null
       return first
     }
-    if (at.body || at.fallen || at.taken === 'empty' || at.taken === 'driven') return null
+    if (at.body || at.fallen || at.halt || at.taken === 'empty' || at.taken === 'driven') return null
     at = waitsFor(at)
   }
   return null
@@ -2170,15 +2581,25 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
   // The entries are kept and refilled each step, rather than made new 60 times a second.
   const downed = world.downed
   let count = 0
-  const add = (x: number, z: number, lying: boolean) => {
+  const add = (x: number, z: number, lying: boolean, crossing = false) => {
     const entry = (downed[count] ??= { x: 0, z: 0, lying: false })
     entry.x = x
     entry.z = z
     entry.lying = lying
+    entry.crossing = crossing
+    entry.halfLength = undefined
+    entry.radius = undefined
     count++
+    return entry
   }
   for (const person of world.pedestrians.slice(0, pedestrianCount)) {
-    if (person.lane !== -1) add(person.x, person.z, !!(person.body || person.fallen))
+    if (person.lane !== -1) add(person.x, person.z, !!(person.body || person.fallen), person.cross?.stage === 'go')
+  }
+  // And what stands in the road that isn't traffic: a cow, a bus broken down.
+  for (const obstacle of world.obstacles.values()) {
+    const entry = add(obstacle.x, obstacle.z, false)
+    entry.halfLength = obstacle.halfLength
+    entry.radius = obstacle.radius
   }
   for (const { thrownRider, riderOff } of vehicles) {
     if (thrownRider && riderOff) add(thrownRider.x, thrownRider.z, true)
@@ -2189,6 +2610,45 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
   const upright = phase === 'walking' || phase === 'afoot' || phase === 'dismounting' || phase === 'mounting'
   if (phase !== 'on' && !liveRoom.kind) add(x, z, !upright)
   downed.length = count
+}
+
+/**
+ * Starts a hold-up now and then: one vehicle, driving along a plain stretch of road away from any
+ * junction, pulls in to let someone out, or breaks down. The traffic behind it queues, two-wheelers
+ * squeeze by, cars go round when the other side is clear, and when it moves off the queue follows.
+ * These are the city's jams: each has a cause, and an end.
+ */
+function startHalts(world: TrafficWorld, vehicles: Vehicle[], at: { x: number; z: number }, dt: number) {
+  const rules = TRAFFIC_RULES
+  const { random, jam, junctions, roadLanes } = world
+  world.haltIn -= dt
+  if (world.haltIn > 0) return
+  // How much of a rush-hour jam this is, here.
+  const rush = jam ? jam.amount * Math.max(0, 1 - Math.hypot(at.x - jam.x, at.z - jam.z) / jam.reach) : 0
+  const [least, most] = rush > 0.3 ? rules.haltEveryRush : rules.haltEvery
+  world.haltIn = least + random() * (most - least)
+  const standing = vehicles.filter((vehicle) => vehicle.lane !== -1 && vehicle.halt).length
+  if (standing >= rules.halts + Math.round(rules.haltsRush * rush)) return
+
+  const able = vehicles.filter((vehicle) => {
+    if (vehicle.lane === -1 || vehicle.halt || vehicle.taken || vehicle.body || vehicle.fallen || vehicle.crossing) return false
+    if (vehicle.kind === 'bus' || vehicle.kind === 'bike' || vehicle.speed < 3) return false
+    const away = Math.hypot(vehicle.x - at.x, vehicle.z - at.z)
+    if (away < rules.haltNear || away > rules.haltFar) return false
+    // Not coming up to a junction, nor in one.
+    if (junctions.junctionOf[vehicle.lane] >= 0) return false
+    for (let steps = 1; steps <= 3; steps++) {
+      const ahead = laneAhead(vehicle, roadLanes, steps, random)
+      if (ahead < 0 || junctions.junctionOf[ahead] >= 0) return false
+    }
+    return true
+  })
+  if (able.length === 0) return
+  const vehicle = able[Math.floor(random() * able.length)]
+  const breakdown = vehicle.kind !== 'auto' && random() < rules.breakdownShare
+  const [shortest, longest] = breakdown ? rules.breakdown : rules.dropOff
+  vehicle.halt = { kind: breakdown ? 'breakdown' : 'dropOff', left: shortest + random() * (longest - shortest) }
+  vehicle.hazard = breakdown
 }
 
 /** Advances everything. Only the first `vehicleCount` and `pedestrianCount` are in play. */
@@ -2469,6 +2929,7 @@ export function stepTraffic(
   world.signalClock += dt
   listDowned(world, contact, activeVehicles, pedestrianCount)
 
+  startHalts(world, groundVehicles, at, dt)
   // Who may drive into each junction this step. Only on the ground: nothing crosses up on a deck.
   planJunctions(world.junctions, roadLanes, groundVehicles, world.signals, world.signalClock, (vehicle, steps) => laneAhead(vehicle, roadLanes, steps, random), dt)
 
@@ -2538,6 +2999,10 @@ export function stepTraffic(
       vehicle.knot = 0
       vehicle.backedOff = 0
       vehicle.holdOff = 0
+      vehicle.halt = null
+      vehicle.hazard = false
+      vehicle.reversing = false
+      vehicle.setOffIn = undefined
       vehicle.barging = null
       vehicle.indicator = 0
       vehicle.braking = false
@@ -2695,14 +3160,21 @@ export function stepTraffic(
       placeOnLane(person, walkLanes, lane, random)
       person.dodgeX = 0
       person.dodgeZ = 0
+      person.cross = null
+      person.wave = 0
+      person.walking = 1
     }
 
     if (person.body || person.fallen) {
+      // Knocked down on the way over: once up, they walk on to where they were going.
+      person.cross = null
+      person.wave = 0
+      person.walking = 1
       stepKnockedPedestrian(world, person, dt)
       continue
     }
 
-    stepPedestrian(world, person, contact, dt)
+    stepPedestrian(world, person, contact, activeVehicles, dt)
     hitPedestrian(world, person, contact)
   }
   separatePeople(world.pedestrians.slice(0, pedestrianCount), dt)

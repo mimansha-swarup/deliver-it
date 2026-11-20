@@ -9,7 +9,7 @@ import { getTravelSpeed, isAfoot, scooterLevel } from '../vehicle/ScooterControl
 import { liveRoom, ROOM } from '../game/rooms'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
-import { isNearBuilding, type CollisionWorld } from '../world/collision'
+import { blocksView, type CollisionWorld } from '../world/collision'
 import { liveLook, settleLook, useMouseLook } from './mouseLook'
 
 /*
@@ -48,6 +48,22 @@ const SWAY_RESPONSE = 2.5
 const MIN_DISTANCE = 1.4
 const WALL_CLEARANCE = 0.4
 const PROBE_STEP = 0.4
+/**
+ * What pushes the camera in. Buildings always. Nothing under `post` metres across (a pole, a tree
+ * trunk): one crossing the view is nothing. And things under `thin` metres thick (compound walls,
+ * fences, parked cars) only when the camera is lower than `over` metres, tilted down behind the
+ * rider: from its usual two metres it looks over them. Pushed in by every one of those, it lurched
+ * forward and drifted back all along a street.
+ */
+const CAMERA_BLOCKED = { post: 1.5, thin: 1.4, over: 1.9 }
+/**
+ * The mouse swings the whole view about this point on the rider, in metres up from the ground: the
+ * camera rises over them as the view tilts down, and sinks behind them as it tilts up, the rider
+ * staying where they were in the picture, as in any third-person game.
+ */
+const ORBIT_HEIGHT = 1.3
+/** The camera never sinks below this, in metres above the ground. */
+const LOWEST_CAMERA = 0.35
 /** How fast the camera drifts back out after being pushed in. */
 const DISTANCE_RESPONSE = 3
 
@@ -81,13 +97,22 @@ function findClearDistance(
   forwardX: number,
   forwardZ: number,
   reach = DISTANCE_BEHIND,
+  /** The camera is down among the walls and parked cars, not above them. */
+  low = false,
 ): number {
+  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low)
   for (let distance = MIN_DISTANCE; distance < reach; distance += PROBE_STEP) {
-    const probeX = x - forwardX * distance
-    const probeZ = z - forwardZ * distance
-    if (isNearBuilding(collisions, probeX, probeZ, WALL_CLEARANCE)) {
-      return Math.max(MIN_DISTANCE, distance - PROBE_STEP)
+    if (!blocked(distance)) continue
+    // Then to within a few centimetres of the wall, so that swinging the view along it moves the
+    // camera in smoothly, not a probe's step at a time.
+    let clear = Math.max(MIN_DISTANCE, distance - PROBE_STEP)
+    let hit = distance
+    for (let pass = 0; pass < 4 && hit - clear > 0.02; pass++) {
+      const middle = (clear + hit) / 2
+      if (blocked(middle)) hit = middle
+      else clear = middle
     }
+    return clear
   }
   return reach
 }
@@ -169,7 +194,10 @@ export function FollowCamera({
     const view = afoot ? FOOT_VIEW : liveVehicle.spec.camera
     const indoors = afoot && liveRoom.kind !== null
     // In a room the walls are the room's own (the camera is kept inside them, below); the street's don't apply.
-    const clearDistance = indoors ? DISTANCE_BEHIND * view.distance : findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, DISTANCE_BEHIND * view.distance)
+    const reach = DISTANCE_BEHIND * view.distance
+    // How high the camera will be at full reach, with the view tilted as it is (worked out in full below).
+    const low = ORBIT_HEIGHT * view.height + reach * Math.sin(liveLook.pitch) + (HEIGHT - ORBIT_HEIGHT) * view.height * Math.cos(liveLook.pitch) < CAMERA_BLOCKED.over
+    const clearDistance = indoors ? reach : findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, reach, low)
     const distance =
       clearDistance < cameraDistance.current
         ? clearDistance // Snap in, or the wall would be visible for a moment.
@@ -177,11 +205,18 @@ export function FollowCamera({
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
 
-    // Tilting the look up swings the camera higher over the rider; down, lower behind them.
+    // The view as it stands with the mouse untouched: the camera behind and above, looking at a
+    // point ahead. Tilting swings both about a point on the rider (`ORBIT_HEIGHT`), as one rigid
+    // arm: `swing` turns a place `along` metres ahead and `above` the pivot through the tilt.
     const tilt = liveLook.pitch
-    const back = distance * (tilt > 0 ? Math.cos(tilt * 0.9) : 1)
-    const lift = tilt > 0 ? Math.sin(tilt) * distance * 1.6 : tilt * 4
-    camera.position.set(focusX - forwardX * back, Math.max(0.5, HEIGHT * view.height + lift) + level.current, focusZ - forwardZ * back)
+    const cos = Math.cos(tilt)
+    const sin = Math.sin(tilt)
+    const pivot = ORBIT_HEIGHT * view.height
+    const cameraAbove = HEIGHT * view.height - pivot
+    // A wall behind brings the camera in along the ground, at the height it was.
+    const back = Math.min(distance, Math.max(MIN_DISTANCE * 0.5, -(-distance * cos + cameraAbove * sin)))
+    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos)
+    camera.position.set(focusX - forwardX * back, cameraY + level.current, focusZ - forwardZ * back)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -197,9 +232,11 @@ export function FollowCamera({
 
     // On the rider, look at them rather than ahead of them.
     const lookAhead = afoot ? FOOT_LOOK_AHEAD : LOOK_AHEAD * (1 - follow)
-    let lookX = focusX + forwardX * lookAhead
-    let lookY: number = (afoot ? FOOT_LOOK_HEIGHT : LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow) + level.current + (tilt < 0 ? -tilt * 9 : 0)
-    let lookZ = focusZ + forwardZ * lookAhead
+    const lookAbove = (afoot ? FOOT_LOOK_HEIGHT : LOOK_HEIGHT * view.look + (RIDER_LOOK_HEIGHT - LOOK_HEIGHT * view.look) * follow) - pivot
+    const lookAlong = lookAhead * cos + lookAbove * sin
+    let lookX = focusX + forwardX * lookAlong
+    let lookY: number = pivot - lookAhead * sin + lookAbove * cos + level.current
+    let lookZ = focusZ + forwardZ * lookAlong
 
     // Eases across to a set shot and back, so that it never cuts.
     const shotTarget = liveShot.active ? 1 : 0

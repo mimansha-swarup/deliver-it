@@ -346,7 +346,7 @@ function hasExitRoom(junctions: Junctions, lanes: Lane[], vehicle: Vehicle, exit
   for (const other of vehicles) {
     if (other === vehicle || other.lane === -1) continue
     // Anything moving off will be gone by the time this one is over; a wreck or a vehicle left standing won't be.
-    const standing = other.body !== null || other.fallen !== null || other.taken === 'empty'
+    const standing = other.body !== null || other.fallen !== null || other.taken === 'empty' || !!other.halt
     if (!standing && other.speed >= rules.queueSpeed) continue
     let tail = Infinity
     if (other.lane === exit) tail = other.along - other.halfLength
@@ -398,8 +398,8 @@ export function planJunctions(
     vehicle.junctionSpeed = Infinity
     vehicle.atLine = false
     vehicle.heldBy = null
-    // Thrown about, lying on its side, or standing empty or driven by the player: not making up its mind.
-    const driving = vehicle.lane !== -1 && !vehicle.body && !vehicle.fallen && (!vehicle.taken || vehicle.taken === 'hailed')
+    // Thrown about, lying on its side, stopped for a reason of its own, or standing empty or driven by the player: not making up its mind.
+    const driving = vehicle.lane !== -1 && !vehicle.body && !vehicle.fallen && !vehicle.halt && (!vehicle.taken || vehicle.taken === 'hailed')
     if (!driving) {
       vehicle.crossing = null
       vehicle.claim = false

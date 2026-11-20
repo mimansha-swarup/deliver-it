@@ -22,8 +22,12 @@ export const liveLook = {
 }
 
 const SENSITIVITY = { yaw: 0.0042, pitch: 0.0032 }
-/** Up to here below the horizon and above it: never under the road, never straight down. */
-const PITCH = { min: -0.28, max: 0.95 }
+/**
+ * How far the view tilts, in radians: up (negative) until the camera is down by the road looking
+ * up at the buildings, and down (positive) until it's well over the rider. Never under the road,
+ * never straight down.
+ */
+const PITCH = { min: -0.6, max: 0.95 }
 /** Riding, the view starts to come back this long after the mouse last moved (ms), at this rate (per second). */
 const RETURN_AFTER_MS = 900
 const RETURN_RATE = 3.2

@@ -13,8 +13,9 @@ import { playWhistle } from '../audio/doorSounds'
 
 /*
  * The Agara junction's rules (game/rush.ts):
- * - at rush hour traffic near it crawls and bunches into a jam (the world's `jam`, read by
- *   trafficLogic.ts), and Ravi says the surge is on;
+ * - at rush hour traffic bunches near it, and more of it stops for one reason or another, so the
+ *   queues are real ones (the world's `jam`, read by trafficLogic.ts' `startHalts`), and Ravi says
+ *   the surge is on;
  * and the traffic police's, there and at the other major junctions (game/police.ts):
  * - riding over a stop line on red where a policeman stands is a challan;
  * - coming up to him slowly, the rider may be waved down for a helmet check: a nod with one on, a

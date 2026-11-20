@@ -209,9 +209,11 @@ export function Sky() {
     uniforms.uDrift.value = drift.current
     uniforms.uDrawClouds.value = skyClouds
 
-    // The haze is golden where the sun is up: the horizon's colour, warmed as the haze thickens.
+    // The haze is golden where the sun is up and the sky clear: the horizon's colour, warmed as the haze thickens.
     if (scene.fog) {
-      const warm = HAZE_WARMTH * look.haze * (1 - look.night)
+      // Not under cloud: rain's mist is grey. Warmed to gold it turned the whole wet street olive.
+      const cover = Math.min(1, Math.max(0, (sky.clouds - 0.3) / 0.7))
+      const warm = HAZE_WARMTH * look.haze * (1 - look.night) * (1 - cover)
       setColor(scene.fog.color, [
         look.horizon[0] + (HAZE_GOLD[0] - look.horizon[0]) * warm,
         look.horizon[1] + (HAZE_GOLD[1] - look.horizon[1]) * warm,

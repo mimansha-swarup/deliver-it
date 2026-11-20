@@ -14,9 +14,12 @@ const HAZE_START_THICK = 15
 const HAZE_START_THIN = 90
 /**
  * Heavy rain moves the haze's start this share of the draw distance behind the
- * camera. The haze curve then begins part-way, so even nearby air is thick.
+ * camera. The haze curve then begins part-way, so the air is misty from a little way off. It was
+ * 0.5, which put a sixth of the haze's colour over things right beside the rider and a quarter over
+ * the far side of the street: with the light flattened as well, every wall, road and footpath lost
+ * its texture and the city turned to plain boxes whenever it rained.
  */
-const RAIN_FOG = 0.5
+const RAIN_FOG = 0.1
 /** How quickly the view closes in or opens up. Higher is faster. */
 const CHANGE_RESPONSE = 2
 

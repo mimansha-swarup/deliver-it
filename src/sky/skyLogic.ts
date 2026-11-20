@@ -264,6 +264,15 @@ const SKY_SUN_CLIMB = 0.85
  * sky's colours still follow the real sun, so mornings stay blue, not dusky.
  */
 const LIGHT_SUN_CLIMB = 0.55
+/**
+ * What full cloud takes off the light, as shares: the sun, the shadows it casts, and the fill from
+ * the sky. Under cloud the light is dimmer and softer but it still comes from somewhere, so a
+ * wall still has a lit side and a shaded one and its plaster still shows. (The sun was cut by 0.72
+ * and the shadows by 0.85 with the fill left almost whole, 0.12: everything was lit evenly from
+ * all round, and a rainy street was flat colour.)
+ */
+const CLOUD_LIGHT = { sun: 0.5, shadow: 0.7, fill: 0.28 }
+
 /** The haze at its thinnest, around noon, and at night, as shares of its thickest. */
 const NOON_HAZE = 0.45
 const NIGHT_HAZE = 0.25
@@ -333,11 +342,11 @@ export function getSkyLook({ hours, clouds }: SkyState): SkyLook {
       : MOONLIGHT,
     lightIntensity:
       (isDay ? sunUp * SUN_INTENSITY * mix(1, CLEAR_SKY.sunBoost, clear) * (1 + golden * CLEAR_SKY.goldenSun) * (1 + evening * CLEAR_SKY.eveningSun) : moonUp * MOON_INTENSITY) *
-      (1 - cover * 0.72),
-    shadowStrength: 1 - cover * 0.85,
+      (1 - cover * CLOUD_LIGHT.sun),
+    shadowStrength: 1 - cover * CLOUD_LIGHT.shadow,
     ambientIntensity:
       mix(NIGHT_AMBIENT_INTENSITY, DAY_AMBIENT_INTENSITY, daylight) *
-      (1 - cover * 0.12) *
+      (1 - cover * CLOUD_LIGHT.fill) *
       mix(1, CLEAR_SKY.ambient, clear * daylight) *
       mix(1, CLEAR_SKY.goldenAmbient, golden * daylight) *
       mix(1, CLEAR_SKY.eveningAmbient, evening),

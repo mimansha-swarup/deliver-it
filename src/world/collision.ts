@@ -287,6 +287,55 @@ export function isNearBuilding(world: CollisionWorld, x: number, z: number, radi
 }
 
 /**
+ * Each footprint's size, worked out once. `thickness`: twice its area over the length of its
+ * outline (a wall's thickness, a post's radius, a square building's half width). `span`: its
+ * longest side to side, along the map's axes.
+ */
+type Measured = Footprint & { thickness?: number; span?: number }
+
+function measure(footprint: Footprint): { thickness: number; span: number } {
+  const measured = footprint as Measured
+  if (measured.thickness === undefined || measured.span === undefined) {
+    let area = 0
+    let around = 0
+    let [minX, maxX, minZ, maxZ] = [Infinity, -Infinity, Infinity, -Infinity]
+    for (let i = 0, previous = footprint.length - 1; i < footprint.length; previous = i++) {
+      const [ax, az] = footprint[previous]
+      const [bx, bz] = footprint[i]
+      area += ax * bz - bx * az
+      around += Math.hypot(bx - ax, bz - az)
+      minX = Math.min(minX, bx)
+      maxX = Math.max(maxX, bx)
+      minZ = Math.min(minZ, bz)
+      maxZ = Math.max(maxZ, bz)
+    }
+    measured.thickness = around === 0 ? 0 : Math.abs(area) / around
+    measured.span = Math.max(maxX - minX, maxZ - minZ)
+  }
+  return measured as { thickness: number; span: number }
+}
+
+/**
+ * As `isNearBuilding`, for a camera, which isn't stopped by everything a wheel is. Things under
+ * `post` metres across (poles, tree trunks, bollards) never count: one crossing the view is
+ * nothing. Things under `thickness` metres thick (compound walls, fences, parked vehicles) count
+ * only with `low` set: a camera above them looks over them.
+ */
+export function blocksView(world: CollisionWorld, x: number, z: number, radius: number, post: number, thickness: number, low: boolean): boolean {
+  const nearby = world.get(cellKey(toCell(x), toCell(z)))
+  if (!nearby) return false
+
+  for (const footprint of nearby) {
+    const box = (footprint as Boxed).box
+    if (box && (x < box[0] - radius || x > box[1] + radius || z < box[2] - radius || z > box[3] + radius)) continue
+    const size = measure(footprint)
+    if (size.span < post || (!low && size.thickness < thickness)) continue
+    if (isNearFootprint(footprint, x, z, radius)) return true
+  }
+  return false
+}
+
+/**
  * Whether a point is inside a footprint or within `radius` of its outline: the same answer as
  * `measureFootprint`, without making an object for every check, and stopping at the first wall
  * that's close enough. Loading runs this hundreds of thousands of times.

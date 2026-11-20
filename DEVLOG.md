@@ -10857,3 +10857,109 @@ junctions still knot now and then). In the game on a main road: 83% of the traff
 Cost: a traffic step is 0.4 to 0.5 ms headless, from 0.25, at 40 vehicles. Not run through the
 frame benchmark. The rush-hour "jam" is still the old slow-down circle by Agara; real jams with a
 cause, and pedestrians who cross, are the next two steps.
+
+## 2026-11-20: Entry 223, the mouse view, the pointer through buildings, crashes before pickup
+
+- **The mouse orbits the view** (`FollowCamera.tsx`). Tilting used to lift the camera straight up
+  over the rider while it still looked at a point 7 m ahead: an odd top view, and hardly any look
+  upwards. Now the camera and the point it looks at swing as one rigid arm about a point on the
+  rider (1.3 m up), as in any third-person game: tilt down and it rises over them (to about 58°),
+  tilt up and it sinks behind them to look up at the buildings (to about 34°, was 16°). With the
+  mouse untouched the view is exactly as it was.
+- **The camera no longer lurches near walls.** Anything solid behind the rider pushed it in at
+  once, then it drifted back: every pole, tree trunk, compound wall and parked car along a street.
+  Poles and trunks (under 1.5 m across) no longer count; walls, fences and parked vehicles only when
+  the camera is tilted down below 1.9 m, as from its usual 2 m it looks over them; buildings always
+  (`blocksView` in collision.ts). And the distance to a wall is found to 2 cm, not 40, so swinging
+  the view along a building moves the camera smoothly. Known: level and side-on beside a compound,
+  a gate pillar's top (1.7 m) can stand in the corner of the picture.
+- **The door's pointer shows through walls only within 30 m** (`MissionMarker.tsx`). From 110 m it
+  showed through whole buildings and seemed to mark a house on the way.
+- **A crash counts against a delivery only with the order on board** (`recordCrash`): not on the
+  way to the store. A rental's damage is still counted for every crash.
+
+Checked in the game: the three tilts and a side view, 90 FPS on High after a fresh load. Not
+benchmarked.
+
+## 2026-11-20: Entry 224, real jams, and people who cross the road
+
+**Jams with a cause and an end.** The rush-hour jam was a circle round Agara in which every
+vehicle's speed was cut by up to two thirds: nothing caused it, and nothing cleared. That's gone.
+
+- **Hold-ups** (`startHalts`). Now and then a vehicle on a plain stretch of road stops for a
+  reason: an auto or a car pulls in to the kerb, indicating, to let someone out (7 to 14 s), or a
+  car breaks down where it is, hazard lamps flashing (25 to 45 s). One at a time, 30 to 130 m from
+  the rider; at the heart of the rush-hour jam up to four, started every 3 to 6 s. The queue behind
+  is a real queue.
+- **Going round what stands in the road.** Two-wheelers and autos squeeze by, as before. Cars and
+  buses now stop 5 m short, and pull out 2.5 m, over the middle of the road, when nothing is coming
+  along the other side for 45 m (20 m for a two-wheeler, which used to pull out into anything). One
+  left nose-up to the thing backs up for the room; a two-wheeler is paddled sideways.
+- **The cow and the broken-down bus** (CityEvents.tsx) stand in the road as obstacles
+  (`setObstacle`), on a plain stretch away from junctions (`isPlainRoad`). Their lane used to be
+  closed to traffic instead, which emptied the road round them.
+- **A queue moves off from its front.** Each driver takes 0.2 to 0.55 s to set off once the way
+  opens (half that on two wheels).
+
+**People cross the road** (`stepCrossing`). Walking along, someone decides to every three to seven
+minutes, and 45% of those passing a zebra at the lights take it. They stop at the kerb, turn to the
+road and look: they go when everything coming would reach their line 1.6 s or more after they're
+clear of it (the margin shrinks to 0.3 s as they wait), walking between standing traffic but never
+through it, and at a zebra only while the light holds the traffic. Ten seconds at the kerb without a
+gap (30 at a zebra) and they give up. They cross at 1.3 times their walk, a hand up to moving
+traffic, and stop short of a vehicle that isn't slowing. Traffic gives someone on their way over
+1.4 m either side. Not through a median, a railing or a parked car.
+
+Measured headless (40 vehicles, 36 people, 180 s): at ordinary junctions 6 to 12% of traffic
+standing, none over 45 s, 27 to 37 crossings, a moving vehicle touching someone crossing 0 or 1
+times a run. A cow in a busy lane: a queue of up to 5, then every vehicle got round her (3 to 10 a
+run). The two biggest divided junctions are as they were (85 vehicles stuck over 45 s across six
+runs, against 96 before): still the weak spot. In the game: 7 people crossed and 2 hold-ups started
+in under a minute on a main road, 77 to 91 FPS on High.
+
+Not done: people waiting at bus stops and boarding; anything on the road for a drop-off's passenger
+to be (the vehicle pulls in, nobody gets out). The traffic step is 0.5 to 0.6 ms headless at 40
+vehicles and 36 people. Not run through the frame benchmark.
+
+## 2026-11-20: Entry 225, the rain that wiped the textures off
+
+Reported: nothing has any texture, on High: walls, gates, buildings, roads, the flyover. In clear
+weather the textures were there. In rain they were gone, and the screenshots were all rain.
+
+- **Rain put fog over things right beside the rider.** It moved the haze's start half the draw
+  distance behind the camera (`RAIN_FOG` in ViewDistance.tsx), which is a sixth of the haze's colour
+  at arm's length and a quarter across the street. Now a tenth: mist from a little way off.
+- **The mist was gold.** The haze is warmed towards gold as it thickens, which is right for a low
+  sun and turned grey rain olive. Not under cloud now (Sky.tsx).
+- **Cloud took the light's direction away.** Full cover cut the sun by 72% and its shadows by 85%
+  and left the sky's fill almost whole, so everything was lit evenly from all round: no lit side, no
+  shaded side, no relief in the plaster. Now the sun loses 50%, shadows 70%, the fill 28%
+  (`CLOUD_LIGHT` in skyLogic.ts). Dimmer and softer than a clear day, still light from somewhere.
+  Cloudy weather gains by the same.
+- **The flyovers really were plain.** Decks, pillars and barriers, the metro's viaduct and
+  stations, and the bus stand were coloured boxes with no surface. They now have the kerbs'
+  concrete photo laid on by position and the houses' grime and streaks (`useConcrete` in
+  Transit.tsx). Low keeps flat paint, as it does everywhere.
+
+Checked on the production build: the same street in the same rain before and after, and the Agara
+flyover's wall close up; 89 to 94 FPS on High. Not benchmarked: the concrete is one more texture
+read on surfaces that had none.
+
+Still flat by design: things modelled in code with colours only (the city bus, the cow, far
+vehicles, street furniture). They show their shading again in rain, but have no surface photo.
+
+## 2026-11-20: Entry 226, a flickering flyover wall, and a man wading through a ramp
+
+- **The flyovers' side walls flickered in a band.** A crash barrier's outer face came down over
+  the edge of the deck's slab exactly flush with the slab's own side, so the two were drawn in the
+  same place and fought for it, frame by frame. They were always like that; with both the same flat
+  colour it barely showed, and with concrete and weathering on them (entry 225) it did. The
+  barrier's outer face now stands 3 cm proud of the slab (`PROUD` in Transit.tsx).
+- **People crossed the road through flyover ramps** (entry 224's crossing): the footpaths either
+  side of a ramp are at ground level and the ramp rises between them, so someone crossing waded
+  through the deck up to the waist. Nobody crosses now where a deck or a ramp is over any part of
+  the way (`underDeck` in trafficLogic.ts).
+
+Checked on the production build: the Agara flyover's wall from the road beside it, two frames
+apart, in rain. The flicker itself was seen only in the reported screenshot, not reproduced before
+the fix.
