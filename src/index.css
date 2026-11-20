@@ -1539,10 +1539,6 @@ body,
     --title-bottom: 30px;
   }
 
-  .title-wordmark {
-    font-size: 54px;
-  }
-
   .title-kannada {
     margin-top: 4px;
     font-size: 16px;
@@ -1599,10 +1595,6 @@ body,
 /* What a phone or tablet sees: the title screen's look, with a note to play on a computer. */
 .mobile-notice .title-main {
   right: var(--title-left);
-}
-
-.mobile-notice .title-wordmark {
-  font-size: clamp(52px, 15vw, 96px);
 }
 
 .mobile-notice-text {

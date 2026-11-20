@@ -17,3 +17,9 @@ export const FILE_PREFIX = 'swalpa-fast'
  */
 export const FEEDBACK_URL = ''
 export const LINKEDIN_URL = ''
+
+/** The brand's three colours. */
+export const BRAND = { yellow: '#f6b32b', charcoal: '#0e1116', cream: '#fff6e6' }
+
+/** The logo's own box (ui/Logo.tsx): everything is drawn inside 720 by 400. */
+export const LOGO_BOX = { width: 720, height: 400 }

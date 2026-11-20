@@ -1,6 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { BRAND, BrandIcon, Logo, LOGO_BOX } from '../ui/Logo'
+import { BRAND, LOGO_BOX } from '../game/brand'
+import { BrandIcon, Logo } from '../ui/Logo'
 
 /*
  * Makes the brand's files from the one drawing in ui/Logo.tsx: the logo's SVG and PNGs, the icon
@@ -127,7 +128,7 @@ export const brandExport = {
   },
 
   /** The share image, 1200 by 630: the game's picture as it is now, shaded on the left, with the logo and the tagline. */
-  async share(tagline: string, kannada: string) {
+  async share(tagline: string, kannada: string, name = 'share') {
     const { canvas, context } = await frame(1200, 630)
     const shade = context.createLinearGradient(0, 0, 760, 0)
     shade.addColorStop(0, 'rgb(8 10 14 / 78%)')
@@ -144,7 +145,7 @@ export const brandExport = {
     context.fillStyle = BRAND.cream
     context.font = "800 34px 'Baloo Tamma 2'"
     context.fillText(tagline, 72, 546)
-    return send('share.jpg', await blobOf(canvas, 'image/jpeg', 0.86))
+    return send(`${name}.jpg`, await blobOf(canvas, 'image/jpeg', 0.86))
   },
 
   /** A title screen picture: the game as it is now, 1920 by 1080. */

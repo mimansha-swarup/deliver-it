@@ -1,4 +1,4 @@
-import { GAME_NAME } from '../game/brand'
+import { BRAND, GAME_NAME, LOGO_BOX } from '../game/brand'
 
 /*
  * The Swalpa Fast logo: a chunky rounded wordmark leaning into its own speed, cream over yellow
@@ -9,11 +9,6 @@ import { GAME_NAME } from '../game/brand'
  * The letters are Baloo Tamma 2 (Ek Type, SIL Open Font Licence), the game's own typeface, which
  * the page already loads; the exported SVG carries the font inside it.
  */
-
-export const BRAND = { yellow: '#f6b32b', charcoal: '#0e1116', cream: '#fff6e6' }
-
-/** The logo's own box: everything is drawn inside 720 by 400. */
-export const LOGO_BOX = { width: 720, height: 400 }
 
 const FONT = "'Baloo Tamma 2', system-ui, sans-serif"
 
