@@ -140,6 +140,7 @@ function Speedometer() {
   const nitro = useGameStore((state) => state.nitro)
   const nitroOn = useGameStore((state) => state.nitroOn)
   const atBunk = useGameStore((state) => state.atBunk)
+  const explore = useGameStore((state) => state.explore)
   // The vehicle in use: its name, how it's driven, and the speed as a share of its own top speed.
   const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
   // On one off the street (game/borrow.ts): its name, and no tank to show, as it isn't the rider's to fill.
@@ -171,7 +172,8 @@ function Speedometer() {
         <span className="hud-speed-scale-fill" style={{ width: `${share * 100}%` }} />
       </span>
       <p className="hud-speed-vehicle">{borrowedName ? `${borrowedName} · top ${top}` : `${spec.name} · ${spec.drive} · top ${spec.topSpeed}`}</p>
-      {!borrowedName && <FuelGauge />}
+      {/* No tank in Explore either: there's no fuel there. */}
+      {!borrowedName && !explore && <FuelGauge />}
       {!borrowedName && spec.feel.nitro && <NitroGauge nitro={nitro} burning={nitroOn} />}
     </section>
   )

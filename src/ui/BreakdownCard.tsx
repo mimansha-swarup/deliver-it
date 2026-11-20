@@ -21,7 +21,9 @@ export function BreakdownCard() {
   const delivery = useFleet((state) => state.delivery)
   const interactKey = useKeyName('interact')
   const [note, setNote] = useState('')
-  const here = broken !== null && broken.id === vehicleId
+  // Not in Explore: nothing is broken down there (game/upkeep.ts).
+  const explore = useGameStore((state) => state.explore)
+  const here = broken !== null && broken.id === vehicleId && !explore
   const rented = rental?.id === vehicleId
 
   // The mechanic is also on the interact key, as a prompt, while the card is up.

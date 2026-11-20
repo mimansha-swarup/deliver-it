@@ -11210,3 +11210,9 @@ keeps the page busy. Checked: the screen shows, and the ride starts from it as b
   Anjaneya statue and temple at Agara in evening light, riding into the tree tunnel on 13th Cross
   with the low sun through it, and a night ride past lit shops. The flyover picture stays as the
   share image.
+
+## 2026-11-21: Entry 236, no petrol in Explore
+
+Explore says "no fuel" and still showed the petrol bar. The bar is gone there, and so is what it
+stood for: an empty tank, an overdue service or a breakdown left behind in the career no longer
+slows or stops the vehicle in Explore, and the breakdown card doesn't show.

@@ -106,8 +106,9 @@ export const serviceState = (km: number): ServiceState => (km >= UPKEEP.overdueK
 
 /** Sets what the upkeep does to the handling: an empty tank crawls, an overdue service is a little slow. */
 function applyToHandling(state: Pick<Upkeep, 'fuel' | 'sinceService' | 'broken'>, id: VehicleId) {
-  // A borrowed vehicle isn't the rider's to fuel or service: it simply runs.
-  if (liveVehicle.spec.borrowed) {
+  // A borrowed vehicle isn't the rider's to fuel or service: it simply runs. So does everything in
+  // Explore, where there's no fuel: an empty tank or a breakdown left behind in the career doesn't follow.
+  if (liveVehicle.spec.borrowed || game().explore) {
     tuning.limp = 1
     return
   }
@@ -271,7 +272,7 @@ export const useUpkeep = create<Upkeep>()(
 // The handling follows the vehicle in use: now, and whenever it changes.
 applyToHandling(useUpkeep.getState(), useGameStore.getState().vehicleId)
 useGameStore.subscribe((state, previous) => {
-  if (state.vehicleId !== previous.vehicleId) applyToHandling(useUpkeep.getState(), state.vehicleId)
+  if (state.vehicleId !== previous.vehicleId || state.explore !== previous.explore) applyToHandling(useUpkeep.getState(), state.vehicleId)
 })
 
 // Debug: the upkeep, for scripts (with ?debug).
