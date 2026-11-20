@@ -10707,3 +10707,38 @@ First visit, Play to riding: 9.3 to 9.6 s before, 7.2 s after. Repeat visit: 7.9
 to 6.9 s after. On a local server: 6.0 to 7.2 s. Riding is unchanged (High 86 to 92 FPS, Low 120).
 
 scripts/bench.mjs gains `--latency`, `--mbps`, `--query`, and profiles loading from page open.
+
+## 2026-11-20: Entry 217, use any vehicle, and voices from recordings
+
+### Use any vehicle (game/borrow.ts)
+On foot with the setting on, F by a vehicle in traffic waves it down: it pulls up
+(`taken: 'hailed'` in trafficLogic.ts), its driver gets out at the driver's door and walks to the
+nearest footpath, and the rider gets in. It stays the vehicle the traffic was drawing (`driven`: it
+follows the rider's controller), so its colour, plate, wheels and far version are the traffic's own,
+and nothing new is drawn for it. Its handling, size, voice and camera are its class's preset
+(vehicleCatalog.ts' BORROWED: two-wheeler, auto, car, people-carrier, bus, and a tanker for when the
+traffic has one). A parked scooter is taken by standing a spare traffic two-wheeler in its place.
+
+- The rider's own vehicle is drawn where it was left (Scooter.tsx) and marked on the map; walking
+  back to it, F gets on, and the borrowed one is left. Left behind, it goes at 75 m.
+- Off by default in the career, where a borrowed vehicle can't collect an order (and one can't be
+  borrowed with an order on board) and uses no fuel. On by default in Explore, a second start on the
+  title screen: no orders, no fuel.
+- Traffic and people now come and go around the rider on foot, not around their parked vehicle
+  (walking 100 m from it used to empty the street).
+- No police, fines, chases or violence, by design.
+
+Not done: cars and bikes parked in rows along the kerb can't be taken (their row is one solid wall and
+one instanced mesh); the traffic has no vans or water tanker to take. The traffic's car models carry
+their makers' badges, which predates this and wants replacing.
+
+### Voices (audio/voice.ts, voiceCues.ts, rj.ts)
+The browser's speech synthesis is gone. Each spoken line has an id and words (voiceScript.json, 67
+lines, exported with notes as VOICE_SCRIPT.csv by scripts/voice_files.mjs) and plays its recording,
+/public/voice/<id>.ogg, if the manifest lists one; otherwise its words are on the phone as before.
+None is recorded yet. The RJ's break is a jingle, then up to four lines with stings between them and
+a bed of held notes under the voice. Radio and phone treatments are filter, drive and compressor
+chains; each playback's rate varies by 3.5% either way.
+
+### Performance (low-power mode)
+High 89 to 100 FPS, worst frame 18 ms; Low 120; load 6.2 to 7.6 s. Unchanged.
