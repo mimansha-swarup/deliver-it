@@ -11176,3 +11176,12 @@ moves a wedged vehicle onto the road; an old save carries over. Screenshots are 
 Not done: the frame benchmark (nothing in the riding frame changed but a clock hold), a real
 mouse-locked Esc, the Kannada wording read by a native speaker, and a share-link preview on a
 real site (the tags give the picture as `/share.jpg`, which some sites want as a full address).
+
+## 2026-11-21: Entry 233, no Daily challenge button, and an icon without the Kannada letter
+
+- The main menu's Daily challenge button is gone. It wasn't a mode of its own (it started the
+  career and had Ravi name the day's goal), so as a button beside Continue and Explore it promised
+  something it didn't do. The challenge itself is unchanged, in the Deliver It app on the phone.
+- The icon is now the logo's leaning S in charcoal on yellow, with the logo's three speed lines
+  (the letter alone at 16 and 32, where the lines were only smudges). It was the Kannada letter ಸ.
+  All six sizes and `art/logo/icon.svg` were made again by `dev/brandExport.ts`.

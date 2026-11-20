@@ -11,8 +11,6 @@ const TEXT = {
   newGame: ['New game', 'ಹೊಸ ಆಟ'],
   explore: ['Explore mode', 'ಸುತ್ತಾಟ'],
   exploreDetail: ['Roam the city: no orders, no fuel, any vehicle', 'ಊರು ಸುತ್ತಿ: ಆರ್ಡರ್ ಇಲ್ಲ, ಪೆಟ್ರೋಲ್ ಚಿಂತೆ ಇಲ್ಲ'],
-  daily: ['Daily challenge', 'ಇಂದಿನ ಸವಾಲು'],
-  dailyDone: ['Done today. A new one tomorrow', 'ಇಂದು ಮುಗಿದಿದೆ. ನಾಳೆ ಹೊಸದು'],
   settings: ['Settings', 'ಸೆಟ್ಟಿಂಗ್ಸ್'],
   controls: ['Controls', 'ನಿಯಂತ್ರಣಗಳು'],
   credits: ['Credits', 'ಕೃತಜ್ಞತೆಗಳು'],

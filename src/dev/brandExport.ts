@@ -46,7 +46,7 @@ async function standalone(markup: string): Promise<string> {
 }
 
 const logoSvg = () => standalone(renderToStaticMarkup(createElement(Logo, {})))
-const iconSvg = (bleed: boolean, safe: boolean) => standalone(renderToStaticMarkup(createElement(BrandIcon, { bleed, safe })))
+const iconSvg = (bleed: boolean, safe: boolean, plain = false) => standalone(renderToStaticMarkup(createElement(BrandIcon, { bleed, safe, plain })))
 
 async function picture(svg: string): Promise<HTMLImageElement> {
   const image = new Image()
@@ -107,7 +107,7 @@ export const brandExport = {
     return done
   },
 
-  /** The icon set: ಸ on yellow. Rounded for browsers, square for Apple (which rounds it), and a maskable one for Android. */
+  /** The icon set: the logo's S on yellow (the letter alone at 16 and 32). Rounded for browsers, square for Apple (which rounds it), and a maskable one for Android. */
   async icons() {
     const done = [await send('icon.svg', await iconSvg(false, false))]
     const sets: [string, number, boolean, boolean][] = [
@@ -119,7 +119,7 @@ export const brandExport = {
       ['icon-maskable-512.png', 512, true, true],
     ]
     for (const [name, size, bleed, safe] of sets) {
-      const image = await picture(await iconSvg(bleed, safe))
+      const image = await picture(await iconSvg(bleed, safe, size <= 32))
       const { canvas, context } = board(size, size)
       context.drawImage(image, 0, 0, size, size)
       done.push(await send(name, await blobOf(canvas)))

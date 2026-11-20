@@ -82,7 +82,7 @@ calls and extra passes.
 - The logo is one drawing (`src/ui/Logo.tsx`; exports in `art/logo`): a chunky rounded wordmark
   leaning forward, cream "Swalpa" over yellow "Fast" with a charcoal edge, three speed lines and a
   scooter's trail swept under it. No dashed road line: other Bengaluru games use roads in theirs.
-- Three colours: yellow `#f6b32b`, charcoal `#0e1116`, cream `#fff6e6`. The icon is the Kannada
-  letter ಸ in charcoal on a yellow rounded square.
+- Three colours: yellow `#f6b32b`, charcoal `#0e1116`, cream `#fff6e6`. The icon is the logo's
+  leaning S with its speed lines, in charcoal on a yellow rounded square.
 - Menus use the same three colours and Baloo Tamma 2, over pictures taken in the game.
 

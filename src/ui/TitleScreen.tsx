@@ -2,12 +2,10 @@ import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useState } from 'react'
 import { unlockAudio } from '../audio/audioEngine'
 import { GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
-import { todayKey } from '../game/career'
 import { averageRating } from '../game/fleet'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch } from '../game/launch'
 import { levelFromXp } from '../game/progression'
-import { CHALLENGE_BONUS, challengeFor, useToday } from '../game/today'
 import { useTutorial } from '../game/tutorial'
 import { Logo } from './Logo'
 import { ControlsPanel, CreditsPanel, MenuFooter, MenuList, SettingsPanel, type MenuItem } from './Menu'
@@ -37,7 +35,8 @@ function megabytes(kb: number): string {
  * The main menu: the game's pictures behind, the logo with its Kannada name and tagline top left,
  * and the buttons under it. Continue (with the day, level, wallet and rating) for a rider with
  * progress, New game for a first-timer, who gets a short story and then the tutorial's first
- * order; Explore mode; the daily challenge, with today's goal; Settings, Controls and Credits.
+ * order; Explore mode; Settings, Controls and Credits. (The daily challenge isn't a button here: it
+ * isn't a mode of its own, only a goal inside the career, and lives in the Deliver It app on the phone.)
  *
  * The game downloads in the background from the moment the page opens, and a line shows how far
  * it's got. Choosing a mode brings up the loading screen, which builds the city.
@@ -50,24 +49,16 @@ export function TitleScreen() {
   const day = useGameStore((state) => state.day)
   const delivered = useGameStore((state) => state.history.length)
   const tutorialDone = useTutorial((state) => state.done)
-  const today = useToday((state) => state.stats)
   const [shown, setShown] = useState(0)
   const [view, setView] = useState<View>('menu')
 
-  const launch = (explore: boolean, then?: () => void) => {
+  const launch = (explore: boolean) => {
     // Explore: the city to roam, with no orders and any vehicle to drive (game/borrow.ts). Otherwise the career.
     useGameStore.getState().setExplore(explore)
     // Sound is only allowed after a click or key press, and this is one.
     unlockAudio()
     markLoad('play pressed')
     useLaunch.setState({ requested: true })
-    if (then) {
-      const stop = useGameStore.subscribe((state) => {
-        if (!state.started) return
-        stop()
-        then()
-      })
-    }
   }
 
   useEffect(() => {
@@ -82,9 +73,6 @@ export function TitleScreen() {
   const hasProgress = credits + xp > 0 || delivered > 0 || day > 1
   // A first-timer hears how the day starts before riding; anyone who has played goes straight in.
   const firstTime = !hasProgress && !tutorialDone
-  const date = todayKey()
-  const challenge = challengeFor(date)
-  const challengeDone = today.date === date && today.paid
 
   const play = () => (firstTime ? setView('story') : launch(false))
   const items: MenuItem[] = failed
@@ -94,17 +82,6 @@ export function TitleScreen() {
           ? { id: 'continue', label: t('continue'), detail: `Day ${day} · Level ${levelFromXp(xp)} · ₹${credits.toLocaleString('en-IN')} · ★ ${averageRating().toFixed(1)}`, primary: true, onSelect: play }
           : { id: 'new', label: t('newGame'), detail: t('firstTime'), primary: true, onSelect: play },
         { id: 'explore', label: t('explore'), detail: t('exploreDetail'), onSelect: () => launch(true) },
-        {
-          id: 'daily',
-          label: t('daily'),
-          detail: challengeDone ? t('dailyDone') : `${challenge.text} · ₹${CHALLENGE_BONUS}`,
-          // The challenge is played in the career: this starts it, and Ravi says what today's is.
-          onSelect: () => {
-            const remind = () => window.setTimeout(() => useGameStore.getState().raviSays(`Today's challenge, maga: ${challenge.text}. ₹${CHALLENGE_BONUS} if you do it. It's on your phone, in the Deliver It app.`), 6000)
-            if (firstTime) setView('story')
-            else launch(false, challengeDone ? undefined : remind)
-          },
-        },
         { id: 'settings', label: t('settings'), onSelect: () => setView('settings') },
         { id: 'controls', label: t('controls'), onSelect: () => setView('controls') },
         { id: 'credits', label: t('credits'), onSelect: () => setView('credits') },

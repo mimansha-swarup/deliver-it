@@ -44,17 +44,30 @@ export function Logo({ className, title = GAME_NAME }: { className?: string; tit
   )
 }
 
-/** The app icon: the Kannada letter ಸ (sa, for ಸ್ವಲ್ಪ) on a yellow rounded square. `bleed`: yellow to every edge, for icons the system rounds or masks itself. */
-export function BrandIcon({ bleed = false, safe = false }: { bleed?: boolean; safe?: boolean }) {
+/**
+ * The app icon: the logo's "S" leaning forward in charcoal on a yellow rounded square, with the
+ * logo's speed lines behind it. `bleed`: yellow to every edge, for icons the system rounds or masks
+ * itself. `safe`: everything kept inside the middle 80%, for a maskable icon. `plain`: the letter
+ * alone, for the smallest sizes, where the lines would only be smudges.
+ */
+export function BrandIcon({ bleed = false, safe = false, plain = false }: { bleed?: boolean; safe?: boolean; plain?: boolean }) {
   const { yellow, charcoal } = BRAND
-  // A maskable icon keeps the letter inside the middle 80%.
-  const size = safe ? 300 : 380
+  const scale = safe ? 0.78 : 1
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label={GAME_NAME}>
       <rect width="512" height="512" rx={bleed ? 0 : 112} fill={yellow} />
-      <text x="256" y={safe ? 362 : 390} fontSize={size} fontFamily={FONT} fontWeight="800" fill={charcoal} textAnchor="middle">
-        ಸ
-      </text>
+      <g transform={`translate(256 256) scale(${scale}) translate(-256 -256)`}>
+        <text x={plain ? 262 : 296} y="408" fontSize={plain ? 470 : 430} fontFamily={FONT} fontWeight="800" fill={charcoal} textAnchor="middle" transform="skewX(-9) translate(40 0)">
+          S
+        </text>
+        {!plain && (
+          <g fill={charcoal}>
+            <rect x="74" y="196" width="104" height="34" rx="17" />
+            <rect x="42" y="250" width="124" height="34" rx="17" />
+            <rect x="70" y="304" width="88" height="34" rx="17" />
+          </g>
+        )}
+      </g>
     </svg>
   )
 }
