@@ -1,4 +1,5 @@
 import { GAME_NAME, GAME_NAME_KANNADA } from '../game/brand'
+import { Logo } from './Logo'
 import { useState } from 'react'
 
 /**
@@ -27,12 +28,8 @@ export function MobileNotice() {
       </div>
 
       <section className="title-main">
-        <h1 className="title-wordmark">
-          {GAME_NAME}
-          <svg className="title-road" viewBox="0 0 400 34" aria-hidden="true" preserveAspectRatio="none">
-            <path d="M6 24 C 120 30, 260 30, 394 8" className="title-road-surface" />
-            <path d="M6 24 C 120 30, 260 30, 394 8" className="title-road-lines" />
-          </svg>
+        <h1 className="title-logo">
+          <Logo />
         </h1>
         <p className="title-kannada" lang="kn">
           {GAME_NAME_KANNADA}

@@ -4,7 +4,8 @@ import { unlockAudio } from '../audio/audioEngine'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch } from '../game/launch'
 import { levelFromXp } from '../game/progression'
-import { GAME_NAME, GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
+import { GAME_NAME_KANNADA, TAGLINE } from '../game/brand'
+import { Logo } from './Logo'
 import { QualityPicker } from './QualityPicker'
 
 const KEYBOARD_CONTROLS = [
@@ -29,16 +30,6 @@ const SCREENSHOT_TIME = 7000
 
 function megabytes(kb: number): string {
   return (kb / 1024).toFixed(1)
-}
-
-/** The wordmark's underline: a stretch of road, dashed down the middle, curving up at the end. */
-function RoadUnderline() {
-  return (
-    <svg className="title-road" viewBox="0 0 400 34" aria-hidden="true" preserveAspectRatio="none">
-      <path d="M6 24 C 120 30, 260 30, 394 8" className="title-road-surface" />
-      <path d="M6 24 C 120 30, 260 30, 394 8" className="title-road-lines" />
-    </svg>
-  )
 }
 
 /**
@@ -105,9 +96,8 @@ export function TitleScreen() {
       </header>
 
       <section className="title-main">
-        <h1 className="title-wordmark">
-          {GAME_NAME}
-          <RoadUnderline />
+        <h1 className="title-logo">
+          <Logo />
         </h1>
         <p className="title-kannada" lang="kn">
           {GAME_NAME_KANNADA}

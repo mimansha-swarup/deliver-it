@@ -75,3 +75,14 @@ calls and extra passes.
 4. Is the detail simplified to what reads at riding speed?
 5. Is it still smooth on Low, and what does Low do with it?
 6. Is every name, logo and sign made up?
+
+## The brand
+- The game is **Swalpa Fast** (ಸ್ವಲ್ಪ ಫಾಸ್ಟ್), "A delivery rider's Bengaluru". "Deliver It" is the
+  made-up delivery company in the world: the jacket, the box, the dark store, the rider's app.
+- The logo is one drawing (`src/ui/Logo.tsx`; exports in `art/logo`): a chunky rounded wordmark
+  leaning forward, cream "Swalpa" over yellow "Fast" with a charcoal edge, three speed lines and a
+  scooter's trail swept under it. No dashed road line: other Bengaluru games use roads in theirs.
+- Three colours: yellow `#f6b32b`, charcoal `#0e1116`, cream `#fff6e6`. The icon is the Kannada
+  letter ಸ in charcoal on a yellow rounded square.
+- Menus use the same three colours and Baloo Tamma 2, over pictures taken in the game.
+

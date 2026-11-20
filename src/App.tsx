@@ -149,3 +149,10 @@ function App() {
 }
 
 export default App
+
+// The brand's files are made from the game itself (dev/brandExport.ts), only with `?brand` in the address.
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('brand')) {
+  void import('./dev/brandExport').then(({ brandExport }) => {
+    ;(window as unknown as { __brand?: typeof brandExport }).__brand = brandExport
+  })
+}
