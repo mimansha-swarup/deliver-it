@@ -833,6 +833,25 @@ function GaadiGoApp({ nav }: { nav: PhoneNav }) {
           </section>
         )}
 
+        {/* What the rider already has comes first: it's what they open the app for most. The shop is under it. */}
+        <p className="app-card-title">Your Garage</p>
+        {(['scooter', ...fleet.owned] as VehicleId[]).map((id) => (
+          <section className="app-card" key={id}>
+            <p className="app-line">{VEHICLES[id].name}{vehicleId === id ? ' · in use' : ''}</p>
+            {vehicleId !== id && (
+              <button type="button" className="app-wide-button" onClick={() => act(fleet.takeOut(id, how), hub ? 'Swapped at the hub.' : 'It is on its way.')}>
+                Take it out · {hub ? 'free at the hub' : `delivered, ${rupees(FLEET_RULES.deliveryFee)}`}
+              </button>
+            )}
+          </section>
+        ))}
+
+        {fleet.emis.length > 0 && <p className="app-card-title">Your EMIs (weekly, from the Wallet)</p>}
+        {fleet.emis.map((emi) => (
+          <section className="app-card" key={emi.id}>
+            <p className="app-line">{VEHICLES[emi.id].name}: {rupees(emi.weekly)} a week, {emi.weeksLeft} to go, next on day {emi.nextDueDay}{emi.missed > 0 ? ' · MISSED: pay by then or it is taken back' : ''}</p>
+          </section>
+        ))}
         <p className="app-card-title">Catalogue · {howText}</p>
         {MARKET.map((id) => {
           const spec = VEHICLES[id]
@@ -881,24 +900,6 @@ function GaadiGoApp({ nav }: { nav: PhoneNav }) {
           )
         })}
 
-        <p className="app-card-title">Your Garage</p>
-        {(['scooter', ...fleet.owned] as VehicleId[]).map((id) => (
-          <section className="app-card" key={id}>
-            <p className="app-line">{VEHICLES[id].name}{vehicleId === id ? ' · in use' : ''}</p>
-            {vehicleId !== id && (
-              <button type="button" className="app-wide-button" onClick={() => act(fleet.takeOut(id, how), hub ? 'Swapped at the hub.' : 'It is on its way.')}>
-                Take it out · {hub ? 'free at the hub' : `delivered, ${rupees(FLEET_RULES.deliveryFee)}`}
-              </button>
-            )}
-          </section>
-        ))}
-
-        {fleet.emis.length > 0 && <p className="app-card-title">Your EMIs (weekly, from the Wallet)</p>}
-        {fleet.emis.map((emi) => (
-          <section className="app-card" key={emi.id}>
-            <p className="app-line">{VEHICLES[emi.id].name}: {rupees(emi.weekly)} a week, {emi.weeksLeft} to go, next on day {emi.nextDueDay}{emi.missed > 0 ? ' · MISSED: pay by then or it is taken back' : ''}</p>
-          </section>
-        ))}
       </div>
     </div>
   )

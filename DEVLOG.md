@@ -11353,3 +11353,9 @@ traffic. The bicycle's rider was lowered onto its saddle. Not looked at: steerin
 spin on the four (the scooter's were), the driver's-seat view in the truck and van, the
 vehicles parked or delivered by GaadiGo, crashes, and the frame benchmark. The bus's
 windscreen is blotchy close up.
+
+## 2026-11-21: Entry 245, GaadiGo shows what's yours first
+
+The app listed the whole catalogue and only then "Your Garage" and your EMIs, so getting at a
+vehicle you own meant scrolling past everything for sale. Yours come first now: a rental or a
+delivery on its way, your Garage, your EMIs, and then the catalogue.
