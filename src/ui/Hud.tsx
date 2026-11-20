@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { VEHICLES } from '../vehicle/vehicleCatalog'
+import { useOnFoot } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
 import type { Reward } from '../game/gameTypes'
 import { averageRating } from '../missions/orderStory'
@@ -140,6 +141,15 @@ function Speedometer() {
   // The vehicle in use: its name, how it's driven, and the speed as a share of its own top speed.
   const spec = VEHICLES[useGameStore((state) => state.vehicleId)] ?? VEHICLES.scooter
   const share = Math.min(1, speedKmh / spec.topSpeed)
+  // Off the vehicle, its speed and tank say nothing: only a small badge.
+  const onFoot = useOnFoot((state) => state.onFoot)
+  if (onFoot) {
+    return (
+      <section className="hud-card hud-speed hud-on-foot" role="status">
+        On foot
+      </section>
+    )
+  }
 
   return (
     <section className="hud-card hud-speed" data-vehicle={spec.id}>

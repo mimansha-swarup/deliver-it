@@ -1,7 +1,7 @@
 import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGameStore } from '../game/gameStore'
-import { liveMission, livePlayer, liveSky } from '../game/livePlayer'
+import { liveMission, livePlayer, liveSky, useOnFoot } from '../game/livePlayer'
 import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
 import { MISSION_RULES } from '../game/missionConfig'
 import type { MissionPlanner } from './missionPlanner'
@@ -91,6 +91,7 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     // Where the player is: on the vehicle, or on foot away from it (then the vehicle's place is kept too).
     const afoot = isAfoot(state)
     livePlayer.onFoot = afoot
+    if (useOnFoot.getState().onFoot !== afoot) useOnFoot.setState({ onFoot: afoot })
     livePlayer.indoors = liveRoom.kind !== null
     livePlayer.vehicleX = state.x
     livePlayer.vehicleZ = state.z

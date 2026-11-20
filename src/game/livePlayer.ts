@@ -1,3 +1,4 @@
+import { create } from 'zustand'
 import { createSkyState, getSkyLook } from '../sky/skyLogic'
 
 /**
@@ -50,3 +51,6 @@ export const liveShot = {
   lookX: 0,
   lookZ: 0,
 }
+
+/** Whether the rider is on foot, for the screen (the HUD's badge): set by the mission tracker when it changes. */
+export const useOnFoot = create<{ onFoot: boolean }>(() => ({ onFoot: false }))
