@@ -10800,3 +10800,60 @@ Playing it, the house and its door were hard to find. Three causes, measured ove
 Wandered off on foot, the arrow points back to the vehicle.
 
 Not benchmarked: three small unlit shapes, one of them shown at a time.
+
+## 2026-11-20: Entry 221, flats behind a shut gate
+
+Playing it: an order to a block of flats couldn't be finished. The marker stood at the building's
+door, behind the compound wall, and the wall was solid right across its gate. "Go in" is offered
+within 2.2 m of the door, which is up to 3.4 m behind the gate, so on most of the 885 flats with a
+compound the rider stood at the gate with nothing to press. (Houses were never affected: their bell
+is at the gate.)
+
+- **A block of flats' gate stands open** (`houseKit.ts`): its two leaves folded back inside, as the
+  school's are, and the wall is solid only either side of it. The rider walks, or rides, in under
+  the stilts to the door.
+- **Where the walk is blocked all the same** (a tree or a post in the gateway, another plot's
+  wall: 16 of the 885), the door is marked `shutIn` when the city is planned (`World.tsx`, three
+  straight lines in through the gate, checked against everything solid), and the order's way in is
+  at the gate (`missionPlanner.ts`). The count is in the planning report (`flatDoors`).
+
+Checked in the game at a flat on 27th Main Road: off the scooter outside the gate, straight in, 0.8 m
+from the door. Not benchmarked: four thin boxes in place of two per gate.
+
+## 2026-11-20: Entry 222, traffic that thinks at junctions
+
+Asked for: traffic that looks before it turns, doesn't drive into each other, and jams that clear.
+Measuring first found the real fault. Standing still in the game for a minute, **13% of the traffic
+was moving**: vehicles drove into a junction from every side at once, met in the middle, and stood
+there for good, each waiting for another, a hundred metres from the rider. Every jam was permanent.
+
+- **A line on each road into a junction, and a decision at it** (`junctions.ts`). The vehicle at
+  the front of each road goes only when the road it's heading for has room past the junction, no
+  vehicle in the junction has a path crossing or joining its own, and nobody with the right of way
+  is about to cross it. Right of way: the bigger road, then straight over left over right (which
+  crosses the oncoming lane), then buses. Waiting raises it and shrinks the gap a driver will take,
+  so a side road edges out in the end. One that decides to go claims its path until it's through.
+- **Crossings a few metres apart are one junction.** Where a divided road crosses another the map
+  has two crossings 9 m apart, with a lane between too short to stand in: the worst knots were there.
+- **Traffic knows its way several lanes on** (`laneAhead`), where it used to pick each turning at
+  the last moment: it comes up to its line already slowing, and indicates from 30 m.
+- **Slowing to look.** From the smaller road, or to turn, a vehicle is down to 3.5 m/s at the line.
+- **Oncoming traffic isn't a queue.** Two vehicles passing on a narrow street each took the other
+  for something to wait behind. And a vehicle part-way round a corner judges what's in its way by
+  where its nose points, not along its lane.
+- **Locks are undone as drivers undo them.** Two touching, each in the other's way: the lighter
+  backs off up to 3 m and waits, the heavier goes. A ring of vehicles each waiting for the next: the
+  heaviest goes. Still locked after 12 s, the heavier pushes through; out of sight, one is taken away.
+- **New traffic never appears on top of other traffic,** nor inside a junction.
+- **Brake lamps and indicators** (`SignalLamps` in Traffic.tsx): one small glow drawn once per lit
+  lamp, one draw call for the street, within 90 m of the camera. Under the shared light, no light of
+  its own; Low draws the same for its ten vehicles.
+
+Measured headless on the real road network (40 vehicles round a rider standing by a junction, 120 s,
+the same seeds before and after): mean speed 2.3 to 3.6 m/s before, 4.8 to 6.6 after; vehicles
+standing over 45 s, 17 to 30 before, 0 to 7 after (0 at ordinary junctions; the two biggest divided
+junctions still knot now and then). In the game on a main road: 83% of the traffic moving, from 13%.
+
+Cost: a traffic step is 0.4 to 0.5 ms headless, from 0.25, at 40 vehicles. Not run through the
+frame benchmark. The rush-hour "jam" is still the old slow-down circle by Agara; real jams with a
+cause, and pedestrians who cross, are the next two steps.

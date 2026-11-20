@@ -959,9 +959,20 @@ function dressBuildings(
       }
 
       // The gate itself: dark metal, a little shorter than the wall, with a rail across the middle.
-      const gateOut: [number, number] = [yard + 0.04, yard + 0.09]
-      box(kit, front, [gateFrom, gateTo], gateOut, [0.08, COMPOUND.height - 0.05], GATE_COLOR, true)
-      box(kit, front, [gateFrom, gateTo], [gateOut[0] - 0.02, gateOut[1] + 0.02], [0.65, 0.72], RAIL_COLOR, true)
+      // A block of flats' stands open, its two leaves folded back inside: the delivery is to the
+      // building's door behind it, and cars come and go under the stilts. A house's is shut (its bell is at the gate).
+      const leaf = Math.min((gateTo - gateFrom) / 2, yard - 0.15)
+      if (isApartment) {
+        for (const [hinge, sign] of [[gateFrom, 1], [gateTo, -1]] as const) {
+          const along: [number, number] = sign > 0 ? [hinge, hinge + 0.05] : [hinge - 0.05, hinge]
+          box(kit, front, along, [yard - leaf, yard], [0.08, COMPOUND.height - 0.05], GATE_COLOR, true)
+          box(kit, front, [along[0] - 0.02, along[1] + 0.02], [yard - leaf, yard], [0.65, 0.72], RAIL_COLOR, true)
+        }
+      } else {
+        const gateOut: [number, number] = [yard + 0.04, yard + 0.09]
+        box(kit, front, [gateFrom, gateTo], gateOut, [0.08, COMPOUND.height - 0.05], GATE_COLOR, true)
+        box(kit, front, [gateFrom, gateTo], [gateOut[0] - 0.02, gateOut[1] + 0.02], [0.65, 0.72], RAIL_COLOR, true)
+      }
 
       // Solid to the scooter, and to everything placed after this.
       const at = (along: number, outward: number): GroundPoint => [
@@ -969,7 +980,13 @@ function dressBuildings(
         front.start[1] + front.alongZ * along + front.outZ * outward,
       ]
       const middleOut = yard + COMPOUND.thickness / 2
-      compoundWalls.push([at(wallStart, middleOut), at(wallEnd, middleOut)])
+      if (isApartment) {
+        // Open at the gate: the wall either side of it, and the two leaves standing in from it.
+        compoundWalls.push([at(wallStart, middleOut), at(gateFrom, middleOut)])
+        compoundWalls.push([at(gateTo, middleOut), at(wallEnd, middleOut)])
+        compoundWalls.push([at(gateFrom, yard - leaf), at(gateFrom, yard)])
+        compoundWalls.push([at(gateTo, yard - leaf), at(gateTo, yard)])
+      } else compoundWalls.push([at(wallStart, middleOut), at(wallEnd, middleOut)])
       compoundWalls.push([at(wallStart, 0), at(wallStart, yard)])
       compoundWalls.push([at(wallEnd, 0), at(wallEnd, yard)])
 

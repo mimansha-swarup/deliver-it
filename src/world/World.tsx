@@ -17,7 +17,7 @@ import { Buildings } from './Buildings'
 import { Cables } from './Cables'
 import { CityKit } from './CityKit'
 import { placeCityKit } from './cityKitPlacement'
-import { addPost, addWall, createCollisionWorld, isNearBuilding, removePost } from './collision'
+import { addPost, addWall, createCollisionWorld, hasClearLine, isNearBuilding, removePost } from './collision'
 import { DarkStores } from './DarkStoreBuilding'
 import { addDarkStorePosts, findDarkStores } from './darkStore'
 import { GrassField } from './GrassField'
@@ -546,6 +546,19 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Railings on the way into the junctions, after the lanes for the same reason.
   const railings = planJunctionRailings(traffic.signals.posts, roadIndex, houses.gates, collisions, (x, z) => isOnForecourt(fuel, x, z))
   const fences = [...boundaries.runs, ...railings]
+  // Flats are delivered to at the building's door (missions/Errand.tsx), in through the compound's
+  // open gate. Where that walk is blocked all the same (a tree or a post in the gateway, another
+  // plot's wall), the door is marked `shutIn`, and the way in is at the gate (missionPlanner.ts).
+  const gatedFlats = houses.doors.filter((door) => door.apartment && door.gate)
+  for (const door of gatedFlats) {
+    const { x, z, outX, outZ, gate } = door
+    if (!gate) continue
+    // Straight in through the middle of the gate, or to either side of something standing in it.
+    door.shutIn = ![0, 1.2, -1.2].some((side) => hasClearLine(collisions, gate.x + outX * 1.5 + outZ * side, gate.z + outZ * 1.5 - outX * side, x + outX * 1.2 + outZ * side * 0.5, z + outZ * 1.2 - outX * side * 0.5, 0.3))
+  }
+  const shutIn = gatedFlats.filter((door) => door.shutIn)
+  worldSurface.report.flatDoors = { behindAGate: gatedFlats.length, enteredAtTheGate: shutIn.length }
+  if (isDebug()) Object.assign(window, { __flatDoors: { gated: gatedFlats, shutIn } })
   const tanks = [...generateRoofTanks(data.buildings), ...houses.tanks]
   lap('railings and tanks')
   yield STEP

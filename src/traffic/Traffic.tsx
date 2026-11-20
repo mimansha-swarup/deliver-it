@@ -384,6 +384,121 @@ function VehicleLights({ items, geometry }: { items: Moving[]; geometry: THREE.B
   )
 }
 
+/**
+ * Where each kind of vehicle's lamps are: its front and back ends, how far apart a pair is (0 for
+ * one in the middle), their height, and how far out from the middle its indicators are, in metres.
+ */
+const LAMPS: Record<VehicleKind, { front: number; back: number; apart: number; height: number; indicator: number }> = {
+  sedan: { front: 2.1, back: -2.1, apart: 0.56, height: 0.7, indicator: 0.72 },
+  hatchback: { front: 1.8, back: -1.8, apart: 0.52, height: 0.72, indicator: 0.68 },
+  suv: { front: 2.3, back: -2.3, apart: 0.62, height: 0.9, indicator: 0.78 },
+  mpv: { front: 2, back: -2, apart: 0.58, height: 0.8, indicator: 0.74 },
+  auto: { front: 1.3, back: -1.3, apart: 0, height: 0.72, indicator: 0.45 },
+  bike: { front: 0.66, back: -0.9, apart: 0, height: 0.9, indicator: 0.2 },
+  bus: { front: 5.6, back: -5.6, apart: 0.85, height: 0.82, indicator: 1.08 },
+}
+
+/** Brake lamps and indicators are drawn on vehicles within this of the camera, in metres. */
+const SIGNAL_LAMP_REACH = 90
+/** Indicators flash this many times a second, and are lit for this share of each flash. */
+const BLINK_RATE = 1.5
+const BLINK_ON = 0.55
+/** Bright enough to read on a sunlit car by day; turned down this much at night, when they'd glare. */
+const BRAKE_COLOR = [2.6, 0.14, 0.07]
+const INDICATOR_COLOR = [1.9, 0.9, 0.05]
+const NIGHT_DIMMING = 0.45
+
+/** One lamp: a round glow facing along the vehicle, bright in the middle and fading to nothing at its edge. */
+function createLampGeometry(): THREE.BufferGeometry {
+  const SIDES = 10
+  const CORE = 0.07
+  const HALO = 0.19
+  const positions: number[] = []
+  const colors: number[] = []
+  const add = (radius: number, step: number, light: number) => {
+    const angle = (step / SIDES) * Math.PI * 2
+    positions.push(Math.cos(angle) * radius, Math.sin(angle) * radius, 0)
+    colors.push(light, light, light)
+  }
+  for (let step = 0; step < SIDES; step++) {
+    positions.push(0, 0, 0)
+    colors.push(1, 1, 1)
+    add(CORE, step, 1)
+    add(CORE, step + 1, 1)
+    add(CORE, step, 1)
+    add(HALO, step, 0)
+    add(HALO, step + 1, 0)
+    add(CORE, step, 1)
+    add(HALO, step + 1, 0)
+    add(CORE, step + 1, 1)
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  return geometry
+}
+
+const lampColor = new THREE.Color()
+
+/**
+ * What the traffic is about to do, shown as its drivers show it: brake lamps while a vehicle slows
+ * or stands, and an indicator flashing for the turn it will take at the junction ahead
+ * (junctions.ts). All of them are one small shape drawn once per lit lamp, in one draw call for
+ * the whole street: only vehicles near the camera, and only the lamps that are on.
+ */
+function SignalLamps({ items }: { items: Vehicle[] }) {
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const lamp = useMemo(() => createLampGeometry(), [])
+  useEffect(() => () => lamp.dispose(), [lamp])
+
+  useFrame(({ clock }) => {
+    const instances = mesh.current
+    if (!instances) return
+    const dimming = 1 - NIGHT_DIMMING * liveSky.look.night
+    let drawn = 0
+    const place = (item: Vehicle, ground: number, x: number, z: number, [r, g, b]: number[]) => {
+      const sin = Math.sin(item.heading)
+      const cos = Math.cos(item.heading)
+      // Across the vehicle is its left, which is (cos, -sin) when it faces (sin, cos).
+      transform.position.set(item.x + cos * x + sin * z, ground + LAMPS[item.kind].height, item.z - sin * x + cos * z)
+      transform.rotation.set(0, item.heading, 0)
+      transform.scale.setScalar(1)
+      transform.updateMatrix()
+      instances.setMatrixAt(drawn, transform.matrix)
+      instances.setColorAt(drawn, lampColor.setRGB(r * dimming, g * dimming, b * dimming))
+      drawn++
+    }
+    for (const item of items) {
+      // Not one being thrown about or lying on its side, nor one the player has taken.
+      if (item.lane === -1 || item.rotation || item.fallen || item.taken || Math.abs(item.x) > NOWHERE) continue
+      if (!item.braking && !item.indicator) continue
+      if (cameraDistance(item.x, item.z) > SIGNAL_LAMP_REACH) continue
+      const { front, back, apart, indicator } = LAMPS[item.kind]
+      const ground = (item.deck ? ROAD_HEIGHT : Math.max(ROAD_HEIGHT, groundLift.at(item.x, item.z))) + item.lift
+      if (item.braking) {
+        if (apart === 0) place(item, ground, 0, back - 0.07, BRAKE_COLOR)
+        else for (const side of [-apart, apart]) place(item, ground, side, back - 0.07, BRAKE_COLOR)
+      }
+      // Each vehicle flashes in its own time, as no two cars' indicators ever keep step.
+      if (item.indicator && (clock.elapsedTime * BLINK_RATE + item.tint * 7) % 1 < BLINK_ON) {
+        place(item, ground, indicator * item.indicator, front + 0.07, INDICATOR_COLOR)
+        place(item, ground, indicator * item.indicator, back - 0.07, INDICATOR_COLOR)
+      }
+    }
+    instances.count = drawn
+    instances.instanceMatrix.needsUpdate = true
+    if (instances.instanceColor) instances.instanceColor.needsUpdate = true
+  })
+
+  if (items.length === 0) return null
+  return (
+    // Up to four lamps lit on each: two brake lamps, and an indicator front and back.
+    <instancedMesh key={items.length} ref={mesh} args={[lamp, undefined, items.length * 4]} frustumCulled={false}>
+      <meshBasicMaterial vertexColors transparent side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
+    </instancedMesh>
+  )
+}
+
 /** Only vehicles this close to the rider can get one of the real headlights, in metres. */
 const CAR_LIGHT_REACH = 70
 
@@ -1117,6 +1232,7 @@ export function Traffic({
       {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} ground={ROAD_HEIGHT} />}
       {/* Drivers who have got out of a vehicle the player took ("Use any vehicle"). */}
       <People items={world.drivers} body={bodies[0]} ground={ROAD_HEIGHT} />
+      <SignalLamps items={inPlay} />
       <CarHeadlights items={inPlay} count={carLights} />
     </>
   )

@@ -11,6 +11,7 @@ import { BREAKER, breakerHeight } from '../world/roadFeatures'
 import type { Prop } from '../world/props'
 import type { RoadGraph } from '../world/roadGraph'
 import { STRIDE_PER_METRE } from './gait'
+import { createJunctions, indicatorFor, planJunctions, type Crossing, type Junctions } from './junctions'
 import { createLanes, type Lane } from './lanes'
 import { createTrafficSignals, findStopAhead, type TrafficSignals } from './trafficSignals'
 
@@ -146,6 +147,26 @@ export const TRAFFIC_RULES = {
   getUpTime: 1.1,
   /** How long a fallen vehicle takes to be stood back up, in seconds. */
   rightingTime: 0.9,
+  /**
+   * Two vehicles locked into each other (neither can move without driving into the other) for this
+   * many seconds, out of the rider's sight, and one is taken away to appear elsewhere. The junction
+   * rules (junctions.ts) keep it rare; this ends what's left.
+   */
+  knotTime: 6,
+  /** Locked into another this long, in seconds, the heavier of the two edges on through at this speed, in m/s. */
+  /**
+   * Two touching, each in the other's way: after `backOffAfter` seconds the lighter backs off, at
+   * `backOffSpeed` m/s, up to `backOffMost` metres. Vehicles waiting for each other in a ring: after
+   * `ringPatience` seconds the heaviest stops waiting and goes, at `bargeSpeed` m/s. And if they're
+   * still locked after `pushAfter` seconds, the heavier pushes on through the other.
+   */
+  backOffAfter: 1.2,
+  backOffSpeed: 1.2,
+  backOffMost: 3,
+  backOffWait: 3,
+  ringPatience: 3,
+  pushAfter: 12,
+  bargeSpeed: 1.5,
   /** A thrown bike rider walks back at this speed, in m/s, and gets on within this distance, in metres. */
   walkBackSpeed: 1.6,
   remountDistance: 1,
@@ -161,6 +182,11 @@ type Mover = {
   nextLane?: number
   /** The lane it came from, for finishing the curve round the corner between them. -1 or missing if none. */
   prevLane?: number
+  /**
+   * The lanes after the next one, in order, as far as it has chosen: traffic knows its way a few
+   * lanes on, to indicate in time and to see its way through a junction (`laneAhead`).
+   */
+  onward?: number[]
   /** Metres along the lane. */
   along: number
   speed: number
@@ -381,6 +407,32 @@ export type Vehicle = Mover & {
   taken?: 'hailed' | 'empty' | 'driven'
   /** An empty one the player has left behind: gone once it's out of sight. */
   abandoned?: boolean
+  /**
+   * At junctions (junctions.ts). `atLine`: it's the front of a road into one. `junctionSpeed`: the
+   * most it may do just now, 0 at its line while it's held there. `claim`: it has decided to go, and
+   * its path is its own. `crossing`: it's in the junction. `heldFor`: seconds it has waited at the line.
+   */
+  atLine?: boolean
+  /** Standing behind something in its way. */
+  stalled?: boolean
+  junctionSpeed?: number
+  claim?: boolean
+  crossing?: Crossing | null
+  heldFor?: number
+  /** Seconds locked with another vehicle, neither able to move (`knotTime`), and the one it has stopped waiting for and is going past. */
+  knot?: number
+  barging?: Vehicle | null
+  /** How far it has backed off out of a lock, in metres, and seconds it still waits for the other to go. */
+  backedOff?: number
+  holdOff?: number
+  /** The vehicle it's standing behind (the nearest in its way), and the one it's waiting for at a junction's line. */
+  blocker?: Vehicle | null
+  heldBy?: Vehicle | null
+  /** What is limiting its speed, in words (only with `trafficDebug.reasons`). */
+  reason?: string
+  /** What its lamps show (Traffic.tsx): the side it's indicating (1 left, -1 right, 0 neither), and whether it's on the brakes. */
+  indicator?: -1 | 0 | 1
+  braking?: boolean
 }
 
 /** A driver who has got out for the player: walking to the footpath, then standing there. */
@@ -437,6 +489,8 @@ export type TrafficWorld = {
   riderPusher: NonNullable<Tumbler['body']>
   loose: LooseBody[]
   roadLanes: Lane[]
+  /** Where the roads cross, and who goes first there (junctions.ts). */
+  junctions: Junctions
   /** The flyovers whose lanes are among `roadLanes` (deckLanes.ts). */
   decks: Flyover[]
   /**
@@ -474,6 +528,7 @@ function placeOnLane(mover: Mover, lanes: Lane[], laneIndex: number, random: () 
   const along = random() * lane.length
   mover.lane = laneIndex
   mover.nextLane = -1
+  if (mover.onward) mover.onward.length = 0
   mover.prevLane = -1
   mover.along = along
   mover.x = lane.startX + lane.forwardX * along
@@ -683,6 +738,7 @@ export function createTrafficWorld(
   return {
     physics,
     collisions,
+    junctions: createJunctions(roadLanes),
     breakers: roadLanes.map((lane) => (lane.startNode < 0 ? [] : breakersOnLink(lane.startNode, lane.endNode))),
     decks,
     jam: null,
@@ -714,7 +770,8 @@ function advance(mover: Mover, lanes: Lane[], distance: number, random: () => nu
     mover.along -= lane.length
     mover.prevLane = mover.lane
     mover.lane = pickNext(mover, lanes, random)
-    mover.nextLane = -1
+    // The lane after that was chosen too, if it had looked that far (`pickAfter`); `pickNext` checks it still holds.
+    mover.nextLane = mover.onward?.shift() ?? -1
   }
   return true
 }
@@ -733,6 +790,36 @@ function pickNext(mover: Mover, lanes: Lane[], random: () => number): number {
     mover.nextLane = choices[Math.floor(random() * choices.length)]
   }
   return mover.nextLane
+}
+
+/** Picks a lane to follow `from`, keeping `chosen` if it still holds: not onto a closed road, if there's another way on. */
+function pickOnward(lanes: Lane[], from: number, chosen: number | undefined, random: () => number): number {
+  const onward = lanes[from].next
+  if (onward.length === 0) return -1
+  if (chosen !== undefined && chosen >= 0 && onward.includes(chosen) && !lanes[chosen].closed) return chosen
+  const open = onward.filter((lane) => !lanes[lane].closed)
+  const choices = open.length > 0 ? open : onward
+  return choices[Math.floor(random() * choices.length)]
+}
+
+/**
+ * The lane a vehicle will be on `steps` lanes after the one it's on (1 is its next). Chosen early
+ * as well, so a turn a few lanes off is indicated in time, and a way through a junction of several
+ * short lanes is known before driving into it. -1 past a dead end.
+ */
+function laneAhead(mover: Mover, lanes: Lane[], steps: number, random: () => number): number {
+  let lane = pickNext(mover, lanes, random)
+  if (steps <= 1 || lane < 0) return lane
+  const onward = (mover.onward ??= [])
+  for (let step = 0; step < steps - 1; step++) {
+    const chosen = pickOnward(lanes, lane, onward[step], random)
+    // A choice that no longer holds (its road has closed) takes those after it with it.
+    if (chosen !== onward[step]) onward.length = step
+    if (chosen < 0) return -1
+    onward[step] = chosen
+    lane = chosen
+  }
+  return lane
 }
 
 /**
@@ -975,11 +1062,16 @@ function findGapAhead(
   rider: ScooterState,
   downed: Obstacle[],
   sideways = 0,
-): { gap: number; blockedBy: 'rider' | 'queue' | 'crossing' | null } {
+): { gap: number; blockedBy: 'rider' | 'queue' | 'crossing' | null; blocker: Vehicle | null } {
   let gap = Infinity
   let blockedBy: 'rider' | 'queue' | 'crossing' | null = null
+  let blocker: Vehicle | null = null
+  let checking: Vehicle | null = null
+  const noseX = Math.sin(vehicle.heading)
+  const noseZ = Math.cos(vehicle.heading)
+  const turning = sideways === 0 && noseX * lane.forwardX + noseZ * lane.forwardZ < TURNING
 
-  const check = (x: number, z: number, halfLength: number, radius: number, isRider: boolean) => {
+  const check = (x: number, z: number, halfLength: number, radius: number, isRider: boolean, oncoming = false) => {
     const offsetX = x - vehicle.x
     const offsetZ = z - vehicle.z
     const ahead = offsetX * lane.forwardX + offsetZ * lane.forwardZ
@@ -987,10 +1079,24 @@ function findGapAhead(
     const side = offsetX * lane.forwardZ - offsetZ * lane.forwardX - sideways
     if (ahead <= 0 || ahead > TRAFFIC_RULES.lookAhead) return
     if (Math.abs(side) > vehicle.radius + radius + TRAFFIC_RULES.sideClearance) return
+    // Something coming the other way, on its own side of the road, isn't a queue to wait behind: they
+    // pass. Two that each waited for the other to go would wait for ever. Only one dead ahead counts.
+    if (oncoming && Math.abs(side) > Math.max(vehicle.radius, radius) * ONCOMING_IN_LINE) return
     const space = ahead - vehicle.halfLength - halfLength
+    // Part-way round a corner it isn't lined up with its lane, and the lane's line ahead isn't where
+    // it's pointing: something close that's ahead along the lane, but not in front of its nose, isn't
+    // in its way (a bus swinging round past the vehicles waiting at the next road's line).
+    if (turning && space < TURNING_NEAR) {
+      const aheadOfNose = offsetX * noseX + offsetZ * noseZ
+      const besideNose = offsetX * noseZ - offsetZ * noseX
+      if (aheadOfNose <= 0 || Math.abs(besideNose) > vehicle.radius + radius + TRAFFIC_RULES.sideClearance) return
+    }
+    // Edging through a lock (`mayBarge`), what it's already in among can't be waited for.
+    if (vehicle.barging && checking && space < 0) return
     if (space < gap) {
       gap = space
       blockedBy = isRider ? 'rider' : 'queue'
+      blocker = checking
     }
   }
 
@@ -1005,6 +1111,9 @@ function findGapAhead(
     const ahead = offsetX * lane.forwardX + offsetZ * lane.forwardZ
     const side = offsetX * lane.forwardZ - offsetZ * lane.forwardX
     if (ahead <= 0 || ahead > TRAFFIC_RULES.junctionRange || Math.abs(side) > ahead + 1) return
+    // One waiting at its line outside a junction isn't in the way of anything in it, and whoever is at
+    // a line is told what's in its way by the junction's own rules (junctions.ts).
+    if (vehicle.atLine || other.atLine) return
 
     const sameLine = Math.abs(Math.sin(other.heading) * lane.forwardX + Math.cos(other.heading) * lane.forwardZ)
     // Crossing traffic is side-on, so its width is what's in the way.
@@ -1012,6 +1121,7 @@ function findGapAhead(
     if (sameLine < 0.7 && space < gap) {
       gap = space
       blockedBy = 'crossing'
+      blocker = other
     }
   }
 
@@ -1023,14 +1133,26 @@ function findGapAhead(
     else check(body.x, body.z, PERSON_RADIUS, PERSON_RADIUS, true)
   }
   const ownPlace = others.indexOf(vehicle)
+  const inLane = sideways === 0 && Math.abs(vehicle.shift) < 0.3
   others.forEach((other, place) => {
-    if (other === vehicle || other.lane === -1) return
+    if (other === vehicle || other.lane === -1 || other === vehicle.barging) return
     // One standing empty for the player is gone round like the rider's own parked vehicle, not queued behind.
-    check(other.x, other.z, other.halfLength, other.radius, other.taken === 'empty')
+    // Keeping to its lane, that is: a two-wheeler out in the other side of the road still looks for everything.
+    const oncoming = inLane && other.speed > 0.2 && Math.sin(other.heading) * lane.forwardX + Math.cos(other.heading) * lane.forwardZ < ONCOMING
+    checking = other
+    check(other.x, other.z, other.halfLength, other.radius, other.taken === 'empty', oncoming)
+    checking = null
     if (place > ownPlace) checkCrossing(other)
   })
-  return { gap, blockedBy }
+  return { gap, blockedBy, blocker }
 }
+
+/** Heading this much against a lane's direction (a cosine) is coming the other way; and it's dead ahead within this share of the wider one's half width. */
+const ONCOMING = -0.5
+const ONCOMING_IN_LINE = 0.8
+/** Pointing this far off its lane's line (a cosine: about 20°), a vehicle is turning; then what's within this of its nose along the lane, in metres, must be in front of the nose itself to be in its way. */
+const TURNING = 0.94
+const TURNING_NEAR = 2
 
 /** Two footprints closer than this, in metres, count as touching: a sliver for the shapes' rounding. */
 const TOUCH_SLACK = 0.05
@@ -1349,6 +1471,12 @@ function busStopSpeed(world: TrafficWorld, vehicle: Vehicle, dt: number): number
   return Infinity
 }
 
+/** For looking into a standstill from the console or a headless run: with `reasons` on, each vehicle says what is limiting its speed. */
+export const trafficDebug = { reasons: false }
+
+/** A turn is indicated from this far before the junction, in metres. */
+const INDICATE_FROM = 30
+
 function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], rider: ScooterState, dt: number) {
   const { roadLanes, random } = world
   const rules = TRAFFIC_RULES
@@ -1370,7 +1498,7 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
     easeShift(vehicle, dt)
   }
 
-  const { gap, blockedBy } = findGapAhead(vehicle, lane, active, rider, downed)
+  const { gap, blockedBy, blocker } = findGapAhead(vehicle, lane, active, rider, downed)
   const hasWaited = blockedBy === 'crossing' && vehicle.waiting > rules.patience
   const keep = vehicle.nimble ? rules.nimbleGap : rules.carGap
   // In a rush-hour jam it crawls: down to about a third of its speed at the jam's heart.
@@ -1405,15 +1533,27 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const forStop = vehicle.kind === 'bus' ? busStopSpeed(world, vehicle, dt) : Infinity
   // Hailed by the player on foot, it pulls up where it is, a little more firmly than for a light.
   const hailed = vehicle.taken === 'hailed'
-  const target = hailed ? 0 : Math.min(free, held, forBend, forBump, forStop) * vehicle.recovery
+  // At a junction: slow to look, and stop at the line until the way through is clear (junctions.ts).
+  const forJunction = vehicle.junctionSpeed ?? Infinity
+  const target = hailed ? 0 : Math.min(free, held, forBend, forBump, forStop, forJunction) * vehicle.recovery
 
+  if (trafficDebug.reasons) {
+    vehicle.reason = `gap ${gap.toFixed(1)} (${blockedBy ?? 'clear'}), light ${held.toFixed(1)}, bend ${forBend.toFixed(1)}, bus stop ${forStop.toFixed(1)}, junction ${forJunction.toFixed(1)}${vehicle.claim ? ' going' : vehicle.atLine ? ' at line' : ''}${vehicle.crossing ? ' crossing' : ''}`
+  }
+  // Stopped by what's in front of it, not by a line or a light: it isn't about to go anywhere (junctions.ts).
+  vehicle.stalled = free < 0.3 && vehicle.speed < 0.5
+  vehicle.blocker = vehicle.stalled ? blocker : null
+  // The brake lamps: slowing down, or standing with a foot on the brake.
+  vehicle.braking = target < vehicle.speed - 0.05 || (vehicle.speed < 0.2 && target < 0.2)
   const rate = target < vehicle.speed ? rules.braking * (hailed ? HAIL_BRAKING : 1) : rules.acceleration
   const change = target - vehicle.speed
   vehicle.speed += Math.sign(change) * Math.min(Math.abs(change), rate * dt)
 
   // Waiting at a light isn't a deadlock, or the whole queue would barge off together on green.
   const atLight = toStop !== Infinity
-  vehicle.waiting = vehicle.speed < 0.3 && !atLight && !((vehicle.busDwell ?? 0) > 0) ? vehicle.waiting + dt : 0
+  // Nor is waiting at a junction's line for a gap.
+  const atJunction = forJunction < 0.3
+  vehicle.waiting = vehicle.speed < 0.3 && !atLight && !atJunction && !((vehicle.busDwell ?? 0) > 0) ? vehicle.waiting + dt : 0
   if (hasWaited) vehicle.waiting = rules.patience + 1
 
   // On foot they're honked at from further back: a horn as it slows, not only once it has stopped.
@@ -1431,6 +1571,9 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
     vehicle.lane = -1
     return
   }
+
+  // The indicator: for its turn at the junction ahead, from a little way off, and on until it's through.
+  vehicle.indicator = indicatorFor(world.junctions, roadLanes, vehicle, (mover, steps) => laneAhead(mover, roadLanes, steps, random), INDICATE_FROM)
 
   // Corners are rounded to about the vehicle's turning circle (see `findCorner`), and it follows that
   // curve. It turns no tighter than a little inside that circle, so the slower it goes, the slower it turns.
@@ -1918,11 +2061,11 @@ function vehiclesOverlap(a: Vehicle, b: Vehicle): boolean {
  * meet. Then whichever has the other in front of it stops. If they're side by
  * side, the one earlier in the list goes first.
  */
-function mustGiveWay(vehicle: Vehicle, others: Vehicle[]): boolean {
+function mustGiveWay(vehicle: Vehicle, others: Vehicle[]): Vehicle | null {
   const forwardX = Math.sin(vehicle.heading)
   const forwardZ = Math.cos(vehicle.heading)
   const ownPlace = others.indexOf(vehicle)
-  return others.some((other, place) => {
+  const found = others.find((other, place) => {
     if (other === vehicle || other.lane === -1 || other.body || other.fallen) return false
     if (!vehiclesOverlap(vehicle, other)) return false
     const toOtherX = other.x - vehicle.x
@@ -1930,6 +2073,42 @@ function mustGiveWay(vehicle: Vehicle, others: Vehicle[]): boolean {
     const ahead = (toOtherX * forwardX + toOtherZ * forwardZ) / (Math.hypot(toOtherX, toOtherZ) || 1)
     return ahead > 0.3 || (ahead > -0.3 && place < ownPlace)
   })
+  return found ?? null
+}
+
+/**
+ * Whether this vehicle is the one of a locked pair that pushes on through the other, as the last
+ * resort (`pushAfter`): the heavier, or of two alike the later in the list. Never through a wreck,
+ * or a vehicle standing empty for the player.
+ */
+function mayBarge(vehicle: Vehicle, other: Vehicle, places: Vehicle[]): boolean {
+  if (other.body || other.fallen || other.taken === 'empty' || other.taken === 'driven') return false
+  return outranks(vehicle, other, places)
+}
+
+const outranks = (vehicle: Vehicle, other: Vehicle, places: Vehicle[]) =>
+  vehicle.crash.mass !== other.crash.mass ? vehicle.crash.mass > other.crash.mass : places.indexOf(vehicle) > places.indexOf(other)
+
+/**
+ * A ring of vehicles each standing still for the next: behind it, or at a junction's line waiting
+ * for it to cross. Nobody in a ring can ever move, so its heaviest member edges through the one in
+ * its way (`mayBarge`). Returns that one for the vehicle that should go, null for the rest and for
+ * anything not in a ring.
+ */
+function ringToBreak(vehicle: Vehicle, places: Vehicle[]): Vehicle | null {
+  const waitsFor = (one: Vehicle) => (one.speed < 0.3 ? (one.blocker ?? one.heldBy ?? null) : null)
+  const first = waitsFor(vehicle)
+  let at = first
+  for (let hops = 0; hops < 6 && at; hops++) {
+    if (at === vehicle) {
+      // It's a ring. Is this its heaviest?
+      for (let other = first; other && other !== vehicle; other = waitsFor(other)) if (outranks(other, vehicle, places)) return null
+      return first
+    }
+    if (at.body || at.fallen || at.taken === 'empty' || at.taken === 'driven') return null
+    at = waitsFor(at)
+  }
+  return null
 }
 
 /** Eases in and out, so a movement starts and ends gently instead of at full speed. */
@@ -2290,6 +2469,9 @@ export function stepTraffic(
   world.signalClock += dt
   listDowned(world, contact, activeVehicles, pedestrianCount)
 
+  // Who may drive into each junction this step. Only on the ground: nothing crosses up on a deck.
+  planJunctions(world.junctions, roadLanes, groundVehicles, world.signals, world.signalClock, (vehicle, steps) => laneAhead(vehicle, roadLanes, steps, random), dt)
+
   const outNow = Math.round(vehicleCount * world.density)
   for (const [index, vehicle] of activeVehicles.entries()) {
     // Empty or driven by the player, it isn't traffic: it stands, or goes where they drive it.
@@ -2318,6 +2500,7 @@ export function stepTraffic(
       const isFree = (lane: Lane) =>
         (vehicle.kind !== 'bus' || lane.buses === true) &&
         !lane.closed &&
+        !lane.inJunction &&
         (inJam(lane) || random() * MAX_LANE_WEIGHT < (lane.weight ?? 1)) &&
         activeVehicles.every(
           (other) =>
@@ -2349,6 +2532,22 @@ export function stepTraffic(
       vehicle.recovery = 1
       vehicle.shift = 0
       vehicle.shiftTarget = 0
+      vehicle.crossing = null
+      vehicle.claim = false
+      vehicle.heldFor = 0
+      vehicle.knot = 0
+      vehicle.backedOff = 0
+      vehicle.holdOff = 0
+      vehicle.barging = null
+      vehicle.indicator = 0
+      vehicle.braking = false
+      // Never on top of another: a lane can start clear and still run through one a little way along.
+      if (activeVehicles.some((other) => other !== vehicle && other.lane !== -1 && Math.abs(other.x - vehicle.x) < 30 && capsuleDistance(vehicle, other) < vehicle.radius + other.radius + 1.5)) {
+        vehicle.lane = -1
+        vehicle.x = 1e6
+        vehicle.z = 1e6
+        continue
+      }
     }
 
     if (vehicle.thrownRider && vehicle.riderOff) stepThrownRider(world, vehicle, vehicle.thrownRider, dt)
@@ -2367,15 +2566,75 @@ export function stepTraffic(
     const up = isUp(vehicle)
     const peers = up ? upVehicles : groundVehicles
     const seen = up === riderUp ? rider : far
-    if (mustGiveWay(vehicle, peers)) {
+    // Locked into another (neither can move without driving further into the other): the heavier
+    // edges through after a moment (`mayBarge`). One still locked where the rider can't see is taken
+    // away, and appears elsewhere.
+    const locked = () => {
+      vehicle.knot = (vehicle.knot ?? 0) + dt
+      if (vehicle.knot > rules.knotTime && !vehicle.taken && Math.hypot(vehicle.x - at.x, vehicle.z - at.z) > rules.pinnedRemoveDistance) vehicle.lane = -1
+    }
+    // Touching another that's in front of it: it stops. If the other is stopped by this one too,
+    // they're locked, and it's sorted out as drivers do: after a moment the lighter of the two backs
+    // off a little, and the heavier goes on. `ring` is the same thing at a distance: vehicles each
+    // waiting for the next, round in a circle.
+    const inWay = mustGiveWay(vehicle, peers)
+    const ring = inWay ? null : ringToBreak(vehicle, activeVehicles)
+    const knot = vehicle.knot ?? 0
+    if (!inWay && (vehicle.holdOff ?? 0) > 0) {
+      vehicle.holdOff = (vehicle.holdOff ?? 0) - dt
       vehicle.speed = 0
+      vehicle.braking = true
+      if (trafficDebug.reasons) vehicle.reason = 'backed off, letting the other through'
+      continue
+    }
+    // Once going through, it keeps on until it's past the one it was locked with.
+    let through = vehicle.barging ?? null
+    if (through) {
+      const ahead = (through.x - vehicle.x) * Math.sin(vehicle.heading) + (through.z - vehicle.z) * Math.cos(vehicle.heading)
+      const apart = Math.hypot(through.x - vehicle.x, through.z - vehicle.z)
+      if (through.lane === -1 || ahead < 0 || apart > vehicle.halfLength + through.halfLength + 2) through = null
+    }
+    if (!through && ring && knot >= rules.ringPatience) through = ring
+    // The last resort, when backing off hasn't freed them: the heavier pushes on through.
+    if (!through && inWay && knot >= rules.pushAfter && mayBarge(vehicle, inWay, activeVehicles)) through = inWay
+    vehicle.barging = through
+    const pushing = through !== null && knot >= rules.pushAfter
+    if (inWay && !pushing) {
+      vehicle.speed = 0
+      vehicle.braking = true
+      if (trafficDebug.reasons) vehicle.reason = 'touching another in front of it'
       maybeHonk(world, vehicle, seen, false, dt)
+      locked()
+      if (vehicle.lane === -1) continue
+      // Back off, if it's the lighter: straight back a little way, never into anything behind.
+      const backed = vehicle.backedOff ?? 0
+      if (knot > rules.backOffAfter && backed < rules.backOffMost && !vehicle.taken && !outranks(vehicle, inWay, activeVehicles)) {
+        const before = overlapWithTraffic(vehicle, peers)
+        const step = rules.backOffSpeed * dt
+        const fromX = vehicle.x
+        const fromZ = vehicle.z
+        vehicle.x -= Math.sin(vehicle.heading) * step
+        vehicle.z -= Math.cos(vehicle.heading) * step
+        if (!up) pushOutOfBuildings(world.collisions, vehicle, vehicle.radius * rules.wallMargin)
+        // It's leaving the one in front, so its overlap may only shrink: growing means something is behind it.
+        if (overlapWithTraffic(vehicle, peers) > before + 0.001 || Math.hypot(vehicle.x - fromX, vehicle.z - fromZ) < step * 0.5) {
+          vehicle.x = fromX
+          vehicle.z = fromZ
+        } else {
+          vehicle.backedOff = backed + step
+          vehicle.along = Math.max(0, vehicle.along - step)
+          // And having made room, it waits a moment for the other to use it.
+          vehicle.holdOff = rules.backOffWait
+        }
+      }
       continue
     }
     // Never into another vehicle: a step that would push this one further into another's
     // footprint is taken back, and it waits (see `overlapWithTraffic`).
     const before = overlapWithTraffic(vehicle, peers)
-    const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, shift: vehicle.shift, deck: vehicle.deck, lift: vehicle.lift }
+    const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, onward: vehicle.onward ? [...vehicle.onward] : undefined, shift: vehicle.shift, deck: vehicle.deck, lift: vehicle.lift }
+    // Going through a lock: at a crawl, and not held at a line by the very one it's locked with.
+    if (vehicle.barging) vehicle.junctionSpeed = rules.bargeSpeed
     stepVehicle(world, vehicle, peers, seen, dt)
     if (vehicle.lane === -1) continue
     // Pulled up for the player: the driver gets out, and it stands empty.
@@ -2385,10 +2644,21 @@ export function stepTraffic(
       letDriverOut(world, vehicle)
     }
     if (!vehicle.body && overlapWithTraffic(vehicle, peers) > before + 0.001) {
-      Object.assign(vehicle, kept)
-      vehicle.speed = 0
-      // A two-wheeler squeezing sideways into something beside it gives up that gap.
-      vehicle.shiftTarget = vehicle.shift
+      locked()
+      if (vehicle.lane === -1) continue
+      // Locked this long, whichever way round they are (a bus's tail swinging into a bike beside it), it goes on regardless.
+      if (pushing || knot >= rules.pushAfter) vehicle.speed = Math.min(vehicle.speed, rules.bargeSpeed)
+      else {
+        Object.assign(vehicle, kept)
+        vehicle.speed = 0
+        if (trafficDebug.reasons) vehicle.reason += '; step taken back (it would drive into another)'
+        // A two-wheeler squeezing sideways into something beside it gives up that gap.
+        vehicle.shiftTarget = vehicle.shift
+      }
+    } else if (vehicle.barging || ring) locked()
+    else {
+      vehicle.knot = Math.max(0, knot - dt)
+      if (vehicle.knot === 0) vehicle.backedOff = 0
     }
     // Up on a deck there's no crash physics (it's all on the ground): it just never drives through the rider.
     if (up) {

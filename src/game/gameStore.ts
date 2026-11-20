@@ -889,11 +889,17 @@ export const useGameStore = create<GameState>()(
   // With the customer's order on board, rough riding frustrates them (customerChat.ts).
   // A crash or a hard bump also damages what's on board, by its kind (missions/cargo.ts).
   recordCrash: () =>
-    set((state) => ({
-      crashes: state.crashes + 1,
-      rough: state.rough + (state.phase === 'toCustomer' ? FRUSTRATION.crash : 0),
-      condition: state.phase === 'toCustomer' && state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].crash) : state.condition,
-    })),
+    // Only with the order on board: a crash on the way to the store did nothing to it, so it isn't
+    // on the delivery's summary, its rating or its clean-ride bonus. (A rental's damage is counted apart: FleetClock.tsx.)
+    set((state) =>
+      state.phase !== 'toCustomer'
+        ? state
+        : {
+            crashes: state.crashes + 1,
+            rough: state.rough + FRUSTRATION.crash,
+            condition: state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].crash) : state.condition,
+          },
+    ),
   recordKnock: () =>
     set((state) => ({
       knocks: state.knocks + 1,

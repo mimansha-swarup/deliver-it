@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { DoubleSide, type Group, type Mesh } from 'three'
+import { DoubleSide, type Group, type Mesh, type MeshBasicMaterial } from 'three'
 import { livePlayer, useOnFoot } from '../game/livePlayer'
 import { errandLive } from '../game/doorsteps'
 import { useGameStore } from '../game/gameStore'
@@ -61,6 +61,12 @@ const DOOR_POINTER_HEIGHT = 3.3
 const DOOR_POINTER_GROWS_OVER = 22
 const DOOR_POINTER_LARGEST = 3
 const DOOR_BEAM_HEIGHT = 26
+/**
+ * The pointer shows through what's in front of it only this near the door, in metres: there it's a
+ * compound wall, a fence or the corner of the house. From further off it would show through whole
+ * buildings, and seem to mark a house on the way that has nothing to do with the order.
+ */
+const DOOR_POINTER_THROUGH_WITHIN = 30
 
 /**
  * The door the order goes to, which is not the stop on the road: a ring on the ground at it, a
@@ -91,6 +97,8 @@ export function DoorMarker() {
       pointer.current.scale.setScalar(size)
       pointer.current.position.y = (goal.indoors ? 2.3 : DOOR_POINTER_HEIGHT + size * 0.6) + Math.sin(clock.elapsedTime * 3) * 0.22
       pointer.current.rotation.y = clock.elapsedTime * 1.5
+      const material = pointer.current.material as MeshBasicMaterial
+      material.depthTest = !goal.indoors && distance > DOOR_POINTER_THROUGH_WITHIN
     }
   })
 
@@ -104,7 +112,7 @@ export function DoorMarker() {
         <ringGeometry args={[0.85, 1.1, 32]} />
         <meshBasicMaterial color={color} fog={false} />
       </mesh>
-      {/* Drawn last and through whatever is in front: a compound wall, a fence, the corner of the house. */}
+      {/* Drawn last, and near the door through whatever is in front: a compound wall, a fence, the corner of the house. */}
       <mesh ref={pointer} rotation={[Math.PI, 0, 0]} renderOrder={11}>
         <coneGeometry args={[0.42, 0.95, 4]} />
         <meshBasicMaterial color={color} transparent depthTest={false} depthWrite={false} fog={false} />

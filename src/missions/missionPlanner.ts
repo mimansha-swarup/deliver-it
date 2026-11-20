@@ -165,10 +165,12 @@ export function createMissionPlanner(
       const floor = 1 + Math.floor(random() * Math.max(1, Math.min(found.floors, 6) - 0.001))
       const flat = `${floor}0${1 + Math.floor(random() * 3)}`
       const building = society ? (doorsteps.society?.name ?? '') : buildingName(found.x, found.z)
+      // The way in is the building's door, through its open gate; at the gate itself where the door can't be walked to (World.tsx).
+      const way = !society && found.shutIn && found.gate ? { x: found.gate.x + outX * 0.7, z: found.gate.z + outZ * 0.7 } : found
       return {
         // Their place upstairs is set when the rider gets to the floor (Errand.tsx): until then, nobody is out.
         waiting: { ...kerb, x: found.x - outX * 0.2, z: found.z - outZ * 0.2, rotation: Math.atan2(outX, outZ) },
-        door: { kind: society ? 'society' : 'flat', x: found.x, z: found.z, outX, outZ, scene: scene === 'dog' ? 'plain' : scene, ...base, floor, flat, building, liftWorks: random() > 0.25 },
+        door: { kind: society ? 'society' : 'flat', x: way.x, z: way.z, outX, outZ, scene: scene === 'dog' ? 'plain' : scene, ...base, floor, flat, building, liftWorks: random() > 0.25 },
         extraSeconds: (society ? 75 : 50) + floor * 4,
       }
     }

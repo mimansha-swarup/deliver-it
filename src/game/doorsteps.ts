@@ -19,6 +19,8 @@ export type Door = {
   gate: { x: number; z: number } | null
   /** The building's footprint, in square metres. */
   area: number
+  /** A block of flats whose door can't be walked to from its gate (something solid is in the way): the way in is at the gate. */
+  shutIn?: boolean
 }
 
 /** A gated society: a big block of flats with a guard at its gate (world/SocietyGate.tsx). */
