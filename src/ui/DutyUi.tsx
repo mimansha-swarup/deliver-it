@@ -5,6 +5,7 @@ import { isKey } from '../game/keyBindings'
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { CANCEL_PENALTY, dayPeriod, OFFER_SECONDS, type ShiftGoal, type ShiftSummary } from '../game/duty'
+import { ASK, useFamily } from '../game/family'
 import { liveSky } from '../game/livePlayer'
 import { MISSION_RULES } from '../game/missionConfig'
 import { playPing } from '../audio/uiSounds'
@@ -172,7 +173,7 @@ function OfferCard() {
           </p>
         )}
         <p className="hud-detail">
-          for {mission.story.customer} · {formatDistance(mission.routeLength)} · <span className="duty-offer-pay">{pay}+ credits</span>
+          for {mission.story.customer} · {formatDistance(mission.routeLength)} · <span className="duty-offer-pay">₹{pay}+</span>
         </p>
       </div>
       <div className="duty-offer-buttons">
@@ -181,6 +182,70 @@ function OfferCard() {
         </button>
         <button type="button" className="duty-decline" onClick={(event) => { decline(); event.currentTarget.blur() }}>
           <kbd>{keyFor('decline')}</kbd>
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Home asking for something small (game/family.ts): a card where an order offer comes, with its
+ * own ring counting down, the same two keys, and "Send" or "Later". Never over an order offer.
+ */
+function FamilyAskCard() {
+  const ask = useFamily((state) => state.ask)
+  const answer = useFamily((state) => state.answerAsk)
+  const offer = useGameStore((state) => state.offer)
+  const credits = useGameStore((state) => state.credits)
+  const [now, setNow] = useState(() => performance.now())
+
+  useEffect(() => {
+    if (!ask) return
+    playPing('message')
+    const timer = window.setInterval(() => {
+      const time = performance.now()
+      setNow(time)
+      if (time >= ask.expiresAt) useFamily.getState().answerAsk('missed')
+    }, 100)
+    // The order keys answer it: accept sends, decline says later.
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.repeat || isTyping(event) || useGameStore.getState().offer) return
+      if (isKey('accept', event.code)) useFamily.getState().answerAsk('send')
+      else if (isKey('decline', event.code)) useFamily.getState().answerAsk('later')
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [ask])
+
+  if (!ask || offer) return null
+  const left = Math.max(0, Math.min(ASK.seconds, (ask.expiresAt - now) / 1000))
+  const short = credits < ask.amount
+
+  return (
+    <section className="duty-offer" role="alertdialog" aria-label="A message from home" data-family data-hurry={left <= OFFER_REMINDER_AT}>
+      <svg className="duty-offer-ring" viewBox="0 0 44 44" aria-hidden="true">
+        <circle cx="22" cy="22" r={RING_RADIUS} className="duty-offer-ring-track" />
+        <circle cx="22" cy="22" r={RING_RADIUS} className="duty-offer-ring-left" strokeDasharray={RING_LENGTH} strokeDashoffset={RING_LENGTH * (1 - left / ASK.seconds)} />
+        <text x="22" y="22">{Math.ceil(left)}</text>
+      </svg>
+      <div className="duty-offer-body">
+        <p className="duty-offer-top">
+          <strong>{ask.what}</strong>
+          <span className="duty-offer-kind">Home</span>
+        </p>
+        <p className="hud-detail">
+          {ask.from} asks · <span className="duty-offer-pay">₹{ask.amount}</span> from your wallet (₹{credits})
+        </p>
+      </div>
+      <div className="duty-offer-buttons">
+        <button type="button" className="duty-accept" disabled={short} onClick={(event) => { answer('send'); event.currentTarget.blur() }}>
+          <kbd>{keyFor('accept')}</kbd> Send ₹{ask.amount}
+        </button>
+        <button type="button" className="duty-decline" onClick={(event) => { answer('later'); event.currentTarget.blur() }}>
+          <kbd>{keyFor('decline')}</kbd> Later
         </button>
       </div>
     </section>
@@ -202,7 +267,7 @@ function OfflineQuestion() {
       <p className="duty-question-buttons">
         <button type="button" autoFocus onClick={() => goOffline('finish')}>Finish this order, then go offline</button>
         <button type="button" className="duty-cancel" onClick={() => goOffline('cancel')}>
-          Cancel the order <span>−{CANCEL_PENALTY.credits} credits · counts as {CANCEL_PENALTY.stars}★</span>
+          Cancel the order <span>−₹{CANCEL_PENALTY.credits} · counts as {CANCEL_PENALTY.stars}★</span>
         </button>
         <button type="button" className="duty-plain" onClick={stayOnline}>Stay online</button>
       </p>
@@ -226,9 +291,9 @@ function ShiftSummaryCard({ summary }: { summary: ShiftSummary }) {
         <dt>Deliveries</dt>
         <dd>{summary.deliveries}{summary.cancelled > 0 && ` · ${summary.cancelled} cancelled`}</dd>
         <dt>Earnings</dt>
-        <dd>{summary.earnings} credits</dd>
+        <dd>₹{summary.earnings}</dd>
         <dt>Tips</dt>
-        <dd>{summary.tips} credits</dd>
+        <dd>₹{summary.tips}</dd>
         <dt>Average rating</dt>
         <dd>{summary.averageRating === null ? '—' : `★ ${summary.averageRating.toFixed(1)}`}</dd>
         <dt>Distance</dt>
@@ -276,6 +341,7 @@ export function DutyUi() {
       <DutyKeys />
       <DutyBadge />
       <OfferCard />
+      <FamilyAskCard />
       <OfflineQuestion />
       {summary && <ShiftSummaryCard summary={summary} />}
       <SleepFade />

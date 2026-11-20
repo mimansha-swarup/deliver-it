@@ -203,11 +203,11 @@ function Earnings({ mission }: { mission: Mission }) {
     <>
       <dl className="phone-pay">
         <dt>This order</dt>
-        <dd>{guaranteed} credits</dd>
+        <dd>₹{guaranteed}</dd>
         <dt>{mission.kind === 'rush' ? 'Rush bonus' : 'On-time bonus'}</dt>
-        <dd>+{onTimeBonus}</dd>
+        <dd>+₹{onTimeBonus}</dd>
         <dt>Clean ride bonus</dt>
-        <dd>{crashes === 0 ? `+${rules.cleanRideCredits}` : 'Missed'}</dd>
+        <dd>{crashes === 0 ? `+₹${rules.cleanRideCredits}` : 'Missed'}</dd>
         <dt>Customer's tip</dt>
         <dd>Up to +{TOP_TIP} for 5★</dd>
         {nightUnlocked && (
@@ -218,7 +218,7 @@ function Earnings({ mission }: { mission: Mission }) {
         )}
       </dl>
       <p className="phone-wallet">
-        <span>{credits} credits</span>
+        <span>₹{credits}</span>
         {rating !== null && <span className="phone-rating">★ {rating.toFixed(1)}</span>}
       </p>
       <LevelBar />
@@ -389,7 +389,7 @@ function DeliverItApp({ nav }: { nav: PhoneNav }) {
           <p className="app-big">{rating === null ? '—' : `★ ${rating.toFixed(1)}`} <small>last {ratings.length}</small></p>
           {shift && (
             <p className="app-line">
-              This shift: {shift.deliveries} delivered · {shift.earnings} credits
+              This shift: {shift.deliveries} delivered · ₹{shift.earnings}
             </p>
           )}
         </section>
@@ -663,13 +663,13 @@ function WalletApp({ nav }: { nav: PhoneNav }) {
       <div className="app-body">
         <section className="app-card">
           <p className="app-card-title">Balance</p>
-          <p className="app-big">{credits} credits</p>
+          <p className="app-big">₹{credits}</p>
           {fresh > 0 && <p className="app-line">Fresh from a meal: +15% tips on the next {fresh} {fresh === 1 ? 'delivery' : 'deliveries'}</p>}
         </section>
         {dues > 0 && (
           <section className="app-card">
             <p className="app-card-title">Owed to Ravi</p>
-            <p className="app-big">{dues} credits</p>
+            <p className="app-big">₹{dues}</p>
             <p className="app-line app-muted">He paid when you couldn’t. Half of each order’s pay goes back to him until it’s square. No interest, and your tips stay yours.</p>
           </section>
         )}

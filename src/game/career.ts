@@ -63,7 +63,7 @@ export const CHAPTER_ONE = {
       text: 'Deliver after dark or in the rain',
       target: 1,
       count: (event) => delivered(event, (_, { night, rain }) => night || rain),
-      done: "Week one complete! Neevu namma star rider. Here's 300 credits and the Dark store green paint. Chapter 2 is coming soon. Swalpa adjust maadi!",
+      done: "Week one complete! Neevu namma star rider. Here's ₹300 and the Dark store green paint. Chapter 2 is coming soon. Swalpa adjust maadi!",
     },
   ] satisfies Goal[],
 }

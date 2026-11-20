@@ -14,7 +14,7 @@ export const MISSION_RULES = {
   baseCredits: 50,
   baseXp: 25,
 
-  /** Extra credits for finishing on time. Missing it costs nothing. */
+  /** Extra rupees for finishing on time. Missing it costs nothing. */
   onTimeCredits: 25,
   /** A rush order's timer is this share of a normal one, and on time it pays this much more. */
   rushTimeShare: 0.7,
@@ -30,7 +30,7 @@ export const MISSION_RULES = {
   /** A double drop's second customer is this far from the first by road, in metres. */
   secondDropMin: 120,
   secondDropMax: 500,
-  /** Extra credits for a delivery with no crashes. Crashing never costs anything else. */
+  /** Extra rupees for a delivery with no crashes. Crashing never costs anything else. */
   cleanRideCredits: 10,
   /**
    * The route speed the on-time limit is based on, in metres per second. It was

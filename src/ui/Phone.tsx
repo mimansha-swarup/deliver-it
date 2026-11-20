@@ -13,6 +13,7 @@ import { VideoScreen } from './Radio'
 import { useUi } from './uiState'
 import { AppGlyph, PhoneApp, WeatherIcon } from './phoneApps'
 import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
+import { useAppNotes } from '../game/appNotes'
 
 /*
  * The rider's phone, as a phone: a lock screen with the time, weather and notifications when it
@@ -25,11 +26,12 @@ import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 
 
 /** How long a message peeks the phone up (or shows as a banner on it), in milliseconds. */
-const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500, radio: 9000 }
+const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500, radio: 9000, app: 7000 }
 /** How many notifications float above the half-open phone at once. */
 const FLOATING_SHOWN = 3
 
-type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' | 'radio' }
+/** `app`: a notification from one of the phone's apps (game/appNotes.ts), which opens that app. */
+type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' | 'radio'; app?: AppId }
 
 /** The battery: full at 7 am, about 4% an hour after, charged again by sleeping. */
 function batteryAt(hours: number): number {
@@ -81,6 +83,11 @@ function useNotifications(onMessage: (note: Peek) => void): Peek | null {
     const offAir = useOnAir.subscribe(({ line }) => {
       if (line) show({ id: Date.now(), from: `${RJ_NAME} · ${line.station}`, thread: null, text: line.text, kind: 'radio' })
     })
+    // An app with something worth opening it for (game/appNotes.ts): shown like a message, under the app's name.
+    const offApps = useAppNotes.subscribe(({ latest }, previous) => {
+      if (!latest || latest === previous.latest) return
+      show({ id: 1e9 + latest.id, from: APPS.find(({ id }) => id === latest.app)?.name ?? 'Phone', thread: null, text: latest.text, kind: 'normal', app: latest.app })
+    })
     const initial = useGameStore.getState()
     let shownChat = initial.chat.reduce((most, line) => Math.max(most, line.id), -Infinity)
     let shownMessage = initial.messages[0]?.id ?? -Infinity
@@ -103,6 +110,7 @@ function useNotifications(onMessage: (note: Peek) => void): Peek | null {
     return () => {
       offGame()
       offAir()
+      offApps()
     }
   }, [onMessage])
 
@@ -153,7 +161,7 @@ function MiniPhone({ unread, alert, bounce, onOpen, phoneKey }: { unread: number
   )
 }
 
-function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]; onUnlock: () => void; onOpen: (thread: string | null) => void }) {
+function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]; onUnlock: () => void; onOpen: (note: Peek) => void }) {
   const skyTime = useGameStore((state) => state.skyTime)
   const weather = useGameStore((state) => state.weather)
   const night = useGameStore((state) => state.night)
@@ -171,7 +179,7 @@ function LockScreen({ notifications, onUnlock, onOpen }: { notifications: Peek[]
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
-                onOpen(note.thread)
+                onOpen(note)
                 event.currentTarget.blur()
               }}
             >
@@ -254,6 +262,8 @@ export function Phone() {
     reading.current = raised && screen === 'messages' ? thread : null
     // Which app is up, for whoever wants to know (the tutorial's GaadiGo step).
     useUi.setState({ phoneApp: raised && screen !== 'lock' && screen !== 'home' ? screen : null })
+    // Opening an app clears its badge.
+    if (raised && screen !== 'lock' && screen !== 'home') useAppNotes.getState().opened(screen)
   }, [raised, screen, thread])
 
   /** Notifications floating above the half-open phone, newest last; each leaves after its time. */
@@ -264,7 +274,9 @@ export function Phone() {
   const [countMessage] = useState(() => (note: Peek) => {
     setBounce((count) => count + 1)
     setFloating((list) => [...list, note].slice(-FLOATING_SHOWN))
-    window.setTimeout(() => setFloating((list) => list.filter((other) => other.id !== note.id)), PEEK_MS[note.kind])
+    window.setTimeout(() => setFloating((list) => list.filter((other) => other.id !== note.id)), note.app ? PEEK_MS.app : PEEK_MS[note.kind])
+    // An app's own notification waits on the lock screen too, and stays up a little longer to be read.
+    if (note.app) setNotes((list) => [note, ...list].slice(0, 6))
     if (note.thread === null) return
     const from = note.thread
     setNotes((list) => [note, ...list].slice(0, 6))
@@ -353,7 +365,14 @@ export function Phone() {
 
   const totalUnread = Object.values(unread).reduce((sum, count) => sum + count, 0)
   const phoneKey = useKeyName('phone')
-  const badges: Partial<Record<AppId, number>> = { messages: totalUnread, deliver: offer ? 1 : 0, garage: atStore ? 1 : 0 }
+  // An app's own notifications are a badge on its icon until it's opened (game/appNotes.ts).
+  const appNotes = useAppNotes((notes) => notes.pending)
+  const noted = (app: AppId) => appNotes[app] ?? 0
+  const badges: Partial<Record<AppId, number>> = Object.fromEntries(APPS.map(({ id }) => [id, noted(id)]))
+  badges.messages = totalUnread + noted('messages')
+  badges.deliver = (offer ? 1 : 0) + noted('deliver')
+  badges.garage = (atStore ? 1 : 0) + noted('garage')
+  const waiting = APPS.reduce((sum, { id }) => sum + noted(id), 0)
   const station = useStation()
   const videoCard = station.kind === 'video'
   // A banner across the top of the open phone, unless it's on the lock screen (which lists them)
@@ -363,7 +382,8 @@ export function Phone() {
   const alertKind = floating.some((note) => note.kind === 'urgent') ? 'urgent' : floating.length > 0 ? 'normal' : null
   const openNote = (note: Peek) => {
     open('home')
-    if (note.thread) nav.openThread(note.thread)
+    if (note.app) nav.go(note.app)
+    else if (note.thread) nav.openThread(note.thread)
     else nav.go('music')
   }
 
@@ -383,7 +403,7 @@ export function Phone() {
         }}
       >
         <div className="phone-screen">
-          <StatusBar unread={raised ? 0 : totalUnread} />
+          <StatusBar unread={raised ? 0 : totalUnread + waiting} />
           {banner && (
             <button type="button" className="phone-banner" data-kind={banner.kind} onClick={() => openNote(banner)}>
               <strong>{banner.from}</strong>
@@ -398,9 +418,10 @@ export function Phone() {
                   setScreen('home')
                   setNotes([])
                 }}
-                onOpen={(name) => {
+                onOpen={(note) => {
                   setNotes([])
-                  if (name) nav.openThread(name)
+                  if (note.app) nav.go(note.app)
+                  else if (note.thread) nav.openThread(note.thread)
                   else nav.go('music')
                 }}
               />
@@ -422,7 +443,7 @@ export function Phone() {
           />
         </div>
       </aside>
-      {!raised && <MiniPhone unread={totalUnread} alert={alertKind} bounce={bounce} onOpen={() => open('lock')} phoneKey={phoneKey} />}
+      {!raised && <MiniPhone unread={totalUnread + waiting} alert={alertKind} bounce={bounce} onOpen={() => open('lock')} phoneKey={phoneKey} />}
       {!raised && floating.length > 0 && (
         <ol className="phone-float" data-above-video={videoCard ? 'true' : undefined} aria-live="polite">
           {floating.map((note) => (

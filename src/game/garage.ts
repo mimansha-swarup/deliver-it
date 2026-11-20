@@ -1,6 +1,6 @@
 /**
  * What the Garage at the dark store sells: three upgrades, each with three
- * levels, and paint and helmet colours. Prices are in credits. A delivery pays
+ * levels, and paint and helmet colours. Prices are in rupees. A delivery pays
  * about 60–200, so the first upgrade is a couple of orders away and the whole
  * lot is about 40.
  */

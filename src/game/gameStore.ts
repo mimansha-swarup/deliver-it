@@ -339,7 +339,7 @@ function refreshDaily(state: GameState): Partial<GameState> {
 
 /**
  * Counts something the rider did towards the career and today's daily challenges, and
- * pays out whatever that finishes: a chapter's credits and paint, or the
+ * pays out whatever that finishes: a chapter's rupees and paint, or the
  * shift's bonus, which grows with the streak.
  */
 function applyEvent(state: GameState, event: CareerEvent): Partial<GameState> {
@@ -367,7 +367,7 @@ function applyEvent(state: GameState, event: CareerEvent): Partial<GameState> {
       credits += shift.credits
       xp += shift.xp
       const days = streak.days > 1 ? ` ${streak.days} days in a row, sakkath!` : ''
-      messages = addMessages(messages, [`Daily challenges done! +${shift.credits} credits sent.${days} Nale sigona!`])
+      messages = addMessages(messages, [`Daily challenges done! +₹${shift.credits} sent.${days} Nale sigona!`])
     }
   }
 
@@ -414,7 +414,7 @@ function tallyDelivery(shift: ShiftStats, reward: Reward, earned: number, onTime
     if (progress >= goal.target) {
       goal = { ...goal, state: 'met' }
       bonus = goal.bonus
-      goalMessage = `Shift goal done: ${goal.text}! +${bonus} credits bonus. Sakkath!`
+      goalMessage = `Shift goal done: ${goal.text}! +₹${bonus} bonus. Sakkath!`
     }
   }
   const moment = bestMomentOf(reward, onTimeSeconds)
@@ -705,7 +705,7 @@ export const useGameStore = create<GameState>()(
       // The welcome and the goal are this shift's: they replace the last shift's rather than pile up.
       const lines = [
         { tag: 'online', text: `You're online, maga. ${period.label} now. Orders coming!` },
-        { tag: 'goal', text: `Shift goal (optional): ${goal.text}. Bonus ${goal.bonus} credits.` },
+        { tag: 'goal', text: `Shift goal (optional): ${goal.text}. Bonus ₹${goal.bonus}.` },
       ]
       if (rate !== null && rate < LOW_ACCEPTANCE) lines.push({ tag: 'acceptance', text: `Your acceptance is ${Math.round(rate * 100)}%. Take a few more, okay? Orders come slower when it's low.` })
       return {
@@ -724,7 +724,7 @@ export const useGameStore = create<GameState>()(
       let { credits, ratings, shift } = state
       const changes: Partial<GameState> = {}
       if (hasOrderOn(state) && choice === 'cancel') {
-        // Cancelling costs credits and counts as a low rating, as on a real delivery app.
+        // Cancelling costs rupees and counts as a low rating, as on a real delivery app.
         credits = Math.max(0, credits - CANCEL_PENALTY.credits)
         ratings = [...ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT)
         if (shift) shift = { ...shift, cancelled: shift.cancelled + 1, earnings: shift.earnings - CANCEL_PENALTY.credits }
@@ -747,7 +747,7 @@ export const useGameStore = create<GameState>()(
         askingOffline: false,
         offlineAfterOrder: false,
         lastReward: null,
-        messages: addMessages(state.messages, [choice === 'cancel' ? `Order cancelled. −${CANCEL_PENALTY.credits} credits, and it hurts the rating. You're offline now.` : 'Offline. Good shift, maga! Rest well.']),
+        messages: addMessages(state.messages, [choice === 'cancel' ? `Order cancelled. −₹${CANCEL_PENALTY.credits}, and it hurts the rating. You're offline now.` : 'Offline. Good shift, maga! Rest well.']),
       }
     }),
 
@@ -877,7 +877,7 @@ export const useGameStore = create<GameState>()(
         ratings: [...state.ratings, CANCEL_PENALTY.stars].slice(-RATINGS_KEPT),
         fiveStarStreak: 0,
         shift: state.shift ? { ...state.shift, cancelled: state.shift.cancelled + 1, earnings: state.shift.earnings - CANCEL_PENALTY.credits } : state.shift,
-        messages: addMessages(state.messages, [`${customer} cancelled, maga: kept waiting too long. −${CANCEL_PENALTY.credits} credits, and it counts as ${CANCEL_PENALTY.stars}★. Next one, bega!`]),
+        messages: addMessages(state.messages, [`${customer} cancelled, maga: kept waiting too long. −₹${CANCEL_PENALTY.credits}, and it counts as ${CANCEL_PENALTY.stars}★. Next one, bega!`]),
       }
     }),
   postChat: (from, name, text, urgent = false, always = false) =>

@@ -7,7 +7,7 @@ import { averageRating, RATINGS_KEPT } from '../missions/orderStory'
 import { MARKET, VEHICLES } from '../vehicle/vehicleCatalog'
 
 /*
- * Debug unlocks, in the phone's Settings with `?debug=1`: set the level, the rating and the credits,
+ * Debug unlocks, in the phone's Settings with `?debug=1`: set the level, the rating and the rupees,
  * and own every vehicle. All of it lands in the debug save (game/saveKeys.ts), never the real one.
  */
 
@@ -50,7 +50,7 @@ export function DebugPanel() {
         <input type="number" min={1} max={5} step={0.1} value={rating === null ? 5 : Number(rating.toFixed(1))} onChange={(event) => setRating(Number(event.target.value))} />
       </label>
       <label className="debug-field">
-        Credits
+        Rupees
         <input type="number" min={0} step={100} value={credits} onChange={(event) => setCredits(Number(event.target.value))} />
       </label>
       <button type="button" className="app-wide-button" onClick={(event) => { unlockAll(); event.currentTarget.blur() }}>

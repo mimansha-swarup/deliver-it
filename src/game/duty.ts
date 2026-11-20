@@ -67,7 +67,7 @@ export function acceptanceRate(answers: boolean[]): number | null {
   return answers.filter(Boolean).length / answers.length
 }
 
-/** Cancelling an accepted order: credits taken, and the star rating it counts as. */
+/** Cancelling an accepted order: rupees taken, and the star rating it counts as. */
 export const CANCEL_PENALTY = { credits: 40, stars: 1 }
 
 export type ShiftGoalKind = 'earn' | 'orders' | 'fiveStars' | 'clean'
@@ -99,7 +99,7 @@ export function createShiftGoal(hours: number, level: number, random: () => numb
   const roll = random()
   if (roll < 0.3) {
     const target = Math.round((350 + level * 50) / 50) * 50
-    return { kind: 'earn', text: `Earn ${target} credits this shift`, target, progress: 0, bonus: 120, state: 'open' }
+    return { kind: 'earn', text: `Earn ₹${target} this shift`, target, progress: 0, bonus: 120, state: 'open' }
   }
   if (roll < 0.6) {
     // Two game hours on the slowed clock: about ten real minutes.

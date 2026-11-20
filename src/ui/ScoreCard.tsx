@@ -105,7 +105,7 @@ export function DailyChallenge() {
     <section className="phone-sheet daily-challenge" data-done={done}>
       <p className="phone-sheet-top">
         <span className="phone-objective">Daily challenge</span>
-        <span className="today-streak">{done ? 'Done ✓' : `+${CHALLENGE_BONUS} credits`}</span>
+        <span className="today-streak">{done ? 'Done ✓' : `+₹${CHALLENGE_BONUS}`}</span>
       </p>
       <p className="daily-challenge-text">{challenge.text}</p>
       <span className="phone-level-bar">

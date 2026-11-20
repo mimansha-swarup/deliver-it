@@ -212,35 +212,35 @@ function DeliveryComplete() {
       <LevelUp />
       <dl>
         <dt>{reward.kind === 'double' ? 'Delivery reward × 2' : 'Delivery reward'}</dt>
-        <dd>+{reward.baseCredits} credits</dd>
+        <dd>+₹{reward.baseCredits}</dd>
         {reward.distanceCredits > 0 && (
           <>
             <dt>Distance bonus</dt>
-            <dd>+{reward.distanceCredits} credits</dd>
+            <dd>+₹{reward.distanceCredits}</dd>
           </>
         )}
         <dt>{reward.kind === 'rush' ? 'Rush bonus' : 'On-time bonus'}</dt>
-        <dd>{reward.onTime ? `+${reward.onTimeCredits} credits` : 'Missed'}</dd>
+        <dd>{reward.onTime ? `+₹${reward.onTimeCredits}` : 'Missed'}</dd>
         {reward.peakCredits > 0 && (
           <>
             <dt>{reward.peakLabel}</dt>
-            <dd>+{reward.peakCredits} credits</dd>
+            <dd>+₹{reward.peakCredits}</dd>
           </>
         )}
         {reward.nightCredits > 0 && (
           <>
             <dt>Night shift</dt>
-            <dd>+{reward.nightCredits} credits</dd>
+            <dd>+₹{reward.nightCredits}</dd>
           </>
         )}
         <dt>Clean ride</dt>
         <dd>
           {reward.crashes === 0
-            ? `+${reward.cleanRideCredits} credits`
+            ? `+₹${reward.cleanRideCredits}`
             : `${reward.crashes} crash${reward.crashes > 1 ? 'es' : ''}`}
         </dd>
         <dt>Tip from {reward.customer}</dt>
-        <dd>{reward.tipCredits > 0 ? `+${reward.tipCredits} credits` : 'No tip'}</dd>
+        <dd>{reward.tipCredits > 0 ? `+₹${reward.tipCredits}` : 'No tip'}</dd>
         <dt>Experience</dt>
         <dd>+{reward.xp} XP</dd>
       </dl>

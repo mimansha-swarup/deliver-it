@@ -56,7 +56,7 @@ function Upgrades({ canBuy }: { canBuy: boolean }) {
               disabled={maxed || credits < price || !canBuy}
               onClick={blurAfter(() => buyUpgrade(kind))}
             >
-              {maxed ? 'Maxed' : `${price}`}
+              {maxed ? 'Maxed' : `₹${price}`}
             </button>
           </li>
         )
@@ -97,7 +97,7 @@ function Colours({
               <span className="garage-swatch" style={{ background: color }} />
               <span className="garage-colour-name">{name}</span>
               <span className="garage-colour-state">
-                {inUse ? 'In use' : isOwned ? 'Use' : locked ? 'Career reward' : price}
+                {inUse ? 'In use' : isOwned ? 'Use' : locked ? 'Career reward' : `₹${price}`}
               </span>
             </button>
           </li>
@@ -131,7 +131,7 @@ export function Garage({ onClose, canBuy = true }: { onClose: () => void; canBuy
     <section className="phone-sheet phone-garage" aria-label="Garage">
       <header className="garage-header">
         <p className="phone-objective">Garage</p>
-        <p className="garage-credits">{credits} credits</p>
+        <p className="garage-credits">₹{credits}</p>
         <button type="button" className="garage-done" onClick={blurAfter(onClose)}>
           Done
         </button>

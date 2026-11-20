@@ -90,7 +90,7 @@ export const useToday = create<Today>()(
             stats.paid = true
             window.setTimeout(() => {
               useGameStore.setState((state) => ({ credits: state.credits + CHALLENGE_BONUS }))
-              useGameStore.getState().raviSays(`Daily challenge done: ${challenge.text}! +${CHALLENGE_BONUS} credits. Your score card is in the Deliver It app: share maadi!`)
+              useGameStore.getState().raviSays(`Daily challenge done: ${challenge.text}! +₹${CHALLENGE_BONUS}. Your score card is in the Deliver It app: share maadi!`)
             }, 2500)
           }
           set({ stats })

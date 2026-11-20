@@ -2109,6 +2109,11 @@ body,
   margin: 0;
 }
 
+/* A message from home asking for something (DutyUi.tsx' FamilyAskCard): the offer's card, with a warm edge so it isn't taken for an order. */
+.duty-offer[data-family] {
+  border-left: 4px solid #e8a33d;
+}
+
 .duty-offer-body {
   flex: 1;
   min-width: 0;

@@ -11085,3 +11085,45 @@ spread. Eight draw calls fewer.
 
 Not done: the amber lens on the ochre bus is hard to see until it flashes; a hatchback's cluster
 is mostly its own orange lens colour; the rider's own scooter is as it was.
+
+## 2026-11-21: Entry 230, rupees, and home asking for small things
+
+- **The money is rupees on the screen.** It was "credits" in most places and ₹ in some (the
+  wallet line, GaadiGo, the roadside top-up). Every amount shown is now ₹: the result card, offers,
+  the shift summary, the phone's apps, the Garage's prices, Ravi's and the app's messages. The
+  code's own names and the save keep `credits`, so saves carry on.
+- **Home asks for something small now and then** (`ASKS` in family.ts): the gas cylinder, a lab
+  record, the electricity bill, Ajji's medicine, an exam fee, a recharge, the festival shopping,
+  ₹120 to ₹600. It comes up where an order offer does, with the same ring and keys, for 30 seconds:
+  Send, or Later. After every third delivery, a little after the result card; never over an order
+  offer (it's put by until the next delivery), never when the wallet wouldn't have ₹150 left, never
+  while Ravi is owed. Sent, the family says thanks. Later, or left to run out, they managed, and say
+  so kindly; the same thing isn't asked twice. Nothing is lost either way: the family thread was
+  written as a reason and not a clock, and this keeps to that. It's apart from Kavya's fund.
+
+Checked in the game: the card, sending (₹1,000 to ₹650, the thanks), and Later (no cost, "we
+managed"). Not checked: one arriving by itself after three real deliveries, or an order offer
+arriving while one is up.
+
+## 2026-11-21: Entry 231, the phone's apps speak up
+
+The phone has eleven apps and a rider who never opens it finds none of them: the only thing that
+called them to it was a message. So each app now sends a notification at the moment it has
+something worth opening it for (`game/appNotes.ts`), shown above the phone like a message under
+the app's name, on the lock screen, and as a badge on the app's icon until it's opened. Clicking
+one opens that app.
+
+- Wallet: the first pay; then that money can be sent home.
+- Garage: the first upgrade that can be afforded; what a new level opened.
+- Maps: the tank under 30% (once a day).
+- GaadiGo: at level 2, bigger vehicles to rent.
+- Deliver It: today's challenge, on going online.
+- Namma spots and Awards: the first of each.
+- Radio: a minute and a half into the first ride. Camera: the first clear golden hour.
+
+Each once, one at a time, at least 40 s apart, never over an order offer or a hand-over; not in
+Explore. Kept on the device, apart from the main save.
+
+Checked in the game with a test note: it shows above the phone with a badge, opens the Garage when
+clicked, and the badge clears. The real triggers (first pay, low tank, a level, a spot, an award,
+going online) were not each played through.

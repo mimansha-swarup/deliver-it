@@ -97,7 +97,7 @@ export function TitleScreen() {
       <header className="title-top">
         {credits + xp > 0 && (
           <p className="title-welcome">
-            Welcome back. Level {levelFromXp(xp)}, {credits} credits
+            Welcome back. Level {levelFromXp(xp)}, ₹{credits}
           </p>
         )}
         <QualityPicker className="title-quality" />

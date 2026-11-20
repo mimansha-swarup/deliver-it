@@ -98,7 +98,7 @@ export function TodaySheet() {
       <p className="today-bonus">
         {daily.done
           ? `Done! Bonus paid. New goals tomorrow.`
-          : `Finish all three: +${bonus} credits, +${DAILY_BONUS.xp} XP`}
+          : `Finish all three: +₹${bonus}, +${DAILY_BONUS.xp} XP`}
       </p>
     </section>
     </>
