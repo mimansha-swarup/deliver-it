@@ -93,8 +93,16 @@ export type VehicleSpec = {
    */
   seat: { hip: [number, number, number]; lean: number; column: number; grip: [number, number, number]; foot: [number, number, number]; footDown: boolean; pedals: boolean; side: number }
   /** Paint that replaces the Garage's, for a vehicle that isn't the rider's own scooter. */
-  paint: string | null
+  paint: string | null  /**
+   * Set on a vehicle taken off the street ("Use any vehicle", game/borrow.ts), which isn't the
+   * rider's: its class. Its body is the traffic's own, drawn by the traffic; `id` is then only the
+   * owned vehicle it handles most like.
+   */
+  borrowed?: BorrowClass
 }
+
+/** The classes of vehicle on the street, each with one set of handling, size, sound and camera. */
+export type BorrowClass = 'twoWheeler' | 'auto' | 'car' | 'van' | 'bus' | 'tanker'
 
 export const VEHICLES: Record<VehicleId, VehicleSpec> = {
   scooter: {
@@ -163,3 +171,60 @@ export const MARKET: VehicleId[] = ['bicycle', 'ev', 'bike', 'trike', 'car', 'va
 
 /** The vehicle in use now, and whether the view is from its seat: read every frame by the body, sounds and camera. */
 export const liveVehicle = { spec: VEHICLES.scooter, cockpit: false }
+
+/**
+ * Any vehicle on the street, through the same framework as the rider's own: a preset for each class,
+ * built on the owned vehicle it's most like, with its own speed, weight, voice and camera. None has
+ * nitro, none carries orders, and none costs anything to run: they aren't the rider's.
+ */
+const borrowedFrom = (base: VehicleSpec, borrowed: BorrowClass, change: Partial<VehicleSpec>): VehicleSpec => ({
+  ...base,
+  ...change,
+  borrowed,
+  blurb: 'Borrowed off the street.',
+  feel: { ...base.feel, ...change.feel, nitro: false },
+  capacity: 0,
+  costPerKm: 0,
+  unlocks: [],
+  rentHour: 0,
+  rentDay: 0,
+  price: 0,
+  cockpit: null,
+  paint: null,
+})
+
+export const BORROWED: Record<BorrowClass, VehicleSpec> = {
+  twoWheeler: borrowedFrom(VEHICLES.bike, 'twoWheeler', {
+    name: 'Borrowed two-wheeler', kind: 'Commuter bike', drive: 'Petrol · borrowed', topSpeed: 72, pull: 1.05, turn: 0.85, brake: 0.8,
+    engine: 'bike', horn: 'bike', camera: { distance: 1.05, height: 1, look: 1 },
+    // As the traffic's own riders sit on it: upright, hands on the bars.
+    seat: { hip: [0, 0.98, -0.34], lean: 0.34, column: 0.44, grip: [0.31, 1.08, -0.1], foot: [0.18, 0.44, -0.08], footDown: true, pedals: false, side: 0 },
+  }),
+  auto: borrowedFrom(VEHICLES.trike, 'auto', {
+    name: 'Borrowed auto', kind: 'Auto-rickshaw', drive: 'CNG · borrowed', topSpeed: 50, pull: 0.72, turn: 0.82, grip: 1.05, brake: 0.62, lean: -0.34,
+    feel: { topEnd: 0.6, response: 3.2, coast: 1.3, nitro: false }, engine: 'auto', horn: 'auto', camera: { distance: 1.4, height: 1.3, look: 1.15 },
+  }),
+  car: borrowedFrom(VEHICLES.car, 'car', {
+    name: 'Borrowed car', kind: 'Car', drive: 'Petrol · borrowed', topSpeed: 84, pull: 0.86, turn: 0.62, brake: 0.85,
+    engine: 'car', horn: 'hatchback', camera: { distance: 1.6, height: 1.3, look: 1.15 },
+  }),
+  van: borrowedFrom(VEHICLES.van, 'van', {
+    name: 'Borrowed people-carrier', kind: 'People-carrier', drive: 'Diesel · borrowed', topSpeed: 76, pull: 0.62, turn: 0.54, brake: 0.62, lean: -0.2,
+    feel: { topEnd: 0.85, response: 2.4, coast: 1, nitro: false }, engine: 'suv', horn: 'hatchback', camera: { distance: 1.8, height: 1.5, look: 1.3 },
+  }),
+  bus: borrowedFrom(VEHICLES.van, 'bus', {
+    name: 'Borrowed city bus', kind: 'City bus', drive: 'Diesel · borrowed', topSpeed: 58, pull: 0.34, turn: 0.3, grip: 1.25, brake: 0.4, lean: -0.3,
+    feel: { topEnd: 0.6, response: 1.1, coast: 0.7, nitro: false }, engine: 'diesel', horn: 'bus', camera: { distance: 3.6, height: 2.9, look: 2.1 },
+  }),
+  // No water tanker runs in this city's traffic yet: its preset is here for when one does.
+  tanker: borrowedFrom(VEHICLES.van, 'tanker', {
+    name: 'Borrowed water tanker', kind: 'Water tanker', drive: 'Diesel · borrowed', topSpeed: 52, pull: 0.3, turn: 0.32, grip: 1.2, brake: 0.36, lean: -0.34,
+    feel: { topEnd: 0.55, response: 1, coast: 0.6, nitro: false }, engine: 'diesel', horn: 'bus', camera: { distance: 3.2, height: 2.7, look: 2 },
+  }),
+}
+
+/** A street vehicle's preset, at that vehicle's own size on the road (half its width, half its length), so walls and traffic meet its real shape. */
+export function borrowedSpec(kind: BorrowClass, radius: number, halfLength: number): VehicleSpec {
+  const base = BORROWED[kind]
+  return { ...base, size: { ...base.size, width: radius * 2, length: halfLength * 2, cab: kind !== 'twoWheeler' } }
+}
