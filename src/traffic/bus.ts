@@ -76,8 +76,9 @@ export function createBusGeometry(): THREE.BufferGeometry {
     slab([W - 0.42, 0.72, L], [W - 0.12, 0.9, L + 0.03], LAMP),
     // The back: bumper, tail lamps and the engine grille.
     slab([-W - 0.02, 0.35, -L - 0.08], [W + 0.02, 0.62, -L + 0.1], DARK),
-    slab([-W + 0.1, 0.75, -L - 0.03], [-W + 0.3, 1.15, -L], TAIL),
-    slab([W - 0.3, 0.75, -L - 0.03], [W - 0.1, 1.15, -L], TAIL),
+    // Small square lamps, low, as a city bus has: they light with the rest of the traffic's (vehicleLamps.ts).
+    slab([-W + 0.12, 0.72, -L - 0.03], [-W + 0.3, 0.9, -L], TAIL),
+    slab([W - 0.3, 0.72, -L - 0.03], [W - 0.12, 0.9, -L], TAIL),
     slab([-0.6, 0.7, -L - 0.02], [0.6, 1.2, -L], DARK),
   ]
   // Window pillars down both sides.

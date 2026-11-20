@@ -43,11 +43,11 @@ import {
   createFarBikeGeometry,
   createParkedCarGeometry,
   createParkedScooterGeometry,
-  createVehicleGlowGeometry,
 } from './vehicleShapes'
 import { CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
 import { groundLift } from '../world/groundLift'
 import { seeThrough } from '../camera/seeThrough'
+import { addLampGlow, lampUniforms, withLamps } from './vehicleLamps'
 import { createMotorcycleGeometry, createScooterGeometry } from './twoWheelers'
 import { createProxyGeometry } from './vehicleProxies'
 import { createPlateAtlas, createPlateGeometry, plateCell, showPlateCell, type PlateFit } from './numberPlates'
@@ -132,7 +132,15 @@ type Moving = {
   hidden?: boolean
   /** A bike whose rider has been thrown off, so its seated rider isn't drawn. */
   riderOff?: boolean
+  /** What its lamps are doing (vehicleLamps.ts): on the brakes, indicating a side (1 left, -1 right), hazard lamps on. */
+  braking?: boolean
+  indicator?: -1 | 0 | 1
+  hazard?: boolean
 }
+
+/** Indicators flash this many times a second, and are lit for this share of each flash. */
+const BLINK_RATE = 1.5
+const BLINK_ON = 0.55
 
 const transform = new THREE.Object3D()
 
@@ -217,7 +225,7 @@ const NOWHERE = 5000
  * other level shrunk to nothing, which still cost all their corners: with 22,000-triangle near cars
  * that was most of a million triangles for traffic nowhere near.
  */
-function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: number, isSeatedRider: boolean, from: number, palette: string[]) {
+function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: number, isSeatedRider: boolean, from: number, palette: string[], signal?: THREE.InstancedBufferAttribute | null, time = 0) {
   const color = nearColor
   let drawn = 0
   for (const item of items) {
@@ -232,11 +240,17 @@ function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: num
     transform.updateMatrix()
     instances.setMatrixAt(drawn, transform.matrix)
     instances.setColorAt(drawn, color.set(palette[Math.floor(item.tint * palette.length * 0.999)]))
+    if (signal) {
+      // Its lamps: the brakes, and whichever indicators are lit at this moment. Each flashes in its own time, as no two cars' ever keep step.
+      const lit = (item.indicator || item.hazard) && (time * BLINK_RATE + item.tint * 7) % 1 < BLINK_ON
+      signal.setXYZ(drawn, item.braking ? 1 : 0, lit && (item.hazard || item.indicator === 1) ? 1 : 0, lit && (item.hazard || item.indicator === -1) ? 1 : 0)
+    }
     drawn++
   }
   instances.count = drawn
   instances.instanceMatrix.needsUpdate = true
   if (instances.instanceColor) instances.instanceColor.needsUpdate = true
+  if (signal) signal.needsUpdate = true
 }
 
 function updateReflection(material: THREE.MeshStandardMaterial) {
@@ -275,6 +289,7 @@ function MovingInstances({
   nearestOnly = false,
   from = 0,
   cloth = false,
+  lamps = false,
 }: {
   items: Moving[]
   geometry: THREE.BufferGeometry
@@ -293,13 +308,23 @@ function MovingInstances({
   from?: number
   /** Cloth, not paint: matte, with only the parts marked `_paint` (a jacket) taking the copy's colour. */
   cloth?: boolean
+  /** A vehicle whose shape has its lamps marked (vehicleLamps.ts' `withLamps`): they glow, each copy's by what it's doing. */
+  lamps?: boolean
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
   const candidates = useRef<{ items: Moving[] | null; frames: number }>({ items: null, frames: 0 })
   useInstanceColors(mesh, items, palette)
+  // Each copy's lamps (`aSignal`), kept on the shape, which is this vehicle's alone.
+  const signal = useMemo(() => {
+    if (!lamps || items.length === 0) return null
+    const attribute = new THREE.InstancedBufferAttribute(new Float32Array(items.length * 3), 3)
+    attribute.setUsage(THREE.DynamicDrawUsage)
+    geometry.setAttribute('aSignal', attribute)
+    return attribute
+  }, [lamps, items.length, geometry])
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (!mesh.current) return
     if (nearestOnly && reach !== undefined) {
       const near = candidates.current
@@ -309,7 +334,7 @@ function MovingInstances({
       }
       writeNearest(mesh.current, near.items, reach, palette, from)
     }
-    else writePacked(mesh.current, items, reach ?? Infinity, seatedRider, from, palette)
+    else writePacked(mesh.current, items, reach ?? Infinity, seatedRider, from, palette, signal, clock.elapsedTime)
     if (material.current) updateReflection(material.current)
   })
 
@@ -332,7 +357,7 @@ function MovingInstances({
         // caught a different bit of sky in every dent, which read as speckled paint.
         roughness={cloth ? 0.85 : baked ? 0.5 : 0.45}
         metalness={cloth ? 0 : baked ? 0.15 : 0.1}
-        onBeforeCompile={baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
+        onBeforeCompile={lamps ? LAMPS_SEEN_THROUGH : baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
       />
     </instancedMesh>
   )
@@ -348,159 +373,6 @@ function LodCamera() {
     lodCamera.z = camera.position.z
   })
   return null
-}
-
-/** Headlights and tail lights, which fade in after dark. */
-function VehicleLights({ items, geometry }: { items: Moving[]; geometry: THREE.BufferGeometry }) {
-  const mesh = useRef<THREE.InstancedMesh>(null)
-  const material = useRef<THREE.MeshBasicMaterial>(null)
-
-  useFrame(() => {
-    if (!mesh.current || !material.current) return
-    writeTransforms(mesh.current, items)
-    material.current.opacity = liveSky.look.night
-    mesh.current.visible = liveSky.look.night > 0.01
-  })
-
-  return (
-    <instancedMesh
-      key={items.length}
-      ref={mesh}
-      args={[geometry, undefined, items.length]}
-      frustumCulled={false}
-    >
-      <meshBasicMaterial
-        ref={material}
-        vertexColors
-        transparent
-        side={THREE.DoubleSide}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        fog={false}
-        polygonOffset
-        polygonOffsetFactor={-3}
-        polygonOffsetUnits={-3}
-      />
-    </instancedMesh>
-  )
-}
-
-/**
- * Where each kind of vehicle's lamps are: its front and back ends, how far apart a pair is (0 for
- * one in the middle), their height, and how far out from the middle its indicators are, in metres.
- */
-const LAMPS: Record<VehicleKind, { front: number; back: number; apart: number; height: number; indicator: number }> = {
-  sedan: { front: 2.1, back: -2.1, apart: 0.56, height: 0.7, indicator: 0.72 },
-  hatchback: { front: 1.8, back: -1.8, apart: 0.52, height: 0.72, indicator: 0.68 },
-  suv: { front: 2.3, back: -2.3, apart: 0.62, height: 0.9, indicator: 0.78 },
-  mpv: { front: 2, back: -2, apart: 0.58, height: 0.8, indicator: 0.74 },
-  auto: { front: 1.3, back: -1.3, apart: 0, height: 0.72, indicator: 0.45 },
-  bike: { front: 0.66, back: -0.9, apart: 0, height: 0.9, indicator: 0.2 },
-  bus: { front: 5.6, back: -5.6, apart: 0.85, height: 0.82, indicator: 1.08 },
-}
-
-/** Brake lamps and indicators are drawn on vehicles within this of the camera, in metres. */
-const SIGNAL_LAMP_REACH = 90
-/** Indicators flash this many times a second, and are lit for this share of each flash. */
-const BLINK_RATE = 1.5
-const BLINK_ON = 0.55
-/** Bright enough to read on a sunlit car by day; turned down this much at night, when they'd glare. */
-const BRAKE_COLOR = [2.6, 0.14, 0.07]
-const INDICATOR_COLOR = [1.9, 0.9, 0.05]
-const NIGHT_DIMMING = 0.45
-
-/** One lamp: a round glow facing along the vehicle, bright in the middle and fading to nothing at its edge. */
-function createLampGeometry(): THREE.BufferGeometry {
-  const SIDES = 10
-  const CORE = 0.07
-  const HALO = 0.19
-  const positions: number[] = []
-  const colors: number[] = []
-  const add = (radius: number, step: number, light: number) => {
-    const angle = (step / SIDES) * Math.PI * 2
-    positions.push(Math.cos(angle) * radius, Math.sin(angle) * radius, 0)
-    colors.push(light, light, light)
-  }
-  for (let step = 0; step < SIDES; step++) {
-    positions.push(0, 0, 0)
-    colors.push(1, 1, 1)
-    add(CORE, step, 1)
-    add(CORE, step + 1, 1)
-    add(CORE, step, 1)
-    add(HALO, step, 0)
-    add(HALO, step + 1, 0)
-    add(CORE, step, 1)
-    add(HALO, step + 1, 0)
-    add(CORE, step + 1, 1)
-  }
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  return geometry
-}
-
-const lampColor = new THREE.Color()
-
-/**
- * What the traffic is about to do, shown as its drivers show it: brake lamps while a vehicle slows
- * or stands, and an indicator flashing for the turn it will take at the junction ahead
- * (junctions.ts). All of them are one small shape drawn once per lit lamp, in one draw call for
- * the whole street: only vehicles near the camera, and only the lamps that are on.
- */
-function SignalLamps({ items }: { items: Vehicle[] }) {
-  const mesh = useRef<THREE.InstancedMesh>(null)
-  const lamp = useMemo(() => createLampGeometry(), [])
-  useEffect(() => () => lamp.dispose(), [lamp])
-
-  useFrame(({ clock }) => {
-    const instances = mesh.current
-    if (!instances) return
-    const dimming = 1 - NIGHT_DIMMING * liveSky.look.night
-    let drawn = 0
-    const place = (item: Vehicle, ground: number, x: number, z: number, [r, g, b]: number[]) => {
-      const sin = Math.sin(item.heading)
-      const cos = Math.cos(item.heading)
-      // Across the vehicle is its left, which is (cos, -sin) when it faces (sin, cos).
-      transform.position.set(item.x + cos * x + sin * z, ground + LAMPS[item.kind].height, item.z - sin * x + cos * z)
-      transform.rotation.set(0, item.heading, 0)
-      transform.scale.setScalar(1)
-      transform.updateMatrix()
-      instances.setMatrixAt(drawn, transform.matrix)
-      instances.setColorAt(drawn, lampColor.setRGB(r * dimming, g * dimming, b * dimming))
-      drawn++
-    }
-    for (const item of items) {
-      // Not one being thrown about or lying on its side, nor one the player has taken.
-      if (item.lane === -1 || item.rotation || item.fallen || item.taken || Math.abs(item.x) > NOWHERE) continue
-      if (!item.braking && !item.indicator && !item.hazard) continue
-      if (cameraDistance(item.x, item.z) > SIGNAL_LAMP_REACH) continue
-      const { front, back, apart, indicator } = LAMPS[item.kind]
-      const ground = (item.deck ? ROAD_HEIGHT : Math.max(ROAD_HEIGHT, groundLift.at(item.x, item.z))) + item.lift
-      if (item.braking) {
-        if (apart === 0) place(item, ground, 0, back - 0.07, BRAKE_COLOR)
-        else for (const side of [-apart, apart]) place(item, ground, side, back - 0.07, BRAKE_COLOR)
-      }
-      // Each vehicle flashes in its own time, as no two cars' indicators ever keep step.
-      // Hazard lamps (a breakdown) are both sides at once.
-      if ((item.indicator || item.hazard) && (clock.elapsedTime * BLINK_RATE + item.tint * 7) % 1 < BLINK_ON) {
-        for (const side of item.hazard ? [1, -1] : [item.indicator ?? 0]) {
-          place(item, ground, indicator * side, front + 0.07, INDICATOR_COLOR)
-          place(item, ground, indicator * side, back - 0.07, INDICATOR_COLOR)
-        }
-      }
-    }
-    instances.count = drawn
-    instances.instanceMatrix.needsUpdate = true
-    if (instances.instanceColor) instances.instanceColor.needsUpdate = true
-  })
-
-  if (items.length === 0) return null
-  return (
-    // Up to six lamps lit on each: two brake lamps, and an indicator front and back, on both sides for hazards.
-    <instancedMesh key={items.length} ref={mesh} args={[lamp, undefined, items.length * 6]} frustumCulled={false}>
-      <meshBasicMaterial vertexColors transparent side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} polygonOffset polygonOffsetFactor={-4} polygonOffsetUnits={-4} />
-    </instancedMesh>
-  )
 }
 
 /** Only vehicles this close to the rider can get one of the real headlights, in metres. */
@@ -806,7 +678,13 @@ const INDOOR_GLOW = 0.62
 // People and traffic give way to the camera's view of the rider on foot (camera/seeThrough.ts).
 const WALKING_SEEN_THROUGH = seeThrough((shader) => addWalking(shader))
 const WALKING_INDOORS_SEEN_THROUGH = seeThrough((shader) => addWalkingIndoors(shader))
+/** A far-away stand-in with plain tail and head lamps. */
+const farWithLamps = (geometry: THREE.BufferGeometry, kind: VehicleKind) => withLamps(geometry, kind, true)
 const PAINT_SEEN_THROUGH = seeThrough(tintPaintOnly)
+const LAMPS_SEEN_THROUGH = seeThrough((shader) => {
+  tintPaintOnly(shader)
+  addLampGlow(shader)
+})
 const SEEN_THROUGH = seeThrough()
 
 function addWalkingIndoors(shader: Parameters<typeof addWalking>[0]) {
@@ -1045,18 +923,20 @@ export function Traffic({
   // The bus is built in code (bus.ts), so it needs freeing.
   const busShape = useMemo(() => createBusGeometry(), [])
   useEffect(() => () => busShape.dispose(), [busShape])
+  // Each with its lamps marked, and added where the model has none (vehicleLamps.ts): copies, so they need freeing.
   const shapes = useMemo(
     () => ({
-      sedan: getModel(scene, 'sedan'),
-      hatchback: getModel(scene, 'hatchback'),
-      suv: getModel(scene, 'suv'),
-      mpv: getModel(scene, 'mpv'),
-      auto: getModel(scene, 'auto'),
-      bike: getModel(yamaha, 'bike'),
-      bus: busShape,
+      sedan: withLamps(getModel(scene, 'sedan'), 'sedan'),
+      hatchback: withLamps(getModel(scene, 'hatchback'), 'hatchback'),
+      suv: withLamps(getModel(scene, 'suv'), 'suv'),
+      mpv: withLamps(getModel(scene, 'mpv'), 'mpv'),
+      auto: withLamps(getModel(scene, 'auto'), 'auto'),
+      bike: withLamps(getModel(yamaha, 'bike'), 'bike'),
+      bus: withLamps(busShape, 'bus'),
     }),
     [scene, yamaha, busShape],
   )
+  useEffect(() => () => Object.values(shapes).forEach((geometry) => geometry.dispose()), [shapes])
   const wheels = useMemo(
     () => ({
       sedan: getWheels(scene, 'sedan'),
@@ -1084,20 +964,13 @@ export function Traffic({
     }),
     [scene],
   )
-  const lights = useMemo(
-    () => ({
-      sedan: createVehicleGlowGeometry(2.1, -2.1, 0.56, 0.7),
-      hatchback: createVehicleGlowGeometry(1.8, -1.8, 0.52, 0.72),
-      suv: createVehicleGlowGeometry(2.3, -2.3, 0.62, 0.9),
-      mpv: createVehicleGlowGeometry(2, -2, 0.58, 0.8),
-      auto: createVehicleGlowGeometry(1.3, -1.3, 0, 0.72),
-      bike: createVehicleGlowGeometry(0.66, -0.9, 0, 0.9),
-      bus: createVehicleGlowGeometry(5.6, -5.6, 0.85, 0.82),
-    }),
-    [],
-  )
   // Two of the three two-wheeler shapes are built in code (twoWheelers.ts).
-  const bikeShapes = useMemo(() => [shapes.bike, createScooterGeometry(), createMotorcycleGeometry()], [shapes])
+  const bikeShapes = useMemo(() => {
+    const built = [createScooterGeometry(), createMotorcycleGeometry()]
+    const lit = built.map((geometry) => withLamps(geometry, 'bike'))
+    built.forEach((geometry) => geometry.dispose())
+    return [shapes.bike, ...lit]
+  }, [shapes])
   const bikePlates = useMemo(() => bikeShapes.map((shape) => createPlateGeometry(shape, PLATES.bike)), [bikeShapes])
   useEffect(() => () => {
     bikeShapes.slice(1).forEach((geometry) => geometry.dispose())
@@ -1111,7 +984,7 @@ export function Traffic({
       Object.fromEntries(
         VEHICLES.map(({ kind }) => [
           kind,
-          kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(yamaha, 'bike') : createParkedCarGeometry(scene, kind, true),
+          farWithLamps(kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(yamaha, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
         ]),
       ) as Record<VehicleKind, THREE.BufferGeometry>,
     [shapes, scene, yamaha],
@@ -1133,10 +1006,9 @@ export function Traffic({
   useEffect(
     () => () => {
       Object.values(drawn).forEach((geometry) => geometry.dispose())
-      Object.values(lights).forEach((geometry) => geometry.dispose())
       women.forEach((woman) => woman.dispose())
     },
-    [drawn, lights, women],
+    [drawn, women],
   )
 
   // "Use any vehicle" looks for one to take among the vehicles in play (game/borrow.ts).
@@ -1163,6 +1035,8 @@ export function Traffic({
     const rider = scooter.current
     // Busier at the rush hours, quiet at night (duty.ts).
     easeDensity(world, dayPeriod(liveSky.hours).traffic, delta)
+    // Traffic's lamps come up with the dark (vehicleLamps.ts).
+    lampUniforms.uLampNight.value = liveSky.look.night
     stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP))
     // Debug: the traffic, for checking from the console that no two vehicles overlap.
     if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: world.vehicles.slice(0, vehicles) }
@@ -1183,15 +1057,14 @@ export function Traffic({
             <group key={kind}>
               {bikeShapes.map((geometry, shape) => (
                 <group key={shape}>
-                  <MovingInstances items={byShape[shape]} geometry={geometry} palette={palette} castShadow={shadowSize > 0} baked reflection={reflection} reach={detail} />
+                  <MovingInstances items={byShape[shape]} geometry={geometry} palette={palette} castShadow={shadowSize > 0} baked lamps reflection={reflection} reach={detail} />
                   <NumberPlates items={byShape[shape]} geometry={bikePlates[shape]} commercial={false} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
                 </group>
               ))}
               <MovingInstances items={items} geometry={drawn.rider} palette={JACKET_COLORS} castShadow={shadowSize > 0} reflection={reflection} seatedRider cloth reach={detail} />
-              <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked reflection={reflection} from={detail} />
+              <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked lamps reflection={reflection} from={detail} />
               {/* Only the model has separate wheels to spin. The built shapes carry theirs. */}
               <VehicleWheels items={byShape[0]} wheels={wheels.bike} reach={detail} />
-              <VehicleLights items={items} geometry={lights.bike} />
             </group>
           )
         }
@@ -1204,14 +1077,14 @@ export function Traffic({
               palette={palette}
               castShadow={shadowSize > 0}
               baked
+              lamps
               reflection={reflection}
               reach={near}
             />
-            <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked reflection={reflection} from={near} />
+            <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked lamps reflection={reflection} from={near} />
             {/* The bus's wheels are part of its shape. */}
             {kind !== 'bus' && <VehicleWheels items={items} wheels={wheels[kind]} reach={detail} />}
             <NumberPlates items={items} geometry={plates[kind]} commercial={PLATES[kind].commercial} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
-            <VehicleLights items={items} geometry={lights[kind]} />
           </group>
         )
       })}
@@ -1242,7 +1115,6 @@ export function Traffic({
       {thrownRiders.length > 0 && <People items={thrownRiders} body={bodies[0]} palette={BIKE_COLORS} ground={ROAD_HEIGHT} />}
       {/* Drivers who have got out of a vehicle the player took ("Use any vehicle"). */}
       <People items={world.drivers} body={bodies[0]} ground={ROAD_HEIGHT} />
-      <SignalLamps items={inPlay} />
       <CarHeadlights items={inPlay} count={carLights} />
     </>
   )

@@ -11051,3 +11051,37 @@ stands in the way. Frame benchmark, this against the commit before, back to back
 slower. It rides and doesn't walk, so the see-through's own cost on foot isn't in it.
 
 New clip: `clips/walk-to-dark-store.mp4`, 21 s, the fades included, no HUD.
+
+## 2026-11-20: Entry 229, traffic's lamps are part of the vehicles
+
+Reported: tail and brake lights looked stuck on, large flat pinkish octagons floating behind cars
+and buses. They were: separate discs drawn over each vehicle (the night glow, and entry 222's
+brake and indicator lamps), which neither tilted nor fell over with it, and bright enough for the
+picture's tone curve to turn their red pink.
+
+- **The discs are gone**: the night glow shapes (seven draws) and the brake and indicator lamps
+  (one). `createVehicleGlowGeometry` with them.
+- **Lamps are corners of the vehicle's own shape** (`vehicleLamps.ts`). Each shape carries a
+  number per corner, `aLamp`. The four cars' tail and head clusters and the bus's lamps are the
+  models' own, found by where they are on the body (their colours run from clear to near black, so
+  colour found a sedan's bumper reflectors and missed its lamps); a lamp is whole triangles only,
+  with corners of their own, and the outer part of a car's cluster is its indicator. An auto, the
+  two-wheelers and the far-away stand-ins get small lamps added, set into the body's surface where
+  it is at that spot: round on autos and two-wheelers, squares on the bus (whose tail lamps are now
+  small and low), plain ones far away.
+- **They glow through the body's own material** (`addLampGlow`): tail lamps a deep red, dim by day,
+  more at night, brighter on the brakes; headlamps warm white at night; indicators amber while
+  they flash, before and through a turn (hazards both sides). Each copy says what its lamps are
+  doing in an instanced attribute. Brightness stays under 1 for red and amber: brighter, and the
+  tone curve washes them to the pink they were.
+- They turn, tilt, tumble and change level of detail with the vehicle, being part of it.
+
+Looked at on the production build, from behind, by day and at night: sedan, hatchback, SUV, MPV,
+bus, auto, a motorcycle and a scooter; an SUV from the front at night; an auto and a hatchback
+mid-turn with the indicator lit. Pictures in `clips/lamps/` (not in git). Frame benchmark against
+the commit before, twice, once in each order: 19.8 against 16.1 ms on Low and then 16.4 against
+18.0; High 29.1 against 27.1 and then 27.0 against 28.6. No difference beyond the run-to-run
+spread. Eight draw calls fewer.
+
+Not done: the amber lens on the ochre bus is hard to see until it flashes; a hatchback's cluster
+is mostly its own orange lens colour; the rider's own scooter is as it was.
