@@ -1204,7 +1204,8 @@ body,
  * tint. Diwali marigold for the one button that matters and the Kannada name,
  * chilli red under the wordmark, and chalk for text.
  */
-.title-screen {
+.title-screen,
+.menu-skin {
   --title-ink: #0e1116;
   --title-chilli: #e8462a;
   --title-marigold: #f6b32b;
@@ -1215,7 +1216,10 @@ body,
   --title-kannada: #ffd36b;
   --title-left: clamp(20px, 6vw, 96px);
   --title-bottom: clamp(28px, 9vh, 96px);
+  font-family: 'Baloo Tamma 2', system-ui, sans-serif;
+}
 
+.title-screen {
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -1256,6 +1260,21 @@ body,
     linear-gradient(90deg, rgb(8 10 14 / 72%) 0%, rgb(8 10 14 / 38%) 32%, rgb(8 10 14 / 0%) 55%),
     linear-gradient(0deg, rgb(8 10 14 / 55%) 0%, rgb(8 10 14 / 0%) 35%);
   content: '';
+}
+
+/* Every other picture drifts sideways instead of in, so the screen is never still nor the same twice running. */
+.title-backdrop img[data-shown='true'][data-drift='across'] {
+  animation-name: title-drift-across;
+}
+
+@keyframes title-drift-across {
+  from {
+    transform: scale(1.1) translateX(-1.8%);
+  }
+
+  to {
+    transform: scale(1.1) translateX(1.8%);
+  }
 }
 
 @keyframes title-drift {
@@ -1382,9 +1401,7 @@ body,
 }
 
 .title-start:focus-visible,
-.title-help-button:focus-visible,
-.title-help button:focus-visible,
-.title-quality button:focus-visible {
+.title-help-button:focus-visible {
   outline: 3px solid var(--title-chalk);
   outline-offset: 3px;
 }
@@ -1419,54 +1436,11 @@ body,
   transition: transform 0.4s ease;
 }
 
-.title-top {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.title-welcome,
-.title-caption,
-.title-quality {
-  margin: 0;
-  border-radius: 999px;
-  background: rgb(8 10 14 / 62%);
-  backdrop-filter: blur(6px);
-}
-
-.title-welcome {
-  padding: 6px 14px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.title-quality {
-  padding: 5px 6px 5px 12px;
-  font-size: 13px;
-}
-
-.title-quality span {
-  color: var(--title-muted);
-}
-
-.title-quality button {
-  border-radius: 999px;
-  font-family: inherit;
-}
-
-.title-quality button[aria-pressed='true'] {
-  color: var(--title-on-marigold);
-  background: var(--title-marigold);
-}
-
 /* Says what's behind: a real screenshot, not concept art. */
 .title-caption {
   position: absolute;
   right: 20px;
-  bottom: 44px;
+  bottom: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1483,55 +1457,559 @@ body,
   background: var(--title-marigold);
 }
 
-.title-help {
+/*
+ * ---- The menus (ui/Menu.tsx): the main menu on the title screen, and the pause menu ----
+ * Big buttons in a column, the chosen one ringed and nudged right; panels for Settings, Controls and
+ * Credits on the right. Yellow, charcoal and cream, as the logo.
+ */
+.title-column {
   position: absolute;
-  right: var(--title-left);
-  bottom: var(--title-bottom);
-  width: min(380px, calc(100vw - 40px));
-  box-sizing: border-box;
-  padding: 18px 20px;
-  border-radius: 18px;
-  background: rgb(8 10 14 / 90%);
-  backdrop-filter: blur(8px);
+  top: clamp(12px, 3.5vh, 44px);
+  bottom: 38px;
+  left: var(--title-left);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(430px, calc(100vw - 2 * var(--title-left)));
+  pointer-events: none;
 }
 
-.title-help dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 16px;
-  margin: 0 0 14px;
-  font-size: 15px;
+.title-column > * {
+  pointer-events: auto;
 }
 
-.title-help dt {
-  font-weight: 700;
+/* The logo gives way to the menu on a short window: it's sized by the height as well as the width. */
+.title-brand .title-logo svg {
+  width: clamp(170px, min(25vw, 34vh), 400px);
 }
 
-.title-help dd {
+.title-brand .title-kannada {
+  margin: 0 0 4px;
+  line-height: 1.35;
+}
+
+.title-brand .title-lede {
+  max-width: none;
   margin: 0;
-  color: var(--title-muted);
+  font-size: clamp(16px, min(1.7vw, 2.6vh), 24px);
 }
 
-.title-help button {
+.title-screen nav.title-main {
+  position: static;
+  max-width: none;
+}
+
+.title-screen nav.title-main[hidden] {
+  display: none;
+}
+
+.title-screen nav.title-main .title-download {
+  margin-top: 12px;
+}
+
+.title-screen nav.title-main .title-facts {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.menu-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.menu-button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0 12px;
   width: 100%;
-  padding: 8px;
-  border: 0;
+  min-height: 46px;
+  padding: 7px 18px 5px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  color: var(--title-chalk);
+  background: rgb(8 10 14 / 58%);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition:
+    transform 0.12s ease,
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.menu-button-label {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.menu-button-detail {
+  grid-column: 1;
+  color: var(--title-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.menu-button kbd {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+/* The one the keyboard (or the mouse) is on. */
+.menu-button:focus,
+.menu-button:hover {
+  border-color: var(--title-chalk);
+  background: rgb(8 10 14 / 82%);
+  outline: none;
+  transform: translateX(6px);
+}
+
+.menu-button.menu-primary {
+  min-width: 0;
+  height: auto;
+  min-height: 62px;
+  overflow: visible;
+  color: var(--title-on-marigold);
+  background: var(--title-marigold);
+  box-shadow: 0 5px 0 var(--title-marigold-edge);
+  backdrop-filter: none;
+}
+
+.menu-button.menu-primary .menu-button-label {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.menu-button.menu-primary .menu-button-detail {
+  color: rgb(42 19 0 / 78%);
+  font-weight: 600;
+}
+
+.menu-button.menu-primary:focus,
+.menu-button.menu-primary:hover {
+  border-color: var(--title-chalk);
+  background: #ffc342;
+}
+
+.menu-button.menu-primary:active {
+  transform: translate(6px, 3px);
+  box-shadow: 0 2px 0 var(--title-marigold-edge);
+}
+
+.menu-button kbd,
+.menu-back kbd,
+.menu-plain kbd {
+  padding: 2px 8px;
+  border: 1px solid rgb(255 246 230 / 35%);
+  border-radius: 6px;
+  background: rgb(255 246 230 / 10%);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.menu-button.menu-primary kbd {
+  border-color: rgb(42 19 0 / 35%);
+  background: rgb(42 19 0 / 10%);
+}
+
+.menu-panel {
+  position: absolute;
+  top: clamp(12px, 5vh, 48px);
+  right: var(--title-left);
+  bottom: clamp(36px, 8vh, 72px);
+  display: flex;
+  flex-direction: column;
+  width: min(540px, 46vw);
+  box-sizing: border-box;
+  border-radius: 20px;
+  color: var(--title-chalk);
+  background: rgb(8 10 14 / 90%);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 45%);
+  backdrop-filter: blur(10px);
+  animation: menu-panel-in 0.22s ease both;
+}
+
+.menu-panel[data-wide] {
+  width: min(680px, 54vw);
+}
+
+@keyframes menu-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+
+.menu-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 10px 24px;
+  border-bottom: 1px solid rgb(255 246 230 / 12%);
+}
+
+.menu-panel-top h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.menu-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 24px 20px;
+  overflow-y: auto;
+}
+
+.menu-back,
+.menu-plain,
+.menu-danger,
+.menu-choice button {
+  padding: 7px 14px 5px;
+  border: 2px solid rgb(255 246 230 / 28%);
   border-radius: 10px;
   color: var(--title-chalk);
-  background: rgb(255 246 230 / 12%);
+  background: rgb(255 246 230 / 8%);
   font: inherit;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.title-note {
+.menu-danger {
+  border-color: rgb(232 70 42 / 70%);
+  color: #ffb4a6;
+}
+
+.menu-danger:hover {
+  background: rgb(232 70 42 / 22%);
+}
+
+.menu-plain:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.menu-group {
+  padding: 12px 0 4px;
+}
+
+.menu-group + .menu-group {
+  border-top: 1px solid rgb(255 246 230 / 10%);
+}
+
+.menu-group h3 {
+  margin: 0 0 8px;
+  color: var(--title-kannada);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.menu-group p {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.menu-note,
+.menu-group p.menu-note {
+  color: var(--title-muted);
+  font-size: 13px;
+}
+
+.menu-slider,
+.menu-choice {
+  display: grid;
+  grid-template-columns: minmax(120px, 11em) 1fr 3.2em;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.menu-slider output {
+  color: var(--title-muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.menu-slider input {
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--title-marigold);
+  cursor: pointer;
+}
+
+.menu-choice > div {
+  display: flex;
+  grid-column: 2 / span 2;
+  gap: 6px;
+}
+
+.menu-choice button {
+  flex: 1;
+}
+
+.menu-choice button[aria-pressed='true'] {
+  border-color: var(--title-marigold);
+  color: var(--title-on-marigold);
+  background: var(--title-marigold);
+}
+
+.menu-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.menu-switch input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--title-marigold);
+  cursor: pointer;
+}
+
+.menu-row,
+.menu-confirm-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.menu-confirm {
+  padding-top: 14px;
+}
+
+.menu-confirm p {
+  margin: 0 0 14px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.menu-confirm .menu-confirm-question {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* Whatever the keyboard is on inside a panel is ringed in cream. */
+.menu-panel button:focus-visible,
+.menu-panel input:focus-visible,
+.menu-panel a:focus-visible,
+.story button:focus-visible,
+.menu-footer a:focus-visible {
+  outline: 3px solid var(--title-chalk);
+  outline-offset: 2px;
+}
+
+.menu-panel a,
+.menu-footer a {
+  color: var(--title-kannada);
+}
+
+.menu-credits-maker {
+  margin: 14px 0 6px;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+/* The key list (ui/HelpOverlay.tsx) inside the Controls panel. */
+.menu-panel .key-list {
+  padding-top: 8px;
+}
+
+.menu-panel .key-list h3 {
+  color: var(--title-kannada);
+}
+
+.menu-footer {
   position: absolute;
   left: var(--title-left);
   bottom: 10px;
+  display: flex;
+  gap: 14px;
   margin: 0;
-  color: rgb(255 246 230 / 50%);
-  font-size: 12px;
+  color: rgb(255 246 230 / 60%);
+  font-size: 13px;
 }
+
+/* The story a new game opens with (ui/StoryOpening.tsx): where the menu was. */
+.story {
+  width: min(520px, calc(100vw - 2 * var(--title-left)));
+  box-sizing: border-box;
+  padding: 20px 24px 22px;
+  border-left: 5px solid var(--title-marigold);
+  border-radius: 6px 20px 20px 6px;
+  background: rgb(8 10 14 / 86%);
+  backdrop-filter: blur(8px);
+}
+
+.story-time {
+  margin: 0 0 6px;
+  color: var(--title-kannada);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.story-text {
+  min-height: 4.2em;
+  margin: 0;
+  font-size: clamp(19px, 1.9vw, 24px);
+  font-weight: 600;
+  line-height: 1.35;
+  animation: story-in 0.4s ease both;
+}
+
+@keyframes story-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.story-dots {
+  display: flex;
+  gap: 6px;
+  margin: 14px 0;
+}
+
+.story-dots i {
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(255 246 230 / 22%);
+}
+
+.story-dots i[data-on='true'] {
+  background: var(--title-marigold);
+}
+
+.story-buttons {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.story-buttons .menu-button {
+  width: auto;
+  min-width: 220px;
+}
+
+/* The pause menu (ui/PauseMenu.tsx): the game dimmed behind, the same buttons and panels. */
+.pause-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  --title-left: clamp(20px, 6vw, 96px);
+  color: var(--title-chalk);
+  background: linear-gradient(90deg, rgb(8 10 14 / 82%) 0%, rgb(8 10 14 / 55%) 45%, rgb(8 10 14 / 40%) 100%);
+  backdrop-filter: blur(3px) saturate(0.8);
+  animation: pause-in 0.18s ease both;
+}
+
+@keyframes pause-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.pause-main {
+  position: absolute;
+  top: 50%;
+  left: var(--title-left);
+  width: min(400px, calc(100vw - 2 * var(--title-left)));
+  transform: translateY(-50%);
+}
+
+.pause-main h1 {
+  margin: 0 0 4px;
+  font-size: clamp(40px, 5vw, 64px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pause-main > p {
+  margin: 0 0 18px;
+  color: var(--title-muted);
+  font-size: 15px;
+}
+
+.pause-logo svg {
+  display: block;
+  width: 150px;
+  height: auto;
+  margin: 0 0 10px -6px;
+}
+
+@media (max-width: 900px) {
+  .menu-panel,
+  .menu-panel[data-wide] {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
+
+@media (max-height: 640px) {
+  .menu-button {
+    min-height: 38px;
+    padding: 4px 16px 2px;
+  }
+
+  .menu-button.menu-primary {
+    min-height: 50px;
+  }
+
+  .menu-button-detail {
+    font-size: 12px;
+  }
+
+  .menu-list {
+    gap: 5px;
+  }
+
+  .title-brand .title-logo svg {
+    width: clamp(150px, 18vw, 240px);
+  }
+
+  .title-download {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-button,
+  .menu-panel,
+  .story-text,
+  .pause-screen {
+    transition: none;
+    animation: none;
+  }
+}
+
 
 /* A short window, such as a small laptop with the browser's bars showing, tightens everything up. */
 @media (max-height: 500px) {
@@ -1568,11 +2046,6 @@ body,
     display: none;
   }
 
-  .title-help {
-    inset: 12px;
-    width: auto;
-    overflow-y: auto;
-  }
 }
 
 @media (max-width: 640px) {

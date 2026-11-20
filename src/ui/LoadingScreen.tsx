@@ -16,22 +16,22 @@ const SCENES = [
   {
     layout: 'feature',
     panels: [
-      { src: '/title/shop-street-morning.jpg', x: 55, y: 55, pan: 'left' },
-      { src: '/title/main-road-midday.jpg', x: 75, y: 50, pan: 'up' },
-      { src: '/title/nitro-night-rain.jpg', x: 70, y: 55, pan: 'right' },
+      { src: '/title/27th-main-morning.jpg', x: 55, y: 55, pan: 'left' },
+      { src: '/title/agara-flyover-golden-hour.jpg', x: 75, y: 50, pan: 'up' },
+      { src: '/title/night-rain.jpg', x: 70, y: 55, pan: 'right' },
     ],
   },
   {
     layout: 'banner',
     panels: [
-      { src: '/title/main-road-midday.jpg', x: 72, y: 55, pan: 'in' },
-      { src: '/title/nitro-night-rain.jpg', x: 70, y: 50, pan: 'right' },
-      { src: '/title/shop-street-morning.jpg', x: 88, y: 40, pan: 'left' },
+      { src: '/title/agara-flyover-golden-hour.jpg', x: 72, y: 55, pan: 'in' },
+      { src: '/title/night-rain.jpg', x: 70, y: 50, pan: 'right' },
+      { src: '/title/27th-main-morning.jpg', x: 88, y: 40, pan: 'left' },
     ],
   },
   {
     layout: 'full',
-    panels: [{ src: '/title/nitro-night-rain.jpg', x: 65, y: 55, pan: 'in' }],
+    panels: [{ src: '/title/night-rain.jpg', x: 65, y: 55, pan: 'in' }],
   },
 ] as const
 

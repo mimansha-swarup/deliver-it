@@ -1,7 +1,7 @@
 /*
  * Who the map and models come from. The OpenStreetMap credit stays on screen while riding, as
- * its licence asks; the full list is on the title screen, in the phone's Settings and in the help
- * overlay (F1).
+ * its licence asks; the full list is on the Credits screen (ui/Menu.tsx), in the phone's Settings
+ * and in the help overlay (F1).
  */
 
 const OSM = 'https://www.openstreetmap.org/copyright'
@@ -25,17 +25,14 @@ export function FullCredits() {
   )
 }
 
-/** The line at the bottom of the screen: all of it on the title screen, only OpenStreetMap's while riding. */
+/** The line at the bottom of the screen while riding: OpenStreetMap's credit, as its licence asks. Everyone else is on the Credits screen. */
 export function Attribution({ riding }: { riding: boolean }) {
+  if (!riding) return null
   return (
-    <p className="attribution" data-riding={riding ? 'true' : undefined}>
-      {riding ? (
-        <a href={OSM} target="_blank" rel="noreferrer">
-          © OpenStreetMap
-        </a>
-      ) : (
-        <FullCredits />
-      )}
+    <p className="attribution" data-riding="true">
+      <a href={OSM} target="_blank" rel="noreferrer">
+        © OpenStreetMap
+      </a>
     </p>
   )
 }
