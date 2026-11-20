@@ -18,9 +18,9 @@ import { StoryOpening } from './StoryOpening'
  * the city is built after a mode is chosen, behind the loading screen (see VISION.md's 8 seconds).
  */
 const BACKDROPS = [
-  { src: '/title/agara-flyover-golden-hour.jpg', caption: 'the Agara flyover at golden hour' },
-  { src: '/title/27th-main-morning.jpg', caption: 'morning on 27th Main' },
-  { src: '/title/night-rain.jpg', caption: 'rain after dark' },
+  { src: '/title/agara-hanuman-evening.jpg', caption: 'the Anjaneya statue and temple at Agara' },
+  { src: '/title/tree-tunnel.jpg', caption: 'under the trees on 13th Cross' },
+  { src: '/title/night-ride.jpg', caption: 'a night ride past the shops' },
 ]
 /** How long each picture stays, in milliseconds. */
 const BACKDROP_TIME = 8000

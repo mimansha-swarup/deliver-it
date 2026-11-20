@@ -14,9 +14,9 @@ const NEAR_WAIT_MS = 4000
  * which part of the shot shows on a narrow window, and `pan` which way it drifts.
  */
 const SCENES = [
-  { layout: 'agara', panels: [{ src: '/title/agara-flyover-golden-hour.jpg', x: 70, y: 55, pan: 'in' }] },
-  { layout: 'morning', panels: [{ src: '/title/27th-main-morning.jpg', x: 55, y: 55, pan: 'left' }] },
-  { layout: 'rain', panels: [{ src: '/title/night-rain.jpg', x: 55, y: 55, pan: 'right' }] },
+  { layout: 'agara', panels: [{ src: '/title/agara-hanuman-evening.jpg', x: 48, y: 40, pan: 'in' }] },
+  { layout: 'trees', panels: [{ src: '/title/tree-tunnel.jpg', x: 55, y: 55, pan: 'left' }] },
+  { layout: 'night', panels: [{ src: '/title/night-ride.jpg', x: 55, y: 55, pan: 'right' }] },
 ] as const
 
 /** Each scene stays this long, in seconds. Kept in step with the CSS. */

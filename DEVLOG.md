@@ -11196,3 +11196,17 @@ marked "Tip" and rewritten for the game as it is (the phone, pausing and Unstuck
 getting off to walk in); the two progress bars are a little thicker and the spinner is yellow.
 Everything that moves is still a CSS animation of position or opacity, as the city's building
 keeps the page busy. Checked: the screen shows, and the ride starts from it as before.
+
+## 2026-11-21: Entry 235, the way out of a flat, Explore that says so, and new title pictures
+
+- **Leaving a flat after the hand-over.** The way down was one unmarked spot by the lift, and the
+  objective only said "Wait for an order". Now the objective says "Go back down to the street", the
+  arrow points at the lift, and the interact key goes down from anywhere in the corridor. A double
+  order's second drop no longer offers its bell in the first one's corridor: out first.
+- **Explore mode looked exactly like the career** ("Off duty", "Go online with O"), so choosing it
+  seemed to open the career. It has its own badge ("Explore mode · No orders · no fuel · any
+  vehicle"), its own objective line and a welcome from Ravi. The mode itself was already on.
+- **Title and loading pictures** are three new ones, taken in the game: the rider passing the
+  Anjaneya statue and temple at Agara in evening light, riding into the tree tunnel on 13th Cross
+  with the low sun through it, and a night ride past lit shops. The flyover picture stays as the
+  share image.

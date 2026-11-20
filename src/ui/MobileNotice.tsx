@@ -24,7 +24,7 @@ export function MobileNotice() {
   return (
     <main className="title-screen mobile-notice">
       <div className="title-backdrop" aria-hidden="true">
-        <img src="/title/27th-main-morning.jpg" alt="" data-shown="true" />
+        <img src="/title/tree-tunnel.jpg" alt="" data-shown="true" />
       </div>
 
       <section className="title-main">
