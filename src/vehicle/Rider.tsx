@@ -49,6 +49,16 @@ const BREATH = { rise: 0.004, rate: 1.7, tip: 0.006 }
 /** Turning on the spot: the feet shuffle fully at this turning speed, in radians per second, and take a stride for each this many radians turned. */
 const SHUFFLE_AT = 2.2
 const SHUFFLE_STRIDE_PER_RADIAN = 3.6
+/**
+ * Standing about, they don't stand like a statue. After `after` seconds still, and then every
+ * `every` seconds or so (lowest to highest), one of: a look round (the head turns one way, then
+ * the other), the weight shifted onto one leg, or the phone checked (a hand up in front, the head
+ * down to it). Each takes `lasts` seconds, eased in and out, and stops the moment they move.
+ */
+const FIDGET = { after: 3.5, every: [4, 9], lasts: { look: 2.6, shift: 3.4, phone: 3.2 }, look: 0.55, shift: 0.04, tilt: 0.035, nod: 0.3 }
+type Fidget = keyof typeof FIDGET.lasts
+const FIDGETS: Fidget[] = ['look', 'shift', 'phone', 'look', 'shift']
+const phoneHand = new THREE.Vector3()
 
 const toModel = new THREE.Matrix4()
 const lowerToFeet = new THREE.Matrix4()
@@ -96,7 +106,7 @@ function strideFoot(step: FootStep, stride: number, sign: number, gait: Gait) {
  * pumps with the elbow bent in a jog, or flings out when limp. `moving` is how much of a stride
  * there is at all.
  */
-function handTarget(sign: number, steerAngle: number, off: number, limp: number, moving: number, gait: Gait, step: FootStep, shoulderAt: THREE.Vector3, armLength: number) {
+function handTarget(sign: number, steerAngle: number, off: number, limp: number, moving: number, gait: Gait, step: FootStep, shoulderAt: THREE.Vector3, armLength: number, raised = 0) {
   // The vehicle's own bars or wheel (vehicleCatalog.ts' seat): the grips swing about its column.
   const { grip, column, side } = liveVehicle.spec.seat
   const x = sign * grip[0]
@@ -112,6 +122,8 @@ function handTarget(sign: number, steerAngle: number, off: number, limp: number,
     // A hanging hand rises a little at each end of its swing, as an arm swung from the shoulder does.
     const arc = (Math.abs(swing) / Math.max(0.05, gait.armSwing)) * 0.035 * (1 - bend)
     offHand.set(shoulderAt.x + sign * (0.06 - 0.05 * bend), shoulderAt.y - armLength * 0.95 + 0.24 * bend + arc, shoulderAt.z + 0.02 + 0.12 * bend + swing)
+    // Checking the phone: the hand up in front of the chest.
+    if (raised > 0) offHand.lerp(phoneHand.set(sign * 0.1, shoulderAt.y - 0.26, shoulderAt.z + 0.3), raised)
     limpHand.set(sign * 0.62, shoulderAt.y + 0.12, shoulderAt.z + 0.12 * sign)
     offHand.lerp(limpHand, limp)
     hand.lerp(offHand, off)
@@ -153,6 +165,8 @@ export function Rider({
   /** On foot: the gait just now, how fast they're turning (eased), the heading last frame, and the strides taken turning on the spot. */
   const gait = useRef<Gait>({ ...WALK }).current
   const turning = useRef({ rate: 0, heading: 0, stride: 0 })
+  /** Standing: seconds they've been still, until the next fidget, which it is, how far through, and which way it goes. */
+  const fidget = useRef({ still: 0, wait: FIDGET.after, kind: null as Fidget | null, time: 0, side: 1, count: 0 })
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const model: RiderModel = useMemo(() => createRiderModel(getModel(scene, 'man'), LOOK), [scene])
@@ -261,9 +275,37 @@ export function Rider({
     strideFoot(rightStep, phase, -1, gait)
     // The hips sit a little low on bent knees, sink a little more as each foot lands, and move over the foot that's down.
     const still = (1 - moving) * off * (1 - limp)
+    // Standing about on foot: now and then a look round, a shift of weight, a look at the phone.
+    const idle = fidget.current
+    let looking = 0
+    let shifted = 0
+    let phone = 0
+    if (state.rider.phase === 'afoot' && moving < 0.05) {
+      idle.still += delta
+      if (idle.kind) {
+        idle.time += delta
+        const through = idle.time / FIDGET.lasts[idle.kind]
+        // In over the first fifth, out over the last.
+        const amount = Math.min(1, through * 5, (1 - through) * 5)
+        const eased = Math.max(0, amount * amount * (3 - 2 * amount))
+        if (idle.kind === 'look') looking = Math.sin(through * Math.PI * 2) * FIDGET.look * idle.side
+        else if (idle.kind === 'shift') shifted = eased * idle.side
+        else phone = eased
+        if (through >= 1) idle.kind = null
+      } else if (idle.still > idle.wait) {
+        idle.kind = FIDGETS[idle.count++ % FIDGETS.length]
+        idle.time = 0
+        idle.side = idle.count % 2 === 0 ? 1 : -1
+        idle.wait = idle.still + FIDGET.lasts[idle.kind] + FIDGET.every[0] + Math.random() * (FIDGET.every[1] - FIDGET.every[0])
+      }
+    } else {
+      idle.still = 0
+      idle.wait = FIDGET.after
+      idle.kind = null
+    }
     const breath = Math.sin(clock.elapsedTime * BREATH.rate)
     const bob = -(gait.crouch + gait.sink * Math.max(leftStep.load, rightStep.load)) * moving * off + BREATH.rise * breath * still
-    const sway = gait.sway * (leftStep.load - rightStep.load) * moving * off
+    const sway = gait.sway * (leftStep.load - rightStep.load) * moving * off + FIDGET.shift * shifted
     // Leans into a bend harder than the scooter. Off it, they stand up straight, tip a little into a walk, more into a jog.
     const afoot = state.rider.phase === 'afoot' ? off : 0
     const torso = (seat.lean + crouch * (seat.footDown ? 0.16 : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off + state.rider.tip * afoot
@@ -279,7 +321,7 @@ export function Rider({
       HIP.z + (seat.hip[2] - HIP.z) * on,
     )
     // On foot they lean into a turn from the feet, which stay where they are: the hips move over with the lean.
-    group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off) - state.rider.lean * afoot)
+    group.rotation.set(torso, 0, -state.lean * 0.35 * (1 - off) - state.rider.lean * afoot - FIDGET.tilt * shifted)
     group.position.x += state.rider.lean * afoot * 0.5
     group.updateMatrix()
     // The model's own space: the body group's, with the hips raised to where the model has them.
@@ -290,7 +332,7 @@ export function Rider({
     const armLength = size.upperArm + size.forearm
     for (const [index, sign] of [[0, 1], [1, -1]] as const) {
       shoulder.copy(joints.shoulders[index]).applyMatrix4(toRider)
-      handTarget(sign, steer, off, limp, moving, gait, sign > 0 ? leftStep : rightStep, shoulder, armLength)
+      handTarget(sign, steer, off, limp, moving, gait, sign > 0 ? leftStep : rightStep, shoulder, armLength, sign > 0 ? phone : 0)
       poseLimb(index === 0 ? pose.leftArm : pose.rightArm, joints.shoulders[index], hand, size.upperArm, size.forearm, size.armRest, sign, false, elbow, toModel, toRider)
       probes[4 + index].point.copy(elbow)
       probes[6 + index].point.copy(hand)
@@ -313,9 +355,9 @@ export function Rider({
 
     // Looks where it's going: the head turns back against the torso's lean, so the eyes stay level.
     if (head.current) {
-      head.current.rotation.y = state.steer * 0.3 * (1 - off)
-      head.current.rotation.z = state.lean * 0.45 * (1 - off)
-      head.current.rotation.x = -torso - crouch * 0.02 * (1 - off) + 0.08
+      head.current.rotation.y = state.steer * 0.3 * (1 - off) + looking
+      head.current.rotation.z = state.lean * 0.45 * (1 - off) + FIDGET.tilt * shifted
+      head.current.rotation.x = -torso - crouch * 0.02 * (1 - off) + 0.08 + FIDGET.nod * phone
     }
   })
 

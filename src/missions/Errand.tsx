@@ -5,9 +5,10 @@ import { useGameStore } from '../game/gameStore'
 import { borrow } from '../game/borrow'
 import { clearSpots, setInterest, setSpot } from '../game/interact'
 import { setPrompt } from '../game/prompts'
-import { liveMission, livePlayer } from '../game/livePlayer'
+import { liveMission, livePlayer, liveView } from '../game/livePlayer'
 import { theItem } from '../game/objective'
-import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
+import { goThrough, leaveRoom, liveRoom, ROOM_DOOR, setRoom } from '../game/rooms'
+import { isDebug } from '../dev/spawn'
 import { doorsteps, errandLive, useGuard } from '../game/doorsteps'
 import { discover } from '../game/discovery'
 import type { DoorPlan } from '../game/gameTypes'
@@ -63,6 +64,10 @@ const vehicleWord = () => (liveVehicle.spec.size.cab ? liveVehicle.spec.name : l
 
 export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; stores: DarkStore[] }) {
   const since = useRef(0)
+  // Debug: where the order's next step on foot is, the room and the view, for driving a walk from the console (and recording one).
+  useEffect(() => {
+    if (isDebug()) Object.assign(window, { __deliverItFoot: { errand: errandLive, room: liveRoom, view: liveView, exit: ROOM_DOOR } })
+  }, [])
   const stage = useRef<Stage>({ door: null, step: 'approach', at: 0 })
 
   useEffect(

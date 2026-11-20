@@ -103,6 +103,8 @@ const FOOT_FOLLOW = { response: 9, snap: 3 }
  * metre it has come in, to look over the rider's shoulder and never from inside them.
  */
 const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22 }
+/** The camera's bob with each step on foot: this far up and down at a walk (metres), in full from `fullAt` m/s, and this much more for each m/s past it. */
+const FOOT_BOB = { walk: 0.011, fullAt: 1.6, jog: 0.3 }
 /**
  * On foot the view comes round behind the rider only when they walk ahead and to one side of it:
  * at this rate at the most (radians a second, at 45° off), faster than `from` m/s, and not for
@@ -275,7 +277,9 @@ export function FollowCamera({
     const cameraAbove = HEIGHT * view.height - pivot
     // A wall behind brings the camera in along the ground, at the height it was.
     const back = Math.min(distance, Math.max(MIN_DISTANCE * 0.5, -(-distance * cos + cameraAbove * sin)))
-    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen
+    // On foot the picture dips a touch as each foot lands: twice a stride, more in a jog. Hardly seen, but felt.
+    const bob = afoot ? -Math.cos(state.rider.stride * 2) * FOOT_BOB.walk * Math.min(1, state.rider.pace / FOOT_BOB.fullAt) * (1 + Math.max(0, state.rider.pace - FOOT_BOB.fullAt) * FOOT_BOB.jog) : 0
+    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen + bob
     camera.position.set(focusX - forwardX * back, cameraY + level.current, focusZ - forwardZ * back)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.

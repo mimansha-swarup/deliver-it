@@ -435,6 +435,58 @@ export function createAmbience(context: AudioContext, output: AudioNode) {
  * A thud: a low drop in pitch for the weight of the hit, and a burst of noise for
  * the crunch. `strength` from 0 to 1, `pan` from -1 to 1.
  */
+/** What a foot lands on: the road's asphalt, the footpath's pavers, a room's tiled floor, or bare earth and grass. */
+export type Footing = 'road' | 'paving' | 'tile' | 'earth'
+
+/**
+ * How each footing sounds under a shoe: the scuff (a burst of noise through a filter at `tone` Hz,
+ * `sharp` for a band, not `sharp` for everything below it, lasting `length` seconds), the weight of
+ * the heel under it (a low thump at `heel` Hz, `weight` as loud), and how loud it all is.
+ */
+const FOOTSTEPS: Record<Footing, { tone: number; sharp: boolean; length: number; heel: number; weight: number; level: number }> = {
+  // Asphalt: a soft, dull scuff.
+  road: { tone: 950, sharp: false, length: 0.07, heel: 95, weight: 0.5, level: 0.075 },
+  // Pavers: a little brighter, a tap with grit in it.
+  paving: { tone: 1900, sharp: true, length: 0.05, heel: 120, weight: 0.4, level: 0.07 },
+  // Tile indoors: a clean click that rings a moment in the room.
+  tile: { tone: 2900, sharp: true, length: 0.1, heel: 150, weight: 0.3, level: 0.065 },
+  // Earth and grass: low and soft, hardly there.
+  earth: { tone: 520, sharp: false, length: 0.09, heel: 75, weight: 0.6, level: 0.05 },
+}
+
+/** One footstep. `strength` is 0 for a walk's step to 1 for a jog's; no two are quite alike. */
+export function playFootstep(context: AudioContext, output: AudioNode, footing: Footing, strength: number) {
+  const step = FOOTSTEPS[footing]
+  const time = context.currentTime + 0.005
+  const loudness = step.level * (0.8 + strength * 0.7) * (0.85 + Math.random() * 0.3)
+  const vary = 0.88 + Math.random() * 0.24
+
+  const scuff = context.createBufferSource()
+  scuff.buffer = getNoise(context)
+  const filter = context.createBiquadFilter()
+  filter.type = step.sharp ? 'bandpass' : 'lowpass'
+  filter.frequency.value = step.tone * vary
+  filter.Q.value = step.sharp ? 1.4 : 0.7
+  const scuffLevel = context.createGain()
+  scuffLevel.gain.setValueAtTime(0.0001, time)
+  scuffLevel.gain.exponentialRampToValueAtTime(loudness, time + 0.004)
+  scuffLevel.gain.exponentialRampToValueAtTime(0.0001, time + step.length)
+  scuff.connect(filter).connect(scuffLevel).connect(output)
+  scuff.start(time, Math.random() * 0.5)
+  scuff.stop(time + step.length + 0.02)
+
+  const heel = context.createOscillator()
+  heel.frequency.setValueAtTime(step.heel * vary, time)
+  heel.frequency.exponentialRampToValueAtTime(step.heel * 0.55, time + 0.06)
+  const heelLevel = context.createGain()
+  heelLevel.gain.setValueAtTime(0.0001, time)
+  heelLevel.gain.exponentialRampToValueAtTime(loudness * step.weight, time + 0.004)
+  heelLevel.gain.exponentialRampToValueAtTime(0.0001, time + 0.07)
+  heel.connect(heelLevel).connect(output)
+  heel.start(time)
+  heel.stop(time + 0.09)
+}
+
 export function playThud(context: AudioContext, output: AudioNode, strength: number, pan = 0) {
   const time = context.currentTime + 0.01
   const loudness = 0.25 + strength * 0.6

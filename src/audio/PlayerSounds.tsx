@@ -5,7 +5,10 @@ import { liveSky, livePlayer } from '../game/livePlayer'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { tuning } from '../vehicle/tuning'
 import { useDriveInput } from '../vehicle/useDriveInput'
-import { createAmbience, playSplash, playThud } from './ambience'
+import { createAmbience, playFootstep, playSplash, playThud, type Footing } from './ambience'
+import { FOOT } from '../vehicle/ScooterController'
+import { liveRoom } from '../game/rooms'
+import { Surface, worldSurface } from '../world/surfaceMap'
 import { getAudio } from './audioEngine'
 import { createEngineVoice, type EngineVoice } from './engines'
 import { createPlaceSounds } from './placeSounds'
@@ -37,7 +40,12 @@ function chainTick(context: AudioContext, output: AudioNode, volume: number, pit
  * and the neighbourhood around them. They start once sound is allowed, after
  * Start riding is pressed. Draws nothing.
  */
+/** Slower than this, in m/s, a step makes no sound: shuffling round on the spot. */
+const FOOTSTEP_FROM = 0.7
+
 export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) {
+  /** How many steps the rider has taken on foot, to hear each new one. */
+  const stepsTaken = useRef(0)
   const input = useDriveInput()
   const engine = useRef<EngineVoice | null>(null)
   const ambience = useRef<ReturnType<typeof createAmbience> | null>(null)
@@ -112,6 +120,17 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
 
     // The sounds of where the rider is: the street's traffic, a signal's horns, a shop's radio, a vendor, a temple, the lake, rain on what's around (areaSounds.ts).
     area.current.update({ x: livePlayer.x, z: livePlayer.z, night: liveSky.look.night, rain: liveSky.rain, hours: liveSky.hours, speed, indoors: livePlayer.indoors }, dt)
+
+    // Footsteps on foot: one as each foot comes down (twice a stride), on what's under it.
+    const rider = state.rider
+    const steps = Math.floor(rider.stride / Math.PI)
+    if (rider.phase === 'afoot' && steps !== stepsTaken.current && rider.pace > FOOTSTEP_FROM) {
+      const under = liveRoom.kind ? null : (worldSurface.map?.at(rider.x, rider.z) ?? Surface.Road)
+      const footing: Footing =
+        under === null ? 'tile' : under === Surface.Road || under === Surface.Median ? 'road' : under === Surface.Footpath || under === Surface.Paved || under === Surface.Building ? 'paving' : 'earth'
+      playFootstep(audio.context, audio.sfx, footing, Math.min(1, Math.max(0, (rider.pace - FOOT.walk) / (FOOT.run - FOOT.walk))))
+    }
+    stepsTaken.current = steps
 
     if (state.crashCount !== crashes.current) {
       crashes.current = state.crashCount
