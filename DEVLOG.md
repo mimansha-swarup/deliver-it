@@ -11127,3 +11127,52 @@ Explore. Kept on the device, apart from the main save.
 Checked in the game with a test note: it shows above the phone with a badge, opens the Garage when
 clicked, and the badge clears. The real triggers (first pay, low tank, a level, a spot, an award,
 going online) were not each played through.
+
+## 2026-11-21: Entry 232, the game is Swalpa Fast, with new menus
+
+**The brand.** The game is "Swalpa Fast" (ಸ್ವಲ್ಪ ಫಾಸ್ಟ್), "A delivery rider's Bengaluru". "Deliver It"
+stays as the delivery company inside it: the jacket, the box, the dark store, the rider's app.
+
+- The names are in `src/game/brand.ts`. Changed: the page title, description, Open Graph and
+  Twitter tags, the manifest, the loading and title screens, the share card, saved file names,
+  README (which was still the Vite template), VISION, ART_DIRECTION and CLAUDE.md.
+- The logo is one drawing, `src/ui/Logo.tsx`: a chunky leaning wordmark, cream "Swalpa" over
+  yellow "Fast" with a charcoal edge, three speed lines and a scooter's trail under it. No dashed
+  road. `src/dev/brandExport.ts` (loaded only with `?brand`) makes every file from it: the SVG
+  (with the font inside) and PNGs in `art/logo`, the icons, the share image, the title pictures.
+- Icons: the Kannada letter ಸ on a yellow rounded square at 16, 32, 180 (Apple), 192, 512 and a
+  maskable 512. The share image, 1200 by 630, is the rider cresting the Agara flyover into the
+  evening sun, with the logo.
+- Saves: every key now starts `swalpa-fast-`. A save under the old `deliver-it-` key is moved
+  across the first time it's asked for (`saveKeys.ts`). Checked with an old save: money, level,
+  family, tutorial and keys arrive.
+- No social handles are in the game. The credits' LinkedIn link and the footer's feedback link
+  are two empty constants in `brand.ts`; a link with no address isn't shown.
+
+**The menus.** `src/ui/Menu.tsx` holds the parts both menus share.
+
+- Main menu: three pictures from the game cross-fading and drifting (they're pictures, not the
+  live city, so the title is up in half a second and the city is built after a mode is chosen).
+  Continue with the day, level, wallet and rating, or New game; Explore mode; Daily challenge
+  with today's goal; Settings; Controls; Credits. Arrow keys, Enter and the mouse, small sounds,
+  focus rings. The footer is the version and the feedback link.
+- Settings (`game/settings.ts`, saved apart from progress): quality, sound and music volumes,
+  mouse sensitivity and invert, language (the menus in English or Kannada), always walk to the
+  door, reset tutorial, and a fresh start that asks first and keeps settings and keys.
+- Pause (Esc, when nothing else is open for it to close; or Esc freeing a locked pointer): the
+  clock is held, the game's sounds hushed, its keys kept from it. Resume, Settings, Controls,
+  Unstuck (back on the nearest road, upright, order kept) and Save and quit to menu, which loads
+  the page again.
+- New game: four skippable story cards on the title screen, then the tutorial, which now opens
+  online with the first order waiting and teaches riding on the way to the dark store. Explore
+  mode no longer starts the tutorial.
+- Credits: the maker, OpenStreetMap (ODbL), Overture with Google and Microsoft buildings, the
+  models, sound and music (made in code), voices (none recorded yet) and the typeface. Riding,
+  only OpenStreetMap's credit stays on screen.
+
+Checked on the built game in a headless Chrome: first paint of the title at 0.56 s; Continue to
+riding in 3.0 s with everything cached; pause holds the clock and blocks the game's keys; Unstuck
+moves a wedged vehicle onto the road; an old save carries over. Screenshots are in `clips/brand`.
+Not done: the frame benchmark (nothing in the riding frame changed but a clock hold), a real
+mouse-locked Esc, the Kannada wording read by a native speaker, and a share-link preview on a
+real site (the tags give the picture as `/share.jpg`, which some sites want as a full address).
