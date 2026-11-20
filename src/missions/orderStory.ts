@@ -117,6 +117,23 @@ const CUSTOMERS: { name: string; patience: number }[] = [
 
 const pick = <T>(items: T[], random: () => number): T => items[Math.floor(random() * items.length)]
 
+/** The customers who are women: the body at the door, and the voice, go by the name (the rest are men). */
+const WOMEN = new Set(['Priya', 'Lakshmi aunty', 'Divya', 'Ayesha', 'Nandini', 'Meera', 'Shwetha', 'Ananya'])
+export const isWoman = (name: string) => WOMEN.has(name)
+
+/**
+ * Which of the four bodies a customer has (Handoff.tsx: the man, the teenager, the older woman, the
+ * younger woman), as the 0 to 1 `look` they're picked by: a woman's name gets a woman, an uncle or
+ * an aunty the older one, and the same name is always the same person.
+ */
+export function customerLook(name: string): number {
+  let sum = 0
+  for (let i = 0; i < name.length; i++) sum = (sum * 31 + name.charCodeAt(i)) % 9973
+  const older = /uncle|aunty/.test(name) || sum % 3 === 0
+  const body = (isWoman(name) ? 2 : 0) + (older ? 0 : 1)
+  return (body + 0.5) / 4
+}
+
 /** An order, with what's ordered fitting the time of day when `period` is given. */
 export function createOrderStory(random: () => number, period?: PeriodId): OrderStory {
   const timely = period ? ITEMS.filter(({ when }) => !when || when.includes(period)) : ITEMS

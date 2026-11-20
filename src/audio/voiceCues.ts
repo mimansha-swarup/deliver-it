@@ -1,5 +1,6 @@
 import { useGameStore } from '../game/gameStore'
 import { useUpkeep } from '../game/upkeep'
+import { isWoman } from '../missions/orderStory'
 import { pickLine, speak, type Treatment } from './voice'
 
 /*
@@ -12,12 +13,8 @@ import { pickLine, speak, type Treatment } from './voice'
  * heard, and only once it's recorded.
  */
 
-/** Which of a line's two recorded voices a customer has: the same one every time, from their name. */
-function voiceOf(name: string): 'a' | 'b' {
-  let sum = 0
-  for (let i = 0; i < name.length; i++) sum = (sum * 31 + name.charCodeAt(i)) % 9973
-  return sum % 2 === 0 ? 'a' : 'b'
-}
+/** Which of a line's two recorded voices a customer has: a woman's ("a") or a man's ("b"), by their name, as their body at the door is. */
+const voiceOf = (name: string): 'a' | 'b' => (isWoman(name) ? 'a' : 'b')
 
 /**
  * Someone at the door or the gate says a line: in the chat under their name (`before` and `after`

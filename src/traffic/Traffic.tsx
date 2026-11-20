@@ -25,7 +25,7 @@ import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
 import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
-import { createWomanGeometry } from './peopleShapes'
+import { createWomanFrom } from './peopleShapes'
 import { createBusGeometry } from './bus'
 import { cameraDistance, isDetailed, lodCamera } from './vehicleLod'
 import {
@@ -943,11 +943,11 @@ export function Traffic({
     }),
     [scene, yamaha],
   )
-  // The woman is built in code until a model with a clear origin takes her place.
-  const woman = useMemo(() => createWomanGeometry(), [])
+  // Two women, made from the modelled man in a kurta (peopleShapes.ts): they need freeing, the loaded models don't.
+  const women = useMemo(() => [createWomanFrom(getModel(scene, 'man'), 'elder'), createWomanFrom(getModel(scene, 'man'), 'young')], [scene])
   const bodies = useMemo(
-    () => [getModel(scene, 'man'), getModel(scene, 'teen'), woman],
-    [scene, woman],
+    () => [getModel(scene, 'man'), getModel(scene, 'teen'), ...women],
+    [scene, women],
   )
   // These two are still built in code, so they need freeing. Loaded models don't.
   const drawn = useMemo(
@@ -1009,9 +1009,9 @@ export function Traffic({
     () => () => {
       Object.values(drawn).forEach((geometry) => geometry.dispose())
       Object.values(lights).forEach((geometry) => geometry.dispose())
-      woman.dispose()
+      women.forEach((woman) => woman.dispose())
     },
-    [drawn, lights, woman],
+    [drawn, lights, women],
   )
 
   // "Use any vehicle" looks for one to take among the vehicles in play (game/borrow.ts).

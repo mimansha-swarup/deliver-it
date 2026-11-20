@@ -12,7 +12,7 @@ import {
   roadClosures,
 } from '../world/roadGraph'
 import { isInsideBounds } from '../world/worldUtils'
-import { createOrderStory, type OrderStory } from './orderStory'
+import { createOrderStory, type OrderStory, customerLook } from './orderStory'
 import { doorsteps, findDoorstep } from '../game/doorsteps'
 import { CARGO } from './cargo'
 import type { DoorPlan, DoorScene } from '../game/gameTypes'
@@ -149,7 +149,8 @@ export function createMissionPlanner(
    * no door near, they wait at the kerb as before.
    */
   const findDoor = (node: number, story: OrderStory): { waiting: WaitingCustomer; door: DoorPlan; extraSeconds: number } => {
-    const kerb = findWaitingSpot(node)
+    // Who comes to the door goes by the name on the order: Priya is a woman every time (orderStory.ts).
+    const kerb = { ...findWaitingSpot(node), look: customerLook(story.customer) }
     const otp = String(1000 + Math.floor(random() * 9000))
     const found = node === societyNode() ? (doorsteps.society?.door ?? null) : findDoorstep(graph.xs[node], graph.zs[node])
     const base = { floor: 0, flat: '', building: '', otp, liftWorks: true, atGate: false }

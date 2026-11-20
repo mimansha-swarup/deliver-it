@@ -10757,3 +10757,24 @@ prompts say "Ravi covers the rest" when the wallet is short.
 
 Rentals, food, servicing and everything else still need money: the net is for getting moving again,
 not for spending.
+
+## 2026-11-20: Entry 219, the customer at the door
+
+A third of customers (and of the people on the street) were the placeholder woman from
+peopleShapes.ts: a head on a cone, built from cylinders "until a model takes her place". And which
+body came to the door was a dice roll: the cone came out for Joseph, the teenage boy for Priya.
+
+- **Two women from the modelled man in a kurta** (`createWomanFrom`): his real proportions, face,
+  hands and walk, a little shorter and narrower in the shoulder, with hair and a dupatta round the
+  neck, which with the kurta reads as a salwar kameez. One older (a bun, terracotta), one younger (a
+  plait to the waist, teal). The teenager's model was tried for the younger one: with a ponytail he
+  still read as a boy from the front. Pictures in docs/customers.
+- **The body goes by the name** (`customerLook` in orderStory.ts): a woman's name gets a woman, an
+  uncle or aunty the older body, and the same name is the same person every time. Their recorded
+  voice (a or b) goes by the same rule.
+- The street's crowds use the same two women, so no cones are left anywhere.
+
+Still wanted: a woman modelled as one. Up close, the face is the man's.
+
+Performance unchanged (High 88 to 98 FPS, Low 120): the women are about 4,700 triangles each, as
+the man is, where the cone was 756.

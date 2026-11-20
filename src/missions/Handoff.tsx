@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { isDebug } from '../dev/spawn'
 import { sayLine } from '../audio/voiceCues'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
@@ -8,7 +9,7 @@ import type { MissionPhase, WaitingCustomer } from '../game/gameTypes'
 import { liveShot } from '../game/livePlayer'
 import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { STRIDE_PER_METRE } from '../traffic/gait'
-import { createWomanGeometry } from '../traffic/peopleShapes'
+import { createWomanFrom } from '../traffic/peopleShapes'
 import { People } from '../traffic/Traffic'
 import { createPerson } from '../traffic/person'
 import type { Pedestrian } from '../traffic/trafficLogic'
@@ -275,24 +276,27 @@ export function Handoff({
 }) {
   const mission = useGameStore((state) => state.mission)
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
-  const woman = useMemo(() => createWomanGeometry(), [])
+  // Two women, made from the modelled man in a kurta (peopleShapes.ts): they need freeing, the loaded models don't.
+  const women = useMemo(() => [createWomanFrom(getModel(scene, 'man'), 'elder'), createWomanFrom(getModel(scene, 'man'), 'young')], [scene])
   const bodies = useMemo(
-    () => [getModel(scene, 'man'), getModel(scene, 'teen'), woman],
-    [scene, woman],
+    () => [getModel(scene, 'man'), getModel(scene, 'teen'), ...women],
+    [scene, women],
   )
   const parcelGeometry = useMemo(() => createParcelGeometry(), [])
   const printTexture = useMemo(() => createPrintTexture(), [])
 
   useEffect(
     () => () => {
-      woman.dispose()
+      women.forEach((woman) => woman.dispose())
       parcelGeometry.dispose()
       printTexture.dispose()
     },
-    [woman, parcelGeometry, printTexture],
+    [women, parcelGeometry, printTexture],
   )
 
   const customers = useMemo(() => [createPerson(0, 0, 0, 0.5, 1)], [])
+  // Debug: the customer, to put a camera on them from the console.
+  if (isDebug()) Object.assign(window, { __deliverItCustomer: customers[0] })
   const staff = useMemo(
     () => stores.map((store) => createPerson(store.staffX, store.staffZ, store.rotation, 0, STAFF_SKIN)),
     [stores],
