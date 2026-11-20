@@ -110,38 +110,58 @@ const mudguard = (at: [number, number, number], radius: number, color: string, a
   tint(new THREE.TorusGeometry(radius, 0.016, 4, 14, Math.PI * arc).rotateY(Math.PI / 2).rotateX(Math.PI * start).translate(...at), color)
 
 /**
- * The Deliver It scooter as modelled (models/scooter.glb, cut into its moving pieces by
- * scripts/prepare_traffic_models.mjs): the body, what turns with the bars, and the two wheels about
- * their own axles, with where the axles and the steering column are. Set once the file has loaded
- * (Scooter.tsx); every scooter built after that is this one.
+ * The rider's vehicles as modelled (models/fleet.glb, each cut into its moving pieces by
+ * scripts/prepare_traffic_models.mjs): a body, on two wheels what turns with the bars, and each wheel
+ * about its own axle, with where the axles and the steering column are. Set once the file has loaded
+ * (Scooter.tsx); every vehicle built after that is its model, and one with no model (or before the
+ * file comes) is the shape built here.
  */
-type ScooterModel = {
+type FleetModel = {
   body: THREE.BufferGeometry
-  front: THREE.BufferGeometry
-  wheelFront: THREE.BufferGeometry
-  wheelRear: THREE.BufferGeometry
-  frontAt: [number, number, number]
-  rearAt: [number, number, number]
+  front: THREE.BufferGeometry | null
+  wheels: { geometry: THREE.BufferGeometry; at: [number, number, number]; steers: boolean }[]
   pivot: [number, number]
 }
-let scooterModel: ScooterModel | null = null
+/** Which model in the file is which vehicle. The electric scooter and the cargo three-wheeler have none. */
+const FLEET_NAMES: Partial<Record<BuiltKind, string>> = { scooter: 'scooty', bicycle: 'cycle', bike: 'motorbike', car: 'minitruck', van: 'cargovan' }
+const fleetModels: Partial<Record<BuiltKind, FleetModel>> = {}
+let fleetRead = false
 
-export function setScooterModel(scene: THREE.Object3D) {
-  if (scooterModel) return
+export function setFleetModels(scene: THREE.Object3D) {
+  if (fleetRead) return
+  fleetRead = true
   const piece = (name: string) => {
-    let geometry: THREE.BufferGeometry | undefined
+    let geometry: THREE.BufferGeometry | null = null
     scene.getObjectByName(name)?.traverse((child) => {
       if (child instanceof THREE.Mesh) geometry = child.geometry
     })
-    return geometry
+    return geometry as THREE.BufferGeometry | null
   }
-  const body = piece('scooty')
-  const front = piece('scooty-front')
-  const wheelFront = piece('scooty-wheel-front')
-  const wheelRear = piece('scooty-wheel-rear')
-  const data = scene.getObjectByName('scooty')?.userData as { front?: [number, number, number]; rear?: [number, number, number]; pivot?: [number, number] } | undefined
-  if (!body || !front || !wheelFront || !wheelRear || !data?.front || !data.rear || !data.pivot) return
-  scooterModel = { body, front, wheelFront, wheelRear, frontAt: data.front, rearAt: data.rear, pivot: data.pivot }
+  for (const [kind, name] of Object.entries(FLEET_NAMES) as [BuiltKind, string][]) {
+    const body = piece(name)
+    const data = scene.getObjectByName(name)?.userData as { wheels?: { at: [number, number, number]; steers: boolean }[]; pivot?: [number, number] } | undefined
+    if (!body || !data?.wheels || !data.pivot) continue
+    const wheels = data.wheels.map(({ at, steers }, index) => ({ geometry: piece(`${name}-wheel-${index}`), at, steers }))
+    if (wheels.some(({ geometry }) => !geometry)) continue
+    fleetModels[kind] = { body, front: piece(`${name}-front`), wheels: wheels as FleetModel['wheels'], pivot: data.pivot }
+  }
+}
+
+/** Whether a vehicle is drawn from a model (so a cab's driver, who'd poke through its roof, is left unseen inside it). */
+export function isModelled(kind: BuiltKind): boolean {
+  return fleetModels[kind] !== undefined
+}
+
+/** A modelled vehicle in a paint, with whatever the game adds to it (`extra`: shapes joined to the body). */
+function fromModel(model: FleetModel, paint: string, lock: number, extra: THREE.BufferGeometry[] = []): BuiltVehicle {
+  return {
+    body: join([paintPiece(model.body, paint), ...extra]),
+    column: model.front ? { geometry: paintPiece(model.front, paint), pivot: model.pivot } : null,
+    wheels: model.wheels.map(({ geometry, at, steers }) => ({ geometry: paintPiece(geometry, paint), at, steers })),
+    crank: null,
+    glass: null,
+    lock,
+  }
 }
 
 /**
@@ -173,26 +193,14 @@ function paintPiece(piece: THREE.BufferGeometry, paint: string): THREE.BufferGeo
  * over rounded side panels, and a rack at the back for the yellow box (drawn by Scooter.tsx, with its logos).
  */
 function createScooter(paint: string): BuiltVehicle {
-  // The modelled scooter, once its file is in (below); until then, and if it never comes, the one built here.
-  if (scooterModel) {
-    const { body, front, wheelFront, wheelRear, frontAt, rearAt, pivot } = scooterModel
-    return {
-      // With a rack behind the seat for the yellow box to stand on (the model has none): a plate on two stays.
-      body: join([
-        paintPiece(body, paint),
-        boxAt([0.4, 0.02, 0.44], [0, 0.815, -0.73], '#3a3d42'),
-        tube([-0.15, 0.81, -0.9], [-0.1, 0.64, -0.8], 0.014, STEEL),
-        tube([0.15, 0.81, -0.9], [0.1, 0.64, -0.8], 0.014, STEEL),
-      ]),
-      column: { geometry: paintPiece(front, paint), pivot },
-      wheels: [
-        { geometry: paintPiece(wheelRear, paint), at: rearAt, steers: false },
-        { geometry: paintPiece(wheelFront, paint), at: frontAt, steers: true },
-      ],
-      crank: null,
-      glass: null,
-      lock: 0.5,
-    }
+  // The modelled scooter, once its file is in (above), with a rack behind the seat for the yellow box to
+  // stand on (the model has none): a plate on two stays. Until then, and if it never comes, the one built here.
+  if (fleetModels.scooter) {
+    return fromModel(fleetModels.scooter, paint, 0.5, [
+      boxAt([0.4, 0.02, 0.44], [0, 0.815, -0.73], '#3a3d42'),
+      tube([-0.15, 0.81, -0.9], [-0.1, 0.64, -0.8], 0.014, STEEL),
+      tube([0.15, 0.81, -0.9], [0.1, 0.64, -0.8], 0.014, STEEL),
+    ])
   }
   const radius = 0.24
   const rear: [number, number, number] = [0, radius, -0.62]
@@ -635,7 +643,19 @@ const BUILDERS: Record<BuiltKind, (paint: string) => BuiltVehicle> = {
 }
 
 export function createBuiltVehicle(kind: BuiltKind, paint: string): BuiltVehicle {
-  return BUILDERS[kind](paint)
+  const model = kind === 'scooter' ? undefined : fleetModels[kind]
+  if (!model) return BUILDERS[kind](paint)
+  // A model, keeping from the built one what the model doesn't have: the bicycle's cranks that go
+  // round under the rider's feet, and its crate with the logo.
+  const built = BUILDERS[kind](paint)
+  const modelled = fromModel(model, paint, built.lock, kind === 'bicycle' ? [boxAt([0.34, 0.26, 0.36], [0, 0.88, -0.62], '#f2b82a'), boxAt([0.2, 0.02, 0.42], [0, 0.74, -0.6], STEEL)] : [])
+  modelled.crank = built.crank
+  modelled.logoBox = built.logoBox
+  built.body.dispose()
+  built.column?.geometry.dispose()
+  built.wheels.forEach(({ geometry }) => geometry.dispose())
+  built.glass?.dispose()
+  return modelled
 }
 
 /** A built vehicle as one still shape, wheels and all: standing at a delivery, or ridden up to it. The scooter gets its yellow box. */

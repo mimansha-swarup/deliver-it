@@ -23,10 +23,10 @@ import { isDebug } from '../dev/spawn'
 import { createRiderModel, createSeatedRiderGeometry, type RiderLook, type Seat } from '../vehicle/riderModel'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
-import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL, EXTRA_PEOPLE, PEOPLE_MODELS_URL } from './modelFiles'
+import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL, EXTRA_PEOPLE, FLEET_MODELS_URL, PEOPLE_MODELS_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanFrom } from './peopleShapes'
-import { createBusGeometry } from './bus'
+import { createBusFromModel, createBusGeometry } from './bus'
 import { cameraDistance, isDetailed, lodCamera } from './vehicleLod'
 import {
   takeHonks,
@@ -929,8 +929,16 @@ export function Traffic({
   const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
   const { scene: extraPeople } = useGLTF(PEOPLE_MODELS_URL)
 
-  // The bus is built in code (bus.ts), so it needs freeing.
-  const busShape = useMemo(() => createBusGeometry(), [])
+  // The bus is a model with the game's wheels in its arches (bus.ts), or the one built in code if the model isn't there: either needs freeing.
+  const { scene: fleet } = useGLTF(FLEET_MODELS_URL)
+  const busShape = useMemo(() => {
+    const arches = (fleet.getObjectByName('bus')?.userData as { arches?: { z: number }[] } | undefined)?.arches
+    try {
+      return arches ? createBusFromModel(getModel(fleet, 'bus'), arches) : createBusGeometry()
+    } catch {
+      return createBusGeometry()
+    }
+  }, [fleet])
   useEffect(() => () => busShape.dispose(), [busShape])
   // Each with its lamps marked, and added where the model has none (vehicleLamps.ts): copies, so they need freeing.
   const shapes = useMemo(

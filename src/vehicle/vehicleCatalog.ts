@@ -121,7 +121,8 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     minLevel: 1, minRating: 0, rentHour: 15, rentDay: 60, price: 900, engine: 'silent', engineVolume: 0, horn: 'bell',
     camera: { distance: 0.9, height: 0.95, look: 0.95 }, cockpit: null, body: 'bicycle', paint: '#2f7d55',
     // High on the saddle, reaching down to the bars, feet on the pedals going round.
-    seat: { hip: [0, 1.14, -0.3], lean: 0.6, column: 0.4, grip: [0.27, 1.08, -0.1], foot: [0.13, 0.4, -0.02], footDown: true, pedals: true, side: 0 },
+    // Fitted to the modelled bicycle: its saddle is at 0.89 m and its bars at 0.9 m, 0.14 m ahead of the middle.
+    seat: { hip: [0, 1.03, -0.32], lean: 0.5, column: 0.177, grip: [0.2, 0.93, -0.04], foot: [0.13, 0.4, -0.02], footDown: true, pedals: true, side: 0 },
   },
   ev: {
     id: 'ev', name: 'Minchu E1', kind: 'Electric scooter', blurb: 'Quick off the line, quiet, a third of the running cost.',

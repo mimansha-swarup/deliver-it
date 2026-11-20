@@ -11323,3 +11323,33 @@ steering held over. Where the mudguard was cut from the apron a few ragged trian
 at full lock. Not looked at: the other paints, a crash (the scooter on its side), the Garage's
 preview, and the frame benchmark (about 22,000 triangles for the one scooter, where the built
 one had a few hundred).
+
+## 2026-11-21: Entry 244, GaadiGo's vehicles and the traffic's bus are models
+
+Five more downloaded models (CC BY 4.0, credited), baked with the scooter into one file,
+`fleet.glb` (1.04 MB compressed; `scooter.glb` is gone).
+
+- **The baker is general now** (`bakeFleet`): any two- or four-wheeler is fitted to the vehicle
+  the game had (its wheelbase and rear axle), its wheels found from the patches furthest apart
+  that touch the ground and their radius from the curve of the tyre as it leaves the ground, and
+  cut into a body, the wheels, and on two wheels a steering front.
+- GaadiGo: the bicycle ("Old Bicycle", keeping the game's cranks under the feet and its
+  crate), the motorbike ("Honda NR750", a sports bike where the Vega 150 was a commuter), the
+  catering car ("cafe sones catering car", which is a small box truck) and the van. In a
+  modelled cab the driver isn't drawn: it has a roof. The electric scooter and the cargo
+  three-wheeler are still built in code.
+- **Low-poly models with their picture in a texture** (the truck, the bus) lost it when colour
+  was kept only at their few corners. `addPrimitiveFine` cuts each triangle small and reads
+  the texture at every new corner; cut the same number of times each, neighbours still meet,
+  which the simplifier needs.
+- **The bus** is the KSRTC model at the game's bus's length, its red band marked as paint so it
+  takes the game's made-up livery colours, with the game's wheels in its arches (it has none).
+  The operator's lettering doesn't survive the colour sampling.
+- **Held back: the three-wheeler.** Its licence is CC BY-NC-SA (non-commercial), like the
+  sports bike already flagged for replacing, so it wasn't added.
+
+Seen in the game: each of the four from the side or front with the rider, and the bus in
+traffic. The bicycle's rider was lowered onto its saddle. Not looked at: steering and wheel
+spin on the four (the scooter's were), the driver's-seat view in the truck and van, the
+vehicles parked or delivered by GaadiGo, crashes, and the frame benchmark. The bus's
+windscreen is blotchy close up.

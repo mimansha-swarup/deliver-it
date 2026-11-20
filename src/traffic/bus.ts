@@ -54,6 +54,25 @@ function wheel(x: number, z: number, radius: number, width: number): THREE.Buffe
   return [finish(tyre, TYRE, false), finish(rim, RIM, false)]
 }
 
+/**
+ * The bus from its model (models/fleet.glb, made by scripts/prepare_traffic_models.mjs at this
+ * bus's length, its livery band marked `_paint`), with the wheels the model doesn't have put in its
+ * arches. The same attributes as the built bus below, which it stands in for.
+ */
+export function createBusFromModel(model: THREE.BufferGeometry, arches: { z: number }[]): THREE.BufferGeometry {
+  const flat = model.index ? model.toNonIndexed() : model.clone()
+  const body = new THREE.BufferGeometry()
+  for (const name of ['position', 'normal', 'color', '_paint']) body.setAttribute(name, flat.getAttribute(name).clone())
+  flat.dispose()
+  const parts = [body]
+  for (const x of [-HALF_WIDTH + 0.2, HALF_WIDTH - 0.2]) for (const { z } of arches) parts.push(...wheel(x, z, 0.5, 0.36))
+  const merged = mergeGeometries(parts)
+  parts.forEach((part) => part.dispose())
+  if (!merged) throw new Error('The bus could not be put together')
+  merged.computeBoundingSphere()
+  return merged
+}
+
 export function createBusGeometry(): THREE.BufferGeometry {
   const L = HALF_LENGTH
   const W = HALF_WIDTH

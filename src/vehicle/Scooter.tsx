@@ -19,7 +19,7 @@ import { splitDeliveryBox } from '../traffic/vehicleShapes'
 import {
   getModel,
   paintModel,
-  SCOOTER_MODEL_URL,
+  FLEET_MODELS_URL,
   TRAFFIC_MODELS_URL,
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
@@ -30,7 +30,7 @@ import { Rider } from './Rider'
 import { createRiderProbes, HIP, type Probe } from './riderShape'
 import { tuning } from './tuning'
 import { liveSeat } from './riderSeat'
-import { createBuiltVehicle, disposeBuilt, setScooterModel } from './vehicleBodies'
+import { createBuiltVehicle, disposeBuilt, isModelled, setFleetModels } from './vehicleBodies'
 import { liveVehicle, VEHICLES } from './vehicleCatalog'
 import { borrow } from '../game/borrow'
 import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './ScooterController'
@@ -324,12 +324,12 @@ export function Scooter({
   const paint = spec.paint ?? findColour(PAINTS, paintId).color
   // Every vehicle is built in pieces (vehicleBodies.ts): its wheels spin, the front ones steer, the
   // bars turn about the column, and a bicycle's cranks go round.
-  // The scooter's own body is a model (models/scooter.glb): handed to the builder before anything is built.
-  const { scene: scooterScene } = useGLTF(SCOOTER_MODEL_URL)
+  // The rider's vehicles are models (models/fleet.glb): handed to the builder before anything is built.
+  const { scene: fleetScene } = useGLTF(FLEET_MODELS_URL)
   const built = useMemo(() => {
-    setScooterModel(scooterScene)
+    setFleetModels(fleetScene)
     return createBuiltVehicle(spec.body, paint)
-  }, [spec, paint, scooterScene])
+  }, [spec, paint, fleetScene])
   useEffect(() => () => disposeBuilt(built), [built])
   const builtWheels = useRef<(Group | null)[]>([])
   const steered = useRef<(Group | null)[]>([])
@@ -454,7 +454,9 @@ export function Scooter({
     // From the driver's seat the driver themself isn't drawn: the camera is where their head is.
     const borrowing = borrow.vehicle !== null
     // Inside a borrowed car, auto or bus, the driver isn't seen; on a borrowed two-wheeler they ride it.
-    riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null) && !(borrowing && state.rider.phase === 'on' && liveVehicle.spec.size.cab)
+    // Nor in a modelled cab of their own: it has a roof and doors, and they sit inside it.
+    const inOwnCab = spec.size.cab && isModelled(spec.body) && state.rider.off === 0
+    riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null) && !(borrowing && state.rider.phase === 'on' && liveVehicle.spec.size.cab) && !inOwnCab
     if (ownOuter.current) ownOuter.current.visible = !borrowing
     if (ownInner.current) ownInner.current.visible = !borrowing
     if (!borrowing && Math.abs(state.lean) < 0.02 && state.crashLeft === 0) restLift.current = lean.current.position.y

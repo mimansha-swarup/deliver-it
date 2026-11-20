@@ -1430,15 +1430,93 @@ function bakeUnrigged(spec, folder) {
 }
 
 /**
- * The rider's own scooter (vehicle/vehicleBodies.ts), from a model that is one mesh with one
- * texture. It's fitted to the game's scooter (the same wheelbase, wheels on the ground, front to
- * +Z) and cut into the pieces the game moves: the body, what turns with the bars (the headset with
- * its bars, lamp and mirrors, and the front mudguard and fork), and the two wheels, each about its
- * own axle. Its orange panels are marked as paint, so it takes the colours sold at the Garage, and
- * the maker's name written on them goes with the paint.
+ * The rider's own vehicles (vehicle/vehicleBodies.ts): the Deliver It scooter and what GaadiGo rents
+ * and sells. Each is fitted to the vehicle the game already had (the same wheelbase, wheels on the
+ * ground, front to +Z) and cut into the pieces the game moves: the body, each wheel about its own
+ * axle, and on two wheels what turns with the bars. Where its wheels are is found from where the
+ * model touches the ground, so a model that is one mesh (the scooter) is cut as well as one in parts.
+ *
+ * `facing`: which way it looks in its file, as [x, z]. `drop`: parts left out, by their names.
+ * `paint`: what takes the vehicle's colour, by material name or by the colour itself. `bars`:
+ * whether bars and a headset turn with the front wheel (not under a sports bike's fairing).
+ * `radius`: the wheels' radius when it can't be measured (a low-poly wheel). `triangles`: the body's share.
+ * `fine`: for a low-poly model with its picture in a texture, how finely it's cut before the colour is read
+ * (`addPrimitiveFine`), in the model's own units.
  */
-const SCOOTER_FILE = 'scooter.glb'
-const SCOOTERS = [{ name: 'scooty', folder: 'vespa_scooty', file: SCOOTER_FILE, wheelbase: 1.28, rearAxleZ: -0.62 }]
+const FLEET_FILE = 'fleet.glb'
+const orange = (r, g, b) => r > 0.3 && g / r > 0.05 && g / r < 0.45 && b / r < 0.25
+const red = (r, g, b) => r > 0.2 && g / r < 0.3 && b / r < 0.3
+const FLEET = [
+  { name: 'scooty', folder: 'vespa_scooty', wheels: 2, wheelbase: 1.28, rearAxleZ: -0.62, facing: [0, 1], paint: orange, bars: true, radius: 0.221, triangles: 11000 },
+  { name: 'cycle', folder: 'old_bicycle', wheels: 2, wheelbase: 1.07, rearAxleZ: -0.52, facing: [1, 0], drop: /Pedal|Center-Gear|Chain/, paint: /Bicycle-Body/, bars: true, corridor: 0.07, triangles: 6000 },
+  { name: 'motorbike', folder: 'honda_nr750_1994', wheels: 2, wheelbase: 1.36, rearAxleZ: -0.66, facing: [0, 1], drop: /floor/, paint: red, bars: false, triangles: 10000 },
+  // A small box truck: at the hatchback's wheelbase it stood 2.5 m tall, so it's fitted by its length instead.
+  { name: 'minitruck', folder: 'cafe_sones_catering_car', wheels: 4, wheelbase: 1.95, rearAxleZ: -0.95, facing: [0, 1], fine: 0.03, triangles: 7000 },
+  { name: 'cargovan', folder: 'cargo_van', wheels: 4, wheelbase: 2.8, rearAxleZ: -1.3, facing: [0, 1], drop: /Badge|LicensePlate/, paint: /Carpaint/, triangles: 9000 },
+]
+
+/**
+ * The traffic's bus (traffic/bus.ts), from a low-poly model with its picture in a texture and no
+ * wheels: stood at the game's bus's length with its skirt off the ground, front to +Z, its red band
+ * marked as paint so each bus takes a livery colour of the game's own (and the operator's lettering,
+ * read this coarsely, is only a smudge). Where its wheel arches are is measured, for the wheels
+ * the game puts in them.
+ */
+const BUSES = [{ name: 'bus', folder: 'ksrtc_bus', length: 11.2, skirt: 0.34, facing: [0, -1], cuts: 12, paint: red, triangles: 9000 }]
+
+function bakeBus(spec, folder) {
+  const model = loadModel(join(folder, spec.folder))
+  const soup = new Soup()
+  model.gltf.nodes.forEach((node, index) => {
+    if (node.mesh === undefined) return
+    for (const primitive of model.gltf.meshes[node.mesh].primitives) addPrimitiveFine(model, soup, primitive, model.world[index], 1, spec.cuts)
+  })
+  transformSoup(soup, new THREE.Matrix4().makeRotationY(-Math.atan2(spec.facing[0], spec.facing[1])))
+  let box = getBounds(soup)
+  const scale = spec.length / (box.max.z - box.min.z)
+  transformSoup(
+    soup,
+    new THREE.Matrix4()
+      .makeTranslation(0, spec.skirt, 0)
+      .multiply(new THREE.Matrix4().makeScale(scale, scale, scale))
+      .multiply(new THREE.Matrix4().makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)),
+  )
+  box = getBounds(soup)
+  for (let corner = 0; corner < soup.count; corner++) {
+    const [r, g, b] = soup.colors.slice(corner * 3, corner * 3 + 3)
+    if (!spec.paint(r, g, b)) continue
+    const shade = Math.min(1, 0.82 + 0.18 * Math.min(1, r / 0.8))
+    soup.colors.splice(corner * 3, 3, shade, shade, shade)
+    soup.paints[corner] = 1
+  }
+  // The arches: the stretches along the side where the skirt's lowest corner is well above the rest.
+  const lowest = new Map()
+  for (let corner = 0; corner < soup.count; corner++) {
+    const [x, y, z] = [soup.positions[corner * 3], soup.positions[corner * 3 + 1], soup.positions[corner * 3 + 2]]
+    if (Math.abs(x) < box.max.x * 0.8) continue
+    const slice = Math.round(z / 0.1)
+    if (y < (lowest.get(slice) ?? Infinity)) lowest.set(slice, y)
+  }
+  const arches = []
+  let run = []
+  for (const slice of [...lowest.keys()].sort((a, b) => a - b)) {
+    if (lowest.get(slice) > spec.skirt + 0.25) run.push(slice * 0.1)
+    else if (run.length) {
+      if (run.length >= 4) arches.push(run)
+      run = []
+    }
+  }
+  const round = (value) => Math.round(value * 100) / 100
+  const extras = { arches: arches.map((arch) => ({ z: round((arch[0] + arch.at(-1)) / 2), long: round(arch.at(-1) - arch[0] + 0.1) })), size: box.getSize(new THREE.Vector3()).toArray().map(round) }
+  console.log(`  ${spec.name}:`, JSON.stringify(extras))
+  const welded = weld(soup)
+  settlePaint(welded)
+  let { result } = simplify(welded, spec.triangles, { maxError: 0.01, colorWeight: 0.8 })
+  // Its panels don't share edges, so the careful pass stops early; a cruder one that joins them finishes.
+  if (result.indices.length / 3 > spec.triangles * 2) result = simplify(result, spec.triangles, { sloppy: true, maxError: 0.02 }).result
+  console.log(`  ${String(soup.indices.length / 3).padStart(6)} -> ${String(result.indices.length / 3).padStart(6)} triangles`)
+  return [{ name: spec.name, soup: result, extras }]
+}
 
 /** The triangles of `soup` that pass `keep` (given their three corners' numbers), as a soup of their own. */
 function cutSoup(soup, keep) {
@@ -1461,69 +1539,151 @@ function cutSoup(soup, keep) {
   return cut
 }
 
-function bakeScooter(spec, folder) {
+/**
+ * A part of a model with few, large triangles and its picture in a texture (a low-poly truck, a bus):
+ * colour kept only at its corners would lose the windows, lamps and stripes inside each triangle. So
+ * every triangle is first cut into small ones (edges no longer than `edge`, in the model's own units)
+ * and the texture is read at each new corner. The simplifier then keeps the corners the colour needs.
+ */
+function addPrimitiveFine(model, soup, primitive, matrix, edge, same = 0) {
+  const material = model.gltf.materials[primitive.material]
+  const positions = readAccessor(model, primitive.attributes.POSITION)
+  const normals = readAccessor(model, primitive.attributes.NORMAL)
+  const uvs = primitive.attributes.TEXCOORD_0 === undefined ? null : readAccessor(model, primitive.attributes.TEXCOORD_0)
+  const indices = readAccessor(model, primitive.indices)
+  const sampler = getSampler(model, material)
+  const tint = material.pbrMetallicRoughness?.baseColorFactor ?? [1, 1, 1, 1]
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix)
+  const flipped = matrix.determinant() < 0
+  const corner = (index) => ({
+    p: new THREE.Vector3().fromArray(positions, index * 3).applyMatrix4(matrix),
+    n: new THREE.Vector3().fromArray(normals, index * 3).applyMatrix3(normalMatrix).normalize(),
+    uv: uvs ? [uvs[index * 2], uvs[index * 2 + 1]] : [0, 0],
+  })
+  const scaleOf = Math.cbrt(Math.abs(matrix.determinant()))
+  for (let at = 0; at < indices.length; at += 3) {
+    const [a, b, c] = [corner(indices[at]), corner(indices[at + (flipped ? 2 : 1)]), corner(indices[at + (flipped ? 1 : 2)])]
+    const longest = Math.max(a.p.distanceTo(b.p), b.p.distanceTo(c.p), c.p.distanceTo(a.p))
+    // `same`: every triangle cut the same number of times, so neighbours' new corners meet along their
+    // shared edge. Cut by their own sizes they don't, and the simplifier, which won't close a crack,
+    // stops far short of its target.
+    const steps = same || Math.min(40, Math.max(1, Math.ceil(longest / (edge * scaleOf))))
+    // A grid of points across the triangle: `i` steps towards b and `j` towards c.
+    const first = soup.count
+    const rowStart = []
+    for (let i = 0; i <= steps; i++) {
+      rowStart.push(soup.count - first)
+      for (let j = 0; j <= steps - i; j++) {
+        const wb = i / steps
+        const wc = j / steps
+        const wa = 1 - wb - wc
+        const p = a.p.clone().multiplyScalar(wa).addScaledVector(b.p, wb).addScaledVector(c.p, wc)
+        const n = a.n.clone().multiplyScalar(wa).addScaledVector(b.n, wb).addScaledVector(c.n, wc).normalize()
+        soup.positions.push(p.x, p.y, p.z)
+        soup.normals.push(n.x, n.y, n.z)
+        let rgb = [tint[0], tint[1], tint[2]]
+        if (sampler && uvs) rgb = sampler(a.uv[0] * wa + b.uv[0] * wb + c.uv[0] * wc, a.uv[1] * wa + b.uv[1] * wb + c.uv[1] * wc).map((value, part) => toLinear(value) * tint[part])
+        soup.colors.push(...rgb.map((value) => (Number.isFinite(value) ? value : 0.3)))
+        soup.paints.push(0)
+        soup.limbs.push(0, 0, 0)
+      }
+    }
+    const at2 = (i, j) => first + rowStart[i] + j
+    for (let i = 0; i < steps; i++) {
+      for (let j = 0; j < steps - i; j++) {
+        soup.indices.push(at2(i, j), at2(i + 1, j), at2(i, j + 1))
+        if (j < steps - i - 1) soup.indices.push(at2(i + 1, j), at2(i + 1, j + 1), at2(i, j + 1))
+      }
+    }
+  }
+}
+
+function bakeFleet(spec, folder) {
   const model = loadModel(join(folder, spec.folder))
   const soup = new Soup()
+  const paintByName = spec.paint instanceof RegExp ? spec.paint : null
   model.gltf.nodes.forEach((node, index) => {
-    if (node.mesh === undefined) return
-    for (const primitive of model.gltf.meshes[node.mesh].primitives) addPrimitive(model, soup, primitive, () => model.world[index], () => ({ color: null, paint: false }))
+    if (node.mesh === undefined || spec.drop?.test(node.name ?? '')) return
+    for (const primitive of model.gltf.meshes[node.mesh].primitives) {
+      if (spec.fine) {
+        addPrimitiveFine(model, soup, primitive, model.world[index], spec.fine)
+        continue
+      }
+      // Paint is known by the part's name or its material's: exporters put the useful one in either.
+      const painted = (name) => paintByName?.test(`${node.name ?? ''} ${name}`) ?? false
+      addPrimitive(model, soup, primitive, () => model.world[index], (name) => ({ color: painted(name) ? WHITE : null, paint: painted(name) }))
+    }
   })
   const point = (corner) => [soup.positions[corner * 3], soup.positions[corner * 3 + 1], soup.positions[corner * 3 + 2]]
+  // Front to +Z first, so everything after can speak of ahead and behind.
+  transformSoup(soup, new THREE.Matrix4().makeRotationY(-Math.atan2(spec.facing[0], spec.facing[1])))
 
-  // Where the wheels are, as modelled: the two patches that touch the ground, and how far the front
-  // tyre reaches ahead of its patch.
+  // Where the wheels are, as modelled: the patches that touch the ground, ahead of and behind the middle.
   let box = getBounds(soup)
   const tall = box.max.y - box.min.y
   const midZ = (box.min.z + box.max.z) / 2
-  const patch = { front: [], rear: [] }
+  const midX = (box.min.x + box.max.x) / 2
+  const patch = { front: [], rear: [], out: [] }
   for (let corner = 0; corner < soup.count; corner++) {
-    const [, y, z] = point(corner)
-    if (y - box.min.y < tall * 0.012) patch[z > midZ ? 'front' : 'rear'].push(z)
+    const [x, y, z] = point(corner)
+    if (y - box.min.y > tall * 0.012) continue
+    patch[z > midZ ? 'front' : 'rear'].push(z)
+    patch.out.push(Math.abs(x - midX))
   }
   const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length
-  const frontZ0 = mean(patch.front)
-  const rearZ0 = mean(patch.rear)
-  const scale = spec.wheelbase / (frontZ0 - rearZ0)
+  // Only the patches furthest apart are the wheels': a stand's foot or a low sump between them isn't.
+  const long = box.max.z - box.min.z
+  const ends = (values, furthest) => values.filter((z) => Math.abs(z - furthest) < long * 0.06)
+  patch.front = ends(patch.front, Math.max(...patch.front))
+  patch.rear = ends(patch.rear, Math.min(...patch.rear))
+  const scale = spec.wheelbase / (mean(patch.front) - mean(patch.rear))
   transformSoup(
     soup,
-    new THREE.Matrix4()
-      .makeScale(scale, scale, scale)
-      .multiply(new THREE.Matrix4().makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, -rearZ0 + spec.rearAxleZ / scale)),
+    new THREE.Matrix4().makeScale(scale, scale, scale).multiply(new THREE.Matrix4().makeTranslation(-midX, -box.min.y, -mean(patch.rear) + spec.rearAxleZ / scale)),
   )
   box = getBounds(soup)
   const rearZ = spec.rearAxleZ
   const frontZ = rearZ + spec.wheelbase
-  // The front tyre is the foremost thing near the ground: its radius is how far it reaches past its axle.
-  let reach = 0
+  // Four wheels stand out to each side by the patches' own distance from the middle.
+  const track = spec.wheels === 4 ? mean(patch.out) * scale : 0
+
+  // A wheel's radius, from the curve of the tyre where it leaves the ground: a point on a circle
+  // standing on the ground, z ahead of its middle and y up, has radius (z² + y²) / 2y. The lowest
+  // corner in each slice along the tyre gives one reading; the middle one is taken.
+  let radius = spec.radius
   let tyreHalf = 0
-  for (let corner = 0; corner < soup.count; corner++) {
-    const [x, y, z] = point(corner)
-    if (y < 0.3) reach = Math.max(reach, z - frontZ)
-    if (y < 0.03 && z > 0) tyreHalf = Math.max(tyreHalf, Math.abs(x))
+  if (!radius) {
+    const lowest = new Map()
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [x, y, z] = point(corner)
+      if (Math.abs(Math.abs(x) - track) > 0.12 || Math.abs(z - frontZ) > 0.3 || y > 0.22) continue
+      const slice = Math.round((z - frontZ) / 0.02)
+      if (y < (lowest.get(slice) ?? Infinity)) lowest.set(slice, y)
+    }
+    const readings = []
+    for (const [slice, y] of lowest) {
+      const z = slice * 0.02
+      if (y > 0.015 && Math.abs(z) > 0.06) readings.push((z * z + y * y) / (2 * y))
+    }
+    readings.sort((a, b) => a - b)
+    radius = readings[Math.floor(readings.length / 2)] ?? 0.25
   }
-  const radius = reach
-  const half = Math.max(0.05, tyreHalf * 1.7)
-
-  // The bars: the widest part up high. Everything from a little below them up turns with them.
-  let barsY = 0
-  let barsZ = 0
-  let widest = 0
   for (let corner = 0; corner < soup.count; corner++) {
-    const [x, y, z] = point(corner)
-    // (Not the mirrors, which stand higher and wider on their stalks.)
-    if (y > 0.85 && y < 1.1 && Math.abs(x) > widest) [widest, barsY, barsZ] = [Math.abs(x), y, z]
+    const [x, y] = point(corner)
+    if (y < 0.03) tyreHalf = Math.max(tyreHalf, Math.abs(Math.abs(x) - track))
   }
-  const headsetFrom = barsY - 0.13
-  const pivotZ = barsZ + 0.04
+  // (Never wider than a tyre is: a fairing or a stand low down isn't the wheel.)
+  const half = Math.min(spec.wheels === 4 ? 0.17 : 0.1, Math.max(0.05, tyreHalf * 1.7))
 
-  // The orange panels are paint: stored near white, keeping a little of their light and shade.
-  for (let corner = 0; corner < soup.count; corner++) {
-    const [r, g, b] = soup.colors.slice(corner * 3, corner * 3 + 3)
-    const orange = r > 0.3 && g / r > 0.05 && g / r < 0.45 && b / r < 0.25
-    if (!orange) continue
-    const shade = Math.min(1, 0.82 + 0.18 * Math.min(1, r / 0.8))
-    soup.colors.splice(corner * 3, 3, shade, shade, shade)
-    soup.paints[corner] = 1
+  // Paint by its colour, where the model is one material: stored near white, keeping a little light and shade.
+  if (typeof spec.paint === 'function') {
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [r, g, b] = soup.colors.slice(corner * 3, corner * 3 + 3)
+      if (!spec.paint(r, g, b)) continue
+      const shade = Math.min(1, 0.82 + 0.18 * Math.min(1, Math.max(r, g, b) / 0.8))
+      soup.colors.splice(corner * 3, 3, shade, shade, shade)
+      soup.paints[corner] = 1
+    }
   }
 
   const middleOf = (corners) => {
@@ -1531,29 +1691,57 @@ function bakeScooter(spec, folder) {
     for (const corner of corners) point(corner).forEach((value, part) => { sum[part] += value / 3 })
     return sum
   }
-  const inWheel = (axleZ) => (corners) => corners.every((corner) => {
+  // The wheels: [x, z, whether it steers], the rear ones first.
+  const places = spec.wheels === 4
+    ? [[-track, rearZ, false], [track, rearZ, false], [-track, frontZ, true], [track, frontZ, true]]
+    : [[0, rearZ, false], [0, frontZ, true]]
+  const inWheel = ([wheelX, wheelZ]) => (corners) => corners.every((corner) => {
     const [x, y, z] = point(corner)
-    return Math.abs(x) < half && Math.hypot(y - radius, z - axleZ) < radius * 1.03
+    return Math.abs(x - wheelX) < half && Math.hypot(y - radius, z - wheelZ) < radius * 1.03
   })
-  const isFrontWheel = inWheel(frontZ)
-  const isRearWheel = inWheel(rearZ)
-  // What turns with the bars: the headset, and the mudguard and fork round the front wheel (within
-  // reach of its axle, ahead of the apron and below it).
-  const turns = (corners) => {
-    const [x, y, z] = middleOf(corners)
-    if (y > headsetFrom && z > pivotZ - 0.22) return true
-    return Math.hypot(y - radius, z - frontZ) < radius * 1.5 && y < radius * 2.35 && Math.abs(x) < 0.16 && z > frontZ - radius * 1.25
-  }
-  const centred = (part, axleZ) => {
-    transformSoup(part, new THREE.Matrix4().makeTranslation(0, -radius, -axleZ))
-    return part
-  }
-  const frontWheel = centred(cutSoup(soup, isFrontWheel), frontZ)
-  const rearWheel = centred(cutSoup(soup, isRearWheel), rearZ)
-  const front = cutSoup(soup, (corners) => !isFrontWheel(corners) && !isRearWheel(corners) && turns(corners))
-  const body = cutSoup(soup, (corners) => !isFrontWheel(corners) && !isRearWheel(corners) && !turns(corners))
+  const wheelTests = places.map(inWheel)
+  const isWheel = (corners) => wheelTests.some((test) => test(corners))
 
-  // What the game needs to know to put the rider and the box on it: measured, not guessed.
+  // On two wheels, what turns with the bars.
+  let turns = () => false
+  let pivotZ = 0
+  let bars = null
+  if (spec.wheels === 2) {
+    let barsY = 0
+    let barsZ = 0
+    let widest = 0
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [x, y, z] = point(corner)
+      // (Not the mirrors, which stand higher and wider on their stalks.)
+      if (y > 0.85 && y < 1.12 && z > 0 && Math.abs(x) > widest) [widest, barsY, barsZ] = [Math.abs(x), y, z]
+    }
+    bars = [widest, barsY, barsZ]
+    const headsetFrom = barsY - 0.13
+    pivotZ = spec.bars ? barsZ + 0.04 : frontZ - radius * 1.6
+    const corridor = spec.corridor ?? 0
+    turns = (corners) => {
+      const [x, y, z] = middleOf(corners)
+      // The headset: the bars, the lamp and the mirrors.
+      if (spec.bars && y > headsetFrom && z > pivotZ - 0.22) return true
+      // The fork, where it's a thing of its own (a bicycle's): close to the line from the headset to the axle.
+      if (corridor > 0 && Math.abs(x) < 0.12) {
+        const along = Math.min(1, Math.max(0, (headsetFrom - y) / (headsetFrom - radius)))
+        if (y < headsetFrom + 0.02 && Math.abs(z - (pivotZ + (frontZ - pivotZ) * along)) < corridor) return true
+      }
+      // The mudguard and whatever else hugs the front wheel.
+      return Math.hypot(y - radius, z - frontZ) < radius * 1.5 && y < radius * 2.35 && Math.abs(x) < 0.16 && z > frontZ - radius * 1.25
+    }
+  }
+
+  const wheels = places.map(([x, z, steers], index) => {
+    const part = cutSoup(soup, wheelTests[index])
+    transformSoup(part, new THREE.Matrix4().makeTranslation(-x, -radius, -z))
+    return { soup: part, at: [x, radius, z], steers }
+  })
+  const front = spec.wheels === 2 ? cutSoup(soup, (corners) => !isWheel(corners) && turns(corners)) : null
+  const body = cutSoup(soup, (corners) => !isWheel(corners) && !turns(corners))
+
+  // What the game needs to know to seat the rider: measured, not guessed.
   const seat = { y: 0, z: 0 }
   let floorY = 0
   for (let corner = 0; corner < body.count; corner++) {
@@ -1563,16 +1751,12 @@ function bakeScooter(spec, folder) {
   }
   const round = (value) => Math.round(value * 1000) / 1000
   const extras = {
-    front: [0, round(radius), round(frontZ)],
-    rear: [0, round(radius), round(rearZ)],
+    wheels: wheels.map(({ at, steers }) => ({ at: at.map(round), steers })),
     pivot: [0, round(pivotZ)],
-    bars: [round(widest), round(barsY), round(barsZ)],
-    seat: [round(seat.y), round(seat.z)],
-    floor: round(floorY),
     size: box.getSize(new THREE.Vector3()).toArray().map(round),
   }
-  console.log(`  ${spec.name}:`, JSON.stringify(extras))
-  return { body, front, frontWheel, rearWheel, extras }
+  console.log(`  ${spec.name}:`, JSON.stringify({ ...extras, bars: bars?.map(round), seat: [round(seat.y), round(seat.z)], floor: round(floorY), halfTyre: round(half) }))
+  return { body, front, wheels, extras }
 }
 
 /** An animal as it stands in its file: skinned to its rest pose, on the ground, its head towards +Z. */
@@ -1709,20 +1893,19 @@ function writeGlb(meshes, file) {
   writeFileSync(file, Buffer.concat([header, chunk(json, 'JSON'), chunk(body, 'BIN\0')]))
 }
 
-/** The scooter's pieces, each welded and thinned to its share, with the paint's edges settled. */
-function finishScooter(spec, baked) {
+/** A fleet vehicle's pieces, each welded and thinned to its share, with the paint's edges settled. */
+function finishFleet(spec, baked) {
   const piece = (soup, triangles) => {
     const welded = weld(soup)
-    settlePaint(welded)
+    if (typeof spec.paint === 'function') settlePaint(welded)
     const { result } = simplify(welded, triangles, { maxError: 0.006, colorWeight: 0.5 })
     console.log(`  ${String(soup.indices.length / 3).padStart(6)} -> ${String(result.indices.length / 3).padStart(6)} triangles`)
     return result
   }
   return [
-    { name: spec.name, soup: piece(baked.body, 15000), extras: baked.extras },
-    { name: `${spec.name}-front`, soup: piece(baked.front, 5000) },
-    { name: `${spec.name}-wheel-front`, soup: piece(baked.frontWheel, 1800) },
-    { name: `${spec.name}-wheel-rear`, soup: piece(baked.rearWheel, 1800) },
+    { name: spec.name, soup: piece(baked.body, spec.triangles), extras: baked.extras },
+    ...(baked.front ? [{ name: `${spec.name}-front`, soup: piece(baked.front, 3000) }] : []),
+    ...baked.wheels.map(({ soup }, index) => ({ name: `${spec.name}-wheel-${index}`, soup: piece(soup, 1200) })),
   ]
 }
 
@@ -1736,9 +1919,17 @@ async function main() {
 
   const files = new Map()
   const farMeshes = []
-  for (const spec of SCOOTERS) {
+  for (const spec of BUSES) {
     if (only && !only.split(',').includes(spec.name)) continue
-    files.set(spec.file, finishScooter(spec, bakeScooter(spec, folder)))
+    const meshes = files.get(FLEET_FILE) ?? []
+    files.set(FLEET_FILE, meshes)
+    meshes.push(...bakeBus(spec, folder))
+  }
+  for (const spec of FLEET) {
+    if (only && !only.split(',').includes(spec.name)) continue
+    const meshes = files.get(FLEET_FILE) ?? []
+    files.set(FLEET_FILE, meshes)
+    meshes.push(...finishFleet(spec, bakeFleet(spec, folder)))
   }
   for (const [specs, bake] of [[VEHICLES, bakeVehicle], [PEOPLE, bakePerson], [ANIMALS, bakeAnimal], [UNRIGGED, bakeUnrigged]]) {
     for (const spec of specs) {

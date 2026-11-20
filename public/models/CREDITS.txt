@@ -42,11 +42,24 @@ by colours. All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
 "Bull" by stealth86 (the animal standing in the road)
   https://sketchfab.com/3d-models/bull-d0f2ff31252a4c9cb084b1ac3a2e4d8b
 
-scooter.glb: the rider's own scooter. Changed for this game: rescaled, cut into a body, a steering
-front and two wheels, simplified, its texture replaced by colours, its orange panels made
-repaintable and the maker's lettering removed. The game has no connection with any scooter maker.
-"Vespa scooty" by yogendraprajapati298, CC BY 4.0
+fleet.glb: the rider's own vehicles and the traffic's bus. Each was changed for this game: rescaled,
+cut into a body, the wheels and (on two wheels) a steering front, simplified, its textures replaced
+by colours, its paint made repaintable, and badges and makers' or operators' lettering removed or
+blurred away. The game has no connection with, or endorsement from, any vehicle maker or bus operator.
+All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+"Vespa scooty" by yogendraprajapati298 (the Deliver It scooter)
   https://sketchfab.com/3d-models/vespa-scooty-3faa866d4e764e93af4e03d402cf6c61
+"Old Bicycle" by Tidominer (GaadiGo's bicycle)
+  https://sketchfab.com/3d-models/old-bicycle-17ab00cb733443a2b552a2b620a68087
+"Honda NR750 1994" by Comrade1280 (GaadiGo's motorbike)
+  https://sketchfab.com/3d-models/honda-nr750-1994-89a79e0a3c334b23830561961f9644c8
+"cafe sones catering car" by higan69 (GaadiGo's catering car)
+  https://sketchfab.com/3d-models/cafe-sones-catering-car-949ea9a4ee4e43ab901e8e0589cb4377
+"2003 Chevrolet Express GMC Savana 2500 Cargo Van" by Ddiaz Design (GaadiGo's van)
+  https://sketchfab.com/3d-models/2003-chevrolet-express-gmc-savana-2500-cargo-van-ed2a0b37a01e4e51ba5b82c35d4a9dae
+"Ksrtc bus" by Meshmill (the traffic's bus; its livery recoloured)
+  https://sketchfab.com/3d-models/ksrtc-bus-ed309d476edc4200925c2cfd887ef6e9
 
 city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
 
