@@ -42,7 +42,15 @@ const TROUSERS = { hip: 0.085, knee: 0.062 }
 /** Bare skin and hair from this far below the shoulder up is hidden: the neck, head and hair. */
 const HIDE_BELOW_SHOULDER = 0.2
 
-export type RiderLook = { jacket: string; glove: string; trousers: string; shoe: string }
+/**
+ * `ownGear`: the model is a rider already (the bike rider in people.glb): the trousers and gloves
+ * keep the light and shade of his riding suit under their colour, so its knee guards, seams and
+ * folds show, and his boots keep their own colours.
+ *
+ * `asIs`: the model is already a rider in full kit (the low-poly riders in people.glb, for the
+ * traffic's bikes): nothing is recoloured, hidden or put over it. It's only measured, to be posed.
+ */
+export type RiderLook = { jacket: string; glove: string; trousers: string; shoe: string; ownGear?: boolean; asIs?: boolean }
 
 /** How a limb is posed, in radians: x turned forward, y turned out to the side, z bent at the elbow or knee. */
 export type LimbAngles = THREE.Vector3
@@ -129,6 +137,10 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
   for (let i = 0; i < position.count; i++) {
     const y = position.getY(i)
     let color: THREE.Color | null = null
+    if (look.asIs) {
+      dressed.set([colors.getX(i), colors.getY(i), colors.getZ(i)], i * 3)
+      continue
+    }
     // Under the jacket's shell (below): the arms above the gloves, and the shirt above the belt.
     if (isArm(i) && y >= shoulderY - HAND_DROP + 0.02) hidden[i] = 1
     if (!isArm(i) && !isLeg(i) && isClothing(i) && y > hipY + 0.04) hidden[i] = 1
@@ -142,6 +154,15 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
     else if (isClothing(i)) color = y > hipY ? jacket : trousers
     else if (y > shoulderY - HIDE_BELOW_SHOULDER) hidden[i] = 1
     if (y > shoulderY + 0.02 && !isArm(i)) hidden[i] = 1
+    if (color && look.ownGear && color !== jacket) {
+      if (color === shoe) color = null
+      else {
+        // The suit's own light and shade (baked as greys round 0.75), under the colour it's given.
+        const shade = Math.min(1.35, Math.max(0.45, (colors.getX(i) + colors.getY(i) + colors.getZ(i)) / 3 / 0.72))
+        dressed.set([color.r * shade, color.g * shade, color.b * shade], i * 3)
+        continue
+      }
+    }
     if (color) dressed.set([color.r, color.g, color.b], i * 3)
     else dressed.set([colors.getX(i), colors.getY(i), colors.getZ(i)], i * 3)
   }
@@ -149,14 +170,23 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
   geometry.setAttribute('aHidden', new THREE.BufferAttribute(hidden, 1))
 
   // ---- Measuring ----
-  const shoulder = average(geometry, (i) => isArm(i) && onLeft(i) && near(shoulderY - 0.04, 0.04)(i))
-  const elbow = average(geometry, (i) => isArm(i) && onLeft(i) && near(elbowY)(i))
+  // The middle of a limb's corners round a height. A model with few corners (the low-poly riders)
+  // may have none in a thin band, which would put the joint at the origin: the band widens until it has some.
+  const around = (part: (i: number) => boolean, y: number, band = 0.03) => {
+    for (let wide = band; wide < 0.5; wide *= 1.6) {
+      const test = (i: number) => part(i) && onLeft(i) && near(y, wide)(i)
+      for (let i = 0; i < position.count; i++) if (test(i)) return average(geometry, test)
+    }
+    return average(geometry, (i) => part(i) && onLeft(i))
+  }
+  const shoulder = around(isArm, shoulderY - 0.04, 0.04)
+  const elbow = around(isArm, elbowY)
   let lowest = Infinity
   for (let i = 0; i < position.count; i++) if (isArm(i) && onLeft(i)) lowest = Math.min(lowest, position.getY(i))
-  const grip = average(geometry, (i) => isArm(i) && onLeft(i) && near(lowest + GRIP_ABOVE_FINGERTIPS, 0.03)(i))
-  const hip = average(geometry, (i) => isLeg(i) && onLeft(i) && near(hipY - 0.05, 0.05)(i))
-  const knee = average(geometry, (i) => isLeg(i) && onLeft(i) && near(kneeY)(i))
-  const ankle = average(geometry, (i) => isLeg(i) && onLeft(i) && near(ANKLE + 0.04, 0.04)(i))
+  const grip = around(isArm, lowest + GRIP_ABOVE_FINGERTIPS)
+  const hip = around(isLeg, hipY - 0.05, 0.05)
+  const knee = around(isLeg, kneeY)
+  const ankle = around(isLeg, ANKLE + 0.04, 0.04)
   ankle.z = knee.z
   // The shader turns limbs about joints at the joint heights, in the model's middle plane (z 0).
   const shoulderJoint = new THREE.Vector3(shoulder.x, shoulderY, 0)
@@ -187,6 +217,29 @@ export function createRiderModel(man: THREE.BufferGeometry, look: RiderLook): Ri
     return half > 0 ? { half, front, back } : null
   }
   const wrist = elbow.clone().lerp(grip, Math.min(1, (elbowY - (shoulderY - HAND_DROP + 0.02)) / Math.max(0.01, elbowY - grip.y)))
+  // A rider in full kit already wears what they wear: no shell goes over them.
+  if (look.asIs) {
+    const upperArm = elbow.distanceTo(shoulderJoint)
+    return {
+      geometry,
+      size: {
+        shoulderY,
+        shoulderX: shoulder.x,
+        hipY,
+        hipX: hip.x,
+        upperArm,
+        forearm: grip.distanceTo(elbow),
+        thigh: knee.distanceTo(hipJoint),
+        shin: ankle.distanceTo(knee),
+        armRest: restAngles(shoulderJoint, elbow),
+        legRest: restAngles(hipJoint, knee),
+        head,
+        printHalfWidth,
+        printBack,
+        printY,
+      },
+    }
+  }
   const shell = createJacketShell({ shoulderY, hipY, shoulderJoint, elbow, wrist, hipJoint: new THREE.Vector3(hip.x, hipY, 0), knee, torsoAt, color: jacket, trousers, attributes: geometry })
   const merged = mergeGeometries([geometry, ...shell.parts])
   geometry.dispose()
@@ -557,7 +610,7 @@ export type Seat = { hip: THREE.Vector3; lean: number; hands: THREE.Vector3; fee
  * helmet over the head. The jacket is marked `_paint`, so each rider's jacket takes the colour
  * the instance is given while skin, trousers and shoes keep their own (vehiclePaint.ts).
  */
-export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, seat: Seat, helmetColor: string): THREE.BufferGeometry {
+export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, seat: Seat, helmetColor: string | null): THREE.BufferGeometry {
   const { size } = model
   const toRiderSpace = new THREE.Matrix4()
     .makeRotationX(seat.lean)
@@ -603,11 +656,23 @@ export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, se
     const g = colors.getY(corner)
     const b = colors.getZ(corner)
     out.color.set([r, g, b], k * 3)
-    out._paint[k] = Math.abs(r - jacket.r) + Math.abs(g - jacket.g) + Math.abs(b - jacket.b) < 0.01 ? 1 : 0
+    if (look.asIs) {
+      // A rider in their own kit: its pale panels take each rider's colour (keeping their light and
+      // shade), so two models make a street's worth of different riders; the rest stays as it is.
+      const light = Math.max(r, g, b)
+      const pale = light > 0.55 && light - Math.min(r, g, b) < 0.12
+      out._paint[k] = pale ? 1 : 0
+      if (pale) out.color.set([light, light, light], k * 3)
+    } else out._paint[k] = Math.abs(r - jacket.r) + Math.abs(g - jacket.g) + Math.abs(b - jacket.b) < 0.01 ? 1 : 0
   })
   const body = new THREE.BufferGeometry()
   for (const [name, values] of Object.entries(out)) body.setAttribute(name, new THREE.BufferAttribute(values, name === '_paint' ? 1 : 3))
 
+  // Their own helmet is on already.
+  if (!helmetColor) {
+    body.computeBoundingSphere()
+    return body
+  }
   // The helmet, over the head, in its own colour.
   const helmet = new THREE.SphereGeometry(0.15, 12, 9).toNonIndexed()
   helmet.scale(0.96, 1, 1.08)

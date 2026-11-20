@@ -69,6 +69,8 @@ const COMMUTER_SEAT: Seat = {
   feet: new THREE.Vector3(0.18, 0.42, -0.12),
 }
 const COMMUTER_HELMET = '#26282c'
+/** The riders who come in their own kit: nothing of theirs is changed but the pale panels' colour. */
+const SUITED_LOOK: RiderLook = { ...COMMUTER_LOOK, asIs: true }
 /** Jackets and shirts on bikes: everyday colours, a few bright. */
 const JACKET_COLORS = ['#3b4a6b', '#6b6f75', '#2a2c30', '#8a3b34', '#c9c3b4', '#3f6a55', '#b8862f', '#e0dcd2']
 const AUTO_COLORS = ['#ffffff']
@@ -885,6 +887,12 @@ function bikeShapeOf(item: Moving): number {
   return Math.floor(item.tint * 997) % 3
 }
 
+/** Who rides a bike: 0 the man in a jacket, 1 and 2 the riders in suits (people.glb). Half are the man. */
+function riderOf(item: Moving): number {
+  const pick = Math.floor(item.tint * 613) % 4
+  return pick < 2 ? 0 : pick - 1
+}
+
 /** Each vehicle's own KA plate, picked once from the shared picture (numberPlates.ts). */
 function NumberPlates({ items, geometry, commercial, atlas, reach = PLATE_REACH }: { items: Moving[]; geometry: THREE.BufferGeometry; commercial: boolean; atlas: THREE.Texture; reach?: number }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
@@ -960,10 +968,12 @@ export function Traffic({
     () => ({
       // The same man as the walkers and the player's rider, seated on the bike in one pose.
       rider: createSeatedRiderGeometry(createRiderModel(getModel(scene, 'man'), COMMUTER_LOOK), COMMUTER_LOOK, COMMUTER_SEAT, COMMUTER_HELMET),
+      // Two riders in riding suits and their own helmets (people.glb), seated the same way: every other bike has one or the other.
+      suited: (['rider-m', 'rider-f'] as const).map((name) => createSeatedRiderGeometry(createRiderModel(getModel(extraPeople, name), SUITED_LOOK), SUITED_LOOK, COMMUTER_SEAT, null)),
       parked: createParkedScooterGeometry(scene, STEERING_Z),
       parkedFar: createParkedScooterGeometry(scene, STEERING_Z, true),
     }),
-    [scene],
+    [scene, extraPeople],
   )
   // Two of the three two-wheeler shapes are built in code (twoWheelers.ts).
   const bikeShapes = useMemo(() => {
@@ -1006,7 +1016,7 @@ export function Traffic({
 
   useEffect(
     () => () => {
-      Object.values(drawn).forEach((geometry) => geometry.dispose())
+      Object.values(drawn).flat().forEach((geometry) => geometry.dispose())
       women.forEach((woman) => woman.dispose())
     },
     [drawn, women],
@@ -1054,6 +1064,7 @@ export function Traffic({
         const items = inPlay.filter((vehicle) => vehicle.kind === kind)
         if (kind === 'bike') {
           const byShape = bikeShapes.map((_, shape) => items.filter((item) => bikeShapeOf(item) === shape))
+          const byRider = [0, 1, 2].map((who) => items.filter((item) => riderOf(item) === who))
           return (
             <group key={kind}>
               {bikeShapes.map((geometry, shape) => (
@@ -1062,7 +1073,10 @@ export function Traffic({
                   <NumberPlates items={byShape[shape]} geometry={bikePlates[shape]} commercial={false} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
                 </group>
               ))}
-              <MovingInstances items={items} geometry={drawn.rider} palette={JACKET_COLORS} castShadow={shadowSize > 0} reflection={reflection} seatedRider cloth reach={detail} />
+              {/* Who's riding: the man in a jacket, or one of the two riders in suits, by the bike. */}
+              {[drawn.rider, ...drawn.suited].map((geometry, who) => (
+                <MovingInstances key={who} items={byRider[who]} geometry={geometry} palette={JACKET_COLORS} castShadow={shadowSize > 0} reflection={reflection} seatedRider cloth reach={detail} />
+              ))}
               <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked lamps reflection={reflection} from={detail} />
               {/* Only the model has separate wheels to spin. The built shapes carry theirs. */}
               <VehicleWheels items={byShape[0]} wheels={wheels.bike} reach={detail} />

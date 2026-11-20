@@ -33,6 +33,14 @@ by colours. All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
   https://sketchfab.com/3d-models/indian-male-metaverse-avatar-in-formal-dress-6601baa7ba42442799df5b848400ec69
 "Sareewoman" by dk8026854
   https://sketchfab.com/3d-models/sareewoman-c686c80a3fc84465b1dad642d3b21fa3
+"bike rider 3d." by Atrikumar Das (the player's rider, under the game's own jacket and helmet)
+  https://sketchfab.com/3d-models/bike-rider-3d-53590579378a4e83a4597b28a9f43149
+"Low-pol Bike Rider (Male)" by newArteest (riders on the traffic's bikes; pale panels recoloured)
+  https://sketchfab.com/3d-models/low-pol-bike-rider-male-a434472913e34238a708b5e562c9fa6b
+"Low-pol Bike Rider (Female)" by newArteest (the same)
+  https://sketchfab.com/3d-models/low-pol-bike-rider-female-7295e60014ea44cf8c16bbac03a96e81
+"Bull" by stealth86 (the animal standing in the road)
+  https://sketchfab.com/3d-models/bull-d0f2ff31252a4c9cb084b1ac3a2e4d8b
 
 city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
 

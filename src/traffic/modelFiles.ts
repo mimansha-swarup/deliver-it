@@ -4,7 +4,9 @@ export const TRAFFIC_MODELS_URL = '/models/traffic.glb'
 /**
  * More people for the pavements, in a file of their own so adding one never rebakes the vehicles
  * (scripts/prepare_traffic_models.mjs): a man in a striped shirt, a man in a plain one, an
- * office-goer and a woman in a saree.
+ * office-goer and a woman in a saree. Also in it: the bike rider the player's own rider is made
+ * from (`biker`), two riders in suits for the traffic's bikes (`rider-m`, `rider-f`), and the bull
+ * that stands in the road (`bull`).
  */
 export const PEOPLE_MODELS_URL = '/models/people.glb'
 export const EXTRA_PEOPLE = ['uncle', 'guy', 'office', 'saree'] as const

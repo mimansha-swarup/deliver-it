@@ -4,7 +4,7 @@ import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
-import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
+import { getModel, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
 import { gaitAt, HIP, SHUFFLE, WALK, type Gait, type Probe } from './riderShape'
 import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
@@ -24,7 +24,7 @@ import { BRAND_DYE, BRAND_INK, createHelmetDecalTexture, createJacketPrintTextur
  * angles that put them there.
  */
 
-const LOOK = { jacket: BRAND_DYE, glove: '#1c1d20', trousers: '#2b3a55', shoe: '#17171a' }
+const LOOK = { jacket: BRAND_DYE, glove: '#1c1d20', trousers: '#2b3a55', shoe: '#17171a', ownGear: true }
 const HELMET = '#f4f3ef'
 const VISOR = '#14191e'
 
@@ -168,8 +168,9 @@ export function Rider({
   /** Standing: seconds they've been still, until the next fidget, which it is, how far through, and which way it goes. */
   const fidget = useRef({ still: 0, wait: FIDGET.after, kind: null as Fidget | null, time: 0, side: 1, count: 0 })
 
-  const { scene } = useGLTF(TRAFFIC_MODELS_URL)
-  const model: RiderModel = useMemo(() => createRiderModel(getModel(scene, 'man'), LOOK), [scene])
+  // The rider is the bike rider from people.glb, in the Deliver It jacket and helmet over his own riding suit and boots.
+  const { scene: people } = useGLTF(PEOPLE_MODELS_URL)
+  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, 'biker'), LOOK), [people])
   const pose: RiderPose = useMemo(
     () => ({ leftArm: new THREE.Vector3(), rightArm: new THREE.Vector3(), leftLeg: new THREE.Vector3(), rightLeg: new THREE.Vector3() }),
     [],

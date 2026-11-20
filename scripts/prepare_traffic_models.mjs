@@ -220,6 +220,34 @@ const PEOPLE = [
     // the original than the others to get down to a pedestrian's share.
     simplify: { maxError: 0.08, colorWeight: 0.05, normalWeight: 0.02 },
   },
+  {
+    // "bike rider 3d": a rider in a riding suit and a full-face helmet. The base for the player's
+    // own rider (vehicle/Rider.tsx), who wears the Deliver It jacket over it.
+    name: 'biker',
+    folder: 'bike_rider_3d',
+    file: PEOPLE_FILE,
+    height: 1.74,
+    triangles: 5000,
+    clothes: /Outfit_Top/,
+    dropMaterial: /Teeth/,
+  },
+]
+
+/**
+ * Animals, baked standing as modelled into the people's file: one mesh, colour sampled from the
+ * texture, no limbs (they stand still). `head`: the material that says which end is the front.
+ */
+const ANIMALS = [
+  {
+    // "Bull": the animal in the road (world/CityEvents.tsx).
+    name: 'bull',
+    folder: 'bull',
+    file: PEOPLE_FILE,
+    height: 1.55,
+    triangles: 4500,
+    head: /horns/,
+    dropMaterial: /^$/,
+  },
 ]
 
 const COMPONENT_READERS = {
@@ -1303,6 +1331,162 @@ function bakePerson(spec, folder) {
   return soup
 }
 
+/**
+ * Riders for the traffic's two-wheelers (traffic/Traffic.tsx), from models with no skeleton: low-poly
+ * figures in riding suits and helmets, standing with their arms straight out. `facing`: which way
+ * they look in their file, as [x, z].
+ */
+const UNRIGGED = [
+  { name: 'rider-m', folder: 'low-pol_bike_rider_male', file: PEOPLE_FILE, height: 1.74, triangles: 2000, facing: [1, 0] },
+  { name: 'rider-f', folder: 'low-pol_bike_rider_female', file: PEOPLE_FILE, height: 1.64, triangles: 2000, facing: [1, 0] },
+]
+
+/**
+ * A figure with no skeleton, made ready for the game's posing: stood on the ground facing +Z, the
+ * arms brought down from straight out (turned about each shoulder), and each corner told its limb
+ * from where it is: beyond the shoulders is an arm, below the hips a leg, by its side. The heights
+ * of the shoulders and hips are found on the figure itself.
+ */
+function bakeUnrigged(spec, folder) {
+  const model = loadModel(join(folder, spec.folder))
+  const { gltf } = model
+  const soup = new Soup()
+  gltf.nodes.forEach((node, index) => {
+    if (node.mesh === undefined) return
+    for (const primitive of gltf.meshes[node.mesh].primitives) addPrimitive(model, soup, primitive, () => model.world[index], () => ({ color: null, paint: false }))
+  })
+  const box = getBounds(soup)
+  const middle = box.getCenter(new THREE.Vector3())
+  const scale = spec.height / box.getSize(new THREE.Vector3()).y
+  transformSoup(
+    soup,
+    new THREE.Matrix4()
+      .makeScale(scale, scale, scale)
+      .multiply(new THREE.Matrix4().makeRotationY(-Math.atan2(spec.facing[0], spec.facing[1])))
+      .multiply(new THREE.Matrix4().makeTranslation(-middle.x, -box.min.y, -middle.z)),
+  )
+
+  const H = spec.height
+  const at = (corner) => [soup.positions[corner * 3], soup.positions[corner * 3 + 1], soup.positions[corner * 3 + 2]]
+  // The arms are everything well out to the side: their middle height is the shoulders'.
+  let armSum = 0
+  let armCount = 0
+  for (let corner = 0; corner < soup.count; corner++) {
+    const [x, y] = at(corner)
+    if (Math.abs(x) > 0.22 * H) {
+      armSum += y
+      armCount++
+    }
+  }
+  const shoulderY = armSum / armCount + 0.01 * H
+  // The chest's half-width just under the arms: where the shoulders' joints are.
+  let chest = 0
+  for (let corner = 0; corner < soup.count; corner++) {
+    const [x, y] = at(corner)
+    if (y > shoulderY - 0.16 * H && y < shoulderY - 0.09 * H) chest = Math.max(chest, Math.abs(x))
+  }
+  const shoulderX = chest * 0.92
+  // The hips: the highest level at which the figure is in two (nothing near the middle).
+  let hipY = 0.47 * H
+  for (let y = 0.58 * H; y > 0.3 * H; y -= 0.01 * H) {
+    let nearest = Infinity
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [x, cy] = at(corner)
+      if (Math.abs(cy - y) < 0.02 * H) nearest = Math.min(nearest, Math.abs(x))
+    }
+    if (nearest > 0.012 * H && nearest < Infinity) {
+      hipY = y + 0.03 * H
+      break
+    }
+  }
+  console.log(`  ${spec.name}: shoulders at ${shoulderY.toFixed(2)} m and ±${shoulderX.toFixed(2)} m, hips at ${hipY.toFixed(2)} m`)
+
+  const smooth = (from, to, value) => {
+    const t = Math.min(1, Math.max(0, (value - from) / (to - from)))
+    return t * t * (3 - 2 * t)
+  }
+  const point = new THREE.Vector3()
+  const normal = new THREE.Vector3()
+  const axis = new THREE.Vector3(0, 0, 1)
+  for (let corner = 0; corner < soup.count; corner++) {
+    const [x, y] = at(corner)
+    const side = x >= 0 ? 1 : -1
+    // How much of an arm this corner is: none on the chest, all of it past the shoulder.
+    const arm = y > shoulderY - 0.14 * H ? smooth(shoulderX - 0.015 * H, shoulderX + 0.025 * H, Math.abs(x)) : 0
+    if (arm > 0) {
+      // Down from straight out, about the shoulder: a little short of straight down, as arms hang.
+      const turn = -side * (Math.PI / 2 - 0.12) * arm
+      point.fromArray(soup.positions, corner * 3).sub(new THREE.Vector3(side * shoulderX, shoulderY, 0)).applyAxisAngle(axis, turn).add(new THREE.Vector3(side * shoulderX, shoulderY, 0))
+      point.toArray(soup.positions, corner * 3)
+      normal.fromArray(soup.normals, corner * 3).applyAxisAngle(axis, turn).toArray(soup.normals, corner * 3)
+    }
+    const leg = 1 - smooth(hipY - 0.01 * H, hipY + 0.05 * H, y)
+    const isArm = arm > 0.5
+    soup.limbs[corner * 3] = isArm ? -side * arm : arm > 0 ? 0 : side * leg
+    soup.limbs[corner * 3 + 1] = isArm ? shoulderY : hipY
+    soup.limbs[corner * 3 + 2] = 0
+  }
+  return soup
+}
+
+/** An animal as it stands in its file: skinned to its rest pose, on the ground, its head towards +Z. */
+function bakeAnimal(spec, folder) {
+  const model = loadModel(join(folder, spec.folder))
+  const { gltf } = model
+  const skin = gltf.skins[0]
+  const inverseBinds = readAccessor(model, skin.inverseBindMatrices)
+  const jointMatrices = skin.joints.map((joint, slot) => model.world[joint].clone().multiply(new THREE.Matrix4().fromArray(inverseBinds, slot * 16)))
+  const soup = new Soup()
+  const head = new THREE.Vector3()
+  let headCorners = 0
+  gltf.nodes.forEach((node, index) => {
+    if (node.mesh === undefined) return
+    for (const primitive of gltf.meshes[node.mesh].primitives) {
+      const material = gltf.materials[primitive.material]
+      if (spec.dropMaterial?.test(material.name)) continue
+      let matrixOf = () => model.world[index]
+      if (node.skin !== undefined) {
+        const joints = readAccessor(model, primitive.attributes.JOINTS_0)
+        const weights = readAccessor(model, primitive.attributes.WEIGHTS_0)
+        const blended = new THREE.Matrix4()
+        matrixOf = (corner) => {
+          const out = blended.elements.fill(0)
+          let total = 0
+          for (let slot = 0; slot < 4; slot++) total += weights[corner * 4 + slot]
+          if (total < 1e-6) return blended.copy(jointMatrices[joints[corner * 4]])
+          for (let slot = 0; slot < 4; slot++) {
+            const weight = weights[corner * 4 + slot] / total
+            if (weight === 0) continue
+            const elements = jointMatrices[joints[corner * 4 + slot]].elements
+            for (let at = 0; at < 16; at++) out[at] += elements[at] * weight
+          }
+          return blended
+        }
+      }
+      const first = addPrimitive(model, soup, primitive, matrixOf, () => ({ color: null, paint: false }))
+      if (spec.head.test(material.name)) {
+        for (let corner = first; corner < soup.count; corner++) {
+          head.add(new THREE.Vector3().fromArray(soup.positions, corner * 3))
+          headCorners++
+        }
+      }
+    }
+  })
+  const box = getBounds(soup)
+  const middle = box.getCenter(new THREE.Vector3())
+  head.divideScalar(Math.max(1, headCorners))
+  const facing = Math.atan2(head.x - middle.x, head.z - middle.z)
+  const scale = spec.height / box.getSize(new THREE.Vector3()).y
+  transformSoup(
+    soup,
+    new THREE.Matrix4()
+      .makeScale(scale, scale, scale)
+      .multiply(new THREE.Matrix4().makeRotationY(-facing))
+      .multiply(new THREE.Matrix4().makeTranslation(-middle.x, -box.min.y, -middle.z)),
+  )
+  return soup
+}
+
 function writeGlb(meshes, file) {
   const binary = []
   let length = 0
@@ -1389,7 +1573,7 @@ async function main() {
 
   const files = new Map()
   const farMeshes = []
-  for (const [specs, bake] of [[VEHICLES, bakeVehicle], [PEOPLE, bakePerson]]) {
+  for (const [specs, bake] of [[VEHICLES, bakeVehicle], [PEOPLE, bakePerson], [ANIMALS, bakeAnimal], [UNRIGGED, bakeUnrigged]]) {
     for (const spec of specs) {
       // One name, or several with commas between: only those are baked, and only their files written.
       if (only && !only.split(',').includes(spec.name)) continue

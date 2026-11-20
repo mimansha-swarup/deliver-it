@@ -91,20 +91,3 @@ export function createWeddingCar(): THREE.BufferGeometry {
   return finish(parts)
 }
 
-/** A cow sitting in the road, chewing: legs folded under her, head up, a bell on a rope. */
-export function createCow(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = []
-  const HIDE = '#d9cfbb'
-  const PATCH = '#8a5a3c'
-  parts.push(ball([0.95, 0.72, 1.9], [0, 0.42, 0], HIDE), ball([0.7, 0.4, 0.8], [0.15, 0.62, -0.3], PATCH), ball([0.5, 0.35, 0.5], [-0.22, 0.55, 0.45], PATCH))
-  // Folded legs, the hump, the neck and the head, ears and short horns.
-  parts.push(ball([0.24, 0.2, 0.7], [0.42, 0.14, 0.55], HIDE), ball([0.24, 0.2, 0.7], [-0.42, 0.14, 0.5], HIDE), ball([0.26, 0.22, 0.6], [0.44, 0.14, -0.55], HIDE))
-  parts.push(ball([0.4, 0.34, 0.45], [0, 0.82, 0.55], HIDE), ball([0.42, 0.55, 0.5], [0, 0.82, 0.95], HIDE), ball([0.36, 0.38, 0.62], [0, 1.02, 1.28], HIDE), ball([0.3, 0.26, 0.24], [0, 0.93, 1.56], '#b89a86'))
-  for (const side of [-1, 1]) {
-    parts.push(ball([0.26, 0.08, 0.16], [side * 0.28, 1.1, 1.12], PATCH))
-    parts.push(drum(0.03, 0.2, [side * 0.13, 1.26, 1.12], '#e8e1cf'))
-    parts.push(ball([0.06, 0.06, 0.06], [side * 0.13, 1.06, 1.42], '#17171a'))
-  }
-  parts.push(drum(0.02, 0.9, [0, 0.5, -1.0], '#8a7a66', 'z'), ball([0.12, 0.12, 0.12], [0, 0.66, 1.02], '#c9a227'))
-  return finish(parts)
-}

@@ -11259,3 +11259,27 @@ so the vehicles weren't rebaked.
 
 Seen in the game, close up, walking: all four. Four more kinds is four more draw calls for
 pedestrians; the frame benchmark wasn't run.
+
+## 2026-11-21: Entry 241, a bull in the road, a new rider under the jacket, and suited riders on the bikes
+
+Four more downloaded models, all CC BY 4.0 and credited, baked into `people.glb` (now 426 KB).
+
+- **The bull is the cow.** The animal in the road was a sitting cow made of balls in code; it's now
+  the modelled bull, standing (`bakeAnimal` in the baking script: the rest pose, colours from the
+  texture, head to the front). The event says "A bull is standing in the road". The code-built cow
+  among the street's story props is unchanged.
+- **The player's rider is made from the bike rider.** Still the Deliver It jacket, gloves and helmet
+  (those are the game's own shapes over the model, so the brand and the Garage's helmet colours
+  stay), now over his riding trousers, which keep their folds and guards under our colour, and
+  his own boots (`ownGear` in riderModel.ts). The change shows from the knees down and in his build.
+- **Two suited riders on the traffic's bikes.** The low-poly male and female riders have no
+  skeleton and stand with their arms out, so the baking script brings the arms down and tells each
+  corner its limb from where it is (`bakeUnrigged`); the game then seats them like the others
+  (`asIs`: nothing recoloured or covered, their own helmets). Half the bikes keep the man in a
+  jacket; a quarter each get the suited man and woman, whose pale panels take each rider's colour.
+  Measuring a model with few corners needed the bands round each joint to widen until they hold
+  some, or a joint landed at the origin and the arms folded up to the face.
+
+Seen in the game: the bull standing in a lane, the player's rider on the scooter and stepping off,
+and both suited riders on bikes. Three kinds of rider is two more draw calls for bikes; the frame
+benchmark wasn't run, and a thrown suited rider (after a crash) wasn't looked at.

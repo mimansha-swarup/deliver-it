@@ -9,11 +9,11 @@ import { livePlayer, liveSky } from '../game/livePlayer'
 import { mapMarkers } from '../game/mapMarkers'
 import { STRIDE_PER_METRE } from '../traffic/gait'
 import type { Lane } from '../traffic/lanes'
-import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
+import { getModel, PEOPLE_MODELS_URL, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
 import { createPerson } from '../traffic/person'
 import { People } from '../traffic/Traffic'
 import { closeLanes, isPlainRoad, setObstacle, type Pedestrian, type TrafficWorld } from '../traffic/trafficLogic'
-import { createBrokenBus, createCow, createDigSite, createWeddingCar } from './cityEventShapes'
+import { createBrokenBus, createDigSite, createWeddingCar } from './cityEventShapes'
 import { addPost, addWall, removeFootprint, removePost, type CollisionWorld, type Footprint } from './collision'
 import { setClosedLinks, type RoadGraph } from './roadGraph'
 
@@ -25,7 +25,7 @@ import { setClosedLinks, type RoadGraph } from './roadGraph'
  *   dig      a road dug up for pipe work: closed to everything; the GPS routes round it
  *   wedding  a wedding procession walking a street behind its band: slow and solid; the street is
  *            closed to traffic while it passes, and a rider can ease past along its side
- *   cow      a cow sitting in a lane: solid, unbothered; traffic queues and goes round her, as you do
+ *   cow      a bull standing in a lane (the modelled one in people.glb): solid, unbothered; traffic queues and goes round her, as you do
  *
  * Each lasts a few minutes and then clears. They're scenery with consequences, shown with good
  * humour and respect; nobody in them can be knocked over. `?event=dig` (with ?debug) stages one now,
@@ -43,7 +43,7 @@ const DIG_REACH = 8
 /** A wedding procession's pace (m/s), and how long its solid middle is. */
 const WEDDING = { pace: 0.6, length: 15, width: 2.4, minPath: 110, maxPath: 240 }
 const MARKER_COLOR = '#ff6b5e'
-const NAMES: Record<CityEventKind, string> = { bus: 'Bus broken down', dig: 'Road dug up', wedding: 'Wedding procession', cow: 'Cow on the road' }
+const NAMES: Record<CityEventKind, string> = { bus: 'Bus broken down', dig: 'Road dug up', wedding: 'Wedding procession', cow: 'Bull on the road' }
 
 const forcedKind = (): CityEventKind | null => {
   if (typeof location === 'undefined') return null
@@ -247,6 +247,7 @@ if (typeof location !== 'undefined' && new URLSearchParams(location.search).has(
 export function CityEvents({ traffic, collisions, graph }: { traffic: TrafficWorld; collisions: CollisionWorld; graph: RoadGraph }) {
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const body = useMemo(() => getModel(scene, 'man'), [scene])
+  const { scene: people } = useGLTF(PEOPLE_MODELS_URL)
   const [event, setEvent] = useState<Staged | null>(null)
   const live = useRef<{ event: Staged | null; startedAt: number; nextIn: number; wall: Footprint | null; sinceWall: number }>({ event: null, startedAt: 0, nextIn: forcedKind() ? 3 : between(FIRST), wall: null, sinceWall: 0 })
   const group = useRef<THREE.Group>(null)
@@ -255,8 +256,8 @@ export function CityEvents({ traffic, collisions, graph }: { traffic: TrafficWor
 
   const geometry = useMemo(() => {
     if (!event) return null
-    return event.kind === 'bus' ? createBrokenBus() : event.kind === 'dig' ? createDigSite(event.width) : event.kind === 'wedding' ? createWeddingCar() : createCow()
-  }, [event])
+    return event.kind === 'bus' ? createBrokenBus() : event.kind === 'dig' ? createDigSite(event.width) : event.kind === 'wedding' ? createWeddingCar() : getModel(people, 'bull').clone()
+  }, [event, people])
   useEffect(() => () => geometry?.dispose(), [geometry])
   const cast = event ? CASTS[event.kind] : CASTS.cow
   const band = useMemo(() => cast.filter((one) => one.band).map(() => createPerson(0, 0, 0, 0.5, 0.8)), [cast])
@@ -299,7 +300,7 @@ export function CityEvents({ traffic, collisions, graph }: { traffic: TrafficWor
         kind === 'bus' ? `Heads up: a bus has broken down ${where}. One lane is blocked, go round it.`
           : kind === 'dig' ? `Heads up: ${staged.road || 'a road near you'} is dug up for pipe work. It's closed; your GPS will take you round.`
             : kind === 'wedding' ? `There's a wedding procession ${where}. Go slowly past, maga, and no horn.`
-              : `A cow is sitting in the road ${where}. She's not moving. Go round her.`,
+              : `A bull is standing in the road ${where}. He's not moving. Go round him.`,
       )
       setEvent(staged)
       return
