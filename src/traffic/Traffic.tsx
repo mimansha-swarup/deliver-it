@@ -677,13 +677,27 @@ function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
   wave.needsUpdate = true
 }
 
+/**
+ * People in a room (world/Rooms.tsx) stand under the city, where the sun and the sky's light don't
+ * reach them, beside walls that are drawn unlit. So they glow with this share of their own colours,
+ * as lit by the room's tube lights: about as bright as the walls around them.
+ */
+const INDOOR_GLOW = 0.62
+function addWalkingIndoors(shader: Parameters<typeof addWalking>[0]) {
+  addWalking(shader)
+  shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * ${INDOOR_GLOW.toFixed(2)};`)
+}
+
 /** A crowd, or just one person, walking by the same shader. */
 export function People({
   items,
   body,
   palette = CLOTHES_COLORS,
   ground = PAVEMENT_HEIGHT,
+  indoors = false,
 }: {
+  /** Standing in a room: lit by the room, not the sky. */
+  indoors?: boolean
   items: Pedestrian[]
   body: THREE.BufferGeometry
   /** The colours their clothes can be. */
@@ -711,7 +725,7 @@ export function People({
       args={[geometry, undefined, items.length]}
       frustumCulled={false}
     >
-      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={addWalking} />
+      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={indoors ? addWalkingIndoors : addWalking} />
     </instancedMesh>
   )
 }

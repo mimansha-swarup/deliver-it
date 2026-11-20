@@ -101,8 +101,8 @@ function RoomSet({ kind, label }: { kind: RoomKind; label: string }) {
           <planeGeometry args={size} />
         </mesh>
       </group>
-      {staff.length > 0 && <People items={staff} body={body} palette={kind === 'store' ? STAFF_CLOTHES : ['#f4f1e8']} ground={ROOM_DEPTH} />}
-      {others.length > 0 && <People items={others} body={body} ground={ROOM_DEPTH} />}
+      {staff.length > 0 && <People items={staff} body={body} palette={kind === 'store' ? STAFF_CLOTHES : ['#f4f1e8']} ground={ROOM_DEPTH} indoors />}
+      {others.length > 0 && <People items={others} body={body} ground={ROOM_DEPTH} indoors />}
     </>
   )
 }
