@@ -277,7 +277,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   for (const park of infill.parks) if (!data.parks.includes(park)) data.parks.push(park)
   // Debug: the pocket parks' corners, to go and look at them from the console.
   if (isDebug()) (window as unknown as { __deliverItPocketParks?: unknown }).__deliverItPocketParks = infill.parks.map((park) => park.geometry.coordinates[0].map((p) => { const [x, , z] = lonLatToWorld(p); return [x, z] }))
-  lap(`infill: ${infill.buildings.length} buildings, ${infill.parks.length} pocket parks` + (CHECK ? ` [check ${planChecksum([infill, data.buildings.map((building) => [building.kind, (building as { civicUse?: string }).civicUse ?? ""])])}]` : ''))
+  lap(`infill: ${infill.buildings.length} buildings, ${infill.parks.length} pocket parks` + (CHECK ? ` [check ${planChecksum([infill, data.buildings.map((building) => [building.geometry.coordinates, building.kind, (building as { civicUse?: string }).civicUse ?? ""])])}]` : ''))
   yield STEP
   if (import.meta.env.DEV) console.info('[streets] infill:', JSON.stringify({ buildings: infill.buildings.length, sites: infill.sites.length, cars: infill.parkedCars.length, hoardings: infill.hoardings.length, pumps: infill.pumps.length, shrines: infill.shrines.length, parks: infill.parks.length }))
   const mappedShops = generateShopFronts(data.places, collisions)

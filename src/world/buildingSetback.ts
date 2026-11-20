@@ -1,5 +1,5 @@
 import type { BuildingFeature, MapData } from './mapData'
-import { distanceToPiece, forEachRoadNear, type RoadIndex, type RoadPiece } from './props'
+import { distanceToPiece, someRoadWithin, type RoadIndex, type RoadPiece } from './props'
 import { streetPresetOf, WIDEST_FOOTPATH } from './streetPresets'
 import { PAVEMENT_WIDTH } from './surface'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, worldToLonLat, type GroundPoint } from './worldUtils'
@@ -64,11 +64,8 @@ function samplePoints(outline: GroundPoint[]): GroundPoint[] {
 
 /** Whether a point is on a road or its footpath. */
 function isOnRoad(data: MapData, roads: RoadIndex, x: number, z: number): boolean {
-  let on = false
-  forEachRoadNear(roads, x, z, REACH, (piece) => {
-    if (!on && distanceToPiece(x, z, piece) < clearanceOf(data, piece)) on = true
-  })
-  return on
+  // Stops at the first piece it's on, and measures only pieces whose box it's within the clearance of.
+  return someRoadWithin(roads, x, z, REACH, (piece) => clearanceOf(data, piece), (piece) => distanceToPiece(x, z, piece) < clearanceOf(data, piece))
 }
 
 /**
@@ -107,12 +104,14 @@ function measure(data: MapData, roads: RoadIndex, points: GroundPoint[]): { shar
   for (const [x, z] of points) {
     let hit: RoadPiece | null = null
     let depth = 0
-    forEachRoadNear(roads, x, z, REACH, (piece) => {
+    // A piece the point is further from than its clearance can't be the one it's deepest in.
+    someRoadWithin(roads, x, z, REACH, (piece) => clearanceOf(data, piece), (piece) => {
       const into = clearanceOf(data, piece) - distanceToPiece(x, z, piece)
       if (into > depth) {
         depth = into
         hit = piece
       }
+      return false
     })
     if (hit) {
       over++

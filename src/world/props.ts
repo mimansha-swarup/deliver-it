@@ -249,6 +249,34 @@ function someRoadNear(index: RoadIndex, x: number, z: number, reach: number, vis
   return false
 }
 
+/**
+ * As `someRoadNear`, in the same order, but passing over any piece whose box, grown by `margin(piece)`,
+ * the point is outside: for callers who only care about pieces within that margin of the point, the
+ * same answer without measuring the rest.
+ */
+export function someRoadWithin(index: RoadIndex, x: number, z: number, reach: number, margin: (piece: RoadPiece) => number, visit: (piece: RoadPiece) => boolean): boolean {
+  const query = ++index.query
+  const { cells, seen, pieces } = index
+  for (let cellX = roadCell(x - reach); cellX <= roadCell(x + reach); cellX++) {
+    for (let cellZ = roadCell(z - reach); cellZ <= roadCell(z + reach); cellZ++) {
+      const cell = cells.get(roadCellKey(cellX, cellZ))
+      if (!cell) continue
+      for (let i = 0; i < cell.length; i++) {
+        const number = cell[i]
+        if (seen[number] === query) continue
+        seen[number] = query
+        const piece = pieces[number]
+        const { start, end } = piece
+        const room = margin(piece) + BOX_SLACK
+        if (x < (start[0] < end[0] ? start[0] : end[0]) - room || x > (start[0] > end[0] ? start[0] : end[0]) + room) continue
+        if (z < (start[1] < end[1] ? start[1] : end[1]) - room || z > (start[1] > end[1] ? start[1] : end[1]) + room) continue
+        if (visit(piece)) return true
+      }
+    }
+  }
+  return false
+}
+
 /** True when a point is more than `gap` metres from the edge of every road. */
 export function isClearOfRoads(index: RoadIndex, x: number, z: number, gap: number): boolean {
   // `someRoadNear` written out, as loading asks this hundreds of thousands of times: no function
