@@ -768,6 +768,11 @@ export function World() {
   const { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked, chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, society, deckCollisions } =
     getWorld(data, rapier)
   useEffect(() => useLaunch.setState({ planned: true }), [])
+  // "Use any vehicle" can take the cars and bikes parked along the kerbs (game/borrow.ts).
+  useEffect(() => {
+    borrow.kerbside = streetParked
+    borrow.collisions = collisions
+  }, [streetParked, collisions])
   useEffect(() => useGameStore.getState().setPlaces({ chai: chaiStalls }), [chaiStalls])
 
   // Each part has its own Suspense boundary, the player and traffic included.

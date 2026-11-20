@@ -2110,29 +2110,31 @@ export function parkedNear(world: TrafficWorld, x: number, z: number, reach: num
 }
 
 /**
- * A parked scooter becomes one the player can ride: a two-wheeler from the traffic not in sight (out
- * of play, or the furthest off) stands in its place, empty, and the parked one is taken away. Null
- * if there's none to spare just now. `wantShape`: which of the traffic's two-wheelers looks like it.
+ * A parked vehicle becomes one the player can drive: a vehicle from the traffic that isn't in sight
+ * (out of play, or the furthest off) stands in its place, empty; the caller takes the parked one
+ * away. `kinds`: what it may be, the first that's spare winning; `isLike`: among those, the ones that
+ * look most like it. Null if there's none to spare just now.
  */
-export function standInForParked(world: TrafficWorld, parked: LooseBody, count: number, at: { x: number; z: number }, isLike: (vehicle: Vehicle) => boolean): Vehicle | null {
+export function standInForParked(world: TrafficWorld, pose: { x: number; z: number; heading: number }, kinds: VehicleKind[], count: number, at: { x: number; z: number }, isLike: (vehicle: Vehicle) => boolean = () => true): Vehicle | null {
   let pick: Vehicle | null = null
   let pickScore = -Infinity
   for (let i = 0; i < count && i < world.vehicles.length; i++) {
     const vehicle = world.vehicles[i]
-    if (vehicle.kind !== 'bike' || vehicle.taken || vehicle.body || vehicle.fallen) continue
+    const rank = kinds.indexOf(vehicle.kind)
+    if (rank === -1 || vehicle.taken || vehicle.body || vehicle.fallen) continue
     const away = vehicle.lane === -1 ? 1e5 : Math.hypot(vehicle.x - at.x, vehicle.z - at.z)
     // Never one near enough to be seen vanishing.
     if (away < STAND_IN_FROM) continue
-    const score = away + (isLike(vehicle) ? 1e6 : 0)
+    const score = away + (isLike(vehicle) ? 1e6 : 0) + (kinds.length - rank) * 1e7
     if (score > pickScore) {
       pick = vehicle
       pickScore = score
     }
   }
   if (!pick) return null
-  pick.x = parked.x
-  pick.z = parked.z
-  pick.heading = parked.heading
+  pick.x = pose.x
+  pick.z = pose.z
+  pick.heading = pose.heading
   pick.lane = world.roadLanes.findIndex((lane) => !lane.closed)
   pick.along = 0
   pick.speed = 0
@@ -2143,11 +2145,10 @@ export function standInForParked(world: TrafficWorld, parked: LooseBody, count: 
   pick.rotation = null
   pick.taken = 'empty'
   pick.abandoned = false
-  pick.riderOff = true
-  if (pick.thrownRider) pick.thrownRider.hidden = true
-  // The parked one is gone from the kerb for this visit.
-  parked.x = 1e6
-  parked.z = 1e6
+  if (pick.kind === 'bike') {
+    pick.riderOff = true
+    if (pick.thrownRider) pick.thrownRider.hidden = true
+  }
   return pick
 }
 /** A traffic two-wheeler this near the player, in metres, isn't taken to stand in for a parked one. */

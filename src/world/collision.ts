@@ -330,3 +330,22 @@ export function hasClearLine(
   }
   return true
 }
+
+/**
+ * Takes away the small solid thing a point is inside (a parked car's wall, a parked bike's post), from
+ * every cell it's in: the vehicle has been driven off. Never a building: only a footprint whose box is
+ * under `largest` metres either way. False if there's none there.
+ */
+export function removeSmallSolidAt(world: CollisionWorld, x: number, z: number, largest: number): boolean {
+  const cell = world.get(cellKey(toCell(x), toCell(z)))
+  if (!cell) return false
+  for (const footprint of cell) {
+    const box = (footprint as Boxed).box
+    if (!box || box[1] - box[0] > largest || box[3] - box[2] > largest) continue
+    if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) continue
+    if (!isNearFootprint(footprint, x, z, 0.02)) continue
+    removeFootprint(world, footprint)
+    return true
+  }
+  return false
+}
