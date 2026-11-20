@@ -1,15 +1,22 @@
 import { create } from 'zustand'
+import type { CityEventKind } from '../game/cityEvents'
 import { rushHour } from '../game/rush'
 import { getAudioEvenIfPaused } from './audioEngine'
+import { lineText, pickLine, readingTime, speak, VOICE_LINES, type Playing } from './voice'
 
 /*
  * The radio's voice: RJ Manju (made up, like the stations), who comes on between the music with a
  * short traffic update in Kanglish, or an ad for a local business that doesn't exist. Every name
  * in here is invented.
  *
- * The words are spoken by the browser's own speech (an Indian English voice where the device has
- * one), over the music turned down, after a three-note jingle; and shown on the phone as they're
- * said, for browsers with no voice. Nothing is recorded.
+ * A break is a few recorded lines in a row (audio/voice.ts; their words are in voiceScript.json): a
+ * hello, what the roads are doing, the rain if it's raining, a sign-off; or one ad. It opens with
+ * the station's three-note jingle, a small sting separates the lines, and a soft bed of held notes
+ * sits under the voice with the station's music turned down, as on a real station. The voice comes
+ * through the radio's own filter and compressor.
+ *
+ * The words are on the phone as they're said. A line that hasn't been recorded yet is only there,
+ * for as long as it takes to read: the browser's speech synthesis, which this used to use, is gone.
  */
 
 export const RJ_NAME = 'RJ Manju'
@@ -18,41 +25,31 @@ export const RJ_NAME = 'RJ Manju'
 export const useOnAir = create<{ line: { id: number; station: string; kind: 'traffic' | 'ad'; text: string } | null }>(() => ({ line: null }))
 
 /** What the update can talk about: the time, the weather, and anything happening on the roads (game/cityEvents.ts). */
-export type RoadReport = { hours: number; rain: number; night: boolean; events: string[] }
+export type RoadReport = { hours: number; rain: number; night: boolean; events: { kind: CityEventKind; road: string }[] }
 export const roadReport: { get: () => RoadReport } = { get: () => ({ hours: 9, rain: 0, night: false, events: [] }) }
 
-const pick = <T,>(items: T[]): T => items[Math.floor(Math.random() * items.length)]
-
-const ROADS = ['Outer Ring Road', 'Sarjapur Road', 'Twenty-seventh Main', 'Twenty-fourth Main', 'Nineteenth Main', 'Fourteenth Main', 'the Agara junction', 'the Silk Board side']
-
-function trafficUpdate(station: string, { hours, rain, night, events }: RoadReport): string {
-  const hello = pick([`Namaskara Bengaluru! ${RJ_NAME} here on ${station}, with your traffic update.`, `Hello hello, ${RJ_NAME} here on ${station}. Traffic update, guru.`, `${RJ_NAME} back on ${station}. Quick traffic update, swalpa listen maadi.`])
-  const lines: string[] = []
-  // What's actually on the roads comes first.
-  for (const event of events.slice(0, 2)) lines.push(event)
-  const rush = rushHour(hours)
-  if (rush > 0.4) lines.push(pick([`Outer Ring Road is full jam near Agara, bumper to bumper. Service road thogoli if you can.`, `Peak hour, guru. ${pick(ROADS)} is moving like a wedding procession. Adjust maadi.`, `Office time traffic everywhere. Signal alli full line. Patience irali, horn beda.`]))
-  else if (night) lines.push(pick([`Roads are khaali now. But slow hogi, street dogs are on duty.`, `Late night, empty roads. Signal jump maadbedi, police mama is still awake at Agara.`]))
-  else lines.push(pick([`${pick(ROADS)} is moving freely. Sakkath time to ride.`, `No major jam right now. ${pick(ROADS)} is clear, ${pick(ROADS)} swalpa slow.`, `Smooth traffic all over HSR. Enjoy maadi.`]))
-  if (rain > 0.3) lines.push(pick([`Male bartha ide! Roads are slippery, brake slowly. Under the flyover water is standing.`, `It is raining, guru. Raincoat haakoli, and watch the potholes, they are swimming pools now.`]))
-  const bye = pick([`Helmet haakoli, signal follow maadi. Back to the music.`, `Ride safe, Bengaluru. More music, less horn.`, `That's it from me. Drive maadi, don't fly maadi.`])
-  // Every sentence starts with a capital, whatever it was built from.
-  return [hello, ...lines, bye].map((line) => line.replace(/(^|[.!?] )([a-z])/g, (_, gap: string, letter: string) => gap + letter.toUpperCase())).join(' ')
+/** One line of a break: which recording, and its words on the phone (the road's name is only there: a recording can't know it). */
+type Segment = { id: string; text: string }
+const segment = (prefix: string, more = ''): Segment => {
+  const line = pickLine(prefix)
+  return { id: line.id, text: line.line + more }
 }
 
-/** Ads for businesses that don't exist: each a line or two, with a slogan. */
-const ADS = [
-  `Vehicle beka? GaadiGo! Scooter, cycle, even a van, on rent by the hour, delivered to where you stand. EMI also available. GaadiGo: neevu ride maadi, tension namge.`,
-  `Minchu E-One, the electric scooter that goes like lightning and drinks nothing. Charge maadi, chill maadi. Minchu: current alli future.`,
-  `Swarna Mahal Jewellers, since nineteen sixty-two. This wedding season, making charges are fifty percent off. Swarna Mahal: namma mane, namma chinna.`,
-  `Hungry at midnight? Crispy Coop is open till two. Crispy outside, juicy inside, pocket friendly. Crispy Coop: ondu bite, full delight.`,
-  `Filter House coffee. Decoction made slow, served hot, in steel tumblers only. One sip and Monday becomes Sunday. Filter House: kaapi first, everything next.`,
-  `Sampige Residency, two and three BHK flats, just five minutes from everywhere, according to our brochure. Site visit free. Sampige Residency: mane andre idu.`,
-  `Paisley Pop end of season sale! Kurtas, shirts, sarees, flat forty percent off. Fashion for everyone, budget for everyone. Paisley Pop, Twenty-seventh Main.`,
-  `Riders beku! Join Deliver It. Flexible hours, weekly payout, and a yellow jacket that makes you famous. Deliver It: bega, jopana, on time.`,
-  `Stride Shoe Company. School shoes, office shoes, chappals for the whole family. Buy two, third pair for ajji free. Stride: hejje hejje comfort.`,
-  `Volt Bazaar mega exchange mela! Old mixie kodi, new mixie thogoli. TVs, fridges, phones, zero percent EMI. Volt Bazaar: current affairs, low price.`,
-]
+/** A traffic update: hello, what's on the roads (an event first, else the hour's traffic), the rain, goodbye. Four short lines at most. */
+function trafficUpdate({ hours, rain, night, events }: RoadReport): Segment[] {
+  const lines = [segment('manju.hello')]
+  const event = events[0]
+  if (event) lines.push(segment(`manju.event.${event.kind}`, event.road ? ` (${event.road}.)` : ''))
+  else if (rushHour(hours) > 0.4) lines.push(segment('manju.rush'))
+  else if (night) lines.push(segment('manju.night'))
+  else lines.push(segment('manju.free'))
+  if (rain > 0.3) lines.push(segment('manju.rain'))
+  lines.push(segment('manju.bye'))
+  return lines
+}
+
+/** Ads for businesses that don't exist, in turn. */
+const ADS = VOICE_LINES.filter(({ id }) => id.startsWith('manju.ad.')).map(({ id }) => id)
 
 /** The jingle: three rising notes and a shimmer, on the music bus. */
 function jingle() {
@@ -77,57 +74,126 @@ function jingle() {
   })
 }
 
-/** The voice: an Indian English one if the device has it, else any English one. Null with no speech at all. */
-function findVoice(): SpeechSynthesisVoice | null {
-  if (typeof speechSynthesis === 'undefined') return null
-  const voices = speechSynthesis.getVoices()
-  return voices.find(({ lang }) => lang === 'en-IN') ?? voices.find(({ lang }) => lang.startsWith('en-IN')) ?? voices.find(({ lang }) => lang.startsWith('en')) ?? null
+/** Between two lines of a break: two quick notes, quieter than the jingle. */
+function sting() {
+  const buses = getAudioEvenIfPaused()
+  if (!buses) return
+  const { context, music } = buses
+  const start = context.currentTime + 0.02
+  ;[880, 1175].forEach((hz, index) => {
+    const at = start + index * 0.09
+    const tone = context.createOscillator()
+    tone.type = 'triangle'
+    tone.frequency.value = hz
+    const level = context.createGain()
+    level.gain.setValueAtTime(0, at)
+    level.gain.linearRampToValueAtTime(0.22, at + 0.012)
+    level.gain.exponentialRampToValueAtTime(0.0001, at + 0.22)
+    tone.connect(level).connect(music)
+    tone.start(at)
+    tone.stop(at + 0.3)
+  })
+}
+
+/**
+ * The bed under the voice: three held notes, soft and filtered, swelling a little, for as long as the
+ * break lasts. Returns what fades it out.
+ */
+function startBed(): () => void {
+  const buses = getAudioEvenIfPaused()
+  if (!buses) return () => {}
+  const { context, music } = buses
+  const now = context.currentTime
+  const out = context.createGain()
+  out.gain.setValueAtTime(0.0001, now)
+  out.gain.exponentialRampToValueAtTime(0.16, now + 0.6)
+  const soften = context.createBiquadFilter()
+  soften.type = 'lowpass'
+  soften.frequency.value = 900
+  // A slow swell, so it isn't a flat drone.
+  const swell = context.createOscillator()
+  swell.frequency.value = 0.35
+  const depth = context.createGain()
+  depth.gain.value = 0.05
+  swell.connect(depth).connect(out.gain)
+  swell.start(now)
+  const tones = [220, 277.2, 329.6].map((hz, index) => {
+    const tone = context.createOscillator()
+    tone.type = index === 0 ? 'sine' : 'triangle'
+    tone.frequency.value = hz
+    tone.detune.value = (index - 1) * 6
+    tone.connect(soften)
+    tone.start(now)
+    return tone
+  })
+  soften.connect(out).connect(music)
+  return () => {
+    const end = context.currentTime
+    out.gain.cancelScheduledValues(end)
+    out.gain.setTargetAtTime(0.0001, end, 0.18)
+    for (const tone of [...tones, swell]) tone.stop(end + 1)
+    window.setTimeout(() => out.disconnect(), 1300)
+  }
 }
 
 let nextId = 1
-let ad = Math.floor(Math.random() * ADS.length)
+let ad = Math.floor(Math.random() * Math.max(1, ADS.length))
 let lastWasAd = Math.random() < 0.5
+/** The break on air: what stops its bed and its voice. */
+let onAir: { id: number; stopBed: () => void; voice: Playing | null } | null = null
+
+const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
 /**
- * One break: the jingle, then a traffic update or an ad (they take turns), spoken and shown.
- * `duck` turns the music down while it's said. `done` is called when it's over.
+ * One break: the jingle, then a traffic update or an ad (they take turns), heard and shown.
+ * `duck` turns the music down while it's on. `done` is called when it's over.
  */
 export function playBreak(station: string, duck: (down: boolean) => void, done: () => void) {
   lastWasAd = !lastWasAd
-  const kind = lastWasAd ? 'ad' : 'traffic'
-  const text = kind === 'ad' ? ADS[ad++ % ADS.length] : trafficUpdate(station, roadReport.get())
+  const kind = lastWasAd && ADS.length > 0 ? 'ad' : 'traffic'
+  const lines: Segment[] = kind === 'ad' ? [{ id: ADS[ad % ADS.length], text: lineText(ADS[ad++ % ADS.length]) }] : trafficUpdate(roadReport.get())
   const id = nextId++
   jingle()
   duck(true)
-  useOnAir.setState({ line: { id, station, kind, text } })
-  const finish = () => {
-    if (useOnAir.getState().line?.id !== id) return
+  const live = { id, stopBed: startBed(), voice: null as Playing | null }
+  onAir = live
+  useOnAir.setState({ line: { id, station, kind, text: lines.map(({ text }) => text).join(' ') } })
+  const stillOn = () => onAir === live
+
+  void (async () => {
+    // The jingle rings out first.
+    await wait(750)
+    for (const [index, line] of lines.entries()) {
+      if (!stillOn()) return
+      if (index > 0) {
+        sting()
+        await wait(380)
+      }
+      const voice = await speak(line.id, 'radio')
+      if (!stillOn()) {
+        voice?.stop()
+        return
+      }
+      live.voice = voice
+      // Recorded: as long as the recording. Not yet: as long as its words take to read.
+      if (voice) await voice.ended
+      else await wait(readingTime(line.text))
+      live.voice = null
+    }
+    if (!stillOn()) return
+    sting()
+    onAir = null
+    live.stopBed()
     useOnAir.setState({ line: null })
     duck(false)
     done()
-  }
-  // Long enough to read if nothing speaks it: about fourteen characters a second.
-  const readingMs = 2500 + text.length * 70
-  const voice = findVoice()
-  if (typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined') {
-    const utterance = new SpeechSynthesisUtterance(text)
-    if (voice) utterance.voice = voice
-    utterance.lang = voice?.lang ?? 'en-IN'
-    utterance.rate = 1.04
-    utterance.pitch = 1.08
-    utterance.volume = 0.85
-    utterance.onend = finish
-    utterance.onerror = finish
-    window.setTimeout(() => {
-      if (useOnAir.getState().line?.id === id) speechSynthesis.speak(utterance)
-    }, 650)
-    // In case the browser never says it's finished.
-    window.setTimeout(finish, readingMs + 9000)
-  } else window.setTimeout(finish, readingMs)
+  })()
 }
 
 /** Cuts the RJ off: the station was changed or the music turned off. */
 export function stopBreak() {
-  if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+  onAir?.voice?.stop()
+  onAir?.stopBed()
+  onAir = null
   useOnAir.setState({ line: null })
 }

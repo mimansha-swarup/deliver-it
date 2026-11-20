@@ -23,13 +23,3 @@ export type CityEvent = {
 
 export const cityEvents: { active: CityEvent[] } = { active: [] }
 
-/** A line for the radio about each thing on the roads now, in the RJ's Kanglish. */
-export function eventNews(): string[] {
-  return cityEvents.active.map(({ kind, road }) => {
-    const where = road || 'one of the cross roads'
-    if (kind === 'bus') return `A city bus has broken down on ${where}. One lane is blocked, swalpa adjust maadi.`
-    if (kind === 'dig') return `${where} is dug up for pipe work, as usual. Road closed, bere route thogoli.`
-    if (kind === 'wedding') return `A wedding procession is on ${where}, band and all. Slow hogi, and wish the couple.`
-    return `One cow is sitting in the middle of ${where}, full relaxed. Horn maadbedi, just go around.`
-  })
-}

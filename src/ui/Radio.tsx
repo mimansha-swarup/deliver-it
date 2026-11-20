@@ -7,7 +7,8 @@ import { useStation } from '../audio/useStation'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
 import { roadReport } from '../audio/rj'
-import { eventNews } from '../game/cityEvents'
+import { watchVoiceCues } from '../audio/voiceCues'
+import { cityEvents } from '../game/cityEvents'
 
 
 /**
@@ -23,8 +24,11 @@ export function RadioPlayer() {
 
   // What the RJ's traffic update can talk about: the time, the rain, and what's on the roads (game/cityEvents.ts).
   useEffect(() => {
-    roadReport.get = () => ({ hours: liveSky.hours, rain: liveSky.rain, night: liveSky.look.night > 0.6, events: eventNews() })
+    roadReport.get = () => ({ hours: liveSky.hours, rain: liveSky.rain, night: liveSky.look.night > 0.6, events: cityEvents.active.map(({ kind, road }) => ({ kind, road })) })
   }, [])
+
+  // Ravi's and the customers' spoken cues (audio/voiceCues.ts).
+  useEffect(() => watchVoiceCues(), [])
 
   useEffect(() => setMusicOn(musicOn), [musicOn])
   useEffect(() => setSfxOn(hornsOn), [hornsOn])
