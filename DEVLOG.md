@@ -10778,3 +10778,25 @@ Still wanted: a woman modelled as one. Up close, the face is the man's.
 
 Performance unchanged (High 88 to 98 FPS, Low 120): the women are about 4,700 triangles each, as
 the man is, where the cone was 756.
+
+## 2026-11-20: Entry 220, finding the door
+
+Playing it, the house and its door were hard to find. Three causes, measured over 1,500 offers:
+
+- **Nothing marked the door.** The beam stood on the road's stop; the door had no marker, and the
+  arrow and the map's pin both pointed at the road. Now the errand says where its next step is
+  (`errandLive.goal`: the door, the gate, the guard, the lobby's door; indoors the counter, the lift,
+  the bell) and three things follow it: a `DoorMarker` (a ring at the door, a thin beam that stands
+  above compound walls, a pointer drawn through walls and fences), the direction arrow and its
+  distance (straight to the door on foot, and riding within 45 m), and the map's pin.
+- **The stop was often not outside the door.** It was the road point the order was planned to, which
+  can be a junction a corner away: 11 m from the door on average, over 20 m for 1 house in 8. The
+  stop now takes the road point in front of the door when that's a short ride on, and slides along
+  the road to the spot nearest the door: 5.5 m on average, over 20 m for 1 in 26 (houses set deep in
+  a block).
+- **From inside the stop's beam the whole street was tinted green.** The beam and its pointer now
+  go once the rider is at the stop, and on foot.
+
+Wandered off on foot, the arrow points back to the vehicle.
+
+Not benchmarked: three small unlit shapes, one of them shown at a time.

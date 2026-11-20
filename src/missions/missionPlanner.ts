@@ -182,15 +182,46 @@ export function createMissionPlanner(
     }
   }
 
-  const customerStop = (node: number, story: OrderStory) => {
+  /** A door's own road point is used for the stop when it's within this of the planned one by road, in metres. */
+  const FRONT_ROAD_REACH = 90
+
+  const customerStop = (from: number, story: OrderStory, door?: DoorPlan) => {
+    // The road point in front of the door, when it's another one a short ride on: a door can face the
+    // next street along from the point the order was planned to.
+    let node = from
+    if (door && (door.kind === 'house' || door.kind === 'flat')) {
+      const front = findNearestNode(graph, door.x + door.outX * 6, door.z + door.outZ * 6)
+      if (front !== from && getRouteField(from).distance[front] < FRONT_ROAD_REACH && getRouteField(front).distance[from] < FRONT_ROAD_REACH) node = front
+    }
     const road = graph.roadNames[node]
-    return createStop(
+    const stop = createStop(
       node,
       road ? `${story.customer} on ${road}` : story.customer,
       'Deliver the order',
       'Slow down to deliver',
       MISSION_RULES.customerColor,
     )
+    // The stop is where the rider pulls up, so it's on the road right outside the door: the nearest
+    // point to the door on the roads that meet at the stop's road point, which itself can be a
+    // junction 40 m and a corner away. (The society's stop stays at its gate: the guard comes first.)
+    if (!door || door.kind === 'kerb' || door.kind === 'society') return stop
+    let nearest = Math.hypot(door.x - stop.x, door.z - stop.z)
+    for (const { to } of graph.links[node]) {
+      const alongX = graph.xs[to] - graph.xs[node]
+      const alongZ = graph.zs[to] - graph.zs[node]
+      const length = alongX * alongX + alongZ * alongZ
+      if (length === 0) continue
+      const t = Math.max(0, Math.min(1, ((door.x - graph.xs[node]) * alongX + (door.z - graph.zs[node]) * alongZ) / length))
+      const x = graph.xs[node] + alongX * t
+      const z = graph.zs[node] + alongZ * t
+      const away = Math.hypot(door.x - x, door.z - z)
+      if (away < nearest - 0.5) {
+        nearest = away
+        stop.x = x
+        stop.z = z
+      }
+    }
+    return stop
   }
 
   /** A second customer for a double drop: a short ride on from the first, and not on top of them. */
@@ -245,7 +276,7 @@ export function createMissionPlanner(
     const nextDrops: Drop[] =
       second === null || !secondDoor
         ? []
-        : [{ customer: customerStop(second, secondStory), waiting: secondDoor.waiting, door: secondDoor.door, story: secondStory }]
+        : [{ customer: customerStop(second, secondStory, secondDoor.door), waiting: secondDoor.waiting, door: secondDoor.door, story: secondStory }]
     lastCustomer = second ?? customer
 
     let routeLength = fromStore.distance[start] + fromStore.distance[customer]
@@ -269,7 +300,7 @@ export function createMissionPlanner(
         'Slow down to collect',
         MISSION_RULES.pickupColor,
       ),
-      customer: customerStop(customer, story),
+      customer: customerStop(customer, story, firstDoor.door),
       waiting: firstDoor.waiting,
       door: firstDoor.door,
       story,

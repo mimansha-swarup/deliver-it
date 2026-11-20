@@ -2,12 +2,13 @@ import { useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { borrow } from '../game/borrow'
 import { useGameStore } from '../game/gameStore'
-import { liveMission, livePlayer, liveSky, useOnFoot } from '../game/livePlayer'
+import { liveMission, livePlayer, liveRoute, liveSky, useOnFoot } from '../game/livePlayer'
 import { GARAGE_MAX_SPEED, GARAGE_RANGE } from '../game/garage'
 import { MISSION_RULES } from '../game/missionConfig'
 import type { MissionPlanner } from './missionPlanner'
 import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { liveRoom } from '../game/rooms'
+import { errandLive } from '../game/doorsteps'
 import { getCurrentStop } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
@@ -31,6 +32,9 @@ const WAYPOINT_REACHED = 12
 /** Home is a gate: stopped this close to it counts as at home, in metres, below this speed. */
 const HOME_RANGE = 8
 const HOME_MAX_SPEED = 1.5
+
+/** Riding, the arrow leaves the road's route for the door itself this near it, in metres. */
+const DOOR_AIM_RANGE = 45
 
 /** Seconds until the next offer, from the time of day's range, slower when acceptance is low. */
 function nextOfferGap(answers: boolean[]): number {
@@ -132,6 +136,17 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       routeLength = updateLiveRoute(collisions, graph, field, livePlayer.x, livePlayer.z, target.x, target.z)
     } else {
       clearLiveRoute()
+    }
+    // The last few metres aren't by road: on foot, and riding up close, the arrow and the distance are
+    // straight to the door (or the gate, the guard, the lift: whatever the errand's next step is).
+    const goal = stop ? errandLive.goal : null
+    if (goal) {
+      const toGoal = Math.hypot(goal.x - livePlayer.x, goal.z - livePlayer.z)
+      if (afoot || (goal.kind === 'door' && toGoal < DOOR_AIM_RANGE)) {
+        liveRoute.aimX = goal.x
+        liveRoute.aimZ = goal.z
+        routeLength = toGoal
+      }
     }
 
     // Where the rider is, saved now and then (not mid-crash), so the next visit starts here.

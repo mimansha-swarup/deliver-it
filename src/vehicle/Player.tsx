@@ -7,7 +7,7 @@ import { Handoff } from '../missions/Handoff'
 import { Errand } from '../missions/Errand'
 import { Eating } from '../missions/Eating'
 import { Rooms } from '../world/Rooms'
-import { HomeMarker, MissionMarker } from '../missions/MissionMarker'
+import { HomeMarker, DoorMarker, MissionMarker } from '../missions/MissionMarker'
 import { PhotoCamera } from '../ui/PhotoMode'
 import { createMissionPlanner } from '../missions/missionPlanner'
 import { MissionTracker } from '../missions/MissionTracker'
@@ -80,6 +80,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <FleetClock scooter={scooterState} />
       <OnFoot scooter={scooterState} collisions={collisions} deckCollisions={deckCollisions} />
       <MissionMarker />
+      <DoorMarker />
       <HomeMarker />
       <PhotoCamera />
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />

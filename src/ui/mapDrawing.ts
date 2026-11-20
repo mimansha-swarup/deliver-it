@@ -2,6 +2,7 @@
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveRoute } from '../game/livePlayer'
 import { getCurrentStop } from '../missions/missionLogic'
+import { errandLive } from '../game/doorsteps'
 import type { MapData } from '../world/mapData'
 import { getRoadWidth } from '../world/roadData'
 import {
@@ -281,7 +282,12 @@ export function drawOffMap(
 export function currentTarget(): { x: number; z: number; color: string; pickup: boolean } | null {
   const { mission, phase, waypoint } = useGameStore.getState()
   const stop = getCurrentStop(mission, phase)
-  if (stop) return { x: stop.x, z: stop.z, color: stop.color, pickup: phase === 'toPickup' }
+  if (stop) {
+    // The pin stands on the door itself, not on the road outside it, once the errand knows which door.
+    const goal = errandLive.goal
+    const at = goal && goal.kind === 'door' && !goal.indoors ? goal : stop
+    return { x: at.x, z: at.z, color: stop.color, pickup: phase === 'toPickup' }
+  }
   return waypoint ? { x: waypoint.x, z: waypoint.z, color: WAYPOINT_COLOR, pickup: false } : null
 }
 

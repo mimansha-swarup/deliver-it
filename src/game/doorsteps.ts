@@ -65,7 +65,16 @@ export const errandLive = {
   scene: 'plain' as DoorScene,
   /** The society's guard has seen the OTP and the register is signed. */
   cleared: false,
+  /**
+   * Where the order's next step on foot is: a door, a gate, the guard, a counter, a lift, a bell
+   * (`door`), or the rider's vehicle when they've wandered off (`vehicle`). The marker over the door
+   * (missions/MissionMarker.tsx), the direction arrow and the map's pin all go by it. `y`: the floor
+   * it's on. `indoors`: it's in a room, not on the street.
+   */
+  goal: null as ErrandGoal | null,
 }
+
+export type ErrandGoal = { x: number; z: number; y: number; kind: 'door' | 'vehicle'; indoors: boolean }
 
 /** What the guard's card shows while the rider is at the society's gate: the OTP being read out, then the register being signed. */
 export const useGuard = create<{ card: { step: 'otp' | 'register'; otp: string; flat: string; society: string; time: string } | null }>(() => ({ card: null }))

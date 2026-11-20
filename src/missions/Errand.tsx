@@ -5,7 +5,7 @@ import { useGameStore } from '../game/gameStore'
 import { borrow } from '../game/borrow'
 import { clearSpots, setInterest, setSpot } from '../game/interact'
 import { setPrompt } from '../game/prompts'
-import { liveMission } from '../game/livePlayer'
+import { liveMission, livePlayer } from '../game/livePlayer'
 import { theItem } from '../game/objective'
 import { goThrough, leaveRoom, liveRoom, setRoom } from '../game/rooms'
 import { doorsteps, errandLive, useGuard } from '../game/doorsteps'
@@ -50,6 +50,15 @@ const WAIT_MS = { plain: 1700, tryOn: 1700, dog: 3600, outside: 2600 }
 
 type Stage = { door: DoorPlan | null; step: 'approach' | 'rung' | 'out'; at: number }
 
+/** The order's next step on foot is here (game/doorsteps.ts): the marker, the arrow and the map's pin follow it. */
+function aimAt(spot: { x: number; z: number }, indoors = false) {
+  errandLive.goal = { x: spot.x, z: spot.z, y: indoors ? liveRoom.floorY : 0, kind: 'door', indoors }
+}
+/** Wandered off on foot: the way back to the vehicle. */
+function aimAtVehicle() {
+  errandLive.goal = { x: livePlayer.vehicleX, z: livePlayer.vehicleZ, y: 0, kind: 'vehicle', indoors: false }
+}
+
 const vehicleWord = () => (liveVehicle.spec.size.cab ? liveVehicle.spec.name : liveVehicle.spec.kind.toLowerCase().includes('bicycle') ? 'bicycle' : liveVehicle.spec.name)
 
 export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; stores: DarkStore[] }) {
@@ -62,6 +71,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
       setInterest('errand', null)
       setPrompt('kerbside', null)
       setStep(null)
+      errandLive.goal = null
     },
     [],
   )
@@ -75,6 +85,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     const { mission, phase } = game
     const afoot = isAfoot(state)
     const here = afoot ? state.rider : state
+    errandLive.goal = null
 
     if (!mission || (phase !== 'toPickup' && phase !== 'toCustomer')) {
       setPrompt('kerbside', null)
@@ -124,7 +135,9 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           },
         })
         setStep(`Collect ${theItem(mission.story.item)} from the counter`)
+        aimAt({ x: liveRoom.x + counter.x, z: liveRoom.z + counter.z }, true)
       } else {
+        if (!liveRoom.kind) aimAt(door)
         setSpot('errand:counter', null)
         setStep(afoot ? 'Walk in at the dark store’s door' : away < PARK_RANGE ? 'Park by the dark store and get off' : null)
       }
@@ -177,9 +190,11 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           },
         })
         setStep(room ? `Ring the bell at flat ${door.flat}` : `Ring the bell at ${story.customer}’s ${door.atGate ? 'gate' : 'door'}`)
+        aimAt(bell, room !== undefined)
         return
       }
       setSpot('errand:bell', null)
+      aimAt(bell, room !== undefined)
       if (current.step === 'rung') {
         setStep(door.scene === 'dog' ? 'Wait: the dog is being called off' : `Wait for ${story.customer}`)
         if (now - current.at > WAIT_MS[door.scene]) {
@@ -216,6 +231,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
 
     if (door.kind === 'kerb') {
       setSpot('errand:hand', { x: waiting.x, z: waiting.z, radius: 2.6, priority: 2, text: 'Hand over', run: handOver })
+      if (afoot && away >= PARK_RANGE) aimAtVehicle()
+      else aimAt(waiting)
       if (afoot) setStep(away < PARK_RANGE ? `Walk up to ${story.customer} and hand it over` : `Get back on your ${vehicleWord()}`)
       else if (kerbside) setStep(away < KERB_RANGE ? `Stop by ${story.customer} and hand over ${theItem(story.item)}` : null)
       else setStep(away < PARK_RANGE ? `Park and walk ${theItem(story.item)} to ${story.customer}` : null)
@@ -225,6 +242,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     if (door.kind === 'house') {
       if (!afoot) {
         clearSpots('errand:')
+        aimAt(door)
         if (kerbside) setStep(away < KERB_RANGE ? `Stop and hand over at the kerb, or walk it to ${story.customer}’s ${spot}` : away < PARK_RANGE ? `Stop by ${story.customer}’s ${spot}` : null)
         else setStep(away < PARK_RANGE ? `Park and walk to ${story.customer}’s ${door.atGate ? 'gate' : 'door'}` : null)
         return
@@ -232,6 +250,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
       if (away > PARK_RANGE * 1.5) {
         clearSpots('errand:')
         setStep(`Get back on your ${vehicleWord()}`)
+        aimAtVehicle()
         return
       }
       atTheDoor(door, undefined)
@@ -281,6 +300,9 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     if (!liveRoom.kind) {
       setSpot('errand:bell', null)
       setSpot('errand:hand', null)
+      // The guard first, where there is one; then the building's own door.
+      if (afoot && away > PARK_RANGE * 1.5) aimAtVehicle()
+      else aimAt(door.kind === 'society' && society && !errandLive.cleared ? society.guard : door)
       if (!afoot) {
         setSpot('errand:lobby', null)
         setStep(away < PARK_RANGE ? `Park and walk in to ${name}: flat ${door.flat}` : null)
@@ -329,6 +351,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
       })
       setSpot('errand:stairs', { x: liveRoom.x + stairs.x, z: liveRoom.z + stairs.z, radius: 1.4, room: 'lobby', priority: 2, text: `Stairs to floor ${door.floor}`, run: () => goUp('stairs') })
       setStep(`Take the lift or the stairs to floor ${door.floor}`)
+      const up = door.liftWorks ? lift : stairs
+      aimAt({ x: liveRoom.x + up.x, z: liveRoom.z + up.z }, true)
       return
     }
     setSpot('errand:lift', null)
