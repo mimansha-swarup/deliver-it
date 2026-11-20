@@ -7,9 +7,7 @@ import { DISPATCHER } from '../game/career'
 import { liveSky } from '../game/livePlayer'
 import { STATIONS } from '../audio/stations'
 import { playPing } from '../audio/uiSounds'
-import { useStation } from '../audio/useStation'
 import { RJ_NAME, useOnAir } from '../audio/rj'
-import { VideoScreen } from './Radio'
 import { useUi } from './uiState'
 import { AppGlyph, PhoneApp, WeatherIcon } from './phoneApps'
 import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
@@ -373,8 +371,6 @@ export function Phone() {
   badges.deliver = (offer ? 1 : 0) + noted('deliver')
   badges.garage = (atStore ? 1 : 0) + noted('garage')
   const waiting = APPS.reduce((sum, { id }) => sum + noted(id), 0)
-  const station = useStation()
-  const videoCard = station.kind === 'video'
   // A banner across the top of the open phone, unless it's on the lock screen (which lists them)
   // or that chat is the one showing. Half open, they float above it instead (below).
   const banner = notification && raised && screen !== 'lock' && !(screen === 'messages' && thread === notification.thread) ? notification : null
@@ -445,7 +441,7 @@ export function Phone() {
       </aside>
       {!raised && <MiniPhone unread={totalUnread + waiting} alert={alertKind} bounce={bounce} onOpen={() => open('lock')} phoneKey={phoneKey} />}
       {!raised && floating.length > 0 && (
-        <ol className="phone-float" data-above-video={videoCard ? 'true' : undefined} aria-live="polite">
+        <ol className="phone-float" aria-live="polite">
           {floating.map((note) => (
             <li key={note.id}>
               <button type="button" className="phone-float-note" data-kind={note.kind} onClick={() => openNote(note)}>
@@ -455,11 +451,6 @@ export function Phone() {
             </li>
           ))}
         </ol>
-      )}
-      {videoCard && (
-        <aside className={raised ? 'music-card music-card-raised' : 'music-card'} data-phone={raised ? undefined : 'hidden'} aria-label="Music video">
-          <VideoScreen station={station} className="music-card-player" />
-        </aside>
       )}
     </>
   )

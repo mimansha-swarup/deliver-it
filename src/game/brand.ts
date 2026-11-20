@@ -10,6 +10,8 @@ export const TAGLINE = 'A delivery rider’s Bengaluru'
 export const NOW_RIDING = 'Now riding: HSR Layout'
 /** The game's version, from package.json (vite.config.ts). */
 export const VERSION: string = __APP_VERSION__
+/** Where the game lives. index.html's share tags carry the same address in full, as link previews need. */
+export const SITE_URL = 'https://deliver-simulator.netlify.app'
 /** A file name's start for anything saved from the game (photos, the score card). */
 export const FILE_PREFIX = 'swalpa-fast'
 

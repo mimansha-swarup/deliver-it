@@ -365,7 +365,8 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
         <Group title="3D models">
           <p>
             Traffic and people, each simplified and recoloured for the game, CC BY 4.0: cars by BHP3D, the auto by bhagathartworks, the delivery bike by Caitlin Pillay, people by
-            Kalakar, Pixel_Monster, Aashutosh Dabhade and dk8026854; riders by Atrikumar Das and newArteest; the bull by stealth86. City pieces: Downtown City MegaKit by Quaternius (CC0). The sports bike by VTX (CC BY-NC-SA 4.0). The game has no connection with any
+            Kalakar, Pixel_Monster, Aashutosh Dabhade and dk8026854; riders by Atrikumar Das and newArteest; the bull by stealth86. City pieces: Downtown City MegaKit by Quaternius (CC0). The sports bike by VTX is CC BY-NC-SA 4.0, which is
+            non-commercial: it is to be replaced before the game earns any money. The game has no connection with any
             vehicle maker. <Outside href={file('models/CREDITS.txt')}>Every model, with links</Outside>
             {' · '}
             <Outside href={file('textures/CREDITS.txt')}>Textures</Outside>
@@ -374,8 +375,8 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
 
         <Group title="Sound and music">
           <p>
-            Engines, horns, rain, footsteps and the phone’s sounds are made in the game as it runs: there are no recordings. The radio’s own stations are composed in code. The
-            video station plays videos from YouTube, which belong to their owners.
+            Engines, horns, rain, footsteps and the phone’s sounds are made in the game as it runs: there are no recordings. Every radio station is composed in
+            code too: no recorded music and nobody else’s songs are in the game.
           </p>
         </Group>
 

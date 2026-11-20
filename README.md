@@ -39,6 +39,14 @@ TypeScript. The city is built in the browser from OpenStreetMap and open buildin
 - `src/ui`: the title screen, menus, HUD and the rider's phone.
 - `art/logo`: the logo's source and exports.
 
+## Before any monetisation
+
+- **Replace the sports bike.** `public/models/yamaha.glb` ("Yamaha YZF 2021" by VTX) is
+  CC BY-NC-SA 4.0: non-commercial. Everything else in `public/models` is CC BY 4.0 or CC0. It
+  must be swapped for a model that allows commercial use before the game earns anything (ads,
+  sales, sponsorship). It's kept in a file of its own so that is one file to change.
+- The radio is all composed in code; there is no recorded music and no video station.
+
 ## The brand
 
 Name "Swalpa Fast", Kannada "ಸ್ವಲ್ಪ ಫಾಸ್ಟ್", tagline "A delivery rider's Bengaluru". Yellow

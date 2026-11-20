@@ -11283,3 +11283,19 @@ Four more downloaded models, all CC BY 4.0 and credited, baked into `people.glb`
 Seen in the game: the bull standing in a lane, the player's rider on the scooter and stepping off,
 and both suited riders on bikes. Three kinds of rider is two more draw calls for bikes; the frame
 benchmark wasn't run, and a thrown suited rider (after a crash) wasn't looked at.
+
+## 2026-11-21: Entry 242, four fixes after the rebrand
+
+- **No video station, and none left in the code.** The YouTube station was already off the dial,
+  but its player, its type and the phone's video card were still in the project "for later", and
+  the new Credits screen wrongly said a video station played YouTube videos. All of it is removed
+  (Radio.tsx, stations.ts, Phone.tsx, fourteen style rules) and Credits says what's true: every
+  station is composed in code.
+- **Share tags carry full addresses.** `og:image`, `twitter:image`, `og:url` and a canonical link
+  are `https://deliver-simulator.netlify.app/...` (the site's address, from the earlier preview
+  links; `SITE_URL` in brand.ts). A path alone isn't followed by WhatsApp or LinkedIn.
+- **"Day 1" on a Level 4 save is not the migration.** An old save with day 5 arrives as day 5
+  (checked). The day counter only goes up when the rider sleeps at home, so a rider who has
+  never slept is on Day 1 at any level.
+- **The sports bike is non-commercial.** Said on the Credits screen, at the top of its entry in
+  models/CREDITS.txt and in the README under "Before any monetisation": replace it first.

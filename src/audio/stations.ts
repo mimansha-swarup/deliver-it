@@ -18,17 +18,7 @@ export type CodeStation = {
   start: () => (output: AudioNode, time: number, step: number, bar: number, stepLength: number) => void
 }
 
-/** Plays a YouTube playlist in a player on the phone's screen. */
-export type VideoStation = {
-  kind: 'video'
-  id: string
-  name: string
-  tagline: string
-  /** YouTube video ids, played in order and then looped. */
-  videos: string[]
-}
-
-export type Station = CodeStation | VideoStation
+export type Station = CodeStation
 
 const chance = (odds: number) => Math.random() < odds
 const pick = <T,>(items: T[]): T => items[Math.floor(Math.random() * items.length)]
@@ -179,9 +169,8 @@ const ringRoadNights: CodeStation = {
 }
 
 /*
- * Three stations, all of it made here in code: no recordings, nobody else's songs. (A fourth, which
- * played a YouTube playlist of real songs, was taken off the dial: the radio carries only original
- * music now. `VideoStation` and its player stay, unused, for a playlist of music that's free to use.)
- * A saved choice of the old station falls back to the first.
+ * Three stations, all of it made here in code: no recordings, nobody else's songs. There is no
+ * video station: one that played a YouTube playlist of real songs was taken off for copyright, and
+ * its player has been removed with it. A saved choice of that station falls back to the first.
  */
 export const STATIONS: Station[] = [chaiBreak, tablaTaxi, ringRoadNights]
