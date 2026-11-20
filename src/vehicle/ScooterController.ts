@@ -398,8 +398,12 @@ export function isAfoot(state: ScooterState): boolean {
  * second), no faster than `turnMost` radians a second. `lean`: how far they lean into a turn, in
  * radians for each radian a second of turning at a jog, up to `leanMost`; `tip`: how far they tip
  * forward for each m/s² of setting off (and back, pulling up), up to `tipMost`.
+ *
+ * `radius`: the body's, as a capsule, in metres. `stepUp`: the highest rise it walks straight up,
+ * in metres (a kerb is 0.15 to 0.2, a doorstep a little more); `stepRise` and `stepFall`: how
+ * quickly it comes up onto one and down off one, per second.
  */
-export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
+export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, stepUp: 0.45, stepRise: 18, stepFall: 12, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
 const DISMOUNT_SPEED = 2
 
@@ -538,25 +542,52 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   walkTowards(rider, wishX, wishZ, dt)
   const fromX = rider.x
   const fromZ = rider.z
-  rider.x += rider.walkX * dt
-  rider.z += rider.walkZ * dt
-  if (liveRoom.kind) {
-    liveRoom.keepInside(rider, FOOT.radius)
-    rider.ground = liveRoom.floorY
-  } else {
-    rider.x = clamp(rider.x, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
-    rider.z = clamp(rider.z, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
-    pushOutOfBuildings(collisions, rider, FOOT.radius)
-    // Not through their own vehicle either.
-    const awayX = rider.x - state.x
-    const awayZ = rider.z - state.z
-    const gap = Math.hypot(awayX, awayZ)
-    const keep = tuning.radius + FOOT.radius * 0.6
-    if (gap < keep && gap > 0.001) {
-      rider.x = state.x + (awayX / gap) * keep
-      rider.z = state.z + (awayZ / gap) * keep
+  // The body is an upright capsule, `FOOT.radius` round. It moves in steps shorter than that, so it
+  // never gets far into anything; whatever it's then in pushes it straight back out, and the part of
+  // its speed that was into the thing is taken off. What's left is along the wall: it slides, at the
+  // speed it really has along it, and comes off the end of the wall without a stored shove into it.
+  const pieces = Math.max(1, Math.ceil((Math.hypot(rider.walkX, rider.walkZ) * dt) / (FOOT.radius * 0.4)))
+  for (let piece = 0; piece < pieces; piece++) {
+    rider.x += (rider.walkX * dt) / pieces
+    rider.z += (rider.walkZ * dt) / pieces
+    const freeX = rider.x
+    const freeZ = rider.z
+    if (liveRoom.kind) liveRoom.keepInside(rider, FOOT.radius)
+    else {
+      rider.x = clamp(rider.x, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
+      rider.z = clamp(rider.z, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
+      pushOutOfBuildings(collisions, rider, FOOT.radius)
+      // Not through their own vehicle either.
+      const awayX = rider.x - state.x
+      const awayZ = rider.z - state.z
+      const gap = Math.hypot(awayX, awayZ)
+      const keep = tuning.radius + FOOT.radius * 0.6
+      if (gap < keep && gap > 0.001) {
+        rider.x = state.x + (awayX / gap) * keep
+        rider.z = state.z + (awayZ / gap) * keep
+      }
+      // Up a kerb or a step (`FOOT.stepUp`) they simply go. Anything higher is a ledge, and stops them like a wall.
+      if (surface.heightAt(rider.x, rider.z, rider.ground) - rider.ground > FOOT.stepUp) {
+        rider.x = freeX - (rider.walkX * dt) / pieces
+        rider.z = freeZ - (rider.walkZ * dt) / pieces
+      }
     }
-    rider.ground += (surface.heightAt(rider.x, rider.z, rider.ground) - rider.ground) * (1 - Math.exp(-14 * dt))
+    const outX = rider.x - freeX
+    const outZ = rider.z - freeZ
+    const out = Math.hypot(outX, outZ)
+    if (out > 0.0005) {
+      const into = (rider.walkX * outX + rider.walkZ * outZ) / out
+      if (into < 0) {
+        rider.walkX -= (outX / out) * into
+        rider.walkZ -= (outZ / out) * into
+      }
+    }
+  }
+  if (liveRoom.kind) rider.ground = liveRoom.floorY
+  else {
+    // The ground under them: up a kerb quickly, as a foot is lifted onto it; down a little slower, as the body follows the step.
+    const ground = surface.heightAt(rider.x, rider.z, rider.ground)
+    rider.ground += (ground - rider.ground) * (1 - Math.exp(-(ground > rider.ground ? FOOT.stepRise : FOOT.stepFall) * dt))
   }
   rider.y = rider.ground + RIDER_HIP_HEIGHT
   // The legs go by the ground actually covered, not the speed asked for: walking into a wall, or
