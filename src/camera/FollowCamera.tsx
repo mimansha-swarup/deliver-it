@@ -81,9 +81,28 @@ const RIDER_FOLLOW_RESPONSE = 3.5
 const RIDER_LOOK_HEIGHT = 0.6
 
 /** On foot the camera is a little closer and looks a few steps ahead of the rider, at about shoulder height. */
-const FOOT_VIEW = { distance: 0.86, height: 0.98, look: 0.9 }
+/**
+ * On foot the camera is at the rider's shoulder height (1.5 m), 3.5 m back, looking a few steps
+ * ahead of them at about chest height. (It was at 2 m, over their head, which looked down on them.)
+ */
+const FOOT_VIEW = { distance: 0.92, height: 0.75, look: 0.9 }
 const FOOT_LOOK_AHEAD = 3
 const FOOT_LOOK_HEIGHT = 1.3
+/**
+ * On foot the camera follows a little behind the rider's movement (this quickly, per second), so
+ * a step or a change of direction isn't passed straight to the whole picture; further behind than
+ * `snap` metres (a door, a lift) it's simply put there.
+ */
+const FOOT_FOLLOW = { response: 9, snap: 3 }
+/**
+ * On foot, what comes between the camera and the rider. A building doesn't move the camera at
+ * all: its walls are drawn from outside only, so from inside one the camera sees straight out
+ * through the wall to the rider, as if that wall had faded away. A thin wall, a fence, a tree or a
+ * parked car, which are solid from both sides, bring the camera in front of them: this quickly
+ * (per second, not at once), no nearer than `nearest` metres, and rising by `rise` metres for each
+ * metre it has come in, to look over the rider's shoulder and never from inside them.
+ */
+const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22 }
 /**
  * On foot the view comes round behind the rider only when they walk ahead and to one side of it:
  * at this rate at the most (radians a second, at 45° off), faster than `from` m/s, and not for
@@ -105,13 +124,16 @@ function findClearDistance(
   reach = DISTANCE_BEHIND,
   /** The camera is down among the walls and parked cars, not above them. */
   low = false,
+  /** On foot: poles and trunks count (standing still behind one hides the rider), and buildings don't (`FOOT_WALLS`). */
+  walking = false,
 ): number {
-  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low)
-  for (let distance = MIN_DISTANCE; distance < reach; distance += PROBE_STEP) {
+  const nearest = walking ? FOOT_WALLS.nearest : MIN_DISTANCE
+  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, walking ? 0 : CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, !walking)
+  for (let distance = nearest; distance < reach; distance += PROBE_STEP) {
     if (!blocked(distance)) continue
     // Then to within a few centimetres of the wall, so that swinging the view along it moves the
     // camera in smoothly, not a probe's step at a time.
-    let clear = Math.max(MIN_DISTANCE, distance - PROBE_STEP)
+    let clear = Math.max(nearest, distance - PROBE_STEP)
     let hit = distance
     for (let pass = 0; pass < 4 && hit - clear > 0.02; pass++) {
       const middle = (clear + hit) / 2
@@ -150,6 +172,8 @@ export function FollowCamera({
   /** 0 follows the scooter, 1 follows the rider, while they're off it after a crash. */
   const onRider = useRef(0)
   const sway = useRef(0)
+  /** On foot: where the camera takes the rider to be, a little behind where they are. */
+  const followed = useRef<{ x: number; z: number } | null>(null)
 
   useMouseLook()
 
@@ -172,8 +196,17 @@ export function FollowCamera({
     const riderOff = state.rider.phase !== 'on' && state.rider.phase !== 'mounting'
     onRider.current += ((riderOff ? 1 : 0) - onRider.current) * (1 - Math.exp(-RIDER_FOLLOW_RESPONSE * delta))
     const follow = onRider.current
-    const focusX = state.x + (state.rider.x - state.x) * follow
-    const focusZ = state.z + (state.rider.z - state.z) * follow
+    let focusX = state.x + (state.rider.x - state.x) * follow
+    let focusZ = state.z + (state.rider.z - state.z) * follow
+    // On foot, a little behind their movement.
+    const walking = isAfoot(state)
+    const lag = followed.current
+    if (walking && lag && !liveView.snapBehind && Math.hypot(focusX - lag.x, focusZ - lag.z) < FOOT_FOLLOW.snap) {
+      lag.x += (focusX - lag.x) * (1 - Math.exp(-FOOT_FOLLOW.response * delta))
+      lag.z += (focusZ - lag.z) * (1 - Math.exp(-FOOT_FOLLOW.response * delta))
+      focusX = lag.x
+      focusZ = lag.z
+    } else followed.current = walking ? { x: focusX, z: focusZ } : null
 
     // In a slide, look partly along the direction of travel, so the scooter is
     // seen turned sideways against it.
@@ -220,13 +253,17 @@ export function FollowCamera({
     const reach = DISTANCE_BEHIND * view.distance
     // How high the camera will be at full reach, with the view tilted as it is (worked out in full below).
     const low = ORBIT_HEIGHT * view.height + reach * Math.sin(liveLook.pitch) + (HEIGHT - ORBIT_HEIGHT) * view.height * Math.cos(liveLook.pitch) < CAMERA_BLOCKED.over
-    const clearDistance = indoors ? reach : findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, reach, low)
+    const clearDistance = indoors ? reach : findClearDistance(up && deckCollisions ? deckCollisions(height) : collisions, focusX, focusZ, forwardX, forwardZ, reach, low, afoot)
     const distance =
       clearDistance < cameraDistance.current
-        ? clearDistance // Snap in, or the wall would be visible for a moment.
+        ? afoot
+          ? cameraDistance.current + (clearDistance - cameraDistance.current) * (1 - Math.exp(-FOOT_WALLS.response * delta)) // On foot it comes in quickly, but it doesn't jump.
+          : clearDistance // Snap in, or the wall would be visible for a moment.
         : cameraDistance.current +
           (clearDistance - cameraDistance.current) * (1 - Math.exp(-DISTANCE_RESPONSE * delta))
     cameraDistance.current = distance
+    // Brought in by a wall on foot, it rises to look over their shoulder.
+    const risen = afoot && !indoors ? Math.max(0, reach - distance) * FOOT_WALLS.rise : 0
 
     // The view as it stands with the mouse untouched: the camera behind and above, looking at a
     // point ahead. Tilting swings both about a point on the rider (`ORBIT_HEIGHT`), as one rigid
@@ -238,7 +275,7 @@ export function FollowCamera({
     const cameraAbove = HEIGHT * view.height - pivot
     // A wall behind brings the camera in along the ground, at the height it was.
     const back = Math.min(distance, Math.max(MIN_DISTANCE * 0.5, -(-distance * cos + cameraAbove * sin)))
-    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos)
+    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen
     camera.position.set(focusX - forwardX * back, cameraY + level.current, focusZ - forwardZ * back)
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.

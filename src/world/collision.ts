@@ -319,9 +319,11 @@ function measure(footprint: Footprint): { thickness: number; span: number } {
  * As `isNearBuilding`, for a camera, which isn't stopped by everything a wheel is. Things under
  * `post` metres across (poles, tree trunks, bollards) never count: one crossing the view is
  * nothing. Things under `thickness` metres thick (compound walls, fences, parked vehicles) count
- * only with `low` set: a camera above them looks over them.
+ * only with `low` set: a camera above them looks over them. And with `bulk` off, thicker things
+ * (buildings) don't count: their walls are drawn from outside only, so a camera inside one sees
+ * straight out through the wall in front of it.
  */
-export function blocksView(world: CollisionWorld, x: number, z: number, radius: number, post: number, thickness: number, low: boolean): boolean {
+export function blocksView(world: CollisionWorld, x: number, z: number, radius: number, post: number, thickness: number, low: boolean, bulk = true): boolean {
   const nearby = world.get(cellKey(toCell(x), toCell(z)))
   if (!nearby) return false
 
@@ -329,7 +331,7 @@ export function blocksView(world: CollisionWorld, x: number, z: number, radius: 
     const box = (footprint as Boxed).box
     if (box && (x < box[0] - radius || x > box[1] + radius || z < box[2] - radius || z > box[3] + radius)) continue
     const size = measure(footprint)
-    if (size.span < post || (!low && size.thickness < thickness)) continue
+    if (size.span < post || (size.thickness < thickness ? !low : !bulk)) continue
     if (isNearFootprint(footprint, x, z, radius)) return true
   }
   return false
