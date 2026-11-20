@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { playPing } from '../audio/uiSounds'
 import { useGameStore } from '../game/gameStore'
+import { borrow } from '../game/borrow'
 import { clearSpots, setInterest, setSpot } from '../game/interact'
 import { setPrompt } from '../game/prompts'
 import { liveMission } from '../game/livePlayer'
@@ -114,6 +115,11 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           priority: 2,
           text: 'Pick up',
           run: () => {
+            // The app wants the order on the rider's own vehicle, or a rented one: not one off the street.
+            if (borrow.vehicle) {
+              useGameStore.getState().postChat('customer', 'Deliver It app', 'Orders go on your own or a rented vehicle. Come back on yours, or rent one from GaadiGo.', true)
+              return
+            }
             useGameStore.getState().collectOrder()
             playPing('message')
             useGameStore.getState().postChat('customer', 'Dark store', `${mission.story.item} for ${mission.story.customer}. Jopana, maga!`)

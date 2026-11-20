@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { MARKET, VEHICLES, type OrderType, type VehicleId, type VehicleSpec } from '../vehicle/vehicleCatalog'
+import { MARKET, VEHICLES, type OrderType, type VehicleId, type VehicleSpec, liveVehicle } from '../vehicle/vehicleCatalog'
 import { orderRules } from '../missions/orderStory'
 import { Surface, worldSurface } from '../world/surfaceMap'
 import { orderGate, useGameStore } from './gameStore'
@@ -294,7 +294,8 @@ export const useFleet = create<Fleet>()(
           lastHours = liveSky.totalHours
           // Running costs are the tank's now: it empties with the kilometres, and filling it is what's paid for (upkeep.ts).
           const spec = VEHICLES[game().vehicleId] ?? VEHICLES.scooter
-          useUpkeep.getState().drive(spec.id, moved, tickSeconds())
+          // Not on a borrowed vehicle (game/borrow.ts): its petrol isn't the rider's to pay for, and their own stands still. Nor in Explore.
+          useUpkeep.getState().drive(spec.id, liveVehicle.spec.borrowed || game().explore ? 0 : moved, tickSeconds())
 
           // A rental running late: one reminder as its time runs out.
           const before = get().rental
