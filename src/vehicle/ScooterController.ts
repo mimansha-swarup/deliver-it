@@ -375,7 +375,7 @@ export function isAfoot(state: ScooterState): boolean {
 }
 
 /** On foot: walking and running speeds (m/s), how fast they're reached, turning, and how near the seat counts as beside the vehicle. */
-export const FOOT = { walk: 1.9, run: 4.4, back: 1.1, speedUp: 9, turn: 2.7, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
+export const FOOT = { walk: 2.8, run: 6, back: 1.6, speedUp: 9, turn: 2.7, radius: 0.3, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
 const DISMOUNT_SPEED = 2
 
