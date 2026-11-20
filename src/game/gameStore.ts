@@ -536,6 +536,8 @@ export const useGameStore = create<GameState>()(
           const quiet = state.messages.filter((message) => !message.text.startsWith("Today's shift is on your phone"))
           if (quiet.length !== state.messages.length) changes.messages = quiet
           // A new rider gets the tutorial, which greets them itself; a returning one skips it.
+          // Explore is for roaming: no tutorial, and the career isn't begun by it.
+          if (state.explore) return changes
           const tutorial = shouldStartTutorial(state.career.started || state.xp > 0 || state.credits > 0)
           if (tutorial) useTutorial.getState().start()
           if (!state.career.started) {

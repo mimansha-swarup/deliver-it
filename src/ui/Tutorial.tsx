@@ -8,30 +8,27 @@ import { useUi } from './uiState'
 /*
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
  * what to do now, with the keys as they're set. Each step finishes when the rider has done it (the
- * director below watches for that), or with Skip. Riding and steering, a breaker taken slowly,
- * going online in the Deliver It app, accepting the order, picking up at the dark store, the full map,
- * delivering, GaadiGo (the other vehicles), and going offline for the shift summary. Every step can
+ * director below watches for that), or with Skip. It opens on an order: the rider is online with
+ * their first order waiting, accepts it, then learns riding and steering and a breaker taken slowly
+ * on the way to the dark store; picking up, the full map, delivering, GaadiGo (the other vehicles),
+ * and going offline for the shift summary (and online again whenever they like). Every step can
  * be skipped, the whole of it too, and Settings on the phone plays it again.
  */
 
 type StepText = { ravi: () => string; card: () => string; optional?: boolean }
 
 const STEPS: Record<TutorialStep, StepText> = {
+  accept: {
+    ravi: () => `Namaskara, maga! Ravi here, from Deliver It dispatch. No time for chai: you're online and your first order is already here. Press ${keyFor('accept')} to take it.`,
+    card: () => `Your first order is waiting. Accept it: ${keyFor('accept')}.`,
+  },
   ride: {
-    ravi: () => `Namaskara, maga! Ravi here, from dispatch. Let's get you riding. ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer.`,
+    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer. The arrow at the top points to the dark store.`,
     card: () => `Ride and steer: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake.`,
   },
   brake: {
-    ravi: () => `Super! HSR is full of speed breakers. Slow down with ${keyFor('backward')} before one and roll over it gently.`,
+    ravi: () => `Chennagide! HSR is full of speed breakers. Slow down with ${keyFor('backward')} before one and roll over it gently, or the parcel suffers.`,
     card: () => `Brake (${keyFor('backward')}) before a speed breaker and take it slowly, under half speed.`,
-  },
-  online: {
-    ravi: () => `Chennagide! Now open your phone (${keyFor('phone')}), unlock it, and go online in the Deliver It app.`,
-    card: () => `Open the phone (${keyFor('phone')}), unlock (Enter), open Deliver It, and go online. (${keyFor('online')} works too.)`,
-  },
-  accept: {
-    ravi: () => `You're online. Here's your first order, just for you. Press ${keyFor('accept')} to take it.`,
-    card: () => `Accept the order: ${keyFor('accept')}.`,
   },
   pickup: {
     ravi: () => `Follow the arrow at the top and the line on your map to the dark store on 27th Main. Park outside, get off with ${keyFor('mount')}, walk in and collect the bag at the counter with ${keyFor('interact')}.`,
@@ -50,7 +47,7 @@ const STEPS: Record<TutorialStep, StepText> = {
     card: () => `Open the phone (${keyFor('phone')}), unlock (Enter), and open GaadiGo: other vehicles to rent or buy, brought to you.`,
   },
   offline: {
-    ravi: () => `Last one: go offline with ${keyFor('online')} to end your shift and see how it went.`,
+    ravi: () => `Last one: ${keyFor('online')} takes you offline, and online again when you want work (the Deliver It app on your phone does it too). Go offline now to end your shift and see how it went.`,
     card: () => `Go offline (${keyFor('online')}) and look at your shift summary.`,
   },
 }
@@ -117,10 +114,9 @@ function TutorialDirector() {
           }
           break
         }
-        case 'online':
-          if (state.duty === 'online') finish()
-          break
         case 'accept':
+          // The tutorial opens on an order: online without being asked, and the order there at once.
+          if (state.duty !== 'online' && !state.mission) state.goOnline()
           offerNow()
           if (state.mission) finish()
           break

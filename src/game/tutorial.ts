@@ -7,11 +7,17 @@ import { saveKey } from './saveKeys'
  * it's on now (not saved: a reload mid-tutorial starts it again from the top).
  */
 
-export const TUTORIAL_STEPS = ['ride', 'brake', 'online', 'accept', 'pickup', 'map', 'deliver', 'gaadigo', 'offline'] as const
+/**
+ * The first order comes first (VISION.md's first five minutes: open on an order): the rider is put
+ * online with an order waiting, and learns to ride on the way to the dark store.
+ */
+export const TUTORIAL_STEPS = ['accept', 'ride', 'brake', 'pickup', 'map', 'deliver', 'gaadigo', 'offline'] as const
 export type TutorialStep = (typeof TUTORIAL_STEPS)[number]
 
 type TutorialState = {
   done: boolean
+  /** Asked for again from the menu's Settings: it plays on the next ride, progress or not. Saved. */
+  replay: boolean
   /** The step showing now, or null when the tutorial isn't running. */
   step: TutorialStep | null
   start: () => void
@@ -25,6 +31,7 @@ export const useTutorial = create<TutorialState>()(
   persist(
     (set, get) => ({
       done: false,
+      replay: false,
       step: null,
       start: () => set({ step: TUTORIAL_STEPS[0] }),
       next: () => {
@@ -36,7 +43,7 @@ export const useTutorial = create<TutorialState>()(
       },
       finish: () => set({ step: null, done: true }),
     }),
-    { name: saveKey('swalpa-fast-tutorial'), partialize: (state) => ({ done: state.done }) },
+    { name: saveKey('swalpa-fast-tutorial'), partialize: (state) => ({ done: state.done, replay: state.replay }) },
   ),
 )
 
@@ -51,7 +58,11 @@ export function forcedTutorial(): boolean {
  */
 export function shouldStartTutorial(hasProgress: boolean): boolean {
   if (forcedTutorial()) return true
-  const { done } = useTutorial.getState()
+  const { done, replay } = useTutorial.getState()
+  if (replay) {
+    useTutorial.setState({ replay: false })
+    return true
+  }
   if (done) return false
   if (hasProgress) {
     useTutorial.setState({ done: true })
