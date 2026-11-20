@@ -1,7 +1,8 @@
 import { useEffect, type RefObject } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { liveView } from '../game/livePlayer'
-import { leaveRoom, liveRoom } from '../game/rooms'
+import { clearSpots } from '../game/interact'
+import { liveRoom, useRoom } from '../game/rooms'
 import type { TrafficWorld } from '../traffic/trafficLogic'
 import { usePause } from '../ui/uiState'
 import { ROAD_HEIGHT } from '../world/surface'
@@ -24,10 +25,19 @@ export function Unstuck({ scooter, traffic }: { scooter: RefObject<ScooterState>
       usePause.subscribe((state, previous) => {
         if (state.unstuck === previous.unstuck) return
         const vehicle = scooter.current
-        if (liveRoom.kind) leaveRoom()
+        // In a room (which is under the street, out of sight): out of it at once, by the door they came in at.
+        const inRoom = liveRoom.kind !== null
+        if (inRoom) {
+          clearSpots('room:')
+          liveRoom.kind = null
+          liveRoom.blocks = []
+          liveRoom.frozen = false
+          useRoom.setState({ kind: null, label: '', fading: false })
+        }
+        // The nearest road to where the rider is: themselves on foot, the door of a room they were in, or the vehicle.
         const afoot = vehicle.rider.phase !== 'on'
-        const fromX = afoot && !liveRoom.kind ? vehicle.rider.x : vehicle.x
-        const fromZ = afoot && !liveRoom.kind ? vehicle.rider.z : vehicle.z
+        const fromX = inRoom ? liveRoom.exit.x : afoot ? vehicle.rider.x : vehicle.x
+        const fromZ = inRoom ? liveRoom.exit.z : afoot ? vehicle.rider.z : vehicle.z
 
         // The nearest spot on any street's lane that's on the ground (not up on a flyover) and open.
         let best: { x: number; z: number; heading: number; distance: number } | null = null
@@ -54,9 +64,25 @@ export function Unstuck({ scooter, traffic }: { scooter: RefObject<ScooterState>
         vehicle.rearWheel.height = ROAD_HEIGHT
         vehicle.frontWheel.fall = 0
         vehicle.rearWheel.fall = 0
-        vehicle.rider.phase = 'on'
-        vehicle.rider.time = 0
-        vehicle.rider.pace = 0
+        // The rider is on it, wherever they were: seated (`off` is how far off the seat they're drawn),
+        // not left standing where they'd got stuck.
+        const rider = vehicle.rider
+        rider.phase = 'on'
+        rider.off = 0
+        rider.time = 0
+        rider.pace = 0
+        rider.x = best.x
+        rider.z = best.z
+        rider.heading = best.heading
+        rider.ground = ROAD_HEIGHT
+        rider.walkX = 0
+        rider.walkZ = 0
+        rider.velocityX = 0
+        rider.velocityY = 0
+        rider.velocityZ = 0
+        rider.lean = 0
+        rider.tip = 0
+        rider.roll = 0
         liveVehicle.cockpit = false
         liveView.snapBehind = true
         useGameStore.getState().raviSays('Back on the road, maga. Happens to everyone in these lanes.')

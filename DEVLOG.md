@@ -11216,3 +11216,10 @@ keeps the page busy. Checked: the screen shows, and the ride starts from it as b
 Explore says "no fuel" and still showed the petrol bar. The bar is gone there, and so is what it
 stood for: an empty tank, an overdue service or a breakdown left behind in the career no longer
 slows or stops the vehicle in Explore, and the breakdown card doesn't show.
+
+## 2026-11-21: Entry 237, Unstuck brings the rider too
+
+Asked for on foot, Unstuck moved the vehicle to the road and left the rider standing where they
+were: they were marked as riding but still drawn off the seat. They're now seated on it, at the
+road, facing along it. From inside a room they're out of it at once, by the door they came in at,
+and the road nearest that door is the one used.
