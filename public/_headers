@@ -1,0 +1,7 @@
+# Files under /assets carry a hash of their contents in their names (Vite), so one address never
+# changes what it holds: the browser may keep them for good and not ask again. Without this every
+# visit asked the server about each of them before using its own copy, one after another down the
+# chain of scripts (about 0.7 s of a repeat visit). Everything else (the map, models, textures)
+# keeps its plain name, so it is still checked each visit.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

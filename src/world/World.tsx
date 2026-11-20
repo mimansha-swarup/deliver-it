@@ -118,6 +118,28 @@ type RapierModule = Awaited<ReturnType<typeof loadRapier>>
 
 type WorldPlan = ReturnType<typeof buildWorld> extends Generator<BuildPause, infer Plan, void> ? Plan : never
 
+/** `?check=1`: the plan's steps print a checksum of what they placed (dev/loadTimeline), to compare two builds of the game. */
+const CHECK = typeof location !== 'undefined' && new URLSearchParams(location.search).has('check')
+
+/** Debug: a number that changes if anything the infill placed does, for checking a faster way gives the same city. */
+function planChecksum(value: unknown): string {
+  let sum = 0
+  let count = 0
+  const visit = (item: unknown) => {
+    if (typeof item === 'number') {
+      sum = (sum * 31 + Math.round(item * 1e6)) % 2147483647
+      count++
+    } else if (typeof item === 'boolean') {
+      sum = (sum * 31 + (item ? 7 : 3)) % 2147483647
+    } else if (typeof item === 'string') {
+      for (let i = 0; i < item.length; i++) sum = (sum * 31 + item.charCodeAt(i)) % 2147483647
+    } else if (Array.isArray(item)) item.forEach(visit)
+    else if (item && typeof item === 'object' && !ArrayBuffer.isView(item) && !(item instanceof Map) && !(item instanceof Set)) for (const key of Object.keys(item).sort()) visit((item as Record<string, unknown>)[key])
+  }
+  visit(value)
+  return `${count}:${sum}`
+}
+
 /** The physics engine, handed to a world build that has paused for it (see `buildWorld`). */
 type RapierHolder = { rapier?: RapierModule }
 
@@ -255,7 +277,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   for (const park of infill.parks) if (!data.parks.includes(park)) data.parks.push(park)
   // Debug: the pocket parks' corners, to go and look at them from the console.
   if (isDebug()) (window as unknown as { __deliverItPocketParks?: unknown }).__deliverItPocketParks = infill.parks.map((park) => park.geometry.coordinates[0].map((p) => { const [x, , z] = lonLatToWorld(p); return [x, z] }))
-  lap(`infill: ${infill.buildings.length} buildings, ${infill.parks.length} pocket parks`)
+  lap(`infill: ${infill.buildings.length} buildings, ${infill.parks.length} pocket parks` + (CHECK ? ` [check ${planChecksum([infill, data.buildings.map((building) => [building.kind, (building as { civicUse?: string }).civicUse ?? ""])])}]` : ''))
   yield STEP
   if (import.meta.env.DEV) console.info('[streets] infill:', JSON.stringify({ buildings: infill.buildings.length, sites: infill.sites.length, cars: infill.parkedCars.length, hoardings: infill.hoardings.length, pumps: infill.pumps.length, shrines: infill.shrines.length, parks: infill.parks.length }))
   const mappedShops = generateShopFronts(data.places, collisions)
@@ -620,7 +642,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     .map(({ x, z, rotation, type }) => ({ x, z, outX: Math.sin(rotation), outZ: Math.cos(rotation), kind: type === 'chai' ? 'chai' as const : 'darshini' as const }))
   fixedInterests.list = eateries.list.map(({ x, z }) => ({ x, z, reach: 16 }))
   if (isDebug()) Object.assign(window, { __eateries: eateries })
-  lap('spawn and landmarks')
+  lap('spawn and landmarks' + (CHECK ? ` [check ${planChecksum([kit, shopFronts, props, landmarks, spawn, shopPeople, sites, fuel, tyreShops, houses.doors, story, fences, features, stores.map(({ x, z, node }) => [x, z, node]), parking.cars.length, parking.bikes.length])}]` : ''))
   yield STEP
 
   return { collisions, props, shopFronts, kit, graph, traffic, tanks, benches, stores, houses, life, sites, surface, features, landmarks, fuel, edges, newSoilArea, fences, worship, spawn, shopPeople, infill, home, streetParked: [...parking.cars, ...parking.bikes, ...pumps.flatMap(({ vehicles }) => vehicles)], chaiStalls, surfaceMap, story, cityLandmarks, tyreShops, metro, flyovers, busStand, agara, lakeLife, society, deckCollisions: decks.collisionsAt }

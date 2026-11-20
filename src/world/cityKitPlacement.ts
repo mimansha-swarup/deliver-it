@@ -2,7 +2,7 @@ import { FLOOR_HEIGHT, getFloors, hashString } from './buildingData'
 import type { BuildingKind } from './buildingKinds'
 import { addPost, isNearBuilding, type CollisionWorld } from './collision'
 import type { BuildingFeature, LineFeature } from './mapData'
-import { indexRoadPieces, isClearOfRoads, toRoadPieces } from './props'
+import { indexRoadPieces, isClearOfRoads, PointGrid, toRoadPieces } from './props'
 import type { ShopFront } from './shopFrontPlacement'
 import { isInsideOutline, isRingInPlayArea, lonLatToWorld, type GroundPoint } from './worldUtils'
 
@@ -160,7 +160,8 @@ function placeWall(
   style: Style,
   floors: number,
   doorSlot: number | undefined,
-  shopFronts: ShopFront[],
+  /** Where the shop fronts are, sorted into grid squares: asked once for every piece of every wall. */
+  shopFronts: PointGrid,
 ) {
   const { ground, upper } = style
   if (!ground || !upper) return
@@ -174,10 +175,7 @@ function placeWall(
       const [x, z] = pointOnEdge(edge, slot, WALL_DEPTH)
 
       // Awnings and signs reach up into the first floor, so both floors stay clear.
-      const nearAwning = shopFronts.some(
-        (front) => Math.hypot(front.x - x, front.z - z) < AWNING_CLEARANCE,
-      )
-      if (floor <= 1 && nearAwning) continue
+      if (floor <= 1 && shopFronts.hasWithin(x, z, AWNING_CLEARANCE)) continue
 
       // Pieces are chosen by column, so a window stays above a window.
       placed.push({
@@ -240,6 +238,8 @@ export function placeCityKit(
 ): KitPlacement[] {
   const placed: KitPlacement[] = []
   const roadIndex = indexRoadPieces(toRoadPieces(roads))
+  const frontGrid = new PointGrid(AWNING_CLEARANCE * 4)
+  for (const front of shopFronts) frontGrid.add(front.x, front.z)
 
   for (const building of buildings) {
     const style = STYLES[building.kind]
@@ -264,7 +264,7 @@ export function placeCityKit(
       placeCornice(placed, edge, style.cornice, height, gap)
       if (!hasWalls) continue
 
-      placeWall(placed, building.id, edge, style, floors, edge === front ? doorSlot : undefined, shopFronts)
+      placeWall(placed, building.id, edge, style, floors, edge === front ? doorSlot : undefined, frontGrid)
       placeCorner(placed, edge, floors, shopFronts)
     }
 

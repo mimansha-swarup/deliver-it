@@ -27,13 +27,15 @@ function cellKey(cellX: number, cellZ: number): number {
 /**
  * Each footprint's box: [min x, max x, min z, max z]. A check first asks whether the point is
  * near the box at all, which rules out nearly every footprint in a cell without measuring it.
+ * Kept on the footprint itself: loading asks millions of times, and looking each one up in a
+ * WeakMap was a fifth of that.
  */
-const boxes = new WeakMap<Footprint, [number, number, number, number]>()
+type Boxed = Footprint & { box?: [number, number, number, number] }
 
 export function addFootprint(world: CollisionWorld, footprint: Footprint) {
   const xs = footprint.map(([x]) => x)
   const zs = footprint.map(([, z]) => z)
-  boxes.set(footprint, [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)])
+  ;(footprint as Boxed).box = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]
   const firstX = toCell(Math.min(...xs) - MAX_CHECK_RADIUS)
   const lastX = toCell(Math.max(...xs) + MAX_CHECK_RADIUS)
   const firstZ = toCell(Math.min(...zs) - MAX_CHECK_RADIUS)
@@ -277,7 +279,7 @@ export function isNearBuilding(world: CollisionWorld, x: number, z: number, radi
   if (!nearby) return false
 
   for (const footprint of nearby) {
-    const box = boxes.get(footprint)
+    const box = (footprint as Boxed).box
     if (box && (x < box[0] - radius || x > box[1] + radius || z < box[2] - radius || z > box[3] + radius)) continue
     if (isNearFootprint(footprint, x, z, radius)) return true
   }

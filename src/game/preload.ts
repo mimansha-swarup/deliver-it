@@ -137,7 +137,7 @@ let running: Promise<void> | null = null
 
 /**
  * Starts the download, once, as the page opens. `report` hears progress as it
- * happens. Files come down a few at a time, the map first, as the world can't
+ * happens. The map comes first, then everything else together, as the world can't
  * start building without it.
  */
 export function preloadGame(report: (progress: LoadProgress) => void): Promise<void> {
@@ -204,15 +204,15 @@ export function preloadGame(report: (progress: LoadProgress) => void): Promise<v
     send()
   })
 
-  // Four at a time: enough to keep the connection busy, few enough to show steady progress.
-  const queue = [...rest]
-  const worker = async () => {
-    await afterMap
-    for (let file = queue.shift(); file; file = queue.shift()) await fetchOne(file)
-  }
+  // Then everything else at once. They were fetched four at a time, each next one asked for as one
+  // finished; but the page is busy planning the city meanwhile, a few hundred milliseconds at a
+  // stretch, and "as one finished" waited for the page to notice. The last textures were arriving a
+  // second after the plan was done, with the world waiting on them. Asked for together, they come
+  // down while the page is busy, and are all there when it looks up.
+  const others = afterMap.then(() => Promise.all(rest.map(fetchOne)))
 
   send()
-  running = Promise.all([mapFirst, physics, ...Array.from({ length: 4 }, worker)])
+  running = Promise.all([mapFirst, physics, others])
     .then(() => undefined)
     .catch((error: unknown) => {
       running = null

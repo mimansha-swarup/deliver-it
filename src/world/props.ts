@@ -237,7 +237,9 @@ function someRoadNear(index: RoadIndex, x: number, z: number, reach: number, vis
   const query = ++index.query
   for (let cellX = roadCell(x - reach); cellX <= roadCell(x + reach); cellX++) {
     for (let cellZ = roadCell(z - reach); cellZ <= roadCell(z + reach); cellZ++) {
-      for (const piece of index.cells.get(roadCellKey(cellX, cellZ)) ?? []) {
+      const cell = index.cells.get(roadCellKey(cellX, cellZ))
+      if (!cell) continue
+      for (const piece of cell) {
         if (index.seen[piece] === query) continue
         index.seen[piece] = query
         if (visit(index.pieces[piece])) return true
@@ -249,8 +251,32 @@ function someRoadNear(index: RoadIndex, x: number, z: number, reach: number, vis
 
 /** True when a point is more than `gap` metres from the edge of every road. */
 export function isClearOfRoads(index: RoadIndex, x: number, z: number, gap: number): boolean {
-  return !someRoadNear(index, x, z, gap, (piece) => distanceToPiece(x, z, piece) <= piece.width / 2 + gap)
+  // `someRoadNear` written out, as loading asks this hundreds of thousands of times: no function
+  // made per call, and a piece whose box (grown by its half width and the gap) the point is outside
+  // isn't measured. The answer is the same.
+  const query = ++index.query
+  const { cells, seen, pieces } = index
+  for (let cellX = roadCell(x - gap); cellX <= roadCell(x + gap); cellX++) {
+    for (let cellZ = roadCell(z - gap); cellZ <= roadCell(z + gap); cellZ++) {
+      const cell = cells.get(roadCellKey(cellX, cellZ))
+      if (!cell) continue
+      for (let i = 0; i < cell.length; i++) {
+        const number = cell[i]
+        if (seen[number] === query) continue
+        seen[number] = query
+        const piece = pieces[number]
+        const { start, end } = piece
+        const reach = piece.width / 2 + gap + BOX_SLACK
+        if (x < (start[0] < end[0] ? start[0] : end[0]) - reach || x > (start[0] > end[0] ? start[0] : end[0]) + reach) continue
+        if (z < (start[1] < end[1] ? start[1] : end[1]) - reach || z > (start[1] > end[1] ? start[1] : end[1]) + reach) continue
+        if (distanceToPiece(x, z, piece) <= piece.width / 2 + gap) return false
+      }
+    }
+  }
+  return true
 }
+/** A box test leaves this much room, in metres, so rounding can never rule out a piece the measuring would have counted. */
+const BOX_SLACK = 1e-6
 
 /**
  * How far a point is outside the nearest road's edge, in metres: negative on a

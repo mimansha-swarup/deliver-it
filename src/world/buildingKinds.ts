@@ -104,6 +104,9 @@ function distanceToOutline(outline: GroundPoint[], point: GroundPoint): number {
   return nearest
 }
 
+/** The size of the grid squares buildings are sorted into for `findKindsFromPlaces`, in metres. */
+const PLACE_CELL = 48
+
 /** OSM usually maps a shop as a dot beside its building. This joins each dot to one building. */
 function findKindsFromPlaces(
   buildings: PolygonFeature[],
@@ -118,6 +121,29 @@ function findKindsFromPlaces(
     return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]
   })
 
+  // The boxes sorted into grid squares: each building is listed in every square its box touches.
+  const cells = new Map<number, number[]>()
+  const cellOf = (value: number) => Math.floor(value / PLACE_CELL) + 2048
+  boxes.forEach(([minX, maxX, minZ, maxZ], index) => {
+    for (let cx = cellOf(minX); cx <= cellOf(maxX); cx++) {
+      for (let cz = cellOf(minZ); cz <= cellOf(maxZ); cz++) {
+        const list = cells.get(cx * 4096 + cz)
+        if (list) list.push(index)
+        else cells.set(cx * 4096 + cz, [index])
+      }
+    }
+  })
+  /** Every building whose box could be within reach of a point, each once, lowest number first. */
+  const nearby = (x: number, z: number): number[] => {
+    const found = new Set<number>()
+    for (let cx = cellOf(x - PLACE_REACH); cx <= cellOf(x + PLACE_REACH); cx++) {
+      for (let cz = cellOf(z - PLACE_REACH); cz <= cellOf(z + PLACE_REACH); cz++) {
+        for (const index of cells.get(cx * 4096 + cz) ?? []) found.add(index)
+      }
+    }
+    return [...found].sort((a, b) => a - b)
+  }
+
   for (const place of places) {
     const kind = kindFromUse(place.properties)
     if (!kind) continue
@@ -126,14 +152,16 @@ function findKindsFromPlaces(
     let nearest: PolygonFeature | undefined
     let nearestDistance = PLACE_REACH
 
-    buildings.forEach((building, index) => {
+    // Only the buildings in the grid squares within reach, in the map's own order, as going
+    // through all twenty thousand for every place gave the same answer far more slowly.
+    for (const index of nearby(x, z)) {
       const [minX, maxX, minZ, maxZ] = boxes[index]
-      if (x < minX - nearestDistance || x > maxX + nearestDistance || z < minZ - nearestDistance || z > maxZ + nearestDistance) return
+      if (x < minX - nearestDistance || x > maxX + nearestDistance || z < minZ - nearestDistance || z > maxZ + nearestDistance) continue
       const distance = distanceToOutline(outlines[index], [x, z])
-      if (distance >= nearestDistance) return
-      nearest = building
+      if (distance >= nearestDistance) continue
+      nearest = buildings[index]
       nearestDistance = distance
-    })
+    }
     if (!nearest) continue
 
     const current = kinds.get(nearest.id)
@@ -143,7 +171,7 @@ function findKindsFromPlaces(
   return kinds
 }
 
-type Zone = { outline: GroundPoint[]; use?: BuildingKind; civicUse?: CivicUse; commercial: boolean }
+type Zone = { outline: GroundPoint[]; use?: BuildingKind; civicUse?: CivicUse; commercial: boolean; box: [number, number, number, number] }
 
 const SCHOOLS = new Set(['school', 'kindergarten', 'college', 'university'])
 /** What a civic place is, from its tags, if the game draws that kind differently. */
@@ -155,19 +183,24 @@ function civicUseOf({ amenity, healthcare, building }: Properties): CivicUse | u
 
 /** Areas that say something about the buildings on them, like a school's grounds. */
 function findZones(areas: PolygonFeature[]): Zone[] {
-  const zones = areas.map(
-    (area): Zone => ({
-      outline: toOutline(area.geometry.coordinates[0]),
+  const zones = areas.map((area): Zone => {
+    const outline = toOutline(area.geometry.coordinates[0])
+    let box: Zone['box'] = [Infinity, -Infinity, Infinity, -Infinity]
+    for (const [x, z] of outline) box = [Math.min(box[0], x), Math.max(box[1], x), Math.min(box[2], z), Math.max(box[3], z)]
+    return {
+      outline,
+      box,
       use: kindFromUse(area.properties),
       civicUse: civicUseOf(area.properties),
       commercial: area.properties.landuse === 'commercial',
-    }),
-  )
+    }
+  })
   return zones.filter((zone) => zone.use || zone.commercial)
 }
 
 function kindFromZone(zones: Zone[], centre: GroundPoint, area: number): BuildingKind | undefined {
-  const inside = zones.filter(({ outline }) => isInsideOutline(outline, centre[0], centre[1]))
+  // A point outside a zone's box is outside the zone: most are ruled out without walking its outline.
+  const inside = zones.filter(({ outline, box }) => centre[0] >= box[0] && centre[0] <= box[1] && centre[1] >= box[2] && centre[1] <= box[3] && isInsideOutline(outline, centre[0], centre[1]))
   const named = inside.find((zone) => zone.use)
   if (named) return named.use
   if (inside.length === 0) return undefined

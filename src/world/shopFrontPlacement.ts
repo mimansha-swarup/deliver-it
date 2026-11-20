@@ -72,6 +72,34 @@ export function generateShopFronts(places: PointFeature[], collisions: Collision
   return fronts
 }
 
+/** The size of the grid squares shop fronts are sorted into, in metres. */
+const FRONT_CELL = 24
+
+/**
+ * Sorts things into grid squares by where they stand. The returned lookup gives the numbers, lowest
+ * first, of those that could be within `reach` of a point (and some a little further).
+ */
+function gridOf(items: { x: number; z: number }[]): (x: number, z: number, reach: number) => number[] {
+  const cells = new Map<number, number[]>()
+  const cellOf = (value: number) => Math.floor(value / FRONT_CELL) + 2048
+  items.forEach(({ x, z }, index) => {
+    const key = cellOf(x) * 4096 + cellOf(z)
+    const list = cells.get(key)
+    if (list) list.push(index)
+    else cells.set(key, [index])
+  })
+  return (x, z, reach) => {
+    const found: number[] = []
+    for (let cx = cellOf(x - reach); cx <= cellOf(x + reach); cx++) {
+      for (let cz = cellOf(z - reach); cz <= cellOf(z + reach); cz++) {
+        const list = cells.get(cx * 4096 + cz)
+        if (list) for (const index of list) found.push(index)
+      }
+    }
+    return found.sort((a, b) => a - b)
+  }
+}
+
 /**
  * Fills the units along shop buildings' fronts. A unit at a mapped place becomes
  * that place, which then isn't drawn again on its own; the rest get a kind of
@@ -84,13 +112,19 @@ export function fillShopUnits(
   typeFor: (roll: number, x: number, z: number) => ShopType = (roll) => typeByChance(roll),
 ): ShopFront[] {
   const absorbed = new Set<ShopFront>()
+  // The mapped places in grid squares: a unit looks only at those near enough to touch it, in the
+  // list's own order (the first that fits is the one taken, as before), not at every place on the map.
+  const widestMapped = mapped.reduce((most, front) => Math.max(most, front.width), 0)
+  const mappedNear = gridOf(mapped)
   const filled = units.map(({ x, z, rotation, width, seed, menuBoard }): ShopFront => {
-    const place = mapped.find(
-      (front) =>
-        !absorbed.has(front) &&
-        Math.cos(front.rotation - rotation) > 0.7 &&
-        Math.hypot(front.x - x, front.z - z) < (width + front.width) / 2,
-    )
+    const place = mappedNear(x, z, (width + widestMapped) / 2)
+      .map((index) => mapped[index])
+      .find(
+        (front) =>
+          !absorbed.has(front) &&
+          Math.cos(front.rotation - rotation) > 0.7 &&
+          Math.hypot(front.x - x, front.z - z) < (width + front.width) / 2,
+      )
     if (place) absorbed.add(place)
     const variation = (seed % 1000) / 1000
     return {
@@ -105,10 +139,15 @@ export function fillShopUnits(
   })
 
   // A mapped place that a unit didn't take, but that a unit now overlaps, is dropped too.
+  const widestUnit = filled.reduce((most, unit) => Math.max(most, unit.width), 0)
+  const filledNear = gridOf(filled)
   const kept = mapped.filter(
     (front) =>
       !absorbed.has(front) &&
-      filled.every((unit) => Math.hypot(unit.x - front.x, unit.z - front.z) >= (unit.width + front.width) / 2),
+      filledNear(front.x, front.z, (widestUnit + front.width) / 2).every((index) => {
+        const unit = filled[index]
+        return Math.hypot(unit.x - front.x, unit.z - front.z) >= (unit.width + front.width) / 2
+      }),
   )
   return [...kept, ...filled]
 }

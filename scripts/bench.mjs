@@ -50,6 +50,11 @@ const SET_SKY = `{ const sky = window.__deliverItSky; if (sky) { sky.hours = ${H
 /** --dpr 2: emulate a sharp (Retina) screen, whatever screen Chrome opens on. */
 const SCREEN_DPR = Number(option('dpr', '0'))
 const CHROME = option('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+/** --latency 150 --mbps 20: a real connection's delay per request (ms) and speed, as a local server has neither; with it, the server's files are also checked on each visit as a host's are. */
+const LATENCY = Number(option('latency', '0'))
+const MBPS = Number(option('mbps', '0'))
+/** --query check=1: more of the page's address, after spawn and debug. */
+const QUERY = option('query', '') ? `&${option('query', '')}` : ''
 const PORT = 9333
 /** Each quality is measured at its top resolution: Low's is 1, High's 1.5 (qualitySettings.ts); Low also at its optional 0.75×. */
 const QUALITIES = [['Low', 1], ['Low', 0.75], ['High', 1.5]]
@@ -271,18 +276,23 @@ const results = {}
 try {
   await send('Page.enable')
   await send('Runtime.enable')
+  if (LATENCY || MBPS) {
+    await send('Network.enable')
+    const bytes = MBPS ? (MBPS * 1e6) / 8 : -1
+    await send('Network.emulateNetworkConditions', { offline: false, latency: LATENCY, downloadThroughput: bytes, uploadThroughput: bytes })
+  }
   if (SCREEN_DPR) await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 800, deviceScaleFactor: SCREEN_DPR, mobile: false })
   for (const street of STREETS) {
     await send('Emulation.setCPUThrottlingRate', { rate: 1 })
-    await send('Page.navigate', { url: `${BASE}/?spawn=${street}&debug=1` })
-    await sleep(1500)
-    // --profile-load file.cpuprofile: a CPU profile of loading, Play to riding.
+    // --profile-load file.cpuprofile: a CPU profile of loading, from opening the page (planning starts under the title) to riding.
     const loadProfile = option('profile-load', '')
     if (loadProfile) {
       await send('Profiler.enable')
       await send('Profiler.setSamplingInterval', { interval: 200 })
       await send('Profiler.start')
     }
+    await send('Page.navigate', { url: `${BASE}/?spawn=${street}&debug=1${QUERY}` })
+    await sleep(1500)
     const load = await evaluate(START)
     if (loadProfile) {
       // On through the first seconds of riding, where traffic and nearby squares are built.

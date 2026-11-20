@@ -103,22 +103,30 @@ function toOutline(feature: PolygonFeature): GroundPoint[] {
 
 /** Outlines sorted into squares by their boxes, for asking quickly whether a point is inside one. */
 class OutlineGrid {
-  private readonly cells = new Map<number, GroundPoint[][]>()
+  private readonly cells = new Map<number, { outline: GroundPoint[]; box: [number, number, number, number] }[]>()
   private static readonly CELL = 64
   add(outline: GroundPoint[]) {
     const xs = outline.map((p) => p[0])
     const zs = outline.map((p) => p[1])
-    for (let cx = Math.floor(Math.min(...xs) / OutlineGrid.CELL); cx <= Math.floor(Math.max(...xs) / OutlineGrid.CELL); cx++) {
-      for (let cz = Math.floor(Math.min(...zs) / OutlineGrid.CELL); cz <= Math.floor(Math.max(...zs) / OutlineGrid.CELL); cz++) {
+    // With its box, so a point outside it is ruled out without walking the outline.
+    const entry = { outline, box: [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)] as [number, number, number, number] }
+    for (let cx = Math.floor(entry.box[0] / OutlineGrid.CELL); cx <= Math.floor(entry.box[1] / OutlineGrid.CELL); cx++) {
+      for (let cz = Math.floor(entry.box[2] / OutlineGrid.CELL); cz <= Math.floor(entry.box[3] / OutlineGrid.CELL); cz++) {
         const key = (cx + 1000) * 2000 + (cz + 1000)
         const list = this.cells.get(key)
-        if (list) list.push(outline)
-        else this.cells.set(key, [outline])
+        if (list) list.push(entry)
+        else this.cells.set(key, [entry])
       }
     }
   }
   contains(x: number, z: number): boolean {
-    return (this.cells.get((Math.floor(x / OutlineGrid.CELL) + 1000) * 2000 + (Math.floor(z / OutlineGrid.CELL) + 1000)) ?? []).some((outline) => isInsideOutline(outline, x, z))
+    const list = this.cells.get((Math.floor(x / OutlineGrid.CELL) + 1000) * 2000 + (Math.floor(z / OutlineGrid.CELL) + 1000))
+    if (!list) return false
+    for (const { outline, box } of list) {
+      if (x < box[0] || x > box[1] || z < box[2] || z > box[3]) continue
+      if (isInsideOutline(outline, x, z)) return true
+    }
+    return false
   }
 }
 
@@ -171,7 +179,13 @@ export function fillEmptyPlots(
   // kept, on a 25 cm grid, until something is built (which can change it).
   let known = new Map<number, boolean>()
   const isFree = (x: number, z: number) => {
-    const key = (Math.round(x * 4) + 40000) * 80000 + (Math.round(z * 4) + 40000)
+    // The key is kept under 2^30: a Map of small whole numbers is several times quicker than one of
+    // large ones, which the engine stores as boxed doubles. Past 4 km from the middle (nowhere on
+    // this map) a point is simply tested each time.
+    const kx = Math.round(x * 4) + 16384
+    const kz = Math.round(z * 4) + 16384
+    if (kx < 0 || kx > 32767 || kz < 0 || kz > 32767) return testGround(x, z)
+    const key = kx * 32768 + kz
     let free = known.get(key)
     if (free === undefined) {
       free = testGround(x, z)
