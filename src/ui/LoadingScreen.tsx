@@ -26,7 +26,7 @@ const TIPS = [
   'Hold Space while you turn to drift. Let go to get a boost.',
   'P brings up your phone: orders, messages from home, the map and your wallet.',
   'Stuck somewhere? Esc pauses, and Unstuck puts you back on the nearest road.',
-  'Slow down for speed breakers. The parcel feels every one of them.',
+  'Breakers and rough roads cost an order nothing. A crash does: that is what to avoid.',
   'F gets you off the scooter. Flats and the dark store are walked into.',
   "The streets, buildings and parks are HSR Layout's own, mapped by OpenStreetMap volunteers.",
 ]

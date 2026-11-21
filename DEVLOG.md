@@ -11548,3 +11548,14 @@ shoes, medicine, a heavy load) is unmoved by bumps, as cargo.ts always said it w
 break, spill or go cold minds them (fragile: four or five a star; hot food and ice cream: ten).
 When roughness does cost a star, the result card says "Rough ride" and not "Kept waiting".
 Checked the rating: six hard bumps on a plain parcel, on time, is five stars.
+
+## 2026-11-21: Entry 258, bumps cost nothing
+
+Bumps are out of the scoring altogether, at the owner's word: a rider takes the rough road to be
+quick, and a parcel in a delivery box isn't damaged by a breaker. A hard bump now takes nothing
+from any order's condition (fragile, hot or frozen), adds no roughness, and costs a fragile order
+no stars by count; the "Bump! Go gently" warning is gone, and the fragile hint, the tutorial's
+breaker step and a loading tip say that it's a crash that hurts an order. Crashes, lateness and
+time (food cooling, ice cream melting) are unchanged. Bumps are still counted, unused, in case
+they're wanted for an award. Checked the rating: fifty bumps on a parcel, on hot food and on a
+fragile order, on time, is five stars each.

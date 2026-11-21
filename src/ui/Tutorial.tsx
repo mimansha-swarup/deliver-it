@@ -27,7 +27,7 @@ const STEPS: Record<TutorialStep, StepText> = {
     card: () => `Ride and steer: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake.`,
   },
   brake: {
-    ravi: () => `Chennagide! HSR is full of speed breakers. Slow down with ${keyFor('backward')} before one and roll over it gently, or the parcel suffers.`,
+    ravi: () => `Chennagide! HSR is full of speed breakers. Slow down with ${keyFor('backward')} before one and roll over it gently: taken flat out it throws you about.`,
     card: () => `Brake (${keyFor('backward')}) before a speed breaker and take it slowly, under half speed.`,
   },
   pickup: {
@@ -102,7 +102,7 @@ function TutorialDirector() {
           break
         }
         case 'brake': {
-          if (livePlayer.gentle > startGentle) finish('Nicely done. Slow over the breakers and your parcels stay safe.')
+          if (livePlayer.gentle > startGentle) finish('Nicely done. The breakers cost you nothing but a jolt: it is crashes that hurt an order.')
           else if (livePlayer.bumps > bumpsSeen) {
             bumpsSeen = livePlayer.bumps
             state.raviSays('Too fast, maga! Slow down before the next one.')

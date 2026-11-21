@@ -11,8 +11,8 @@ import { CARGO, conditionStars, type CargoType } from './cargo'
  */
 
 /**
- * How an item wants to be carried. A fragile one minds bumps (speed breakers
- * and potholes taken fast). One for an event (a wedding, an interview, a
+ * How an item wants to be carried. A fragile one minds a crash (not bumps:
+ * nothing is damaged by a breaker). One for an event (a wedding, an interview, a
  * party) minds the clock.
  */
 export type Care = 'none' | 'fragile' | 'event'
@@ -149,7 +149,7 @@ export function createOrderStory(random: () => number, period?: PeriodId): Order
 /** What carrying an item needs, said on the phone while it's on board. */
 export const CARE_HINTS: Record<Care, string> = {
   none: '',
-  fragile: 'Fragile: take breakers and potholes below half speed',
+  fragile: 'Fragile: a crash will damage it',
   event: 'For an event: arrive on time',
 }
 
@@ -194,7 +194,7 @@ type RatingInput = {
  * Starts at 5 stars and takes off for lateness, crashes, and the item's own
  * needs. Never below 1. The tip follows the stars.
  */
-export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, streak, frustration, roughness = 0, condition = 1 }: RatingInput): Rating {
+export function rateDelivery({ story, seconds, onTimeSeconds, crashes, streak, frustration, roughness = 0, condition = 1 }: RatingInput): Rating {
   let stars = 5
   const lost: string[] = []
   const take = (count: number, reason: string) => {
@@ -206,9 +206,7 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
   const late = seconds > onTimeSeconds
   take(seconds > onTimeSeconds * VERY_LATE ? 2 : late ? 1 : 0, 'Late')
   take(Math.min(2, crashes), crashes === 1 ? '1 crash' : `${crashes} crashes`)
-  // One bump is forgiven: HSR has a lot of breakers.
-  // A bump or two on a fragile order is forgiven: it takes four to cost a star, and eight to cost two.
-  if (story.care === 'fragile') take(knocks >= 8 ? 2 : knocks >= 4 ? 1 : 0, `${knocks} bumps`)
+  // Bumps cost nothing, on any order: HSR is breakers end to end, and only a crash hurts what's in the box.
   if (story.care === 'event') take(late ? 1 : 0, 'Nearly missed the event')
   stars = Math.max(1, stars)
 
@@ -235,7 +233,7 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
   const streakTip = stars === 5 ? Math.min(STREAK_TIP_MAX, streak * STREAK_TIP) : 0
   const spoilt = CARGO[story.cargo].meter ? Math.max(0, Math.min(1, condition)) : 1
   const tip = Math.round((TIPS[stars] + streakTip) * (1 - (frustration ?? 0) * 0.5) * (1 - Math.min(1, roughness) * 0.5) * (0.4 + 0.6 * spoilt))
-  const reaction = state.stars > 0 ? conditionReaction(story, condition) : reactionFor(story, stars, late, knocks, crashes)
+  const reaction = state.stars > 0 ? conditionReaction(story, condition) : reactionFor(story, stars, late, crashes)
   return { stars, tip, lost: stars === 5 ? [] : lost, reaction }
 }
 
@@ -247,7 +245,7 @@ function conditionReaction(story: OrderStory, condition: number): string {
   return ruined ? 'Ayyo! It is completely smashed. What happened on the way?' : 'It got knocked about a bit, no? Okay, it will do.'
 }
 
-function reactionFor(story: OrderStory, stars: number, late: boolean, knocks: number, crashes: number): string {
+function reactionFor(story: OrderStory, stars: number, late: boolean, crashes: number): string {
   if (story.cargo === 'medicine') {
     if (stars === 5) return 'You came so fast. Thank you, thank you. God bless you!'
     return late ? 'We were waiting and waiting. But thank you for coming.' : 'Thank you. That was needed.'
@@ -262,7 +260,6 @@ function reactionFor(story: OrderStory, stars: number, late: boolean, knocks: nu
   if (stars === 1) return 'Finally! I was waiting so long.'
   // The customer talks about whatever they noticed most.
   if (story.care === 'event' && late) return stars === 4 ? 'I had to rush to get ready, but okay. Thanks!' : 'I nearly missed it! Next time faster, okay?'
-  if (story.care === 'fragile' && knocks >= 4) return stars === 4 ? 'Bit bumpy, but it looks fine. Thanks!' : 'Quite a bumpy ride, no? But okay, thanks.'
   if (crashes > 0) return story.care === 'fragile' ? 'The box is all dented! I hope it\'s not broken inside.' : 'Why is the bag so crushed? Okay, thanks I guess.'
   if (late) return stars === 4 ? 'Bit late, but no problem. Thanks!' : 'Took quite long, no? Okay, thanks.'
   return 'Thank you! All good.'

@@ -71,11 +71,11 @@ export const FRUSTRATION = {
   fumingAt: 0.7,
   fumingSeconds: 45,
   /** Roughness added by a crash and by a hard landing (more if fragile) with the order on board. */
-  // A bump is only a bump: ten of them cost a star on an ordinary order, and four or five on a fragile one.
-  // (It was four, and two: riding HSR's breakers at all cost stars.)
+  // Only a crash is rough on an order. Breakers and potholes cost nothing, however they're taken: a
+  // rider takes the rough road to be quick, and a parcel in a delivery box doesn't suffer for it.
   crash: 0.15,
-  knock: 0.015,
-  fragileKnock: 0.035,
+  knock: 0,
+  fragileKnock: 0,
   /** Each this much roughness costs a star at the door, up to `roughMostStars`. */
   roughPerStar: 0.15,
   roughMostStars: 3,

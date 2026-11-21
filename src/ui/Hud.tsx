@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { useBorrow } from '../game/borrow'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { VEHICLES } from '../vehicle/vehicleCatalog'
@@ -9,8 +8,6 @@ import { averageRating } from '../missions/orderStory'
 import { SCOOTER } from '../vehicle/vehicleConfig'
 import { energyOf, fuelLevel, serviceState, UPKEEP, useUpkeep } from '../game/upkeep'
 
-/** How long the bump warning stays up, in milliseconds. */
-const KNOCK_NOTICE_TIME = 1600
 
 function formatTime(seconds: number): string {
   const minutes = Math.floor(seconds / 60)
@@ -26,26 +23,6 @@ function CrashNotice() {
   return (
     <p className="hud-crash" role="status">
       Crash! {carrying && <span>Package is safe</span>}
-    </p>
-  )
-}
-
-/** A fragile order on board, and a hard landing: the customer will notice. */
-function KnockNotice() {
-  const knocks = useGameStore((state) => state.knocks)
-  const story = useGameStore((state) => state.mission?.story)
-  const [shownFor, setShownFor] = useState(0)
-
-  useEffect(() => {
-    if (knocks === 0) return
-    const timer = window.setTimeout(() => setShownFor(knocks), KNOCK_NOTICE_TIME)
-    return () => window.clearTimeout(timer)
-  }, [knocks])
-
-  if (knocks === 0 || shownFor === knocks || story?.care !== 'fragile') return null
-  return (
-    <p className="hud-knock" role="status">
-      Bump! <span>Go gently with the {story.item.replace(/^(A|An|Two) /, '').toLowerCase()}</span>
     </p>
   )
 }
@@ -259,7 +236,6 @@ export function Hud() {
     <>
       <Speedometer />
       <CrashNotice />
-      <KnockNotice />
       <HandoffNotice />
       <DeliveryComplete />
     </>
