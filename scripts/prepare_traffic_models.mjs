@@ -1476,7 +1476,7 @@ const FLEET = [
  * read this coarsely, is only a smudge). Where its wheel arches are is measured, for the wheels
  * the game puts in them.
  */
-const BUSES = [{ name: 'bus', folder: 'ksrtc_bus', length: 11.2, skirt: 0.34, facing: [0, -1], cuts: 12, paint: red, triangles: 9000 }]
+const BUSES = [{ name: 'bus', folder: 'ksrtc_bus', length: 11.2, skirt: 0.34, facing: [0, -1], cuts: 12, paint: red, triangles: 4500 }]
 
 function bakeBus(spec, folder) {
   const model = loadModel(join(folder, spec.folder))

@@ -11559,3 +11559,31 @@ breaker step and a loading tip say that it's a crash that hurts an order. Crashe
 time (food cooling, ice cream melting) are unchanged. Bumps are still counted, unused, in case
 they're wanted for an award. Checked the rating: fifty bumps on a parcel, on hot food and on a
 fragile order, on time, is five stars each.
+
+## 2026-11-21: Entry 259, after the production review: Explore's GaadiGo, a retry for rooms, a neutral file name, and what the frame rate is doing
+
+- **Explore's GaadiGo.** Explore said "any vehicle" and its GaadiGo still showed prices and locks.
+  In Explore it now lists every vehicle with one button, Ride, which puts it under the rider at
+  once: no price, no level or rating, no delivery, no rental. Rental clocks and EMIs stand still
+  while exploring, and the vehicle the career was on is what stays saved (`careerVehicleId`).
+  Checked: riding the van in Explore left the save on the scooter with its money untouched.
+- **A room that can't be reached says so**, in a line that starts "Couldn't connect", with Try
+  again: on the menu's panel, and in the room card while riding (with Dismiss). Checked with a
+  code no room has.
+- **`yamaha.glb` is `sportbike.glb`**, and its identifiers with it. The makes that remain in the
+  repository are the models' own titles in CREDITS.txt, which their licences require, and the
+  names of the downloaded folders the baking script reads.
+- **Frame rate on Sarjapur Road, High** (scripts/bench.mjs --ride, this machine, a 120 Hz screen):
+  64, 73 and 77 FPS over three runs before any change, so a run's figure moves by ten on its own.
+  The bus was cut from 8,451 triangles to 4,054; after it, 77 FPS riding and 71 standing, which is
+  inside that spread. What was learnt:
+  - About half the frames take two screen refreshes (17 ms) and half one (8 ms): the graphics card
+    is the limit, not the code. The main thread is busy 49% of the time and no function stands out.
+  - Every run has three to five frames of 100 to 200 ms about 3.5 s after the ride starts. They are
+    there standing still too, so they aren't the city streaming in; hiding the pedestrians doesn't
+    remove them; no shader is compiled in them; the resolution scaler is still warming up then.
+    The game's own work in those frames is small, so the time is the browser's or the graphics
+    card's: most likely textures or buffers reaching the card late. Not found yet.
+  The target (80 FPS, worst frame 25 ms) is not met.
+
+Not done: a test across two devices on two networks, which this one machine can't do.
