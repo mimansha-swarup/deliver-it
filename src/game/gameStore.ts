@@ -913,7 +913,9 @@ export const useGameStore = create<GameState>()(
         ? state
         : {
             knocks: state.knocks + 1,
-            rough: state.rough + (state.mission?.story.care === 'fragile' ? FRUSTRATION.fragileKnock : FRUSTRATION.knock),
+            // A plain parcel (clothes, shoes, medicine, a heavy load) arrives as it left: a breaker taken
+            // hard does nothing to it or to its stars. Only what can spill or break minds the bumps.
+            rough: state.rough + (state.mission?.story.care === 'fragile' ? FRUSTRATION.fragileKnock : state.mission && CARGO[state.mission.story.cargo].meter ? FRUSTRATION.knock : 0),
             condition: state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].bump) : state.condition,
           },
     ),

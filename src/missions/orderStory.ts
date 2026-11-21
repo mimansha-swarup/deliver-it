@@ -220,6 +220,8 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
     // shows on the meter and trims the tip. Late, the wait sets the stars.
     stars = Math.max(1, (late ? starsFromFrustration(frustration) : 5) - roughStars(roughness))
     lost.splice(0, lost.length, ...lost.map((reason) => reason.replace(/ −\d★$/, '')))
+    // Say what it was: a rough ride is not a long wait.
+    if (roughStars(roughness) > 0 && crashes === 0 && !lost.some((reason) => reason.includes('bumps'))) lost.push('Rough ride')
     if (stars < 5 && lost.length === 0) lost.push('Kept waiting')
   }
 

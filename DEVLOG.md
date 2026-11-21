@@ -11538,3 +11538,13 @@ complained". Two causes:
 
 Checked the rating itself: clean and on time is five stars at 50%, 90% and 100% of the clock, for a
 patient and an impatient customer and for an event order; 20% late is four, or three if impatient.
+
+## 2026-11-21: Entry 257, bumps cost a plain parcel nothing
+
+A happy customer, no crash, a plain parcel, and still two or three stars: every breaker taken at
+more than half speed with the order on board added "roughness", and roughness took up to three
+stars at the door whatever was in the bag. HSR is breakers end to end. Now a plain parcel (clothes,
+shoes, medicine, a heavy load) is unmoved by bumps, as cargo.ts always said it was; only what can
+break, spill or go cold minds them (fragile: four or five a star; hot food and ice cream: ten).
+When roughness does cost a star, the result card says "Rough ride" and not "Kept waiting".
+Checked the rating: six hard bumps on a plain parcel, on time, is five stars.
