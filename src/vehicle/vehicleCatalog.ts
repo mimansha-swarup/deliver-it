@@ -113,7 +113,7 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     // Upright, feet flat on the footboard.
     // Fitted to the modelled scooter (the baking script prints these): its bars are at 1.05 m, 0.25 m
     // ahead of the middle, its floorboard's top at 0.39 m and its column at 0.285 m.
-    seat: { hip: [0, 0.94, -0.34], lean: 0.12, column: 0.285, grip: [0.29, 1.07, -0.04], foot: [0.13, 0.43, 0.1], footDown: true, pedals: false, side: 0 },
+    seat: { hip: [0, 0.94, -0.34], lean: 0.03, column: 0.285, grip: [0.29, 1.07, -0.04], foot: [0.13, 0.43, 0.1], footDown: true, pedals: false, side: 0 },
   },
   bicycle: {
     id: 'bicycle', name: 'Pedalu City', kind: 'Bicycle', blurb: 'Slow, silent, free to run. Squeezes through anything.',
@@ -129,7 +129,7 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     topSpeed: 52, pull: 1.85, turn: 1.1, grip: 1.05, brake: 1.15, lean: 1, feel: { topEnd: 0.55, response: 22, coast: 3.4, nitro: false }, drive: 'Electric · regen', size: { width: 0.7, length: 1.85, height: 1.5, cab: false }, capacity: 2, costPerKm: 0.5, unlocks: ['parcel', 'eco'],
     minLevel: 2, minRating: 0, rentHour: 35, rentDay: 160, price: 3200, engine: 'ev', engineVolume: 1, horn: 'scooter',
     camera: { distance: 1, height: 1, look: 1 }, cockpit: null, body: 'ev', paint: '#1aa7a1',
-    seat: { hip: [0, 0.92, -0.3], lean: 0.18, column: 0.44, grip: [0.29, 1.05, -0.11], foot: [0.12, 0.42, 0.1], footDown: true, pedals: false, side: 0 },
+    seat: { hip: [0, 0.92, -0.3], lean: 0.05, column: 0.44, grip: [0.29, 1.05, -0.11], foot: [0.12, 0.42, 0.1], footDown: true, pedals: false, side: 0 },
   },
   bike: {
     id: 'bike', name: 'Vega 150', kind: 'Commuter motorbike', blurb: 'Much faster on the main roads. Wider turns, harder to stop.',
@@ -139,7 +139,7 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     // The model's own blue (art/tripo/vega150.glb): its tank is the paint.
     body: 'bike', paint: '#1f5fd0',
     // Fitted to the model: upright on a flat seat at 0.8 m, bars at 1.02 m a little ahead of the middle, feet on pegs under the knees.
-    seat: { hip: [0, 0.96, -0.3], lean: 0.26, column: 0.235, grip: [0.3, 1.06, -0.03], foot: [0.2, 0.38, -0.08], footDown: true, pedals: false, side: 0 },
+    seat: { hip: [0, 0.96, -0.3], lean: 0.1, column: 0.235, grip: [0.3, 1.06, -0.03], foot: [0.2, 0.38, -0.08], footDown: true, pedals: false, side: 0 },
   },
   trike: {
     id: 'trike', name: 'Bhaara E-Cargo', kind: 'Electric cargo three-wheeler', blurb: 'Carries a lot, never leans, never hurries.',
@@ -200,10 +200,10 @@ const borrowedFrom = (base: VehicleSpec, borrowed: BorrowClass, change: Partial<
 
 export const BORROWED: Record<BorrowClass, VehicleSpec> = {
   twoWheeler: borrowedFrom(VEHICLES.bike, 'twoWheeler', {
-    name: 'Borrowed two-wheeler', kind: 'Commuter bike', drive: 'Petrol · borrowed', topSpeed: 72, pull: 1.05, turn: 0.85, brake: 0.8,
+    name: 'Borrowed two-wheeler', kind: 'Commuter bike', drive: 'Petrol · borrowed', topSpeed: 72, pull: 1.05, turn: 0.72, lean: 0.8, brake: 0.8,
     engine: 'bike', horn: 'bike', camera: { distance: 1.05, height: 1, look: 1 },
-    // As the traffic's own riders sit on it: upright, hands on the bars.
-    seat: { hip: [0, 0.98, -0.34], lean: 0.34, column: 0.44, grip: [0.31, 1.08, -0.1], foot: [0.18, 0.44, -0.08], footDown: true, pedals: false, side: 0 },
+    // As the traffic's own riders sit on it: upright, hands on the bars (they sat tipped well forward, and it turned too keenly).
+    seat: { hip: [0, 0.98, -0.34], lean: 0.06, column: 0.44, grip: [0.31, 1.08, -0.1], foot: [0.18, 0.44, -0.08], footDown: true, pedals: false, side: 0 },
   }),
   auto: borrowedFrom(VEHICLES.trike, 'auto', {
     name: 'Borrowed auto', kind: 'Auto-rickshaw', drive: 'CNG · borrowed', topSpeed: 50, pull: 0.72, turn: 0.82, grip: 1.05, brake: 0.62, lean: -0.34,

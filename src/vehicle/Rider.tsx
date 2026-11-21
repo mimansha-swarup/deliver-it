@@ -38,6 +38,8 @@ const LOOK = { jacket: BRAND_DYE, glove: '#1c1d20', trousers: '#2b3a55', shoe: '
  * `jogFrom` the strides lengthen (so a jog isn't a blur of tiny steps), by `longer` per metre a second.
  */
 const ON_FOOT = { swapAt: 0.97, full: 0.6, jogFrom: 1.6, longer: 0.45, response: 9, helmetDown: 0.13, shuffle: 0.4 }
+/** How far a two-wheeler's rider tips forward at full speed, in radians: a little. They sit upright (they used to hunch over the bars). */
+const SPEED_TUCK = 0.06
 /** The one body the rider is, seated and on foot, so getting on or off never changes who they are. */
 const RIDER_BODY = 'office'
 const HELMET = '#f4f3ef'
@@ -336,7 +338,7 @@ export function Rider({
     const sway = gait.sway * (leftStep.load - rightStep.load) * moving * off + FIDGET.shift * shifted
     // Leans into a bend harder than the scooter. Off it, they stand up straight, tip a little into a walk, more into a jog.
     const afoot = state.rider.phase === 'afoot' ? off : 0
-    const torso = (seat.lean + crouch * (seat.footDown ? 0.16 : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off + state.rider.tip * afoot
+    const torso = (seat.lean + crouch * (seat.footDown ? SPEED_TUCK : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off + state.rider.tip * afoot
     // Stopped, the hips shift over to the side the foot goes down on.
     const shift = footDown.current * (1 - off)
 

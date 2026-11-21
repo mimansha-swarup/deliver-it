@@ -10,6 +10,7 @@ import { liveRoom, ROOM } from '../game/rooms'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
 import { blocksView, type CollisionWorld } from '../world/collision'
+import { borrow } from '../game/borrow'
 import { liveLook, settleLook, useMouseLook } from './mouseLook'
 import { liveSight } from './seeThrough'
 
@@ -138,7 +139,9 @@ function findClearDistance(
   walking = false,
 ): number {
   const nearest = walking ? FOOT_WALLS.nearest : MIN_DISTANCE
-  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, walking ? false : low)
+  const blocked = (distance: number) =>
+    blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, walking ? false : low) ||
+    insideBigVehicle(x - forwardX * distance, z - forwardZ * distance)
   for (let distance = nearest; distance < reach; distance += PROBE_STEP) {
     if (!blocked(distance)) continue
     // Then to within a few centimetres of the wall, so that swinging the view along it moves the
@@ -159,6 +162,29 @@ function findClearDistance(
  * Keeps the camera behind the target, lagging slightly through turns, and moves
  * it closer when a building would otherwise block the view.
  */
+/**
+ * A bus is a wall to the camera. Small vehicles between camera and rider are seen through
+ * (seeThrough.ts), which is right for a scooter or a car the camera looks over; standing beside a
+ * bus, the camera went inside it and the view was the bus's own insides. Anything in the traffic
+ * at least `BIG_VEHICLE` long (half its length, in metres) keeps the camera out, with this margin.
+ */
+const BIG_VEHICLE = { halfLength: 3.5, margin: 0.35 }
+function insideBigVehicle(x: number, z: number): boolean {
+  const world = borrow.world
+  if (!world) return false
+  for (let i = 0; i < borrow.count; i++) {
+    const vehicle = world.vehicles[i]
+    if (!vehicle || vehicle.halfLength < BIG_VEHICLE.halfLength || vehicle === borrow.vehicle) continue
+    const dx = x - vehicle.x
+    const dz = z - vehicle.z
+    if (Math.abs(dx) > vehicle.halfLength + 1 || Math.abs(dz) > vehicle.halfLength + 1) continue
+    const sin = Math.sin(vehicle.heading)
+    const cos = Math.cos(vehicle.heading)
+    if (Math.abs(dx * sin + dz * cos) < vehicle.halfLength + BIG_VEHICLE.margin && Math.abs(dx * cos - dz * sin) < vehicle.radius + BIG_VEHICLE.margin) return true
+  }
+  return false
+}
+
 const view = { distance: 1, height: 1, look: 1 }
 const sight = new Vector3()
 

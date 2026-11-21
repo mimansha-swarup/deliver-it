@@ -603,6 +603,8 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
  * `travelX` and `travelZ` are the speed just before the hit, which is what the
  * rider carries on with if they're thrown off.
  */
+/** How much of its speed a cab comes back off a wall with (a scooter: `SCOOTER.wallBounce`). */
+const CAB_WALL_BOUNCE = 0.04
 /** A knock in a cab: no other for this long (s), and this share of the speed is left after it. */
 const JOLT_GAP = 0.9
 const JOLT_KEEPS = 0.35
@@ -728,9 +730,17 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
   state.boostLeft = Math.max(0, state.boostLeft - dt)
 }
 
+/**
+ * How a vehicle with a cab steers: its wheel winds on at this share of the handlebars' speed; its
+ * tightest circle's radius is this many of its own lengths; and it turns no harder than this
+ * sideways pull, in m/s² (a brisk corner in a car is about 5).
+ */
+const CAB_STEERING = { wheel: 0.5, circle: 1.3, sideways: 5.5 }
+
 function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   const targetSteer = Number(input.left) - Number(input.right)
-  state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * dt)
+  // A steering wheel takes a moment to wind on and off; handlebars are flicked.
+  state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * (tuning.cab ? CAB_STEERING.wheel : 1) * dt)
 
   const absoluteSpeed = Math.abs(state.speed)
   const speedRatio = Math.min(absoluteSpeed / tuning.maxSpeed, 1)
@@ -749,9 +759,16 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
     ? clamp(1 - Math.abs(slipAngle) / SCOOTER.maxDriftAngle, 0, 1)
     : 1
 
+  let turning = state.steer * turnRate * driftBoost * driftLimit * steeringFade
+  // Four wheels (and three) turn as their length lets them: no tighter than the circle the vehicle
+  // can make, so it can't swing round on the spot, and no harder at speed than its tyres would hold,
+  // so a touch of the key on a main road is a lane change and not a swerve.
+  if (tuning.cab) {
+    const most = Math.min(absoluteSpeed / (tuning.halfLength * 2 * CAB_STEERING.circle), CAB_STEERING.sideways / Math.max(absoluteSpeed, 1))
+    turning = clamp(turning, -most, most)
+  }
   // Math.sign flips the steering in reverse, as on a real vehicle.
-  state.heading +=
-    state.steer * turnRate * driftBoost * driftLimit * steeringFade * Math.sign(state.speed) * dt
+  state.heading += turning * Math.sign(state.speed) * dt
 }
 
 /**
@@ -916,7 +933,9 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
 
   const directness = hitSpeed / travelSpeed
   if (directness > SCOOTER.headOnThreshold) {
-    const bounce = isCrash ? hitSpeed * SCOOTER.wallBounce : 0
+    // A scooter that hits a wall is thrown back off it. A car stops against it: bounced back, it
+    // lurched backwards and forwards at every touch.
+    const bounce = isCrash ? hitSpeed * (tuning.cab ? CAB_WALL_BOUNCE : SCOOTER.wallBounce) : 0
     state.velocityX = normalX * bounce
     state.velocityZ = normalZ * bounce
     if (!isCrash) nudgeAlongSurface(state, normalX, normalZ, dt)
