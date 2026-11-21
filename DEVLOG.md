@@ -11623,3 +11623,18 @@ Entry 260 gave the rider a standing body on foot and left the seated one as it w
 or off changed who they were: a different build, different trousers and boots. The seated rider is
 now built from the same body (`RIDER_BODY` in vehicle/Rider.tsx, people.glb's `office`), posed on
 the vehicle as before. Checked on the scooter and the Vega 150.
+
+## 2026-11-21: Entry 262, the RJ is played in softly, and the drone under her is gone
+
+The radio breaks grated: three quick bright notes, her voice straight on top, and three held
+notes under every word that droned like a harmonium.
+
+- **The ident** before she speaks is a slow phrase of six soft bell notes (sines, each dying away,
+  with an echo), 2.5 s long. She waits for it.
+- **The held bed is removed.** She speaks over the station's own song, turned down as before.
+- The notes between lines are two soft low ones. Her voice has less edge (presence +2 dB, not +4;
+  less drive; a little quieter).
+- Breaks come every 2 to 3.3 minutes, not every 70 to 115 s; the first after 45 to 75 s.
+
+Checked that a break plays through with no errors. Nobody has listened to it yet: it was written
+by the numbers.

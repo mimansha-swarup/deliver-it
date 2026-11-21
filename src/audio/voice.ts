@@ -101,13 +101,13 @@ function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): 
   presence.type = 'peaking'
   presence.frequency.value = radio ? 2800 : 1800
   presence.Q.value = 0.9
-  presence.gain.value = radio ? 4 : 6
+  presence.gain.value = radio ? 2 : 6
   const high = context.createBiquadFilter()
   high.type = 'lowpass'
   high.frequency.value = radio ? 7500 : 3300
   high.Q.value = 0.7
   const drive = context.createWaveShaper()
-  drive.curve = driveCurve(radio ? 0.08 : 0.3)
+  drive.curve = driveCurve(radio ? 0.04 : 0.3)
   drive.oversample = '2x'
   const squeeze = context.createDynamicsCompressor()
   squeeze.threshold.value = radio ? -26 : -22
@@ -117,7 +117,7 @@ function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): 
   const level = context.createGain()
   // The RJ is part of the radio: on the music's bus, over its ducked song, and silent when music is off.
   // A phone voice has the voices' own bus (and volume), above the music and the street.
-  level.gain.value = radio ? 2.6 : 1
+  level.gain.value = radio ? 2.2 : 1
   input.connect(low).connect(presence).connect(high).connect(drive).connect(squeeze).connect(level).connect(radio ? music : voice)
   chains.set(treatment, input)
   return input
