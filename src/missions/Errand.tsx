@@ -5,7 +5,7 @@ import { useGameStore } from '../game/gameStore'
 import { borrow } from '../game/borrow'
 import { clearSpots, setInterest, setSpot } from '../game/interact'
 import { setPrompt } from '../game/prompts'
-import { liveMission, livePlayer, liveView } from '../game/livePlayer'
+import { liveMission, livePlayer, liveRoute, liveView } from '../game/livePlayer'
 import { theItem } from '../game/objective'
 import { goThrough, leaveRoom, liveRoom, ROOM_DOOR, setRoom } from '../game/rooms'
 import { isDebug } from '../dev/spawn'
@@ -83,7 +83,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
   const since = useRef(0)
   // Debug: where the order's next step on foot is, the room and the view, for driving a walk from the console (and recording one).
   useEffect(() => {
-    if (isDebug()) Object.assign(window, { __deliverItFoot: { errand: errandLive, room: liveRoom, view: liveView, exit: ROOM_DOOR, player: livePlayer } })
+    if (isDebug()) Object.assign(window, { __deliverItFoot: { errand: errandLive, room: liveRoom, view: liveView, exit: ROOM_DOOR, player: livePlayer, route: liveRoute } })
   }, [])
   const stage = useRef<Stage>({ door: null, step: 'approach', at: 0 })
   /** Whose building the lobby or corridor the rider is in belongs to. */
@@ -187,6 +187,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
     if (liveRoom.kind === 'store' || liveRoom.kind === 'chai') {
       setStep(`Got it. Back out to your ${vehicleWord()}`)
       clearSpots('errand:')
+      // The way out is marked: with the bag in hand there was no marker in the room at all, and the door is behind them.
+      aimAt({ x: liveRoom.x + ROOM_DOOR.x, z: liveRoom.z + ROOM_DOOR.z }, true)
       return
     }
     const now = performance.now()

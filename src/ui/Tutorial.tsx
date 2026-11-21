@@ -35,6 +35,8 @@ const STEPS: Record<TutorialStep, StepText> = {
 }
 
 const POLL_MS = 200
+/** "You're free to explore" comes this long after the first hand-over, in milliseconds. */
+const FREE_CARD_AFTER_MS = 6500
 
 /** Watches for each step being done, and has Ravi introduce each one. */
 function TutorialDirector() {
@@ -45,7 +47,6 @@ function TutorialDirector() {
     if (!step) return
     const game = useGameStore.getState()
     game.raviSays(STEPS[step].ravi())
-    let rewardSeen = false
     let done = false
     const finish = (line?: string) => {
       if (done) return
@@ -95,11 +96,12 @@ function TutorialDirector() {
           if (state.phase !== 'toPickup' && state.mission) finish()
           break
         case 'deliver':
-          if (state.lastReward) rewardSeen = true
-          else if (rewardSeen) {
-            // The first delivery is done and its card closed: the city is theirs.
+          // Handed over: the tutorial is done there and then (its card used to stay up, still saying
+          // "follow the green arrow", until the result card closed). The city is theirs; said a few
+          // seconds on, once the first-order award has had its moment.
+          if (state.lastReward || state.history.length > 0) {
             finish(`That's the job, maga! You're free to explore. Stay online and orders keep coming; ${keyFor('online')} goes offline, ${keyFor('phone')} is your phone, ${keyFor('map')} the map.`)
-            useDiscovery.getState().showCard('You’re free to explore', 'Orders keep coming while you’re online · P for your phone · Tab for the map')
+            window.setTimeout(() => useDiscovery.getState().showCard('You’re free to explore', 'Orders keep coming while you’re online · P for your phone · Tab for the map'), FREE_CARD_AFTER_MS)
           }
           break
       }
