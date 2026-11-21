@@ -11692,3 +11692,11 @@ and the cabs' own steering limits and slower wheel (entries 263, 265) are gone. 
 25 km/h, 0.6 s of full lock, each from a fresh start: scooter 45°, cargo three-wheeler 41°, car
 49°, van 48°. The small differences are the top speeds: the turn rate eases off towards each
 vehicle's own top speed. Cabs still stop against a wall and don't bounce back off it.
+
+## 2026-11-21: Entry 267, the jerk over breakers and flyover joints
+
+Riding jerked forward and back "in between". Measured frame by frame: the speed fell 0.3 to 0.9 m/s
+in a single frame, twice a few frames apart, at every breaker and flyover joint. It was
+`landingSpeedLoss` (vehicleConfig.ts): a hard landing took up to 12% of the speed off at once, and
+the front and rear wheels each land. It is now 0, as bumps cost nothing anywhere else. After it:
+no sudden drop on the residential street or the flyover except at a real collision.
