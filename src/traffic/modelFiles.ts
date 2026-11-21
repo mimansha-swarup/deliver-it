@@ -17,7 +17,7 @@ export const FLEET_MODELS_URL = '/models/fleet.glb'
 export const TRIPO_MODELS_URL = '/models/tripo.glb'
 
 /** Kept apart from the rest, because its licence is different. See `models/CREDITS.txt`. */
-export const YAMAHA_MODEL_URL = '/models/yamaha.glb'
+export const SPORT_BIKE_MODEL_URL = '/models/sportbike.glb'
 
 /** The paint on delivery bikes. Their box is white in the model itself. */
 export const DELIVERY_BIKE_COLOR = '#17181b'

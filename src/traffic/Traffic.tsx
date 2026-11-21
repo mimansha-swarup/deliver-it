@@ -23,7 +23,7 @@ import { isDebug } from '../dev/spawn'
 import { createRiderModel, createSeatedRiderGeometry, type RiderLook, type Seat } from '../vehicle/riderModel'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
-import { getModel, TRAFFIC_MODELS_URL, YAMAHA_MODEL_URL, EXTRA_PEOPLE, FLEET_MODELS_URL, PEOPLE_MODELS_URL } from './modelFiles'
+import { getModel, TRAFFIC_MODELS_URL, SPORT_BIKE_MODEL_URL, EXTRA_PEOPLE, FLEET_MODELS_URL, PEOPLE_MODELS_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanFrom } from './peopleShapes'
 import { createBusFromModel, createBusGeometry } from './bus'
@@ -926,7 +926,7 @@ export function Traffic({
   const { vehicles, pedestrians, shadowSize, carLights, vehicleDetailDistance: detail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
-  const { scene: yamaha } = useGLTF(YAMAHA_MODEL_URL)
+  const { scene: sportBike } = useGLTF(SPORT_BIKE_MODEL_URL)
   const { scene: extraPeople } = useGLTF(PEOPLE_MODELS_URL)
 
   // The bus is a model with the game's wheels in its arches (bus.ts), or the one built in code if the model isn't there: either needs freeing.
@@ -948,10 +948,10 @@ export function Traffic({
       suv: withLamps(getModel(scene, 'suv'), 'suv'),
       mpv: withLamps(getModel(scene, 'mpv'), 'mpv'),
       auto: withLamps(getModel(scene, 'auto'), 'auto'),
-      bike: withLamps(getModel(yamaha, 'bike'), 'bike'),
+      bike: withLamps(getModel(sportBike, 'bike'), 'bike'),
       bus: withLamps(busShape, 'bus'),
     }),
-    [scene, yamaha, busShape],
+    [scene, sportBike, busShape],
   )
   useEffect(() => () => Object.values(shapes).forEach((geometry) => geometry.dispose()), [shapes])
   const wheels = useMemo(
@@ -961,9 +961,9 @@ export function Traffic({
       suv: getWheels(scene, 'suv'),
       mpv: getWheels(scene, 'mpv'),
       auto: getWheels(scene, 'auto'),
-      bike: getWheels(yamaha, 'bike'),
+      bike: getWheels(sportBike, 'bike'),
     }),
-    [scene, yamaha],
+    [scene, sportBike],
   )
   // Two women, made from the modelled man in a kurta (peopleShapes.ts): they need freeing, the loaded models don't.
   const women = useMemo(() => [createWomanFrom(getModel(scene, 'man'), 'elder'), createWomanFrom(getModel(scene, 'man'), 'young')], [scene])
@@ -1003,10 +1003,10 @@ export function Traffic({
       Object.fromEntries(
         VEHICLES.map(({ kind }) => [
           kind,
-          farWithLamps(kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(yamaha, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
+          farWithLamps(kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(sportBike, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
         ]),
       ) as Record<VehicleKind, THREE.BufferGeometry>,
-    [shapes, scene, yamaha],
+    [shapes, scene, sportBike],
   )
   useEffect(() => () => Object.values(proxies).forEach((geometry) => geometry.dispose()), [proxies])
   const plateAtlas = useMemo(() => createPlateAtlas(), [])

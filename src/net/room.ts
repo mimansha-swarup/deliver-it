@@ -77,6 +77,9 @@ type RoomState = {
 
 export const useRoomStore = create<RoomState>(() => ({ status: 'off', error: null, code: null, host: false, me: { id: '', name: '', colour: COLOURS[0] }, riders: {}, round: null, roundEarned: 0 }))
 
+/** The last room asked for, so a failed connection can be tried again with one press. */
+let lastTry: { code: string | null; name: string } | null = null
+
 let peer: Peer | null = null
 /** The host's connections to everyone; a guest's one connection to the host. */
 const links = new Map<string, DataConnection>()
@@ -250,6 +253,7 @@ function begin(code: string, host: boolean, name: string, id: string) {
 /** Makes a room and waits in it for the others. Returns its code. */
 export async function createRoom(name: string): Promise<string | null> {
   leaveRoom()
+  lastTry = { code: null, name }
   useRoomStore.setState({ status: 'connecting', error: null })
   for (let attempt = 0; attempt < 3; attempt++) {
     const code = Array.from({ length: ROOM.codeLength }, () => CODE_LETTERS[Math.floor(Math.random() * CODE_LETTERS.length)]).join('')
@@ -281,25 +285,26 @@ export async function createRoom(name: string): Promise<string | null> {
     begin(code, true, name, peer.id)
     return code
   }
-  useRoomStore.setState({ status: 'failed', error: 'Could not open a room. Check your connection and try again.' })
+  useRoomStore.setState({ status: 'failed', error: 'Couldn’t connect: the room could not be opened. Check your internet and try again.' })
   return null
 }
 
 /** Joins the room with this code. Resolves once connected to its host, or false if it can't be. */
 export async function joinRoom(code: string, name: string): Promise<boolean> {
   leaveRoom()
+  lastTry = { code, name }
   useRoomStore.setState({ status: 'connecting', error: null })
   try {
     peer = await open(undefined)
   } catch {
-    useRoomStore.setState({ status: 'failed', error: 'Could not connect. Check your connection and try again.' })
+    useRoomStore.setState({ status: 'failed', error: 'Couldn’t connect. Check your internet and try again.' })
     return false
   }
   const made = peer
   return new Promise((resolve) => {
     const link = made.connect(PEER_PREFIX + code, { reliable: false })
     const giveUp = window.setTimeout(() => {
-      fail('No room answers to that code. It may have ended, or your network may not allow a direct connection.')
+      fail('Couldn’t connect to that room. It may have ended, or this network may block direct connections (try another Wi-Fi or a phone hotspot).')
       resolve(false)
     }, 12000)
     link.on('open', () => {
@@ -314,10 +319,22 @@ export async function joinRoom(code: string, name: string): Promise<boolean> {
     })
     made.on('error', () => {
       window.clearTimeout(giveUp)
-      fail('No room answers to that code. It may have ended.')
+      fail('Couldn’t connect: no room answers to that code. It may have ended.')
       resolve(false)
     })
   })
+}
+
+/** Tries the last room again: joins the same code, or opens a new room for a host. */
+export function retryRoom() {
+  if (!lastTry) return
+  if (lastTry.code) void joinRoom(lastTry.code, lastTry.name)
+  else void createRoom(lastTry.name)
+}
+
+/** Puts a failed connection's message away. */
+export function dismissRoomError() {
+  if (useRoomStore.getState().status === 'failed') useRoomStore.setState({ status: 'off', error: null })
 }
 
 export function leaveRoom() {

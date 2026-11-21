@@ -115,7 +115,7 @@ const VEHICLES = [
   {
     // Kept in its own file, as its licence differs from everything else here.
     name: 'bike',
-    file: 'yamaha.glb',
+    file: 'sportbike.glb',
     folder: 'yamaha_yzf_2021',
     reverse: true,
     length: 1.95,

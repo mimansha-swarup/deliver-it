@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { useSettings } from '../game/settings'
-import { createRoom, endRound, inviteLink, invitedTo, joinRoom, leaveRoom, ROOM, standings, startDeliveryRound, startRace, useRoomStore } from '../net/room'
+import { createRoom, dismissRoomError, endRound, inviteLink, invitedTo, joinRoom, leaveRoom, retryRoom, ROOM, standings, startDeliveryRound, startRace, useRoomStore } from '../net/room'
 import { MenuPanel } from './Menu'
 
 /*
@@ -57,7 +57,14 @@ export function FriendsPanel({ onBack, onRide }: { onBack: () => void; onRide: (
             {invited ? 'Or make a new room' : <><span className="menu-button-label">{busy ? 'Opening a room…' : 'Make a room'}</span><span className="menu-button-detail">You get a link to send to friends</span></>}
           </button>
         )}
-        {error && <p className="room-error" role="alert">{error}</p>}
+        {error && (
+          <div className="room-error" role="alert">
+            <p>{error}</p>
+            <button type="button" className="menu-plain" disabled={busy} onClick={() => retryRoom()}>
+              Try again
+            </button>
+          </div>
+        )}
 
         {status === 'on' && code && (
           <>
@@ -101,6 +108,7 @@ export function RoomCard() {
   const code = useRoomStore((state) => state.code)
   const host = useRoomStore((state) => state.host)
   const round = useRoomStore((state) => state.round)
+  const error = useRoomStore((state) => state.error)
   const hasPin = useGameStore((state) => state.waypoint !== null)
   const [now, setNow] = useState(() => Date.now())
   const [copied, setCopied] = useState(false)
@@ -110,6 +118,21 @@ export function RoomCard() {
     const timer = window.setInterval(() => setNow(Date.now()), 500)
     return () => window.clearInterval(timer)
   }, [status])
+  // The connection was lost or never made, while riding: say so, with a way to try again.
+  if (status === 'failed' || status === 'connecting') {
+    return (
+      <section className="room-card" aria-label="Your room" role="alert">
+        <p className="room-card-round">{status === 'connecting' ? 'Connecting to the room…' : 'Room: couldn’t connect'}</p>
+        {error && <p>{error}</p>}
+        {status === 'failed' && (
+          <p className="room-card-buttons">
+            <button type="button" onClick={(event) => { retryRoom(); event.currentTarget.blur() }}>Try again</button>
+            <button type="button" onClick={(event) => { dismissRoomError(); event.currentTarget.blur() }}>Dismiss</button>
+          </p>
+        )}
+      </section>
+    )
+  }
   if (status !== 'on' || !code) return null
 
   const table = standings()

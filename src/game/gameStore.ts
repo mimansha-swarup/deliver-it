@@ -136,6 +136,8 @@ type GameState = Telemetry & {
   /** Explore: started from the title screen to roam the city with no orders, no fuel and any vehicle. Not saved. */
   explore: boolean
   setExplore: (on: boolean) => void
+  /** In Explore: the vehicle the career is on, which stays the saved one. Null in the career. */
+  careerVehicleId: VehicleId | null
   /** The Garage: upgrade levels, the paint and helmet in use, and the colours owned. */
   upgrades: UpgradeLevels
   /** The vehicle in use (vehicle/vehicleCatalog.ts): the rider's own scooter, or one from GaadiGo. */
@@ -492,6 +494,7 @@ export const useGameStore = create<GameState>()(
       anyVehicle: false,
       anyVehicleExplore: true,
       explore: false,
+      careerVehicleId: null,
       atStore: false,
       upgrades: { engine: 0, tyres: 0, brakes: 0 },
       vehicleId: 'scooter',
@@ -936,7 +939,9 @@ export const useGameStore = create<GameState>()(
   setHornsOn: (hornsOn) => set({ hornsOn }),
   setAlwaysWalk: (alwaysWalk) => set({ alwaysWalk }),
   setAnyVehicle: (on) => set((state) => (state.explore ? { anyVehicleExplore: on } : { anyVehicle: on })),
-  setExplore: (explore) => set({ explore }),
+  // Explore borrows the game without touching the career: the vehicle the career was on is remembered
+  // here and is what gets saved, whatever is ridden while exploring.
+  setExplore: (explore) => set((state) => ({ explore, careerVehicleId: explore ? state.vehicleId : null })),
   buyUpgrade: (kind) =>
     set((state) => {
       const level = state.upgrades[kind]
@@ -987,7 +992,7 @@ export const useGameStore = create<GameState>()(
         anyVehicle: state.anyVehicle,
         anyVehicleExplore: state.anyVehicleExplore,
         upgrades: state.upgrades,
-        vehicleId: state.vehicleId,
+        vehicleId: state.explore && state.careerVehicleId ? state.careerVehicleId : state.vehicleId,
         paintId: state.paintId,
         helmetId: state.helmetId,
         helmetOn: state.helmetOn,

@@ -24,7 +24,7 @@ const GAME_FILES: GameFile[] = [
   { url: MAP_URL, kb: 1010, kind: 'data' },
   { url: '/models/traffic.glb', kb: 1373, kind: 'model' },
   { url: '/models/city-kit.glb', kb: 1242, kind: 'model' },
-  { url: '/models/yamaha.glb', kb: 120, kind: 'model' },
+  { url: '/models/sportbike.glb', kb: 120, kind: 'model' },
   { url: '/models/people.glb', kb: 426, kind: 'model' },
   { url: '/models/fleet.glb', kb: 686, kind: 'model' },
   { url: '/models/tripo.glb', kb: 996, kind: 'model' },

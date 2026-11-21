@@ -298,6 +298,8 @@ export const useFleet = create<Fleet>()(
           const spec = VEHICLES[game().vehicleId] ?? VEHICLES.scooter
           // Not on a borrowed vehicle (game/borrow.ts): its petrol isn't the rider's to pay for, and their own stands still. Nor in Explore.
           useUpkeep.getState().drive(spec.id, liveVehicle.spec.borrowed || game().explore ? 0 : moved, tickSeconds())
+          // Exploring, the career stands still: a rental's clock doesn't run, no crash is charged to it, and no EMI falls due.
+          if (game().explore) return
 
           // A rental running late: one reminder as its time runs out.
           const before = get().rental

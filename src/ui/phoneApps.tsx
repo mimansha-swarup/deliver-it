@@ -798,6 +798,7 @@ const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
 function GaadiGoApp({ nav }: { nav: PhoneNav }) {
   const fleet = useFleet()
   const vehicleId = useGameStore((state) => state.vehicleId)
+  const explore = useGameStore((state) => state.explore)
   const credits = useGameStore((state) => state.credits)
   const [open, setOpen] = useState<VehicleId | null>(null)
   const [insured, setInsured] = useState(false)
@@ -805,6 +806,36 @@ function GaadiGoApp({ nav }: { nav: PhoneNav }) {
   const act = (result: string | null, done: string) => setNote(result ?? done)
   const hub = atHub()
   const how = hub ? 'hub' : 'deliver'
+
+  // Explore: every vehicle, free, there at once. No prices, no locks, no rentals, and nothing of the career's is touched.
+  if (explore) {
+    return (
+      <div className="app">
+        <AppBar title="GaadiGo" nav={nav} />
+        <div className="app-body">
+          <p className="app-line">Explore mode: every vehicle is yours to try. Free, unlocked, and under you at once.</p>
+          <ul className="gg-list">
+            {(['scooter', ...MARKET] as VehicleId[]).map((id) => (
+              <li className="gg-row" key={id} data-current={vehicleId === id}>
+                <span className="gg-name">
+                  {VEHICLES[id].name}
+                  <small>{VEHICLES[id].kind} · {VEHICLES[id].topSpeed} km/h</small>
+                </span>
+                {vehicleId === id ? (
+                  <span className="gg-tag">Riding</span>
+                ) : (
+                  <button type="button" className="gg-small" onClick={(event) => { useGameStore.getState().setVehicle(id); event.currentTarget.blur() }}>
+                    Ride
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="app-line app-muted">Your career's vehicles, money and rentals are as you left them.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app">
