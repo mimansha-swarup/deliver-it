@@ -11616,3 +11616,10 @@ POLISH_REPORT.md. What a later reader needs from it:
 
 Not done: parked-bike model quality, the entrance audit, traffic indicators, a door-opening
 animation, the LinkedIn link, the two-device room test.
+
+## 2026-11-21: Entry 261, one rider, seated and on foot
+
+Entry 260 gave the rider a standing body on foot and left the seated one as it was, so getting on
+or off changed who they were: a different build, different trousers and boots. The seated rider is
+now built from the same body (`RIDER_BODY` in vehicle/Rider.tsx, people.glb's `office`), posed on
+the vehicle as before. Checked on the scooter and the Vega 150.

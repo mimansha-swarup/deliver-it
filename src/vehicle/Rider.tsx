@@ -38,6 +38,8 @@ const LOOK = { jacket: BRAND_DYE, glove: '#1c1d20', trousers: '#2b3a55', shoe: '
  * `jogFrom` the strides lengthen (so a jog isn't a blur of tiny steps), by `longer` per metre a second.
  */
 const ON_FOOT = { swapAt: 0.97, full: 0.6, jogFrom: 1.6, longer: 0.45, response: 9, helmetDown: 0.13, shuffle: 0.4 }
+/** The one body the rider is, seated and on foot, so getting on or off never changes who they are. */
+const RIDER_BODY = 'office'
 const HELMET = '#f4f3ef'
 const VISOR = '#14191e'
 
@@ -185,17 +187,17 @@ export function Rider({
   /** Standing: seconds they've been still, until the next fidget, which it is, how far through, and which way it goes. */
   const fidget = useRef({ still: 0, wait: FIDGET.after, kind: null as Fidget | null, time: 0, side: 1, count: 0 })
 
-  // The rider is the bike rider from people.glb, in the Deliver It jacket and helmet over his own riding suit and boots.
+  // The rider is one of people.glb's bodies (RIDER_BODY), the same seated and on foot, in the Deliver It jacket and helmet over his own trousers and shoes.
   const { scene: people } = useGLTF(PEOPLE_MODELS_URL)
   // On foot: one of the pedestrians' own bodies (long sleeves that take the jacket's colour, trousers, shoes), and how high his head is.
   const standing = useMemo(() => {
-    const geometry = getModel(people, 'office')
+    const geometry = getModel(people, RIDER_BODY)
     geometry.computeBoundingBox()
     return { geometry, top: geometry.boundingBox?.max.y ?? 1.7 }
   }, [people])
   // In a room with friends the jacket is this rider's colour there, as the others see it; alone it's Deliver It's yellow.
   const roomColour = useRoomStore((state) => (state.status === 'on' ? state.me.colour : null))
-  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, 'biker'), roomColour ? { ...LOOK, jacket: roomColour } : LOOK), [people, roomColour])
+  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, RIDER_BODY), roomColour ? { ...LOOK, jacket: roomColour } : LOOK), [people, roomColour])
   const pose: RiderPose = useMemo(
     () => ({ leftArm: new THREE.Vector3(), rightArm: new THREE.Vector3(), leftLeg: new THREE.Vector3(), rightLeg: new THREE.Vector3() }),
     [],
