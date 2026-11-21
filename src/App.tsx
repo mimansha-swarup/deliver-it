@@ -8,6 +8,8 @@ import './world/quietThree'
 import './world/brightnessCap'
 // Anonymous counts of how the game is used (game/analytics.ts): nothing is sent until an endpoint is set.
 import './game/analytics'
+// A game controller presses the game's own keys (game/gamepad.ts).
+import './game/gamepad'
 import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGameStore } from './game/gameStore'

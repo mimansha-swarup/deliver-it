@@ -11665,3 +11665,12 @@ From playing the deploy preview.
 - The jitter reported on the scooter and bike was not reproduced as a fault: on a level street the
   camera and vehicle are steady frame to frame; over breakers and flyover joints the camera's
   height moves up to 0.2 m.
+
+## 2026-11-21: Entry 264, a game controller
+
+`game/gamepad.ts`: a controller presses the game's own keys, each button and stick direction
+standing for one action's key (whatever it's bound to), and the right stick turns the view. So
+riding, walking, the phone and the menus all work with it and nothing else changed. The layout is
+in the file's header and under the key list in Controls. Steering and the triggers are on or off,
+not by how far they're pushed. Checked with a pretend controller in a headless browser (the menu's
+A, RT, the stick, LT, X, the right stick, Menu and B); no real controller was tried.

@@ -322,6 +322,11 @@ export function ControlsPanel({ onBack }: { onBack: () => void }) {
   return (
     <MenuPanel title={t('controls')} onBack={onBack} wide>
       <KeyList editable />
+      <p className="menu-note">
+        <b>Controller</b> (plug one in and press any button): left stick or d-pad to steer and walk · RT go · LT brake · A use · B handbrake · X get on or off · Y accept an
+        order · LB decline · RB nitro or jog · right stick look · d-pad up phone, down go online · View map · Menu pause · L3 horn · R3 radio. In menus: stick or d-pad, A to choose,
+        B to go back.
+      </p>
     </MenuPanel>
   )
 }
