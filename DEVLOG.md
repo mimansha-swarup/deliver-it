@@ -11394,3 +11394,12 @@ with Sarvam AI's Bulbul text-to-speech by `scripts/voice_generate.mjs`, which re
 Checked in the game: going online asks for the list of recordings and plays Ravi's line. Not
 listened to by me (I can't): every line's pronunciation is for the ear to judge. Sarvam's terms
 for shipping generated audio in a public game weren't read.
+
+## 2026-11-21: Entry 248, voices take turns
+
+With every line recorded, two were heard at once at the dark store's counter: the staff's "order
+ready" and Ravi's "picked up?", which both come at the moment the bag is collected. Voices on the
+phone and at the door now take turns (`speak` in audio/voice.ts): one that comes while another is
+speaking starts when it has finished, after a short breath, and one that would wait more than
+seven seconds isn't said (its words are in the chat). The RJ is the radio in the background and
+isn't part of it. Not heard by me: the fix is in how each clip's start is timed.

@@ -127,6 +127,18 @@ export type Playing = { stop: () => void; ended: Promise<void> }
  * the screen are all there is. `voice`: which of a line's recorded voices ("a", "b"), for customers,
  * who aren't all one person; the plain recording is used if that voice wasn't recorded.
  */
+/**
+ * People don't talk over each other. Voices on the phone and at the door (Ravi, a customer, the
+ * guard, the store's staff) take turns: one that comes while another is speaking waits for it to
+ * finish, with a short breath between, and one that would have to wait too long isn't said at all
+ * (its words are in the chat already). At the dark store's counter the staff's "order ready" and
+ * Ravi's "picked up?" used to come at the same moment, one on top of the other. The RJ is the
+ * radio, playing on in the background, and isn't part of the turn-taking.
+ */
+const TURNS = { breath: 0.35, patience: 7 }
+/** When the last voice in the queue will have finished, in the audio clock's seconds. */
+let phoneFreeAt = 0
+
 export async function speak(id: string, treatment: Treatment, voice?: string): Promise<Playing | null> {
   const buses = getAudio()
   if (!buses) return null
@@ -142,7 +154,14 @@ export async function speak(id: string, treatment: Treatment, voice?: string): P
   const ended = new Promise<void>((resolve) => {
     source.onended = () => resolve()
   })
-  source.start()
+  // Its turn: now, or when whoever is speaking has finished.
+  let at = buses.context.currentTime
+  if (treatment === 'phone') {
+    at = Math.max(at, phoneFreeAt)
+    if (at - buses.context.currentTime > TURNS.patience) return null
+    phoneFreeAt = at + buffer.duration / source.playbackRate.value + TURNS.breath
+  }
+  source.start(at)
   return {
     stop: () => {
       try {
