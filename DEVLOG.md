@@ -11700,3 +11700,31 @@ in a single frame, twice a few frames apart, at every breaker and flyover joint.
 `landingSpeedLoss` (vehicleConfig.ts): a hard landing took up to 12% of the speed off at once, and
 the front and rear wheels each land. It is now 0, as bumps cost nothing anywhere else. After it:
 no sudden drop on the residential street or the flyover except at a real collision.
+
+## 2026-11-21: Entry 268, first-time-player polish from the preview's playtest
+
+- **The first order is forgiving**: three minutes on its clock at least, and during the tutorial the
+  customer is never worse than "Waiting" (frustration held at 0.38, MissionTracker.tsx).
+- **One prompt at a time** in the tutorial's pickup and delivery steps (`microPrompt`, ui/Tutorial.tsx):
+  follow the arrow, stop in the box, get off, go in, take the bag, walk out, back to the scooter,
+  get on; then stop, get off, to the door, ring, hand over. "Green arrow" is "the arrow at the top".
+- **A parking box** glows on the road at each stop, lying along the road (MissionMarker.tsx); it and
+  the pointer pulse slower within 30 m. "Slow down · park here" shows within 20 m while still moving
+  (ui/ParkHint.tsx).
+- **A first game starts at 6:40** in the morning, as the story's first card says (it was 17:30).
+  During the tutorial the clock runs at most 10 times real time, and the apps' own notifications
+  wait. Badges read "9+" past nine.
+- **Camera on foot**: pulled in by a wall, it also moves up to 0.55 m over a shoulder (the right, or
+  the left if the right is a wall). Anything drawn see-through fades away within 1.5 m of the lens.
+- **Subtitles** sit a little higher, clear of the prompt row.
+- **The resolution for the ride** is set half a second into the title screen, not as the ride
+  begins (entry 260 had put a 0.2 to 0.4 s freeze there).
+
+Playtest, a fresh save on the production build, by the autopilot: first delivery 98 s after the
+title screen (75 s of play); 06:40 on the phone at the start and 07:00 at the end; one frame of
+183 ms and one more over 50 ms in the run. One slow point: 13 s getting to the dark store's door
+round a car that traffic had stopped beside the parked scooter. High, by scripts/bench.mjs: 92 FPS
+main-road, 86 residential at 17:30, 87 residential at 6:40; load to ride 9.0 s (it was 7 to 8).
+
+Not done: checking that a wall never fills more than 30% of the picture; the low compound walls on
+the walk to a first customer; the cause of the remaining long frame after load.
