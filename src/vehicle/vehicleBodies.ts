@@ -207,6 +207,21 @@ function paintPiece(piece: THREE.BufferGeometry, paint: string): THREE.BufferGeo
 }
 
 /**
+ * The modelled scooter's mirrors stood on long stalks, up by the rider's shoulders. They're brought
+ * down to just over the grips, where a scooter's are: everything out to the sides and above the
+ * bars (only the mirrors are) keeps `kept` of its height over them.
+ */
+const MIRRORS = { above: 1.14, beyond: 0.12, kept: 0.55 }
+function shortenMirrors(geometry: THREE.BufferGeometry) {
+  const position = geometry.getAttribute('position')
+  for (let i = 0; i < position.count; i++) {
+    const y = position.getY(i)
+    if (y > MIRRORS.above && Math.abs(position.getX(i)) > MIRRORS.beyond) position.setY(i, MIRRORS.above + (y - MIRRORS.above) * MIRRORS.kept)
+  }
+  position.needsUpdate = true
+}
+
+/**
  * The Deliver It scooter, its front to +z: a Bengaluru family scooter. A step-through frame with a
  * flat footboard, a wide front apron, the handlebar cowl with a small round headlamp, a long seat
  * over rounded side panels, and a rack at the back for the yellow box (drawn by Scooter.tsx, with its logos).
@@ -215,11 +230,14 @@ function createScooter(paint: string): BuiltVehicle {
   // The modelled scooter, once its file is in (above), with a rack behind the seat for the yellow box to
   // stand on (the model has none): a plate on two stays. Until then, and if it never comes, the one built here.
   if (fleetModels.scooter) {
-    return fromModel(fleetModels.scooter, paint, 0.5, [
+    const built = fromModel(fleetModels.scooter, paint, 0.5, [
       boxAt([0.4, 0.02, 0.44], [0, 0.815, -0.73], '#3a3d42'),
       tube([-0.15, 0.81, -0.9], [-0.1, 0.64, -0.8], 0.014, STEEL),
       tube([0.15, 0.81, -0.9], [0.1, 0.64, -0.8], 0.014, STEEL),
     ])
+    shortenMirrors(built.body)
+    if (built.column) shortenMirrors(built.column.geometry)
+    return built
   }
   const radius = 0.24
   const rear: [number, number, number] = [0, radius, -0.62]
