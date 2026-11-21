@@ -8,6 +8,7 @@ import { getModel, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
 import { GAIT as STREET_GAIT, IDLE_POSE, STRIDE_PER_METRE } from '../traffic/gait'
 import { Walker, type WalkerPose } from '../traffic/Traffic'
 import { useRoomStore } from '../net/room'
+import { livePlayer } from '../game/livePlayer'
 import { gaitAt, HIP, SHUFFLE, WALK, type Gait, type Probe } from './riderShape'
 import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
@@ -384,6 +385,7 @@ export function Rider({
     const afootNow = (state.rider.phase === 'afoot' || state.rider.phase === 'walking') && off >= ON_FOOT.swapAt && limp < 0.02
     const walker = walkerPose.current
     walker.visible = afootNow
+    walker.indoors = livePlayer.indoors
     if (seated.current) seated.current.visible = !afootNow
     if (afootNow) {
       const perMetre = STRIDE_PER_METRE / (1 + Math.max(0, pace - ON_FOOT.jogFrom) * ON_FOOT.longer)

@@ -695,7 +695,17 @@ function addWalkingIndoors(shader: Parameters<typeof addWalking>[0]) {
 }
 
 /** How one walker stands and moves, read every frame: the place in their stride, how much they're walking (0 standing to 1), what they do standing (IDLE_POSE), and whether they're drawn. */
-export type WalkerPose = { stride: number; walking: number; idle: number; visible: boolean }
+export type WalkerPose = { stride: number; walking: number; idle: number; visible: boolean; indoors?: boolean }
+
+/** In a room the walker is lit by the room, as the people standing in it are: 1 indoors, 0 out. */
+const walkerIndoors = { value: 0 }
+function addWalkingAnywhere(shader: Parameters<typeof addWalking>[0]) {
+  addWalking(shader)
+  shader.uniforms.uWalkerIndoors = walkerIndoors
+  shader.fragmentShader = shader.fragmentShader
+    .replace('void main() {', 'uniform float uWalkerIndoors;\nvoid main() {')
+    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * ${INDOOR_GLOW.toFixed(2)} * uWalkerIndoors;`)
+}
 
 const walkerPlace = new THREE.Matrix4()
 const walkerColour = new THREE.Color()
@@ -722,12 +732,13 @@ export function Walker({ body, pose: poseRef, colour, skin = 0.82 }: { body: THR
     mesh.current.visible = pose.visible
     if (!pose.visible) return
     peopleClock.uTime.value = clock.elapsedTime % 1000
+    walkerIndoors.value = pose.indoors ? 1 : 0
     ;(geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute).setXYZW(0, pose.stride, skin, 0, pose.walking).needsUpdate = true
     ;(geometry.getAttribute('aWave') as THREE.InstancedBufferAttribute).setXY(0, 0, pose.idle).needsUpdate = true
   })
   return (
     <instancedMesh ref={mesh} args={[geometry, undefined, 1]} frustumCulled={false} visible={false}>
-      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={addWalking} />
+      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={addWalkingAnywhere} />
     </instancedMesh>
   )
 }

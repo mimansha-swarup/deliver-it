@@ -55,6 +55,8 @@ export function HomeMarker() {
   )
 }
 
+/** Nearer the door than this, in metres, its beam isn't drawn. */
+const DOOR_BEAM_GONE_WITHIN = 3.5
 /** The door's marker shows from this far, in metres; its pointer grows with distance, up to this many times. */
 const DOOR_SHOWN_WITHIN = 110
 const DOOR_POINTER_HEIGHT = 3.3
@@ -91,7 +93,9 @@ export function DoorMarker() {
     group.current.visible = shown
     if (!goal || !shown) return
     group.current.position.set(goal.x, goal.y, goal.z)
-    if (beam.current) beam.current.visible = !goal.indoors
+    // At the door itself the beam goes (its pointer stays): standing in it, as on walking out of the
+    // dark store, the camera looked through it and the whole view was washed its colour.
+    if (beam.current) beam.current.visible = !goal.indoors && distance > DOOR_BEAM_GONE_WITHIN
     if (pointer.current) {
       const size = goal.indoors ? 0.55 : Math.min(DOOR_POINTER_LARGEST, Math.max(1, distance / DOOR_POINTER_GROWS_OVER))
       pointer.current.scale.setScalar(size)
