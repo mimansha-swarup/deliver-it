@@ -11728,3 +11728,15 @@ main-road, 86 residential at 17:30, 87 residential at 6:40; load to ride 9.0 s (
 
 Not done: checking that a wall never fills more than 30% of the picture; the low compound walls on
 the walk to a first customer; the cause of the remaining long frame after load.
+
+## 2026-11-21: Entry 269, three things borrowed from how GTA handles vehicles
+
+- **Less steering lock at speed** (`SPEED_LOCK`, ScooterController.ts): full below 12 m/s, down to
+  0.6 of it by 23 m/s, for every vehicle. The scooter (top 15.6 m/s) barely reaches it.
+- **Heavier vehicles pull away more slowly**: the `pull` of the cabs is lower (car 0.7, cargo
+  three-wheeler 0.55, van 0.42, bus 0.28). From rest to 30 km/h: scooter 2.1 s, car 2.7 s, van 4.6 s.
+- **A controller's stick and triggers are analog** (vehicle/analogInput.ts, set by game/gamepad.ts):
+  the stick steers by how far it's pushed (a curve, so small movements are fine ones), the right
+  trigger gives that share of the pull and holds a lower speed (30% of top at a touch), the left
+  trigger brakes that hard. The keys are all or nothing, as before. Checked with a pretend
+  controller: half trigger held 35 km/h on the scooter (top 56); half stick turned 21°/s, full 59°/s.

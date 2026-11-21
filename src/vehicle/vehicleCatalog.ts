@@ -143,7 +143,7 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
   },
   trike: {
     id: 'trike', name: 'Bhaara E-Cargo', kind: 'Electric cargo three-wheeler', blurb: 'Carries a lot, never leans, never hurries.',
-    topSpeed: 42, pull: 0.6, turn: 1, grip: 1.15, brake: 0.55, lean: -0.3, feel: { topEnd: 0.6, response: 2.4, coast: 1.2, nitro: false }, drive: 'Electric · loaded', size: { width: 1.3, length: 2.9, height: 1.9, cab: true }, capacity: 8, costPerKm: 0.9, unlocks: ['parcel', 'eco', 'bulk'],
+    topSpeed: 42, pull: 0.55, turn: 1, grip: 1.15, brake: 0.55, lean: -0.3, feel: { topEnd: 0.6, response: 2.4, coast: 1.2, nitro: false }, drive: 'Electric · loaded', size: { width: 1.3, length: 2.9, height: 1.9, cab: true }, capacity: 8, costPerKm: 0.9, unlocks: ['parcel', 'eco', 'bulk'],
     minLevel: 5, minRating: 4, rentHour: 80, rentDay: 380, price: 9500, engine: 'evCargo', engineVolume: 1, horn: 'auto',
     camera: { distance: 1.5, height: 1.35, look: 1.15 }, cockpit: [0, 1.5, 0.3],
     // Its cargo box is the paint, in Deliver It's yellow, with the logo on it (art/tripo/bhaara_ecargo.glb).
@@ -153,7 +153,7 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
   },
   van: {
     id: 'van', name: 'Saagane Loadstar', kind: 'Cargo van', blurb: 'The biggest loads on the map. Wide, heavy and thirsty.',
-    topSpeed: 68, pull: 0.5, turn: 1, grip: 1.2, brake: 0.5, lean: -0.24, feel: { topEnd: 0.75, response: 1.7, coast: 0.9, nitro: false }, drive: 'Diesel · heavy', size: { width: 1.8, length: 4.4, height: 2.2, cab: true }, capacity: 20, costPerKm: 5.5, unlocks: ['parcel', 'bulk', 'catering'],
+    topSpeed: 68, pull: 0.42, turn: 1, grip: 1.2, brake: 0.5, lean: -0.24, feel: { topEnd: 0.75, response: 1.7, coast: 0.9, nitro: false }, drive: 'Diesel · heavy', size: { width: 1.8, length: 4.4, height: 2.2, cab: true }, capacity: 20, costPerKm: 5.5, unlocks: ['parcel', 'bulk', 'catering'],
     minLevel: 8, minRating: 4.3, rentHour: 150, rentDay: 700, price: 24000, engine: 'diesel', engineVolume: 1, horn: 'bus',
     camera: { distance: 2.0, height: 1.7, look: 1.4 }, cockpit: [-0.42, 1.72, 1.45],
     body: 'van', paint: '#2b5fa8',
@@ -162,7 +162,7 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
   },
   car: {
     id: 'car', name: 'Oota Hatch', kind: 'Catering car', blurb: 'Keeps the food level, warm and dry. Quick enough.',
-    topSpeed: 78, pull: 0.8, turn: 1, grip: 1.2, brake: 0.82, lean: -0.12, feel: { topEnd: 1.1, response: 4, coast: 1.1, nitro: false }, drive: 'Petrol', size: { width: 1.6, length: 3.7, height: 1.75, cab: true }, capacity: 10, costPerKm: 4, unlocks: ['parcel', 'catering', 'express'],
+    topSpeed: 78, pull: 0.7, turn: 1, grip: 1.2, brake: 0.82, lean: -0.12, feel: { topEnd: 1.1, response: 4, coast: 1.1, nitro: false }, drive: 'Petrol', size: { width: 1.6, length: 3.7, height: 1.75, cab: true }, capacity: 10, costPerKm: 4, unlocks: ['parcel', 'catering', 'express'],
     minLevel: 6, minRating: 4.2, rentHour: 110, rentDay: 520, price: 16000, engine: 'car', engineVolume: 1, horn: 'hatchback',
     camera: { distance: 1.55, height: 1.3, look: 1.15 }, cockpit: [-0.36, 1.3, 0.05],
     body: 'car', paint: '#e8e2d2',
@@ -206,24 +206,24 @@ export const BORROWED: Record<BorrowClass, VehicleSpec> = {
     seat: { hip: [0, 0.98, -0.34], lean: 0.06, column: 0.44, grip: [0.31, 1.08, -0.1], foot: [0.18, 0.44, -0.08], footDown: true, pedals: false, side: 0 },
   }),
   auto: borrowedFrom(VEHICLES.trike, 'auto', {
-    name: 'Borrowed auto', kind: 'Auto-rickshaw', drive: 'CNG · borrowed', topSpeed: 50, pull: 0.72, turn: 1, grip: 1.05, brake: 0.62, lean: -0.34,
+    name: 'Borrowed auto', kind: 'Auto-rickshaw', drive: 'CNG · borrowed', topSpeed: 50, pull: 0.66, turn: 1, grip: 1.05, brake: 0.62, lean: -0.34,
     feel: { topEnd: 0.6, response: 3.2, coast: 1.3, nitro: false }, engine: 'auto', horn: 'auto', camera: { distance: 1.4, height: 1.3, look: 1.15 },
   }),
   car: borrowedFrom(VEHICLES.car, 'car', {
-    name: 'Borrowed car', kind: 'Car', drive: 'Petrol · borrowed', topSpeed: 84, pull: 0.86, turn: 1, brake: 0.85,
+    name: 'Borrowed car', kind: 'Car', drive: 'Petrol · borrowed', topSpeed: 84, pull: 0.74, turn: 1, brake: 0.85,
     engine: 'car', horn: 'hatchback', camera: { distance: 1.6, height: 1.3, look: 1.15 },
   }),
   van: borrowedFrom(VEHICLES.van, 'van', {
-    name: 'Borrowed people-carrier', kind: 'People-carrier', drive: 'Diesel · borrowed', topSpeed: 76, pull: 0.62, turn: 1, brake: 0.62, lean: -0.2,
+    name: 'Borrowed people-carrier', kind: 'People-carrier', drive: 'Diesel · borrowed', topSpeed: 76, pull: 0.5, turn: 1, brake: 0.62, lean: -0.2,
     feel: { topEnd: 0.85, response: 2.4, coast: 1, nitro: false }, engine: 'suv', horn: 'hatchback', camera: { distance: 1.8, height: 1.5, look: 1.3 },
   }),
   bus: borrowedFrom(VEHICLES.van, 'bus', {
-    name: 'Borrowed city bus', kind: 'City bus', drive: 'Diesel · borrowed', topSpeed: 58, pull: 0.34, turn: 1, grip: 1.25, brake: 0.4, lean: -0.3,
+    name: 'Borrowed city bus', kind: 'City bus', drive: 'Diesel · borrowed', topSpeed: 58, pull: 0.28, turn: 1, grip: 1.25, brake: 0.4, lean: -0.3,
     feel: { topEnd: 0.6, response: 1.1, coast: 0.7, nitro: false }, engine: 'diesel', horn: 'bus', camera: { distance: 3.6, height: 2.9, look: 2.1 },
   }),
   // No water tanker runs in this city's traffic yet: its preset is here for when one does.
   tanker: borrowedFrom(VEHICLES.van, 'tanker', {
-    name: 'Borrowed water tanker', kind: 'Water tanker', drive: 'Diesel · borrowed', topSpeed: 52, pull: 0.3, turn: 1, grip: 1.2, brake: 0.36, lean: -0.34,
+    name: 'Borrowed water tanker', kind: 'Water tanker', drive: 'Diesel · borrowed', topSpeed: 52, pull: 0.25, turn: 1, grip: 1.2, brake: 0.36, lean: -0.34,
     feel: { topEnd: 0.55, response: 1, coast: 0.6, nitro: false }, engine: 'diesel', horn: 'bus', camera: { distance: 3.2, height: 2.7, look: 2 },
   }),
 }

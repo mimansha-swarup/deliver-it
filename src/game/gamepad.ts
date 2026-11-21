@@ -3,6 +3,7 @@ import { usePause } from '../ui/uiState'
 import { useGameStore } from './gameStore'
 import { useKeys, type Action } from './keyBindings'
 import { useSettings } from './settings'
+import { analog } from '../vehicle/analogInput'
 
 /*
  * A game controller (the standard layout: Xbox, PlayStation, and most others in a browser).
@@ -25,7 +26,7 @@ import { useSettings } from './settings'
  */
 
 /** How far a stick has to be pushed to count, for steering and for the menus; how far a trigger; and how fast the right stick turns the view, in radians a second. */
-const STICK = { steer: 0.3, menu: 0.55, trigger: 0.15, look: 2.4, lookDead: 0.18 }
+const STICK = { steer: 0.3, menu: 0.55, trigger: 0.08, look: 2.4, lookDead: 0.18, steerDead: 0.1, steerCurve: 1.5 }
 
 const BUTTON = { a: 0, b: 1, x: 2, y: 3, lb: 4, rb: 5, lt: 6, rt: 7, view: 8, menu: 9, l3: 10, r3: 11, up: 12, down: 13, left: 14, right: 15 }
 
@@ -44,6 +45,7 @@ function poll(time: number) {
   if (!pad) {
     for (const code of held) press(code, false)
     held.clear()
+    analog.steer = analog.throttle = analog.brake = null
     running = false
     return
   }
@@ -61,6 +63,12 @@ function poll(time: number) {
     if (on && code) want.add(code)
   }
 
+  // How far the stick and triggers are pushed, for the vehicle (vehicle/analogInput.ts): only while they are.
+  const push = Math.abs(lx) > STICK.steerDead ? Math.sign(lx) * ((Math.abs(lx) - STICK.steerDead) / (1 - STICK.steerDead)) ** STICK.steerCurve : 0
+  analog.steer = !inMenu && push !== 0 && !button(BUTTON.left) && !button(BUTTON.right) ? -push : null
+  analog.throttle = !inMenu && amount(BUTTON.rt) > STICK.trigger ? amount(BUTTON.rt) : null
+  analog.brake = !inMenu && amount(BUTTON.lt) > STICK.trigger ? amount(BUTTON.lt) : null
+
   if (inMenu) {
     add(button(BUTTON.up) || ly < -STICK.menu, 'ArrowUp')
     add(button(BUTTON.down) || ly > STICK.menu, 'ArrowDown')
@@ -69,6 +77,7 @@ function poll(time: number) {
     add(button(BUTTON.a), 'Enter')
     add(button(BUTTON.b) || button(BUTTON.menu), 'Escape')
   } else {
+    // The keys too, from the stick's first movement, so walking and everything else that reads keys follows it.
     add(button(BUTTON.left) || lx < -STICK.steer, key('left'))
     add(button(BUTTON.right) || lx > STICK.steer, key('right'))
     add(amount(BUTTON.rt) > STICK.trigger || ly < -STICK.menu, key('forward'))
