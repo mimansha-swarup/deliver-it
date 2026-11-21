@@ -22,6 +22,7 @@ import type { TrafficWorld } from '../traffic/trafficLogic'
 import { PlayerSounds } from '../audio/PlayerSounds'
 import { BunkRefill } from './BunkRefill'
 import { FleetClock } from './FleetClock'
+import { RemoteRiders } from '../net/RemoteRiders'
 import { OnFoot } from './OnFoot'
 import { Unstuck } from './Unstuck'
 import { Headlight } from './Headlight'
@@ -84,6 +85,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <DoorMarker />
       <HomeMarker />
       <PhotoCamera />
+      <RemoteRiders />
       <Unstuck scooter={scooterState} traffic={traffic} />
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
       <Errand scooter={scooterState} stores={stores} />

@@ -20,6 +20,8 @@ type Settings = {
   /** Mouse up looks down. */
   invertY: boolean
   language: Language
+  /** The name other riders see in a room (net/room.ts). */
+  playerName: string
   set: (changes: Partial<Omit<Settings, 'set'>>) => void
 }
 
@@ -33,9 +35,10 @@ export const useSettings = create<Settings>()(
       lookSpeed: 1,
       invertY: false,
       language: 'en',
+      playerName: '',
       set: (changes) => set(changes),
     }),
-    { name: 'swalpa-fast-settings', version: 1, partialize: ({ sfxVolume, musicVolume, lookSpeed, invertY, language }) => ({ sfxVolume, musicVolume, lookSpeed, invertY, language }) },
+    { name: 'swalpa-fast-settings', version: 1, partialize: ({ sfxVolume, musicVolume, lookSpeed, invertY, language, playerName }) => ({ sfxVolume, musicVolume, lookSpeed, invertY, language, playerName }) },
   ),
 )
 

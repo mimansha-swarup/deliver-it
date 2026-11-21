@@ -1816,6 +1816,151 @@ body,
   font-size: 13px;
 }
 
+/* Rooms (ui/RoomUi.tsx): the title screen's panel, and the card while riding. */
+.room-panel {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.room-panel p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.room-name {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--title-kannada);
+}
+
+.room-name input,
+.room-link input {
+  min-width: 0;
+  padding: 9px 12px 7px;
+  border: 2px solid rgb(255 246 230 / 28%);
+  border-radius: 10px;
+  color: var(--title-chalk);
+  background: rgb(255 246 230 / 8%);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.room-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.room-code strong {
+  color: var(--title-marigold);
+  font-size: 22px;
+  letter-spacing: 0.08em;
+}
+
+.room-error {
+  color: #ffb4a6;
+}
+
+.room-card {
+  position: fixed;
+  top: calc(var(--edge) + 150px);
+  right: var(--edge);
+  z-index: 12;
+  display: grid;
+  gap: 5px;
+  width: 218px;
+  padding: 8px 10px;
+  border-left: 3px solid #f6b32b;
+  border-radius: 6px 12px 12px 6px;
+  color: #f4f1e8;
+  background: rgb(15 17 21 / 82%);
+  font-size: 12px;
+}
+
+.room-card p {
+  margin: 0;
+}
+
+.room-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.room-card-round {
+  color: #ffd36b;
+  font-weight: 700;
+}
+
+.room-card[data-go='wait'] .room-card-round {
+  font-size: 16px;
+}
+
+.room-card-riders {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.room-card-riders li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-card-riders li[data-me='true'] {
+  font-weight: 700;
+}
+
+.room-card-riders i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.room-card-riders span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-card-buttons {
+  display: grid;
+  gap: 4px;
+}
+
+.room-card button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  color: #f4f1e8;
+  background: rgb(244 241 232 / 14%);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.room-card-buttons button:first-child:not(:only-child) {
+  color: #2a1300;
+  background: #f6b32b;
+}
+
+.room-card button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* The story a new game opens with (ui/StoryOpening.tsx): where the menu was. */
 .story {
   width: min(520px, calc(100vw - 2 * var(--title-left)));

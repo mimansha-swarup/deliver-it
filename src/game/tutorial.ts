@@ -56,8 +56,12 @@ export function forcedTutorial(): boolean {
  * Whether to start the tutorial when riding begins: forced, or never done by a new player. A save
  * from before the tutorial existed (with progress in it) is a returning player, who skips it.
  */
+/** Riding with friends in a room: the tutorial waits for a ride alone (it isn't marked done). */
+export const tutorialHold = { on: false }
+
 export function shouldStartTutorial(hasProgress: boolean): boolean {
   if (forcedTutorial()) return true
+  if (tutorialHold.on) return false
   const { done, replay } = useTutorial.getState()
   if (replay) {
     useTutorial.setState({ replay: false })

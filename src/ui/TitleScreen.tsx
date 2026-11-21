@@ -6,7 +6,9 @@ import { averageRating } from '../game/fleet'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch } from '../game/launch'
 import { levelFromXp } from '../game/progression'
-import { useTutorial } from '../game/tutorial'
+import { tutorialHold, useTutorial } from '../game/tutorial'
+import { invitedTo, ROOM } from '../net/room'
+import { FriendsPanel } from './RoomUi'
 import { Logo } from './Logo'
 import { ControlsPanel, CreditsPanel, MenuFooter, MenuList, SettingsPanel, type MenuItem } from './Menu'
 import { useT } from './menuText'
@@ -25,7 +27,7 @@ const BACKDROPS = [
 /** How long each picture stays, in milliseconds. */
 const BACKDROP_TIME = 8000
 
-type View = 'menu' | 'story' | 'settings' | 'controls' | 'credits'
+type View = 'menu' | 'story' | 'settings' | 'controls' | 'credits' | 'friends'
 
 function megabytes(kb: number): string {
   return (kb / 1024).toFixed(1)
@@ -50,7 +52,9 @@ export function TitleScreen() {
   const delivered = useGameStore((state) => state.history.length)
   const tutorialDone = useTutorial((state) => state.done)
   const [shown, setShown] = useState(0)
-  const [view, setView] = useState<View>('menu')
+  // An invite link opens straight on the room's panel.
+  const invited = invitedTo()
+  const [view, setView] = useState<View>(invited ? 'friends' : 'menu')
 
   const launch = (explore: boolean) => {
     // Explore: the city to roam, with no orders and any vehicle to drive (game/borrow.ts). Otherwise the career.
@@ -82,6 +86,7 @@ export function TitleScreen() {
           ? { id: 'continue', label: t('continue'), detail: `Day ${day} · Level ${levelFromXp(xp)} · ₹${credits.toLocaleString('en-IN')} · ★ ${averageRating().toFixed(1)}`, primary: true, onSelect: play }
           : { id: 'new', label: t('newGame'), detail: t('firstTime'), primary: true, onSelect: play },
         { id: 'explore', label: t('explore'), detail: t('exploreDetail'), onSelect: () => launch(true) },
+        { id: 'friends', label: invited ? `Join room ${invited}` : 'Play with friends', detail: invited ? 'A friend sent you this room' : `A room for up to ${ROOM.most}: roam, deliver or race together`, onSelect: () => setView('friends') },
         { id: 'settings', label: t('settings'), onSelect: () => setView('settings') },
         { id: 'controls', label: t('controls'), onSelect: () => setView('controls') },
         { id: 'credits', label: t('credits'), onSelect: () => setView('credits') },
@@ -132,6 +137,16 @@ export function TitleScreen() {
       {view === 'settings' && <SettingsPanel onBack={back} />}
       {view === 'controls' && <ControlsPanel onBack={back} />}
       {view === 'credits' && <CreditsPanel onBack={back} />}
+      {view === 'friends' && (
+        <FriendsPanel
+          onBack={back}
+          onRide={() => {
+            // With friends there's no story and no tutorial: straight into the city, in the career so orders work.
+            tutorialHold.on = true
+            launch(false)
+          }}
+        />
+      )}
 
       <p className="title-caption">
         <span aria-hidden="true" />

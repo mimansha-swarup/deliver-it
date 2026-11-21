@@ -11423,3 +11423,32 @@ It sits above the prompts, and above the order offer when one is up. The RJ's li
 subtitled too. The translations are mine and want a Kannada speaker's eye.
 
 Checked in the game: a crash with an order on board showed the subtitle with Ravi's line.
+
+## 2026-11-21: Entry 251, rooms: up to six riders together, by invite link
+
+Multiplayer was under "Later" in VISION.md; it was moved up at the owner's word. What's built is
+the first level of it: riders see each other in the same HSR, and the host can start a round.
+
+- **Browser to browser** (WebRTC, through the PeerJS library, loaded only when a room is made or
+  joined, and its public broker, which introduces the browsers). No game server. The maker of
+  the room is its host and passes everyone's news on; if the host leaves, the room ends. No
+  relay server is set up, so some office and college networks won't connect.
+- **Invite link.** "Play with friends" on the main menu makes a room with a five-letter code and a
+  link (`?room=ABCDE`) to copy. Opening the link goes straight to "Join room". A name, no accounts.
+- **What's shared** (`net/room.ts`): each rider's place ten times a second, the host's clock, and
+  the round. Each browser keeps its own traffic and people; riders pass through one another.
+- **Seen as** (`net/RemoteRiders.tsx`) their vehicle with a rider in the yellow jacket, a helmet in
+  their own colour and their name over them, eased between updates; on foot, standing where
+  they've walked to with the vehicle where they left it.
+- **Free roam** is the room with no round on. **A delivery round** (ten minutes, the host's
+  button) puts everyone online and counts what each earns in it, on a live table. **A race** is to
+  the spot the host has pinned on the full map: a five-second count, everyone gets the pin and
+  its route, the first within 14 m wins.
+- With friends the story and the tutorial are skipped for that ride (not marked done). Rooms run
+  in the career, so earnings in a round are real earnings on each rider's own save.
+
+Checked with two separate browsers on this machine: making a room, joining by its link, each
+seeing the other, a delivery round reaching the guest (online, 10:00 on the clock), a race the
+guest won, and the host noticing the guest's tab closing. Not checked: more than two riders,
+two different networks, an actual delivery inside a round, a guest on foot or in another
+vehicle as seen by others, or the frame rate with six.

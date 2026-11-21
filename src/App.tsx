@@ -31,6 +31,7 @@ import { DutyUi } from './ui/DutyUi'
 import { Objective } from './ui/Objective'
 import { Prompts } from './ui/Prompts'
 import { Subtitle } from './ui/Subtitle'
+import { RoomCard } from './ui/RoomUi'
 import { RoomFade } from './ui/RoomFade'
 import { GuardCard } from './ui/GuardCard'
 import { BreakdownCard } from './ui/BreakdownCard'
@@ -89,6 +90,7 @@ function RidingUi() {
       <Objective />
       <Prompts />
       <Subtitle />
+      <RoomCard />
       <GuardCard />
       <BreakdownCard />
       <PoliceCard />
