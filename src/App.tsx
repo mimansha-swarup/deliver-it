@@ -5,6 +5,8 @@ import type { Quality } from './game/qualitySettings'
 import { markLoad } from './dev/loadTimeline'
 import './world/haze'
 import './world/brightnessCap'
+// Anonymous counts of how the game is used (game/analytics.ts): nothing is sent until an endpoint is set.
+import './game/analytics'
 import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGameStore } from './game/gameStore'

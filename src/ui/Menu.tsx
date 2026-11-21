@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { unlockAudio } from '../audio/audioEngine'
 import { playPing } from '../audio/uiSounds'
-import { FEEDBACK_URL, GAME_NAME, LINKEDIN_URL, VERSION } from '../game/brand'
+import { GAME_NAME, LINKEDIN_URL, VERSION } from '../game/brand'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_LEVELS } from '../game/qualitySettings'
 import { clearProgress } from '../game/saveKeys'
@@ -393,6 +393,14 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
           <p>Baloo Tamma 2 by Ek Type, for English and Kannada, under the SIL Open Font Licence.</p>
         </Group>
 
+        <Group title="What the game counts">
+          <p>
+            Anonymous counts only, to know whether the first minutes work: that a visit began, the tutorial was finished, a first delivery made, how long the visit was, the
+            picture quality, and that an error happened. No cookies, nothing that identifies you or your device, nothing you type. Feedback you send goes to the site’s own
+            inbox, with an email only if you give one.
+          </p>
+        </Group>
+
         <p className="menu-note">
           {GAME_NAME} is an independent game. “Deliver It”, “GaadiGo” and every shop and brand in it are made up; none is a real company.
         </p>
@@ -402,15 +410,15 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
 }
 
 /** The line at the foot of a menu: the version, and where to send feedback. Nothing else. */
-export function MenuFooter() {
+export function MenuFooter({ onFeedback }: { onFeedback?: () => void }) {
   const t = useT()
   return (
     <p className="menu-footer">
       <span>v{VERSION}</span>
-      {FEEDBACK_URL && (
-        <a href={FEEDBACK_URL} target="_blank" rel="noreferrer noopener">
+      {onFeedback && (
+        <button type="button" className="menu-footer-link" onClick={onFeedback}>
           {t('feedback')}
-        </a>
+        </button>
       )}
     </p>
   )

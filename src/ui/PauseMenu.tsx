@@ -6,6 +6,7 @@ import { pauseClock, resumeClock } from '../game/clock'
 import { useFamily } from '../game/family'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch } from '../game/launch'
+import { FeedbackPanel } from './Feedback'
 import { Logo } from './Logo'
 import { ControlsPanel, MenuFooter, MenuList, SettingsPanel, type MenuItem } from './Menu'
 import { useT } from './menuText'
@@ -21,7 +22,7 @@ import { usePause, useUi } from './uiState'
  * and quit to menu. Progress is saved as it happens, so quitting only has to go back to the title.
  */
 
-type View = 'menu' | 'settings' | 'controls'
+type View = 'menu' | 'settings' | 'controls' | 'feedback'
 
 /** Whether something else is up that Esc belongs to. Read as the key goes down, before those things close. */
 function escIsTaken(): boolean {
@@ -78,6 +79,7 @@ export function PauseMenu() {
     { id: 'resume', label: t('resume'), primary: true, onSelect: resume },
     { id: 'settings', label: t('settings'), onSelect: () => setView('settings') },
     { id: 'controls', label: t('controls'), onSelect: () => setView('controls') },
+    { id: 'feedback', label: t('feedback'), detail: 'What you liked, and what broke', onSelect: () => setView('feedback') },
     { id: 'unstuck', label: t('unstuck'), detail: t('unstuckDetail'), onSelect: () => usePause.setState((state) => ({ open: false, unstuck: state.unstuck + 1 })) },
     // Back to the title: the page is loaded again, which is the one sure way to put the whole city down.
     { id: 'quit', label: t('quit'), detail: t('quitDetail'), onSelect: () => window.location.reload() },
@@ -97,6 +99,7 @@ export function PauseMenu() {
       )}
       {view === 'settings' && <SettingsPanel inGame onBack={() => setView('menu')} onTutorial={resume} />}
       {view === 'controls' && <ControlsPanel onBack={() => setView('menu')} />}
+      {view === 'feedback' && <FeedbackPanel onBack={() => setView('menu')} />}
       <MenuFooter />
     </div>
   )

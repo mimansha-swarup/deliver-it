@@ -9,6 +9,7 @@ import { levelFromXp } from '../game/progression'
 import { tutorialHold, useTutorial } from '../game/tutorial'
 import { invitedTo, ROOM } from '../net/room'
 import { FriendsPanel } from './RoomUi'
+import { FeedbackPanel } from './Feedback'
 import { Logo } from './Logo'
 import { ControlsPanel, CreditsPanel, MenuFooter, MenuList, SettingsPanel, type MenuItem } from './Menu'
 import { useT } from './menuText'
@@ -27,7 +28,7 @@ const BACKDROPS = [
 /** How long each picture stays, in milliseconds. */
 const BACKDROP_TIME = 8000
 
-type View = 'menu' | 'story' | 'settings' | 'controls' | 'credits' | 'friends'
+type View = 'menu' | 'story' | 'settings' | 'controls' | 'credits' | 'friends' | 'feedback'
 
 function megabytes(kb: number): string {
   return (kb / 1024).toFixed(1)
@@ -137,6 +138,7 @@ export function TitleScreen() {
       {view === 'settings' && <SettingsPanel onBack={back} />}
       {view === 'controls' && <ControlsPanel onBack={back} />}
       {view === 'credits' && <CreditsPanel onBack={back} />}
+      {view === 'feedback' && <FeedbackPanel onBack={back} />}
       {view === 'friends' && (
         <FriendsPanel
           onBack={back}
@@ -152,7 +154,7 @@ export function TitleScreen() {
         <span aria-hidden="true" />
         In the game: {BACKDROPS[shown].caption}
       </p>
-      <MenuFooter />
+      <MenuFooter onFeedback={() => setView('feedback')} />
     </main>
   )
 }

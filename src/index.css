@@ -1805,6 +1805,28 @@ body,
   color: var(--title-kannada);
 }
 
+.menu-footer-link {
+  padding: 0;
+  border: 0;
+  color: var(--title-kannada);
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.feedback textarea {
+  min-width: 0;
+  padding: 8px 12px;
+  border: 2px solid rgb(255 246 230 / 28%);
+  border-radius: 10px;
+  color: var(--title-chalk);
+  background: rgb(255 246 230 / 8%);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+
 .menu-footer {
   position: absolute;
   left: var(--title-left);
