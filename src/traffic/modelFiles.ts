@@ -13,6 +13,8 @@ export const EXTRA_PEOPLE = ['uncle', 'guy', 'office', 'saree'] as const
 
 /** The rider's own vehicles (the scooter, and what GaadiGo rents and sells), each cut into the pieces that move (vehicle/vehicleBodies.ts). */
 export const FLEET_MODELS_URL = '/models/fleet.glb'
+/** GaadiGo's motorbike and cargo three-wheeler, made with Tripo AI (art/tripo), cut up the same way. */
+export const TRIPO_MODELS_URL = '/models/tripo.glb'
 
 /** Kept apart from the rest, because its licence is different. See `models/CREDITS.txt`. */
 export const YAMAHA_MODEL_URL = '/models/yamaha.glb'

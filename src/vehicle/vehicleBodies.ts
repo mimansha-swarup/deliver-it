@@ -88,6 +88,10 @@ export type BuiltVehicle = {
   lock: number
   /** A delivery crate that carries the Deliver It logo on its back and sides (Scooter.tsx): its corners. */
   logoBox?: { min: [number, number, number]; max: [number, number, number] }
+  /** Its lamps, where the model has them as pieces of their own: they glow (Scooter.tsx). `headTurns`: the head lamp is on the bars. */
+  lamps?: { head: THREE.BufferGeometry | null; tail: THREE.BufferGeometry | null; headTurns: boolean }
+  /** A cab with open sides, in which the driver is seen. */
+  openCab?: boolean
 }
 
 export function disposeBuilt(built: BuiltVehicle) {
@@ -96,6 +100,8 @@ export function disposeBuilt(built: BuiltVehicle) {
   built.wheels.forEach(({ geometry }) => geometry.dispose())
   built.crank?.geometry.dispose()
   built.glass?.dispose()
+  built.lamps?.head?.dispose()
+  built.lamps?.tail?.dispose()
 }
 
 const STEEL = '#8f9499'
@@ -121,15 +127,19 @@ type FleetModel = {
   front: THREE.BufferGeometry | null
   wheels: { geometry: THREE.BufferGeometry; at: [number, number, number]; steers: boolean }[]
   pivot: [number, number]
+  head: THREE.BufferGeometry | null
+  tail: THREE.BufferGeometry | null
+  headTurns: boolean
+  /** The whole vehicle as one simple shape, for far away. */
+  far: THREE.BufferGeometry | null
+  logoBox?: { min: [number, number, number]; max: [number, number, number] }
 }
 /** Which model in the file is which vehicle. The electric scooter and the cargo three-wheeler have none. */
-const FLEET_NAMES: Partial<Record<BuiltKind, string>> = { scooter: 'scooty', bicycle: 'cycle', bike: 'motorbike', car: 'minitruck', van: 'cargovan' }
+const FLEET_NAMES: Partial<Record<BuiltKind, string>> = { scooter: 'scooty', bicycle: 'cycle', bike: 'vega', trike: 'ecargo', car: 'minitruck', van: 'cargovan' }
 const fleetModels: Partial<Record<BuiltKind, FleetModel>> = {}
-let fleetRead = false
 
+/** Takes whatever vehicles a loaded file holds (fleet.glb, tripo.glb): called with each. */
 export function setFleetModels(scene: THREE.Object3D) {
-  if (fleetRead) return
-  fleetRead = true
   const piece = (name: string) => {
     let geometry: THREE.BufferGeometry | null = null
     scene.getObjectByName(name)?.traverse((child) => {
@@ -138,12 +148,13 @@ export function setFleetModels(scene: THREE.Object3D) {
     return geometry as THREE.BufferGeometry | null
   }
   for (const [kind, name] of Object.entries(FLEET_NAMES) as [BuiltKind, string][]) {
+    if (fleetModels[kind]) continue
     const body = piece(name)
-    const data = scene.getObjectByName(name)?.userData as { wheels?: { at: [number, number, number]; steers: boolean }[]; pivot?: [number, number] } | undefined
+    const data = scene.getObjectByName(name)?.userData as { wheels?: { at: [number, number, number]; steers: boolean }[]; pivot?: [number, number]; headTurns?: boolean; logoBox?: FleetModel['logoBox'] } | undefined
     if (!body || !data?.wheels || !data.pivot) continue
     const wheels = data.wheels.map(({ at, steers }, index) => ({ geometry: piece(`${name}-wheel-${index}`), at, steers }))
     if (wheels.some(({ geometry }) => !geometry)) continue
-    fleetModels[kind] = { body, front: piece(`${name}-front`), wheels: wheels as FleetModel['wheels'], pivot: data.pivot }
+    fleetModels[kind] = { body, front: piece(`${name}-front`), wheels: wheels as FleetModel['wheels'], pivot: data.pivot, head: piece(`${name}-head`), tail: piece(`${name}-tail`), headTurns: data.headTurns ?? false, far: piece(`${name}-far`), logoBox: data.logoBox }
   }
 }
 
@@ -161,7 +172,15 @@ function fromModel(model: FleetModel, paint: string, lock: number, extra: THREE.
     crank: null,
     glass: null,
     lock,
+    logoBox: model.logoBox,
+    lamps: model.head || model.tail ? { head: model.head ? paintPiece(model.head, paint) : null, tail: model.tail ? paintPiece(model.tail, paint) : null, headTurns: model.headTurns } : undefined,
   }
+}
+
+/** A modelled vehicle as one simple shape for far away, in its paint; null where there's none. */
+export function createBuiltFar(kind: BuiltKind, paint: string): THREE.BufferGeometry | null {
+  const far = fleetModels[kind]?.far
+  return far ? paintPiece(far, paint) : null
 }
 
 /**
@@ -650,7 +669,9 @@ export function createBuiltVehicle(kind: BuiltKind, paint: string): BuiltVehicle
   const built = BUILDERS[kind](paint)
   const modelled = fromModel(model, paint, built.lock, kind === 'bicycle' ? [boxAt([0.34, 0.26, 0.36], [0, 0.88, -0.62], '#f2b82a'), boxAt([0.2, 0.02, 0.42], [0, 0.74, -0.6], STEEL)] : [])
   modelled.crank = built.crank
-  modelled.logoBox = built.logoBox
+  modelled.logoBox = modelled.logoBox ?? built.logoBox
+  // The three-wheeler's cab has open sides: its driver is seen in it.
+  modelled.openCab = kind === 'trike'
   built.body.dispose()
   built.column?.geometry.dispose()
   built.wheels.forEach(({ geometry }) => geometry.dispose())

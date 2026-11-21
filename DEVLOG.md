@@ -11452,3 +11452,31 @@ seeing the other, a delivery round reaching the guest (online, 10:00 on the cloc
 guest won, and the host noticing the guest's tab closing. Not checked: more than two riders,
 two different networks, an actual delivery inside a round, a guest on foot or in another
 vehicle as seen by others, or the frame rate with six.
+
+## 2026-11-21: Entry 252, the Vega 150 and the Bhaara E-Cargo are Tripo models
+
+GaadiGo's motorbike and cargo three-wheeler are now the two models generated with Tripo AI
+(`art/tripo/vega150.glb`, `bhaara_ecargo.glb`), baked into `public/models/tripo.glb` (996 KB for
+the two, Meshopt-compressed). The Honda that stood in for the Vega is gone from the game, its
+credit and `fleet.glb` (now 686 KB).
+
+- **Import** (`bakeFleet`, which now reads a .glb, fits by length, and handles three wheels):
+  the bike at 2.05 m, the three-wheeler at 2.9 m, front to +Z, wheels on the ground (the bike's
+  side stand is ignored: only the patches furthest apart are wheels). Each triangle is cut in
+  nine before its 2K texture is read, so the colour survives as corner colours; there are no
+  textures left to make KTX2 of. A far version of 1,800 triangles each.
+- **Cut for moving:** body, each wheel about its axle, and what turns with the front (the bike's
+  bars, fork and mudguard; the three-wheeler's mudguard). Steering and wheel spin work as on the scooter.
+- **The Vega's tank** is its paint: the model's blue, and the lettering on it is painted out with it.
+- **The E-Cargo's box** was silver; it's stored as paint and dyed Deliver It yellow, and carries the
+  logo on its sides and back as the scooter's box does.
+- **Lamps** are pieces of the model cut out to glow: the head lamp (on the bike it turns with
+  the bars) and the tail lamp, brighter under braking and at night. No discs.
+- **Rider and size:** the bike's seat, bars and pegs and the three-wheeler's collider were set to
+  the models. The three-wheeler's cab is open, so its driver is seen in it.
+- The far versions are used for other riders' vehicles in a room beyond 45 m.
+
+Frame rate, built game, headless Chrome (which stops at 60): scooter, Vega and E-Cargo on High
+and on Low all held 60 with a 16.7 ms median frame; one High run with the E-Cargo averaged 56.
+That shows no fall below the cap, not the 80 the vision asks of High, which this test can't see.
+Screenshots at 10:00 and 17:30, front, side, three-quarter and rear, are in `clips/brand/tripo`.

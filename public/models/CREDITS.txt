@@ -52,14 +52,18 @@ All licensed CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
   https://sketchfab.com/3d-models/vespa-scooty-3faa866d4e764e93af4e03d402cf6c61
 "Old Bicycle" by Tidominer (GaadiGo's bicycle)
   https://sketchfab.com/3d-models/old-bicycle-17ab00cb733443a2b552a2b620a68087
-"Honda NR750 1994" by Comrade1280 (GaadiGo's motorbike)
-  https://sketchfab.com/3d-models/honda-nr750-1994-89a79e0a3c334b23830561961f9644c8
 "cafe sones catering car" by higan69 (GaadiGo's catering car)
   https://sketchfab.com/3d-models/cafe-sones-catering-car-949ea9a4ee4e43ab901e8e0589cb4377
 "2003 Chevrolet Express GMC Savana 2500 Cargo Van" by Ddiaz Design (GaadiGo's van)
   https://sketchfab.com/3d-models/2003-chevrolet-express-gmc-savana-2500-cargo-van-ed2a0b37a01e4e51ba5b82c35d4a9dae
 "Ksrtc bus" by Meshmill (the traffic's bus; its livery recoloured)
   https://sketchfab.com/3d-models/ksrtc-bus-ed309d476edc4200925c2cfd887ef6e9
+
+tripo.glb: GaadiGo's motorbike (the Vega 150) and cargo three-wheeler (the Bhaara E-Cargo).
+Vega 150 and Bhaara E-Cargo models generated with Tripo AI (https://www.tripo3d.ai), on the
+maker's own plan with commercial use; the originals are in art/tripo. Changed for the game the
+same way as the rest: rescaled, cut into body, steering front, wheels and lamps, simplified,
+textures replaced by colours, the tank's lettering painted out, the cargo box made Deliver It's.
 
 city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
 

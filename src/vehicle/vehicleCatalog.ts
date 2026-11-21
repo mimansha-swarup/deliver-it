@@ -136,16 +136,18 @@ export const VEHICLES: Record<VehicleId, VehicleSpec> = {
     topSpeed: 86, pull: 1.2, turn: 0.7, grip: 1.1, brake: 0.66, lean: 1.2, feel: { topEnd: 2.2, response: 4.5, coast: 1.0, nitro: true }, drive: 'Petrol · 150 cc', size: { width: 0.8, length: 2.1, height: 1.6, cab: false }, capacity: 2, costPerKm: 2.2, unlocks: ['parcel', 'express'],
     minLevel: 4, minRating: 4, rentHour: 60, rentDay: 280, price: 6500, engine: 'thumper', engineVolume: 1, horn: 'bike',
     camera: { distance: 1.12, height: 1.02, look: 1 }, cockpit: null,
-    body: 'bike', paint: '#c62828',
-    // Leaning forward over the tank to wide bars, feet back on the pegs.
-    seat: { hip: [0, 1.03, -0.36], lean: 0.52, column: 0.46, grip: [0.34, 1.1, -0.13], foot: [0.2, 0.44, -0.2], footDown: true, pedals: false, side: 0 },
+    // The model's own blue (art/tripo/vega150.glb): its tank is the paint.
+    body: 'bike', paint: '#1f5fd0',
+    // Fitted to the model: upright on a flat seat at 0.8 m, bars at 1.02 m a little ahead of the middle, feet on pegs under the knees.
+    seat: { hip: [0, 0.96, -0.3], lean: 0.26, column: 0.235, grip: [0.3, 1.06, -0.03], foot: [0.2, 0.38, -0.08], footDown: true, pedals: false, side: 0 },
   },
   trike: {
     id: 'trike', name: 'Bhaara E-Cargo', kind: 'Electric cargo three-wheeler', blurb: 'Carries a lot, never leans, never hurries.',
-    topSpeed: 42, pull: 0.6, turn: 0.58, grip: 1.15, brake: 0.55, lean: -0.3, feel: { topEnd: 0.6, response: 2.4, coast: 1.2, nitro: false }, drive: 'Electric · loaded', size: { width: 1.4, length: 3.1, height: 1.8, cab: true }, capacity: 8, costPerKm: 0.9, unlocks: ['parcel', 'eco', 'bulk'],
+    topSpeed: 42, pull: 0.6, turn: 0.58, grip: 1.15, brake: 0.55, lean: -0.3, feel: { topEnd: 0.6, response: 2.4, coast: 1.2, nitro: false }, drive: 'Electric · loaded', size: { width: 1.3, length: 2.9, height: 1.9, cab: true }, capacity: 8, costPerKm: 0.9, unlocks: ['parcel', 'eco', 'bulk'],
     minLevel: 5, minRating: 4, rentHour: 80, rentDay: 380, price: 9500, engine: 'evCargo', engineVolume: 1, horn: 'auto',
     camera: { distance: 1.5, height: 1.35, look: 1.15 }, cockpit: [0, 1.5, 0.3],
-    body: 'trike', paint: '#2f9e6b',
+    // Its cargo box is the paint, in Deliver It's yellow, with the logo on it (art/tripo/bhaara_ecargo.glb).
+    body: 'trike', paint: '#f2b82a',
     // On the cab's bench, upright, at scooter-style bars.
     seat: { hip: [0, 0.9, 0.12], lean: 0.1, column: 0.86, grip: [0.28, 1.15, -0.22], foot: [0.16, 0.49, 0.62], footDown: false, pedals: false, side: 0 },
   },

@@ -1446,13 +1446,27 @@ function bakeUnrigged(spec, folder) {
 const FLEET_FILE = 'fleet.glb'
 const orange = (r, g, b) => r > 0.3 && g / r > 0.05 && g / r < 0.45 && b / r < 0.25
 const red = (r, g, b) => r > 0.2 && g / r < 0.3 && b / r < 0.3
+const blue = (r, g, b) => b > 0.12 && r / b < 0.45 && g / b < 0.75
 const FLEET = [
   { name: 'scooty', folder: 'vespa_scooty', wheels: 2, wheelbase: 1.28, rearAxleZ: -0.62, facing: [0, 1], paint: orange, bars: true, radius: 0.221, triangles: 11000 },
   { name: 'cycle', folder: 'old_bicycle', wheels: 2, wheelbase: 1.07, rearAxleZ: -0.52, facing: [1, 0], drop: /Pedal|Center-Gear|Chain/, paint: /Bicycle-Body/, bars: true, corridor: 0.07, triangles: 6000 },
-  { name: 'motorbike', folder: 'honda_nr750_1994', wheels: 2, wheelbase: 1.36, rearAxleZ: -0.66, facing: [0, 1], drop: /floor/, paint: red, bars: false, triangles: 10000 },
   // A small box truck: at the hatchback's wheelbase it stood 2.5 m tall, so it's fitted by its length instead.
   { name: 'minitruck', folder: 'cafe_sones_catering_car', wheels: 4, wheelbase: 1.95, rearAxleZ: -0.95, facing: [0, 1], fine: 0.03, triangles: 7000 },
   { name: 'cargovan', folder: 'cargo_van', wheels: 4, wheelbase: 2.8, rearAxleZ: -1.3, facing: [0, 1], drop: /Badge|LicensePlate/, paint: /Carpaint/, triangles: 9000 },
+  // Made with Tripo AI (art/tripo/*.glb, one mesh and one 2K texture each), in a file of their own.
+  // `glb`: read from this file. `length`: fitted by its length, in metres, where no vehicle's wheelbase is being matched.
+  // `cuts`: each triangle cut this many times a side before the texture is read, so its detail isn't lost.
+  // `lamps`: its head and tail lamps are cut out as pieces of their own, to glow. `far`: a far version of this many triangles.
+  {
+    name: 'vega', glb: 'art/tripo/vega150.glb', file: 'tripo.glb', wheels: 2, length: 2.05, rearAxleZ: -0.7, facing: [-1, 0], cuts: 3, bars: true, corridor: 0.075,
+    // The tank is the paint: everything on it but its dark trim takes the colour, the maker's badge with it.
+    paint: blue, clearBadge: true, lamps: true, far: 1800, triangles: 13000,
+  },
+  {
+    name: 'ecargo', glb: 'art/tripo/bhaara_ecargo.glb', file: 'tripo.glb', wheels: 3, length: 2.9, rearAxleZ: -0.95, facing: [0, 1], cuts: 3, bars: false,
+    // The silver cargo box becomes Deliver It's: stored white as paint, which the game dyes yellow, with the logo on it.
+    box: true, lamps: true, far: 1800, triangles: 12000,
+  },
 ]
 
 /**
@@ -1598,15 +1612,29 @@ function addPrimitiveFine(model, soup, primitive, matrix, edge, same = 0) {
   }
 }
 
+/** Unpacks a .glb beside this script's other working files, as a folder with scene.gltf in it, and says where. */
+function unpackGlb(file) {
+  const target = join(scratch, `glb-${imageCount++}`)
+  execFileSync('node', ['--input-type=module', '-e', `
+    import { mkdirSync } from 'node:fs'
+    import { NodeIO } from '@gltf-transform/core'
+    import { ALL_EXTENSIONS } from '@gltf-transform/extensions'
+    mkdirSync(${JSON.stringify(target)}, { recursive: true })
+    const io = new NodeIO().registerExtensions(ALL_EXTENSIONS)
+    await io.write(${JSON.stringify(join(target, 'scene.gltf'))}, await io.read(${JSON.stringify(join(ROOT, file))}))
+  `], { stdio: 'ignore', cwd: ROOT })
+  return target
+}
+
 function bakeFleet(spec, folder) {
-  const model = loadModel(join(folder, spec.folder))
+  const model = loadModel(spec.glb ? unpackGlb(spec.glb) : join(folder, spec.folder))
   const soup = new Soup()
   const paintByName = spec.paint instanceof RegExp ? spec.paint : null
   model.gltf.nodes.forEach((node, index) => {
     if (node.mesh === undefined || spec.drop?.test(node.name ?? '')) return
     for (const primitive of model.gltf.meshes[node.mesh].primitives) {
-      if (spec.fine) {
-        addPrimitiveFine(model, soup, primitive, model.world[index], spec.fine)
+      if (spec.fine || spec.cuts) {
+        addPrimitiveFine(model, soup, primitive, model.world[index], spec.fine ?? 1, spec.cuts ?? 0)
         continue
       }
       // Paint is known by the part's name or its material's: exporters put the useful one in either.
@@ -1636,16 +1664,27 @@ function bakeFleet(spec, folder) {
   const ends = (values, furthest) => values.filter((z) => Math.abs(z - furthest) < long * 0.06)
   patch.front = ends(patch.front, Math.max(...patch.front))
   patch.rear = ends(patch.rear, Math.min(...patch.rear))
-  const scale = spec.wheelbase / (mean(patch.front) - mean(patch.rear))
+  const scale = spec.length ? spec.length / long : spec.wheelbase / (mean(patch.front) - mean(patch.rear))
+  const wheelbase = (mean(patch.front) - mean(patch.rear)) * scale
   transformSoup(
     soup,
     new THREE.Matrix4().makeScale(scale, scale, scale).multiply(new THREE.Matrix4().makeTranslation(-midX, -box.min.y, -mean(patch.rear) + spec.rearAxleZ / scale)),
   )
   box = getBounds(soup)
   const rearZ = spec.rearAxleZ
-  const frontZ = rearZ + spec.wheelbase
-  // Four wheels stand out to each side by the patches' own distance from the middle.
-  const track = spec.wheels === 4 ? mean(patch.out) * scale : 0
+  const frontZ = rearZ + wheelbase
+  // Four wheels stand out to each side by the patches' own distance from the middle; of three, the two at the back do.
+  let track = spec.wheels === 4 ? mean(patch.out) * scale : 0
+  if (spec.wheels === 3) {
+    const sides = []
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [x, y, z] = point(corner)
+      if (y < 0.03 && z < 0) sides.push(Math.abs(x))
+    }
+    track = mean(sides)
+  }
+  // The front wheel of three is in the middle; everything measured at "a wheel" below is measured there.
+  const frontTrack = spec.wheels === 4 ? track : 0
 
   // A wheel's radius, from the curve of the tyre where it leaves the ground: a point on a circle
   // standing on the ground, z ahead of its middle and y up, has radius (z² + y²) / 2y. The lowest
@@ -1656,7 +1695,7 @@ function bakeFleet(spec, folder) {
     const lowest = new Map()
     for (let corner = 0; corner < soup.count; corner++) {
       const [x, y, z] = point(corner)
-      if (Math.abs(Math.abs(x) - track) > 0.12 || Math.abs(z - frontZ) > 0.3 || y > 0.22) continue
+      if (Math.abs(Math.abs(x) - frontTrack) > 0.12 || Math.abs(z - frontZ) > 0.3 || y > 0.22) continue
       const slice = Math.round((z - frontZ) / 0.02)
       if (y < (lowest.get(slice) ?? Infinity)) lowest.set(slice, y)
     }
@@ -1670,7 +1709,7 @@ function bakeFleet(spec, folder) {
   }
   for (let corner = 0; corner < soup.count; corner++) {
     const [x, y] = point(corner)
-    if (y < 0.03) tyreHalf = Math.max(tyreHalf, Math.abs(Math.abs(x) - track))
+    if (y < 0.03 && point(corner)[2] > 0) tyreHalf = Math.max(tyreHalf, Math.abs(Math.abs(x) - frontTrack))
   }
   // (Never wider than a tyre is: a fairing or a stand low down isn't the wheel.)
   const half = Math.min(spec.wheels === 4 ? 0.17 : 0.1, Math.max(0.05, tyreHalf * 1.7))
@@ -1686,6 +1725,53 @@ function bakeFleet(spec, folder) {
     }
   }
 
+  // The maker's badge on the tank: whatever isn't dark inside the painted tank's own outline is paint too.
+  if (spec.clearBadge) {
+    const tank = new THREE.Box3()
+    for (let corner = 0; corner < soup.count; corner++) if (soup.paints[corner] === 1) tank.expandByPoint(new THREE.Vector3(...point(corner)))
+    const size = tank.getSize(new THREE.Vector3())
+    tank.expandByVector(size.multiplyScalar(-0.06))
+    for (let corner = 0; corner < soup.count; corner++) {
+      if (soup.paints[corner] === 1 || !tank.containsPoint(new THREE.Vector3(...point(corner)))) continue
+      const [r, g, b] = soup.colors.slice(corner * 3, corner * 3 + 3)
+      const light = Math.max(r, g, b)
+      // Its lettering is pale and on the tank's sides; the dark seat, cap and seams stay what they are.
+      if (light > 0.35 && Math.abs(point(corner)[0]) > size.x * 0.25) {
+        soup.colors.splice(corner * 3, 3, 0.95, 0.95, 0.95)
+        soup.paints[corner] = 1
+      }
+    }
+  }
+  // The cargo box: the grey at the back, above the floor, stored white as paint with its own light and shade.
+  let boxBounds = null
+  if (spec.box) {
+    boxBounds = new THREE.Box3()
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [x, y, z] = point(corner)
+      const [r, g, b] = soup.colors.slice(corner * 3, corner * 3 + 3)
+      const light = Math.max(r, g, b)
+      const grey = light - Math.min(r, g, b) < 0.06 && light > 0.12
+      if (!grey || z > -0.15 || y < 0.62) continue
+      const shade = Math.min(1, 0.55 + light * 0.75)
+      soup.colors.splice(corner * 3, 3, shade, shade, shade)
+      soup.paints[corner] = 1
+      boxBounds.expandByPoint(new THREE.Vector3(x, y, z))
+    }
+  }
+  // The lamps: pale at the very front, red at the very back, each a piece of its own so it can glow.
+  const lampOf = new Int8Array(soup.count)
+  if (spec.lamps) {
+    for (let corner = 0; corner < soup.count; corner++) {
+      const [x, y, z] = point(corner)
+      const [r, g, b] = soup.colors.slice(corner * 3, corner * 3 + 3)
+      const light = Math.max(r, g, b)
+      if (z > box.max.z - 0.42 && y > 0.5 && y < 1.25 && Math.abs(x) < 0.16 && light > 0.55 && light - Math.min(r, g, b) < 0.2) lampOf[corner] = 1
+      else if (z < box.min.z + 0.3 && y > 0.45 && r > 0.3 && g / r < 0.3 && b / r < 0.3) lampOf[corner] = 2
+    }
+  }
+  const lampKind = (corners) => (corners.every((corner) => lampOf[corner] === 1) ? 1 : corners.every((corner) => lampOf[corner] === 2) ? 2 : 0)
+  const isLamp = (corners) => lampKind(corners) !== 0
+
   const middleOf = (corners) => {
     const sum = [0, 0, 0]
     for (const corner of corners) point(corner).forEach((value, part) => { sum[part] += value / 3 })
@@ -1694,7 +1780,9 @@ function bakeFleet(spec, folder) {
   // The wheels: [x, z, whether it steers], the rear ones first.
   const places = spec.wheels === 4
     ? [[-track, rearZ, false], [track, rearZ, false], [-track, frontZ, true], [track, frontZ, true]]
-    : [[0, rearZ, false], [0, frontZ, true]]
+    : spec.wheels === 3
+      ? [[-track, rearZ, false], [track, rearZ, false], [0, frontZ, true]]
+      : [[0, rearZ, false], [0, frontZ, true]]
   const inWheel = ([wheelX, wheelZ]) => (corners) => corners.every((corner) => {
     const [x, y, z] = point(corner)
     return Math.abs(x - wheelX) < half && Math.hypot(y - radius, z - wheelZ) < radius * 1.03
@@ -1706,7 +1794,7 @@ function bakeFleet(spec, folder) {
   let turns = () => false
   let pivotZ = 0
   let bars = null
-  if (spec.wheels === 2) {
+  if (spec.wheels <= 3) {
     let barsY = 0
     let barsZ = 0
     let widest = 0
@@ -1738,8 +1826,8 @@ function bakeFleet(spec, folder) {
     transformSoup(part, new THREE.Matrix4().makeTranslation(-x, -radius, -z))
     return { soup: part, at: [x, radius, z], steers }
   })
-  const front = spec.wheels === 2 ? cutSoup(soup, (corners) => !isWheel(corners) && turns(corners)) : null
-  const body = cutSoup(soup, (corners) => !isWheel(corners) && !turns(corners))
+  const front = spec.wheels <= 3 ? cutSoup(soup, (corners) => !isWheel(corners) && !isLamp(corners) && turns(corners)) : null
+  const body = cutSoup(soup, (corners) => !isWheel(corners) && !isLamp(corners) && !turns(corners))
 
   // What the game needs to know to seat the rider: measured, not guessed.
   const seat = { y: 0, z: 0 }
@@ -1750,13 +1838,24 @@ function bakeFleet(spec, folder) {
     if (Math.abs(x) > 0.06 && Math.abs(x) < 0.16 && z > -0.05 && z < 0.22 && y < 0.5) floorY = Math.max(floorY, y)
   }
   const round = (value) => Math.round(value * 1000) / 1000
+  // The head lamp turns with the bars if that's where it is; the tail lamp is on the body.
+  const head = cutSoup(soup, (corners) => !isWheel(corners) && lampKind(corners) === 1)
+  const tail = cutSoup(soup, (corners) => !isWheel(corners) && lampKind(corners) === 2)
+  const headTurns = head.count > 0 && spec.bars && turns([0, 1, 2].map(() => 0).map((_, k) => head.indices[k]).map((corner) => {
+    // (`turns` reads corners of the whole soup; the head lamp's own first corner is found there by its place.)
+    const target = head.positions.slice(corner * 3, corner * 3 + 3)
+    for (let other = 0; other < soup.count; other++) if (soup.positions[other * 3] === target[0] && soup.positions[other * 3 + 1] === target[1] && soup.positions[other * 3 + 2] === target[2]) return other
+    return 0
+  }))
   const extras = {
     wheels: wheels.map(({ at, steers }) => ({ at: at.map(round), steers })),
     pivot: [0, round(pivotZ)],
     size: box.getSize(new THREE.Vector3()).toArray().map(round),
+    ...(boxBounds && !boxBounds.isEmpty() ? { logoBox: { min: boxBounds.min.toArray().map(round), max: boxBounds.max.toArray().map(round) } } : {}),
+    ...(spec.lamps ? { headTurns } : {}),
   }
   console.log(`  ${spec.name}:`, JSON.stringify({ ...extras, bars: bars?.map(round), seat: [round(seat.y), round(seat.z)], floor: round(floorY), halfTyre: round(half) }))
-  return { body, front, wheels, extras }
+  return { body, front, wheels, extras, head, tail, whole: soup }
 }
 
 /** An animal as it stands in its file: skinned to its rest pose, on the ground, its head towards +Z. */
@@ -1906,6 +2005,10 @@ function finishFleet(spec, baked) {
     { name: spec.name, soup: piece(baked.body, spec.triangles), extras: baked.extras },
     ...(baked.front ? [{ name: `${spec.name}-front`, soup: piece(baked.front, 3000) }] : []),
     ...baked.wheels.map(({ soup }, index) => ({ name: `${spec.name}-wheel-${index}`, soup: piece(soup, 1200) })),
+    ...(baked.head?.count ? [{ name: `${spec.name}-head`, soup: piece(baked.head, 300) }] : []),
+    ...(baked.tail?.count ? [{ name: `${spec.name}-tail`, soup: piece(baked.tail, 300) }] : []),
+    // The far version: the whole vehicle as one shape, wheels and all, for when it's small on the screen.
+    ...(spec.far ? [{ name: `${spec.name}-far`, soup: simplify(weld(baked.whole), spec.far, { maxError: 0.03, colorWeight: 0.3 }).result }] : []),
   ]
 }
 
@@ -1927,8 +2030,8 @@ async function main() {
   }
   for (const spec of FLEET) {
     if (only && !only.split(',').includes(spec.name)) continue
-    const meshes = files.get(FLEET_FILE) ?? []
-    files.set(FLEET_FILE, meshes)
+    const meshes = files.get(spec.file ?? FLEET_FILE) ?? []
+    files.set(spec.file ?? FLEET_FILE, meshes)
     meshes.push(...finishFleet(spec, bakeFleet(spec, folder)))
   }
   for (const [specs, bake] of [[VEHICLES, bakeVehicle], [PEOPLE, bakePerson], [ANIMALS, bakeAnimal], [UNRIGGED, bakeUnrigged]]) {

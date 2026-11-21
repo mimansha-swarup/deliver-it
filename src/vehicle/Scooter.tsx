@@ -20,6 +20,7 @@ import {
   getModel,
   paintModel,
   FLEET_MODELS_URL,
+  TRIPO_MODELS_URL,
   TRAFFIC_MODELS_URL,
 } from '../traffic/modelFiles'
 import type { CollisionWorld } from '../world/collision'
@@ -326,10 +327,12 @@ export function Scooter({
   // bars turn about the column, and a bicycle's cranks go round.
   // The rider's vehicles are models (models/fleet.glb): handed to the builder before anything is built.
   const { scene: fleetScene } = useGLTF(FLEET_MODELS_URL)
+  const { scene: tripoScene } = useGLTF(TRIPO_MODELS_URL)
   const built = useMemo(() => {
     setFleetModels(fleetScene)
+    setFleetModels(tripoScene)
     return createBuiltVehicle(spec.body, paint)
-  }, [spec, paint, fleetScene])
+  }, [spec, paint, fleetScene, tripoScene])
   useEffect(() => () => disposeBuilt(built), [built])
   const builtWheels = useRef<(Group | null)[]>([])
   const steered = useRef<(Group | null)[]>([])
@@ -455,7 +458,7 @@ export function Scooter({
     const borrowing = borrow.vehicle !== null
     // Inside a borrowed car, auto or bus, the driver isn't seen; on a borrowed two-wheeler they ride it.
     // Nor in a modelled cab of their own: it has a roof and doors, and they sit inside it.
-    const inOwnCab = spec.size.cab && isModelled(spec.body) && state.rider.off === 0
+    const inOwnCab = spec.size.cab && isModelled(spec.body) && !built.openCab && state.rider.off === 0
     riderRoot.current.visible = !(liveVehicle.cockpit && spec.cockpit !== null) && !(borrowing && state.rider.phase === 'on' && liveVehicle.spec.size.cab) && !inOwnCab
     if (ownOuter.current) ownOuter.current.visible = !borrowing
     if (ownInner.current) ownInner.current.visible = !borrowing
@@ -517,6 +520,9 @@ export function Scooter({
               <group ref={ownInner}>
               <mesh geometry={built.body} material={materials.bike} />
               {built.glass && <mesh geometry={built.glass} material={glass} renderOrder={2} />}
+              {/* Its lamps, where the model has them: they glow, the tail lamp brighter under braking (updateLights). */}
+              {built.lamps?.tail && <mesh geometry={built.lamps.tail} material={materials.tail} />}
+              {built.lamps?.head && !built.lamps.headTurns && <mesh geometry={built.lamps.head} material={materials.headlight} />}
               {spec.size.cab &&
                 dentSpots.map((at, index) => (
                   // A dent: a dark, crumpled scuff on the panel.
@@ -530,6 +536,7 @@ export function Scooter({
                 <group ref={column} position={[built.column.pivot[0], 0, built.column.pivot[1]]}>
                   <group position={[-built.column.pivot[0], 0, -built.column.pivot[1]]}>
                     <mesh geometry={built.column.geometry} material={materials.bike} />
+                    {built.lamps?.head && built.lamps.headTurns && <mesh geometry={built.lamps.head} material={materials.headlight} />}
                     {built.wheels.map(({ geometry, at, steers }, index) =>
                       steers ? (
                         <group key={index} position={at} ref={(group) => { builtWheels.current[index] = group }}>
