@@ -85,18 +85,25 @@ export function AdaptiveResolution() {
    * the browser's frame stamps, once enough have been seen that it isn't a stray one. Otherwise 1/60.
    */
   const screen = useRef({ refresh: SLOWEST_REFRESH, sum: 0, count: 0 })
+  const pending = useRef<number | null>(null)
   useEffect(() => {
     let last = 0
     let id = requestAnimationFrame(function watch(stamp) {
       const gap = (stamp - last) / 1000
       last = stamp
+      const known = screen.current.count >= ENOUGH_GAPS
       noteGap(screen.current, gap)
+      // The moment the screen's speed is known (half a second into the title screen): the resolution
+      // to ride at, set now. Left until the ride began, the change froze its first moments.
+      if (!known && screen.current.count >= ENOUGH_GAPS && !useGameStore.getState().started) {
+        const first = firstRatio(useGameStore.getState().quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+        if (first !== useResolution.getState().pixelRatio) pending.current = first
+      }
       id = requestAnimationFrame(watch)
     })
     return () => cancelAnimationFrame(id)
   }, [])
   /** A resolution waiting to be applied at the start of the next frame. See `applyRatio`. */
-  const pending = useRef<number | null>(null)
 
   // A new quality starts again from its own resolution, and forgets what was too much.
   useEffect(() => {

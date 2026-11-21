@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { keyFor, useKeys } from '../game/keyBindings'
 import { livePlayer } from '../game/livePlayer'
 import { firstOrder, TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
 import { useDiscovery } from '../game/discovery'
+import { shownPrompts, usePrompts } from '../game/prompts'
 
 /*
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
@@ -21,8 +22,8 @@ const STEPS: Record<TutorialStep, StepText> = {
     card: () => `Your first order is waiting. Accept it: ${keyFor('accept')}.`,
   },
   ride: {
-    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the green arrow at the top to the dark store.`,
-    card: () => `Ride: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the green arrow.`,
+    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the arrow at the top to the dark store.`,
+    card: () => `Ride: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the arrow at the top.`,
   },
   pickup: {
     ravi: () => `That's it. The dark store is close: park outside, get off with ${keyFor('mount')}, walk in and take the bag at the counter with ${keyFor('interact')}. (${keyFor('map')} shows the whole map, any time.)`,
@@ -30,11 +31,13 @@ const STEPS: Record<TutorialStep, StepText> = {
   },
   deliver: {
     ravi: () => "Got it! Now to the customer's door, it's not far. On time and no crashes gets the best tip.",
-    card: () => `Follow the green arrow to the customer. Park, get off (${keyFor('mount')}), walk to the door, ring the bell and hand it over (${keyFor('interact')}).`,
+    card: () => `Follow the arrow at the top to the customer. Park, get off (${keyFor('mount')}), walk to the door, ring the bell and hand it over (${keyFor('interact')}).`,
   },
 }
 
 const POLL_MS = 200
+/** The first order's time on the clock, in seconds, at least. */
+const FIRST_ORDER_SECONDS = 180
 /** "You're free to explore" comes this long after the first hand-over, in milliseconds. */
 const FREE_CARD_AFTER_MS = 6500
 
@@ -73,6 +76,8 @@ function TutorialDirector() {
         if (better) best = mission
       }
       mission = best ?? mission
+      // Forgiving: three minutes at least, however near it is (and the customer never worse than waiting: MissionTracker.tsx).
+      mission = { ...mission, onTimeSeconds: Math.max(FIRST_ORDER_SECONDS, mission.onTimeSeconds) }
       firstOrder.metres = mission.routeLength
       firstOrder.scene = mission.door.scene
       useGameStore.setState({ offer: { mission, expiresAt: performance.now() + 10 * 60 * 1000 } })
@@ -115,6 +120,52 @@ function TutorialDirector() {
   return null
 }
 
+/**
+ * The pickup and the delivery are several small things in a row, and a card that lists all of them
+ * at once is read once and forgotten. So during those two steps the card says only the next thing:
+ * stop in the box, get off, go in, take the bag, back to the scooter, get on; and at the customer's,
+ * stop, get off, to the door, ring, hand over. Worked out from where the rider is and what the
+ * game is offering them just then, a few times a second.
+ */
+const MICRO = { near: 30, stopped: 6, everyMs: 200 }
+function microPrompt(step: TutorialStep): string | null {
+  if (step !== 'pickup' && step !== 'deliver') return null
+  const game = useGameStore.getState()
+  const { mission } = game
+  if (!mission) return null
+  const offered = shownPrompts(usePrompts.getState().list).map(({ text }) => text).join(' ')
+  const use = keyFor('interact')
+  const mount = keyFor('mount')
+  const toStore = game.phase === 'toPickup'
+  // Riding, the stop on the road; on foot, the door.
+  const stop = toStore ? mission.pickup : livePlayer.onFoot ? mission.door : mission.customer
+  const away = Math.hypot(stop.x - livePlayer.x, stop.z - livePlayer.z)
+  if (!livePlayer.onFoot) {
+    if (away > MICRO.near) return toStore ? 'Follow the arrow at the top to the dark store.' : 'Follow the arrow at the top to the customer.'
+    return game.speedKmh > MICRO.stopped ? 'Slow down and stop in the glowing parking box.' : `${mount} · Get off`
+  }
+  if (toStore) return livePlayer.indoors ? `Walk to the counter. ${use} · Take the bag` : `Walk to the door. ${use} · Go in`
+  if (game.phase !== 'toCustomer') return null
+  if (livePlayer.indoors) return `Got it! Walk out by the door. ${use} · Leave`
+  if (/Hand over/i.test(offered)) return `${use} · Hand over the bag`
+  if (/Ring/i.test(offered)) return `${use} · Ring the bell`
+  if (/Get on/i.test(offered) && away > MICRO.near) return `${mount} · Get on`
+  if (away > MICRO.near) return `Walk back to your scooter. ${mount} · Get on`
+  return 'Walk to the customer’s door.'
+}
+
+function useMicroPrompt(step: TutorialStep | null): string | null {
+  const [text, setText] = useState<string | null>(null)
+  useEffect(() => {
+    if (!step) return
+    const update = () => setText(microPrompt(step))
+    update()
+    const timer = window.setInterval(update, MICRO.everyMs)
+    return () => window.clearInterval(timer)
+  }, [step])
+  return step ? text : null
+}
+
 /** The card top-left: which step, what to do, and Skip. */
 function TutorialCard() {
   const step = useTutorial((state) => state.step)
@@ -122,6 +173,7 @@ function TutorialCard() {
   const finish = useTutorial((state) => state.finish)
   // Re-renders when keys are changed, so the card shows the new ones.
   useKeys((state) => state.bindings)
+  const micro = useMicroPrompt(step)
   if (!step) return null
   const { card, optional } = STEPS[step]
   return (
@@ -130,7 +182,7 @@ function TutorialCard() {
         Tutorial · {TUTORIAL_STEPS.indexOf(step) + 1} of {TUTORIAL_STEPS.length}
         {optional && <span className="tutorial-optional">Optional</span>}
       </p>
-      <p className="tutorial-text">{card()}</p>
+      <p className="tutorial-text">{micro ?? card()}</p>
       <p className="tutorial-buttons">
         <button type="button" onClick={(event) => { next(); event.currentTarget.blur() }}>
           Skip step

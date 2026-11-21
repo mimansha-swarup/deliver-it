@@ -106,6 +106,8 @@ const FOOT_FOLLOW = { response: 9, snap: 3 }
  */
 const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22, sight: 0.6 }
 /** Getting off and on, the view changes between the vehicle's and the walker's over this long, in seconds, eased at both ends: never a cut. */
+/** Pulled in by a wall on foot, the camera moves this far to the side for each metre it came in, up to `most` metres. */
+const FOOT_SHOULDER = { perMetre: 0.3, most: 0.55, response: 6 }
 const FOOT_BLEND = 0.5
 /**
  * In a room the camera stays inside the walls, and keeps the rider in the picture: `distance`
@@ -204,6 +206,7 @@ export function FollowCamera({
   /** How high the scooter is (up on a flyover), eased, so the camera rises with it smoothly. */
   const level = useRef(0)
   const cameraHeading = useRef<number | null>(null)
+  const shoulder = useRef(0)
   const cameraDistance = useRef(DISTANCE_BEHIND)
   const introStart = useRef<Vector3 | null>(null)
   const introTime = useRef(0)
@@ -330,6 +333,21 @@ export function FollowCamera({
     const bob = afoot ? -Math.cos(state.rider.stride * 2) * FOOT_BOB.walk * Math.min(1, state.rider.pace / FOOT_BOB.fullAt) * (1 + Math.max(0, state.rider.pace - FOOT_BOB.fullAt) * FOOT_BOB.jog) : 0
     const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen + bob
     camera.position.set(focusX - forwardX * back, cameraY + level.current, focusZ - forwardZ * back)
+    // Brought in by a wall on foot, it also moves out over a shoulder, so the wall is to one side
+    // of the picture and the rider's helmet isn't the whole of it: to the right, or to the left if
+    // the right is a wall too, eased so it never jumps.
+    {
+      const pulled = afoot && !indoors ? Math.max(0, reach - distance) : 0
+      let wanted = Math.min(FOOT_SHOULDER.most, pulled * FOOT_SHOULDER.perMetre)
+      if (wanted > 0.05) {
+        const open = (side: number) => !blocksView(collisions, camera.position.x + forwardZ * side, camera.position.z - forwardX * side, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, false, false)
+        const keep = Math.sign(shoulder.current) || 1
+        wanted = open(keep * wanted) ? keep * wanted : open(-keep * wanted) ? -keep * wanted : 0
+      }
+      shoulder.current += (wanted - shoulder.current) * (1 - Math.exp(-FOOT_SHOULDER.response * delta))
+      camera.position.x += forwardZ * shoulder.current
+      camera.position.z -= forwardX * shoulder.current
+    }
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE

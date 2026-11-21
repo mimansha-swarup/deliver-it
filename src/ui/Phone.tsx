@@ -44,7 +44,7 @@ function StatusBar({ unread = 0 }: { unread?: number }) {
     <header className="phone-status">
       <span className="phone-time">
         {skyTime}
-        {unread > 0 && <span className="phone-tab-count" aria-label={`${unread} unread`}>{unread}</span>}
+        {unread > 0 && <span className="phone-tab-count" aria-label={`${unread} unread`}>{unread > 9 ? '9+' : unread}</span>}
       </span>
       <span className="phone-island" aria-hidden="true" />
       <span className="phone-status-right">
@@ -152,7 +152,7 @@ function MiniPhone({ unread, alert, bounce, onOpen, phoneKey }: { unread: number
         <span className="mini-phone-weather">
           <WeatherIcon weather={weather} night={night} /> {WEATHERS[weather].label}
         </span>
-        {unread > 0 && <span className="mini-phone-unread">{unread}</span>}
+        {unread > 0 && <span className="mini-phone-unread">{unread > 9 ? '9+' : unread}</span>}
         <span className="mini-phone-key">{phoneKey}</span>
       </span>
     </button>
@@ -208,7 +208,7 @@ function AppIcon({ app, nav, badge, label = true }: { app: (typeof APPS)[number]
     <button type="button" aria-label={app.name} onClick={(event) => { nav.go(app.id); event.currentTarget.blur() }}>
       <span className="phone-icon" style={{ background: `linear-gradient(160deg, ${app.color}, color-mix(in srgb, ${app.color} 70%, #000))` }}>
         <AppGlyph path={app.glyph} />
-        {badge > 0 && <span className="phone-badge">{badge}</span>}
+        {badge > 0 && <span className="phone-badge">{badge > 9 ? '9+' : badge}</span>}
       </span>
       {label && <span className="phone-icon-name">{app.name}</span>}
     </button>

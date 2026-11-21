@@ -23,6 +23,9 @@ export const liveSight = { value: new THREE.Vector4(0, 0, 0, 0) }
  */
 const SIGHT = { from: 0.02, to: 0.84, gone: 0.5 }
 
+/** How near the camera things (the ones `seeThrough` is on) fade away, in metres. */
+const NEAR = { gone: 0.7, whole: 1.5 }
+
 type Hook = THREE.Material['onBeforeCompile']
 
 /**
@@ -41,6 +44,12 @@ export function seeThrough(also?: Hook): Hook {
       .replace(
         '#include <clipping_planes_fragment>',
         `#include <clipping_planes_fragment>
+  {
+    // Anything this near the camera thins to nothing: a parked scooter or a branch a hand's breadth
+    // from the lens filled the screen. Gone at ${NEAR.gone.toFixed(1)} m, whole from ${NEAR.whole.toFixed(1)} m.
+    float nearKept = smoothstep(${NEAR.gone.toFixed(2)}, ${NEAR.whole.toFixed(2)}, length(vSightView));
+    if (nearKept < 1.0 && nearKept < fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))) discard;
+  }
   if (uSight.w > 0.0) {
     // How far along the line from the camera (0) to the rider (1) this bit of the thing is, and how far off it.
     float sightAlong = dot(vSightView, uSight.xyz) / dot(uSight.xyz, uSight.xyz);

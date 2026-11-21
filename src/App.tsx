@@ -36,6 +36,7 @@ import { worldPlanner } from './world/planAhead'
 import { DutyUi } from './ui/DutyUi'
 import { Objective } from './ui/Objective'
 import { Prompts } from './ui/Prompts'
+import { ParkHint } from './ui/ParkHint'
 import { Subtitle } from './ui/Subtitle'
 import { RoomCard } from './ui/RoomUi'
 import { RoomFade } from './ui/RoomFade'
@@ -95,6 +96,7 @@ function RidingUi() {
       <DutyUi />
       <Objective />
       <Prompts />
+      <ParkHint />
       <Subtitle />
       <RoomCard />
       <GuardCard />

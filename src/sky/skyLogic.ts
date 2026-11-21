@@ -30,8 +30,10 @@ export const SKY_RULES = {
   /** The clock runs this much faster after dark, so most riding is in daylight. */
   nightClockSpeed: 2,
   startHour: 9,
-  /** A first visit (no saved progress) starts at golden hour instead, with the low sun across the streets. */
-  firstStartHour: 17.5,
+  /** A first visit (no saved progress) starts when the story says it does: 6:40 in the morning, the sun just up. */
+  firstStartHour: 6 + 40 / 60,
+  /** During the tutorial the clock runs no faster than this many times real time (a day is 48 times). */
+  tutorialClock: 10,
   /** The clock runs at this speed through the evening's golden hour, so it lasts a few real minutes. */
   goldenClockSpeed: 0.5,
   goldenClockFrom: 16.75,
