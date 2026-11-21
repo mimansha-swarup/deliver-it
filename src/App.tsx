@@ -4,6 +4,7 @@ import type { Quality } from './game/qualitySettings'
 // and a cap on brightness that stops black frames (see brightnessCap.ts).
 import { markLoad } from './dev/loadTimeline'
 import './world/haze'
+import './world/quietThree'
 import './world/brightnessCap'
 // Anonymous counts of how the game is used (game/analytics.ts): nothing is sent until an endpoint is set.
 import './game/analytics'
@@ -21,6 +22,7 @@ import { RadioPlayer } from './ui/Radio'
 import { Phone } from './ui/Phone'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
+import { StaticMatrices } from './world/StaticMatrices'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
 import { DevStats } from './dev/DevStats'
 import { FpsOverlay } from './dev/FpsOverlay'
@@ -136,11 +138,12 @@ function App() {
     <>
       <ErrorBoundary>
         {/* No antialiasing here: everything is drawn through PostEffects, which antialiases its own picture. */}
-        <Canvas shadows dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
+        <Canvas shadows="percentage" dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
           <color attach="background" args={[SKY_COLOR]} />
           <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
           <ViewDistance />
           <AdaptiveResolution />
+          <StaticMatrices />
           <DevStats />
           <PauseClock />
           <PostEffects />
