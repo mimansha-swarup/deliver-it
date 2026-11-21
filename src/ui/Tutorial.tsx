@@ -187,7 +187,10 @@ function TutorialCard() {
   // Re-renders when keys are changed, so the card shows the new ones.
   useKeys((state) => state.bindings)
   const micro = useMicroPrompt(step)
+  const handedOver = useGameStore((state) => state.phase === 'handingOver' || state.phase === 'delivered' || state.lastReward !== null)
   if (!step) return null
+  // The hand-over is the end of it: the card goes at once (it used to show the step's old long text for a moment).
+  if (step === 'deliver' && (handedOver || micro === null)) return null
   const { card, optional } = STEPS[step]
   return (
     <section className="tutorial-card" aria-live="polite">

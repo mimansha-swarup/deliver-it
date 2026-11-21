@@ -1,4 +1,5 @@
 import { useKeyName } from '../game/keyBindings'
+import { inFirstOrder } from '../game/firstOrder'
 import { isKey } from '../game/keyBindings'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
@@ -279,7 +280,9 @@ export function Phone() {
     const from = note.thread
     setNotes((list) => [note, ...list].slice(0, 6))
     if (reading.current === from) return
-    setUnread((counts) => ({ ...counts, [from]: (counts[from] ?? 0) + 1 }))
+    // During the first order each sender counts once, however much they say: Ravi and the customer talk
+    // a first-timer through it line by line, and the badge passed nine before the first delivery.
+    setUnread((counts) => ({ ...counts, [from]: inFirstOrder() ? 1 : (counts[from] ?? 0) + 1 }))
   })
   const notification = useNotifications(countMessage)
 

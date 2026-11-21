@@ -29,6 +29,8 @@ const FASTEST_REFRESH = 1 / 60
  * screen's rate is read from the browser's frame stamps, which stay on its refresh.
  */
 const TARGET_FPS = 80
+/** A frame rate under this share of the aim is too slow. */
+const NEAR_TARGET = 1.04
 /** On a fast screen the drop waits for this many slow batches running: a step's own hitch costs more than a few seconds a little under the target. */
 const DROP_BATCHES_FAST = 5
 /** A step up is only tried from this much above the target, as it will cost about a fifth of the frame rate. */
@@ -170,7 +172,9 @@ export function AdaptiveResolution() {
     const { refresh } = screen.current
     const fast = refresh < SLOWEST_REFRESH * 0.95
     const target = Math.min(TARGET_FPS, 0.94 / refresh)
-    const tooSlow = fast ? fps < target : lateShare > DROP_SHARE
+    // On a fast screen, hovering a little under the aim counts: at 70 to 80 FPS with 80 the aim, a second
+    // at 81 kept resetting the count and the resolution never came down.
+    const tooSlow = fast ? fps < target * NEAR_TARGET : lateShare > DROP_SHARE
     const calm = lateShare <= CALM_SHARE && (!fast || fps >= target * RAISE_HEADROOM)
     if (state.ceilingAge > CEILING_SECONDS) state.ceiling = Infinity
     // Debug: what the last batch measured (`__deliverItScaler`, with ?debug).

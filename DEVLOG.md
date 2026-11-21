@@ -11769,3 +11769,25 @@ title screen, nothing stuck, no frame over 25 ms, 06:50 on the phone at the end.
 
 Not done: the snag on the store's door frame was not found (the wider zones go round it); that
 posts and walls cover under a quarter of the picture was not measured.
+
+## 2026-11-21: Entry 271, the last of the first order's issues
+
+- **In the dark store with the bag**, the map's pin is on the way out too (`currentTarget`,
+  ui/mapDrawing.ts, followed only outdoor doors; the arrow and the distance already led there).
+  Checked in the store: the arrow aims at the door, 1 m, "Leave" offered.
+- **The phone's badge** counts each sender once during the first order (ui/Phone.tsx): Ravi and the
+  customer talk a first-timer through it line by line, and it passed nine before the delivery.
+- **The shot of rider and customer** under the result card clears a way 2.6 m wide through trees,
+  poles and people to the point between the two (`SHOT_SIGHT`, FollowCamera.tsx).
+- **The tutorial's card goes at the hand-over**, and never falls back to the step's long text.
+- **The city is built while the story's cards are read** (ui/TitleScreen.tsx sets `curtainDrawn` as
+  the story opens). The loading screen after the last card is about 1.2 s, and the first ten
+  seconds of the ride have no frame over 50 ms. One frame of about 300 ms remains, behind the
+  loading screen as it comes up.
+- **The resolution scaler** counts a frame rate within 4% of its aim as too slow on a fast screen
+  (it hovered at 70 to 80 with 80 the aim, and never came down).
+
+Replayed fresh three times by the autopilot on the production build: delivered 83, 84 and 81 s
+after the title screen (five stars, ₹30 tip in the one that was read), nothing stuck, no frame
+over 50 ms. High by scripts/bench.mjs: 103 FPS on main-road and 94 on residential-street, both at
+the top resolution.

@@ -74,6 +74,8 @@ const SHOT_HEIGHT = 1.75
 const SHOT_LOOK_HEIGHT = 1.05
 /** How quickly the camera moves in and out of such a moment. */
 const SHOT_RESPONSE = 3.5
+/** How wide a way is cleared through trees, poles and people to the middle of a set shot, in metres. */
+const SHOT_SIGHT = 2.6
 
 /** How far the camera rattles in the hardest hit, in metres. */
 const SHAKE_SIZE = 0.35
@@ -443,7 +445,13 @@ export function FollowCamera({
     sway.current += (swayTarget - sway.current) * (1 - Math.exp(-SWAY_RESPONSE * delta))
     camera.rotateZ(sway.current)
     // On foot, whatever stands between the camera and the rider's chest gives way (seeThrough.ts): where they are, as the camera sees them.
-    if (walk > 0.01 && follow > 0.5) {
+    if (amount > 0.5) {
+      // In the set shot of rider and customer (the hand-over and its result), a wider way is cleared, to where the
+      // shot is looking: between the two of them. No branch or pole stands in front of either.
+      camera.updateMatrixWorld()
+      sight.set(liveShot.lookX, SHOT_LOOK_HEIGHT + level.current, liveShot.lookZ).applyMatrix4(camera.matrixWorldInverse)
+      liveSight.value.set(sight.x, sight.y, sight.z, SHOT_SIGHT)
+    } else if (walk > 0.01 && follow > 0.5) {
       camera.updateMatrixWorld()
       sight.set(state.rider.x, state.rider.y + 0.25, state.rider.z).applyMatrix4(camera.matrixWorldInverse)
       liveSight.value.set(sight.x, sight.y, sight.z, FOOT_WALLS.sight * walk)

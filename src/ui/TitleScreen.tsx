@@ -57,6 +57,15 @@ export function TitleScreen() {
   const invited = invitedTo()
   const [view, setView] = useState<View>(invited ? 'friends' : 'menu')
 
+  // While the story's cards are read, the city is built behind them (the title's pictures cover it):
+  // its shapes made, its shaders compiled, its pictures sent to the graphics card. Left until the
+  // last card, all of that landed in the moment after it, as one long frame and a loading screen.
+  useEffect(() => {
+    if (view !== 'story') return
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => useLaunch.setState({ curtainDrawn: true })))
+    return () => cancelAnimationFrame(id)
+  }, [view])
+
   const launch = (explore: boolean) => {
     // Explore: the city to roam, with no orders and any vehicle to drive (game/borrow.ts). Otherwise the career.
     useGameStore.getState().setExplore(explore)
