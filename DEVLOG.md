@@ -11638,3 +11638,30 @@ notes under every word that droned like a harmonium.
 
 Checked that a break plays through with no errors. Nobody has listened to it yet: it was written
 by the numbers.
+
+## 2026-11-21: Entry 263, cars that drive like cars, riders upright, flyover joins, and a tune for the RJ
+
+From playing the deploy preview.
+
+- **Cabs (car, auto, van, bus) steered like scooters**: a tap swung them round. Their wheel now
+  winds on at half the speed, they turn no tighter than a circle 1.3 of their lengths in radius,
+  and no harder at speed than 5.5 m/s² sideways (`CAB_STEERING`, ScooterController.ts). They came
+  back off a wall with 30% of their speed, which lurched them backwards and forwards at every
+  touch: now 4%. Measured: the car no longer goes backwards after a hit.
+- **Riders sit upright** on two-wheelers: seat leans 0.03 to 0.1 rad (were 0.12 to 0.34), and only
+  a small tuck at speed. The borrowed bike turns a little less keenly.
+- **A bus keeps the camera out**: traffic 7 m long or more blocks the camera as a wall does
+  (FollowCamera.tsx). On foot beside one, the camera was inside it.
+- **Flyovers** (transitPlacement.ts): ends within 4 m are one joint and meet at one height, easing
+  to each deck's own over 70 m; no barrier, drawn or solid, where a deck's edge lies on another
+  deck's roadway; an upper deck is lifted to leave 5.4 m over one it crosses; a deck under the metro
+  comes down to 7.2 m; building sites keep off flyovers (none on one now, of 437).
+  **Not finished:** at the Silk Board interchange seven places still have two sections overlapping
+  0.6 to 2.7 m apart in height (near x −2956 z −837, −2965 −830, −3125 −1039, −2935 −850,
+  −3118 −789, −3127 −1032). They run nearly side by side there, which the crossing rule leaves alone.
+  None of this was looked at in the game: it was checked by the numbers only.
+- **The RJ's ident is a tune**: ten plucked notes in D major over four bass notes, 4.6 s. Nobody
+  has listened to it.
+- The jitter reported on the scooter and bike was not reproduced as a fault: on a level street the
+  camera and vehicle are steady frame to frame; over breakers and flyover joints the camera's
+  height moves up to 0.2 m.

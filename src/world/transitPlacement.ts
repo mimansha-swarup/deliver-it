@@ -420,11 +420,34 @@ const FOOTPRINT_MARGIN = 1.5
  * layer, down to the ground over a ramp at an end that meets a road at ground level) and width.
  * Needed before the ground map, which paves their footprint.
  */
+/**
+ * Two flyovers that meet end to end are one road, so they meet at one height. They didn't always:
+ * a deck one level up met a deck two levels up as a wall and a drop, and two ends a metre or two
+ * apart on the map weren't seen to meet at all (one came down a ramp beside the other's blunt end).
+ * Ends within `JOINT.within` metres are one joint; every deck at a joint is at the joint's height
+ * there (the mean of theirs) and eases to its own over `JOINT.ease` metres.
+ */
+const JOINT = { within: 4, ease: 70 }
+
 export function planFlyoverDecks(data: MapData): Flyover[] {
-  const endKey = ([x, z]: GroundPoint) => `${Math.round(x)},${Math.round(z)}`
-  const ends = new Map<string, number>()
   const lines = data.flyovers.map((road) => road.geometry.coordinates.map(toGround))
-  for (const line of lines) for (const end of [line[0], line[line.length - 1]]) ends.set(endKey(end), (ends.get(endKey(end)) ?? 0) + 1)
+  const topOf = (i: number) => FLYOVER_HEIGHT[Math.min(2, Math.max(1, Number(data.flyovers[i].properties.layer ?? 1)))]
+  // The joints: each end goes to the first joint within reach, or starts one.
+  const joints: { x: number; z: number; tops: number[] }[] = []
+  const jointAt = ([x, z]: GroundPoint) => joints.find((joint) => Math.hypot(joint.x - x, joint.z - z) <= JOINT.within)
+  lines.forEach((line, i) => {
+    if (line.length < 2) return
+    for (const end of [line[0], line[line.length - 1]]) {
+      const joint = jointAt(end)
+      if (joint) joint.tops.push(topOf(i))
+      else joints.push({ x: end[0], z: end[1], tops: [topOf(i)] })
+    }
+  })
+  /** The height every deck is at where this end is, or null where it meets no other and comes down to the road. */
+  const heightAtEnd = (end: GroundPoint): number | null => {
+    const joint = jointAt(end)
+    return joint && joint.tops.length > 1 ? joint.tops.reduce((sum, top) => sum + top, 0) / joint.tops.length : null
+  }
   const decks: Flyover[] = []
   data.flyovers.forEach((road, i) => {
     const line = lines[i]
@@ -438,10 +461,13 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
       points.push([x, z])
     }
     const path = makePath(points)
-    const top = FLYOVER_HEIGHT[Math.min(2, Math.max(1, Number(road.properties.layer ?? 1)))]
-    const startsLow = (ends.get(endKey(line[0])) ?? 0) < 2
-    const endsLow = (ends.get(endKey(line[line.length - 1])) ?? 0) < 2
+    const top = topOf(i)
+    const startJoint = heightAtEnd(line[0])
+    const endJoint = heightAtEnd(line[line.length - 1])
+    const startsLow = startJoint === null
+    const endsLow = endJoint === null
     const ramp = Math.min(RAMP, path.length / 2)
+    const ease = Math.min(JOINT.ease, path.length / 2)
     // An S-curve up each ramp: level where it leaves the road and where it meets the deck, steepest
     // halfway (1.5 times the average: about 8% on the 6.8 m flyovers), so riding over the top and the
     // foot is smooth. The riding (heightOnFlyover) and the drawing both use these heights.
@@ -451,13 +477,108 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
     }
     const heights = path.at.map((s) => {
       let height = top
+      // Towards a joint, from its own height to the joint's.
+      if (startJoint !== null) height += (startJoint - top) * (1 - curve(s / ease))
+      if (endJoint !== null) height += (endJoint - top) * (1 - curve((path.length - s) / ease))
       if (startsLow) height = Math.min(height, top * curve(s / ramp))
       if (endsLow) height = Math.min(height, top * curve((path.length - s) / ramp))
       return height
     })
     decks.push({ name: road.properties.name ?? 'Flyover', path, heights, width: Math.max(7, getRoadWidth(road)), oneWay: road.properties.oneway === 'yes', startsLow, endsLow })
   })
+  // More than once: lifting one deck over another can bring it up under a third.
+  for (let pass = 0; pass < 4; pass++) giveHeadroom(decks)
+  keepUnderMetro(decks, metroLine(data).points)
   return decks
+}
+
+/**
+ * Where one flyover crosses over another (or over another's ramp), there has to be room under it
+ * for a bus: `HEADROOM.clear` metres from road to road (the deck is 1.7 m deep, a bus 3.2 m tall).
+ * Two levels 2.6 m apart left 0.9 m, and a deck over a ramp less. The upper one is lifted over the
+ * crossing and eased back over `HEADROOM.ease` metres either way; not within `HEADROOM.ends` of its
+ * own ends, which stay where the road or the next deck has them. Decks running side by side into
+ * one another (a merge, not a crossing: within `HEADROOM.parallel` of the same direction) are left alone.
+ */
+const HEADROOM = { clear: 5.4, ease: 90, ends: 25, parallel: 0.85 }
+/**
+ * The metro's viaduct is the highest thing on the road (its rails at 13.6 m, its girders' underside
+ * about 2 m below), and a flyover passing under it at 9.4 m left a bus no room. Under the metro a
+ * deck is no higher than `UNDER_METRO.top`, coming down to that over `UNDER_METRO.ease` metres
+ * either side of where the line crosses (`UNDER_METRO.reach` metres from its middle).
+ */
+const UNDER_METRO = { top: 7.2, ease: 110, reach: 7 }
+function keepUnderMetro(decks: Flyover[], line: GroundPoint[]) {
+  if (line.length < 2) return
+  const curve = (t: number) => {
+    const u = Math.max(0, Math.min(1, t))
+    return u * u * (3 - 2 * u)
+  }
+  for (const deck of decks) {
+    const { points, at } = deck.path
+    const crossings: number[] = []
+    points.forEach(([x, z], i) => {
+      for (let k = 1; k < line.length; k++) {
+        const [ax, az] = line[k - 1]
+        const [bx, bz] = line[k]
+        const ex = bx - ax
+        const ez = bz - az
+        const lengthSquared = ex * ex + ez * ez
+        if (lengthSquared < 0.01) continue
+        const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / lengthSquared))
+        if (Math.hypot(x - ax - ex * t, z - az - ez * t) < UNDER_METRO.reach + deck.width / 2) {
+          crossings.push(at[i])
+          return
+        }
+      }
+    })
+    if (crossings.length === 0) continue
+    deck.heights.forEach((height, i) => {
+      if (height <= UNDER_METRO.top) return
+      let nearest = Infinity
+      for (const s of crossings) nearest = Math.min(nearest, Math.abs(at[i] - s))
+      // All the way down at the crossing, its own height again an ease away.
+      deck.heights[i] = UNDER_METRO.top + (height - UNDER_METRO.top) * curve(nearest / UNDER_METRO.ease)
+    })
+  }
+}
+
+function giveHeadroom(decks: Flyover[]) {
+  const curve = (t: number) => {
+    const u = Math.max(0, Math.min(1, t))
+    return u * u * (3 - 2 * u)
+  }
+  const lifts = decks.map((deck) => deck.heights.map(() => 0))
+  for (let a = 0; a < decks.length; a++) {
+    for (let b = a + 1; b < decks.length; b++) {
+      const A = decks[a]
+      const B = decks[b]
+      const reach = (A.width + B.width) / 2
+      for (let i = 1; i < A.path.points.length; i++) {
+        const [ax, az] = A.path.points[i]
+        const [pax, paz] = A.path.points[i - 1]
+        for (let j = 1; j < B.path.points.length; j++) {
+          const [bx, bz] = B.path.points[j]
+          if (Math.hypot(ax - bx, az - bz) > reach) continue
+          const [pbx, pbz] = B.path.points[j - 1]
+          const la = Math.hypot(ax - pax, az - paz) || 1
+          const lb = Math.hypot(bx - pbx, bz - pbz) || 1
+          if (Math.abs(((ax - pax) * (bx - pbx) + (az - paz) * (bz - pbz)) / (la * lb)) > HEADROOM.parallel) continue
+          const upperIsA = A.heights[i] >= B.heights[j]
+          const [upper, at, lower] = upperIsA ? [a, i, B.heights[j]] : [b, j, A.heights[i]]
+          const need = lower + HEADROOM.clear - decks[upper].heights[at]
+          if (need <= 0) continue
+          const { at: along, length } = decks[upper].path
+          for (let k = 0; k < along.length; k++) {
+            const nearEnd = Math.min(1, along[k] / HEADROOM.ends, (length - along[k]) / HEADROOM.ends)
+            const lift = need * (1 - curve(Math.abs(along[k] - along[at]) / HEADROOM.ease)) * curve(nearEnd)
+            if (lift > lifts[upper][k]) lifts[upper][k] = lift
+          }
+        }
+      }
+    }
+  }
+  decks.forEach((deck, n) => deck.heights.forEach((height, k) => (deck.heights[k] = height + lifts[n][k])))
 }
 
 /** How far below a deck's top its underside is, girders and all, in metres (Transit.tsx' deck). */
@@ -724,6 +845,43 @@ const BAND_SLACK = 1.2
 
 const DECK_CELL = 16
 
+/**
+ * Where two flyovers join, or a ramp runs into a deck, the edge of one lies on the roadway of the
+ * other. A crash barrier built along that edge is a wall across the road (there was one, across
+ * both lanes, where the ramps meet). So a point of one deck's edge that is on another deck's
+ * roadway, `JOIN.inside` metres or more in from its edge and within `JOIN.level` of its height,
+ * gets no barrier: none drawn (Transit.tsx) and none solid (below).
+ */
+const JOIN = { inside: 0.9, level: 1.3, piece: 2 }
+const deckBounds = new WeakMap<Flyover, [number, number, number, number]>()
+export function onAnotherDeck(decks: Flyover[], own: Flyover, x: number, z: number, height: number): boolean {
+  for (const deck of decks) {
+    if (deck === own) continue
+    const { points } = deck.path
+    let bounds = deckBounds.get(deck)
+    if (!bounds) {
+      bounds = [Infinity, Infinity, -Infinity, -Infinity]
+      for (const [px, pz] of points) bounds = [Math.min(bounds[0], px), Math.min(bounds[1], pz), Math.max(bounds[2], px), Math.max(bounds[3], pz)]
+      deckBounds.set(deck, bounds)
+    }
+    const half = deck.width / 2
+    if (x < bounds[0] - half || z < bounds[1] - half || x > bounds[2] + half || z > bounds[3] + half) continue
+    for (let i = 1; i < points.length; i++) {
+      const [ax, az] = points[i - 1]
+      const [bx, bz] = points[i]
+      const ex = bx - ax
+      const ez = bz - az
+      const lengthSquared = ex * ex + ez * ez
+      if (lengthSquared < 0.01) continue
+      const t = ((x - ax) * ex + (z - az) * ez) / lengthSquared
+      if (t < 0 || t > 1) continue
+      if (Math.abs((x - ax) * ez - (z - az) * ex) / Math.sqrt(lengthSquared) > half - JOIN.inside) continue
+      if (Math.abs(deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t - height) < JOIN.level) return true
+    }
+  }
+  return false
+}
+
 export function createDeckLevels(decks: Flyover[]): DeckLevels {
   type Segment = { deck: Flyover; i: number }
   const cells = new Map<string, Segment[]>()
@@ -761,12 +919,26 @@ export function createDeckLevels(decks: Flyover[]): DeckLevels {
       const sz = (-(bx - ax) / length) * (half - EDGE_INSET)
       const low = Math.min(deck.heights[i - 1], deck.heights[i])
       const high = Math.max(deck.heights[i - 1], deck.heights[i])
-      for (const side of [1, -1]) wall([ax + sx * side, az + sz * side], [bx + sx * side, bz + sz * side], 0.4, low, high)
+      // In pieces, so that only the part of an edge that lies on another deck's roadway is left open.
+      const pieces = Math.max(1, Math.ceil(length / JOIN.piece))
+      for (const side of [1, -1]) {
+        for (let p = 0; p < pieces; p++) {
+          const t0 = p / pieces
+          const t1 = (p + 1) / pieces
+          const mid = (t0 + t1) / 2
+          const height = deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * mid
+          if (onAnotherDeck(decks, deck, ax + (bx - ax) * mid + sx * side, az + (bz - az) * mid + sz * side, height)) continue
+          wall([ax + (bx - ax) * t0 + sx * side, az + (bz - az) * t0 + sz * side], [ax + (bx - ax) * t1 + sx * side, az + (bz - az) * t1 + sz * side], 0.4, low, high)
+        }
+      }
     }
     // An end up in the air that meets no other flyover (the one under construction): closed off.
     for (const [index, s] of [[0, 0.3], [points.length - 1, deck.path.length - 0.3]] as const) {
       const low = index === 0 ? deck.startsLow : deck.endsLow
-      if (low || (ends.get(endKey(points[index])) ?? 0) > 1) continue
+      // Joined to another deck there (planFlyoverDecks' joints: ends within a few metres): open road.
+      const [ex, ez] = points[index]
+      const joined = decks.some((other) => other !== deck && [other.path.points[0], other.path.points[other.path.points.length - 1]].some(([ox, oz]) => Math.hypot(ox - ex, oz - ez) <= JOINT.within + 1))
+      if (low || joined || (ends.get(endKey(points[index])) ?? 0) > 1) continue
       const { x, z, dirX, dirZ } = pointOnPath(deck.path, s)
       const height = heightOnFlyover(deck, s)
       wall([x + dirZ * half, z - dirX * half], [x - dirZ * half, z + dirX * half], 0.6, height, height)

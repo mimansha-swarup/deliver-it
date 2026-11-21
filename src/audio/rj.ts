@@ -11,7 +11,7 @@ import { lineText, pickLine, readingTime, speak, VOICE_LINES, type Playing } fro
  *
  * A break is a few recorded lines in a row (audio/voice.ts; their words are in voiceScript.json): a
  * hello, what the roads are doing, the rain if it's raining, a sign-off; or one ad. It opens with
- * the station's ident (a slow phrase of soft bells that plays her in), two soft notes separate the
+ * the station's ident (a short plucked tune that plays her in), two soft notes separate the
  * lines, and she speaks over the station's own music turned down, as on a real station. The voice
  * comes through the radio's own filter and compressor.
  *
@@ -52,13 +52,22 @@ function trafficUpdate({ hours, rain, night, events }: RoadReport): Segment[] {
 const ADS = VOICE_LINES.filter(({ id }) => id.startsWith('manju.ad.')).map(({ id }) => id)
 
 /**
- * The station's ident, before she speaks: a slow, soft phrase of six bell-like notes, each dying
- * away, with an echo that lets it ring, as a radio station plays you in before its RJ. It was
- * three quick bright notes, and then her voice straight on top: it startled more than it welcomed.
- * It lasts `IDENT_SECONDS`; she waits for it. Composed here, on the music bus.
+ * The station's ident, before she speaks: a little tune, as a radio station plays you in before its
+ * RJ. Ten plucked notes in D major over four soft bass notes, about four and a half seconds, ending
+ * on a held high D with an echo that lets it ring. Each note is plucked and dies away (nothing is
+ * held: held notes droned like a harmonium). She waits for it. Composed here; on the music bus.
  */
-const IDENT_SECONDS = 2.5
-const IDENT_NOTES = [293.7, 440, 370, 493.9, 440, 587.3]
+const EIGHTH = 0.3
+/** The tune: [when, in eighths of a beat; pitch in Hz; how long it rings, in seconds]. */
+const IDENT_TUNE: [number, number, number][] = [
+  [0, 370, 0.5], [1, 440, 0.5], [2, 587.3, 0.9],
+  [4, 493.9, 0.5], [5, 440, 0.5], [6, 370, 0.9],
+  [8, 329.6, 0.5], [9, 370, 0.5], [10, 440, 0.7],
+  [12, 587.3, 1.6],
+]
+/** Under it, one soft low note a bar: D, G, A, D. */
+const IDENT_BASS: [number, number][] = [[0, 146.8], [4, 196], [8, 220], [12, 146.8]]
+const IDENT_SECONDS = 12 * EIGHTH + 1.0
 function jingle() {
   const buses = getAudioEvenIfPaused()
   if (!buses) return
@@ -67,29 +76,33 @@ function jingle() {
   // Everything through one soft filter, and an echo that fades on its own.
   const soften = context.createBiquadFilter()
   soften.type = 'lowpass'
-  soften.frequency.value = 2400
+  soften.frequency.value = 2600
   const echo = context.createDelay(1)
-  echo.delayTime.value = 0.3
+  echo.delayTime.value = EIGHTH * 1.5
   const again = context.createGain()
-  again.gain.value = 0.32
+  again.gain.value = 0.25
   soften.connect(music)
   soften.connect(echo).connect(again).connect(echo)
   again.connect(music)
-  IDENT_NOTES.forEach((hz, index) => {
-    const at = start + index * 0.27
-    for (const [ratio, share] of [[1, 1], [2, 0.18]]) {
-      const tone = context.createOscillator()
-      tone.type = 'sine'
-      tone.frequency.value = hz * ratio
-      const level = context.createGain()
-      level.gain.setValueAtTime(0, at)
-      level.gain.linearRampToValueAtTime(0.2 * share, at + 0.03)
-      level.gain.exponentialRampToValueAtTime(0.0001, at + 1.3)
-      tone.connect(level).connect(soften)
-      tone.start(at)
-      tone.stop(at + 1.4)
-    }
-  })
+  const pluck = (at: number, hz: number, rings: number, loud: number, type: OscillatorType) => {
+    const tone = context.createOscillator()
+    tone.type = type
+    tone.frequency.value = hz
+    const level = context.createGain()
+    level.gain.setValueAtTime(0, at)
+    level.gain.linearRampToValueAtTime(loud, at + 0.012)
+    level.gain.exponentialRampToValueAtTime(0.0001, at + rings)
+    tone.connect(level).connect(soften)
+    tone.start(at)
+    tone.stop(at + rings + 0.05)
+  }
+  for (const [when, hz, rings] of IDENT_TUNE) {
+    const at = start + when * EIGHTH
+    // A plucked string: the note, and a quieter octave over it that dies sooner.
+    pluck(at, hz, rings, 0.2, 'triangle')
+    pluck(at, hz * 2, rings * 0.5, 0.05, 'sine')
+  }
+  for (const [when, hz] of IDENT_BASS) pluck(start + when * EIGHTH, hz, 1.1, 0.16, 'sine')
   window.setTimeout(() => {
     soften.disconnect()
     again.disconnect()

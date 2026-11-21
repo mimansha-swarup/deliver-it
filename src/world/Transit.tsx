@@ -18,7 +18,7 @@ import { StiltParking } from './StiltParking'
 import { box, colored, merge } from './simpleShapes'
 import { createPosterAtlas, POSTER_COLUMNS, POSTER_ROWS } from './posters'
 import { createBusGeometry } from '../traffic/bus'
-import { BUS_STAND, heightOnFlyover, RIDE_UNDER, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
+import { BUS_STAND, heightOnFlyover, onAnotherDeck, RIDE_UNDER, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
 
 /*
  * Draws the metro planned in transitPlacement.ts: the tracks and overhead line on the viaduct's deck, the
@@ -667,6 +667,13 @@ function createDeckSurfaces(decks: Flyover[]) {
       const pos: number[] = []
       for (let i = 1; i < points.length; i++) {
         if (!inMap(i) && !inMap(i - 1)) continue
+        // No barrier where this edge lies on another deck's roadway: there the two flyovers join (transitPlacement.ts).
+        {
+          const o = side * (deck.width / 2 - BARRIER.width / 2)
+          const mx = (points[i - 1][0] + points[i][0]) / 2 + ((sides[i - 1][0] + sides[i][0]) / 2) * o
+          const mz = (points[i - 1][1] + points[i][1]) / 2 + ((sides[i - 1][1] + sides[i][1]) / 2) * o
+          if (onAnotherDeck(decks, deck, mx, mz, (deck.heights[i - 1] + deck.heights[i]) / 2)) continue
+        }
         const corner = (k: number, out: number, up: number) => {
           const [x, z] = points[k]
           const [sx, sz] = sides[k]
