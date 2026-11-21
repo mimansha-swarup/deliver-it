@@ -71,11 +71,11 @@ type RoomState = {
   me: { id: string; name: string; colour: string }
   riders: Record<string, Rider>
   round: Round | null
-  /** What the rider earned before the round began, to count only the round's. */
-  roundBase: number
+  /** What this rider has earned in the round that's on. */
+  roundEarned: number
 }
 
-export const useRoomStore = create<RoomState>(() => ({ status: 'off', error: null, code: null, host: false, me: { id: '', name: '', colour: COLOURS[0] }, riders: {}, round: null, roundBase: 0 }))
+export const useRoomStore = create<RoomState>(() => ({ status: 'off', error: null, code: null, host: false, me: { id: '', name: '', colour: COLOURS[0] }, riders: {}, round: null, roundEarned: 0 }))
 
 let peer: Peer | null = null
 /** The host's connections to everyone; a guest's one connection to the host. */
@@ -100,11 +100,19 @@ function send(message: Message, except?: string) {
   for (const [id, link] of links) if (id !== except && link.open) link.send(message)
 }
 
-/** Everything earned so far on this device: a round counts what's added to it. */
-const earnedSoFar = () => useGameStore.getState().history.reduce((sum, { earned, tip }) => sum + earned + tip, 0)
+// What's earned in a round is counted delivery by delivery, as each lands at the top of the history.
+// (It was once the history's total now less its total at the start, but the history only keeps the
+// last few deliveries: for a rider with a full one, each new delivery pushed an old one out and
+// the total stood still, so their score stayed at nothing.)
+useGameStore.subscribe((state, previous) => {
+  const latest = state.history[0]
+  if (!latest || latest.id === previous.history[0]?.id) return
+  const { round, roundEarned, status } = useRoomStore.getState()
+  if (status === 'on' && round?.kind === 'delivery' && !round.done) useRoomStore.setState({ roundEarned: roundEarned + latest.earned + latest.tip })
+})
 
 function myNews(): Omit<Rider, 'seenAt'> {
-  const { me, round, roundBase } = useRoomStore.getState()
+  const { me, round, roundEarned } = useRoomStore.getState()
   const game = useGameStore.getState()
   const place = round?.kind === 'race' ? round.finished.findIndex(({ id }) => id === me.id) + 1 : 0
   return {
@@ -121,12 +129,12 @@ function myNews(): Omit<Rider, 'seenAt'> {
     vehicleHeading: livePlayer.vehicleHeading ?? livePlayer.heading,
     vehicle: game.vehicleId,
     speed: game.speedKmh,
-    score: round?.kind === 'delivery' ? Math.max(0, earnedSoFar() - roundBase) : place,
+    score: round?.kind === 'delivery' ? roundEarned : place,
   }
 }
 
 function startRound(round: Round | null) {
-  useRoomStore.setState({ round, roundBase: earnedSoFar() })
+  useRoomStore.setState({ round, roundEarned: 0 })
   const game = useGameStore.getState()
   if (round?.kind === 'race') game.setWaypoint({ x: round.x, z: round.z, node: round.node })
   if (round?.kind === 'delivery' && game.duty === 'off') game.goOnline()

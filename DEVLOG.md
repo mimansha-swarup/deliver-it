@@ -11492,3 +11492,12 @@ Screenshots at 10:00 and 17:30, front, side, three-quarter and rear, are in `cli
 
 Checked with two browsers: the guest, moved 70 m off, showed on the host's full map with their
 name. The jacket colours were built and compile; they weren't looked at close up.
+
+## 2026-11-21: Entry 254, a round's score counts for a rider with a long history
+
+In a delivery round the host's own score stayed at ₹0 while a friend's went up. A rider's score
+was the total of their delivery history now, less its total when the round began; but the
+history keeps only the last twelve deliveries, so for anyone with a full one each new delivery
+pushed an old one out and the total stood still. A friend on a new save had a short history, and
+theirs counted. The round's earnings are now added up delivery by delivery as each one lands.
+Checked with a full history: two deliveries in a round scored ₹145, then ₹235.
