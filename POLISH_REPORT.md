@@ -4,6 +4,13 @@ Branch `polish-1`, 21 November 2026. Feature freeze: only what a first-time play
 first 15 minutes. Every number here was measured on one machine (a 120 Hz laptop screen, headless
 Chrome, production build) with `scripts/bench.mjs --ride --hour 17.5`.
 
+The same report as a page, with the before/after screenshots and the video:
+https://claude.ai/artifact/BwZx9TAuNehxdFQ9Qmj1eS (private until shared).
+
+**Preview:** the branch is pushed, but this site builds Netlify previews for pull requests only
+(`https://polish-1--deliver-simulator.netlify.app` returns 404). Open a pull request for
+`polish-1` and Netlify posts the preview link on it. Production is untouched.
+
 ## The short version
 
 - **Done and checked:** the first five minutes (four tutorial steps, a short first order, "You're
