@@ -207,7 +207,8 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
   take(seconds > onTimeSeconds * VERY_LATE ? 2 : late ? 1 : 0, 'Late')
   take(Math.min(2, crashes), crashes === 1 ? '1 crash' : `${crashes} crashes`)
   // One bump is forgiven: HSR has a lot of breakers.
-  if (story.care === 'fragile') take(knocks >= 4 ? 2 : knocks >= 2 ? 1 : 0, `${knocks} bumps`)
+  // A bump or two on a fragile order is forgiven: it takes four to cost a star, and eight to cost two.
+  if (story.care === 'fragile') take(knocks >= 8 ? 2 : knocks >= 4 ? 1 : 0, `${knocks} bumps`)
   if (story.care === 'event') take(late ? 1 : 0, 'Nearly missed the event')
   stars = Math.max(1, stars)
 
@@ -256,7 +257,7 @@ function reactionFor(story: OrderStory, stars: number, late: boolean, knocks: nu
   if (stars === 1) return 'Finally! I was waiting so long.'
   // The customer talks about whatever they noticed most.
   if (story.care === 'event' && late) return stars === 4 ? 'I had to rush to get ready, but okay. Thanks!' : 'I nearly missed it! Next time faster, okay?'
-  if (story.care === 'fragile' && knocks >= 2) return stars === 4 ? 'Bit bumpy, but it looks fine. Thanks!' : 'Quite a bumpy ride, no? But okay, thanks.'
+  if (story.care === 'fragile' && knocks >= 4) return stars === 4 ? 'Bit bumpy, but it looks fine. Thanks!' : 'Quite a bumpy ride, no? But okay, thanks.'
   if (crashes > 0) return story.care === 'fragile' ? 'The box is all dented! I hope it\'s not broken inside.' : 'Why is the bag so crushed? Okay, thanks I guess.'
   if (late) return stars === 4 ? 'Bit late, but no problem. Thanks!' : 'Took quite long, no? Okay, thanks.'
   return 'Thank you! All good.'

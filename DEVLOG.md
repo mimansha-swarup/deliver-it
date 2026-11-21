@@ -11501,3 +11501,23 @@ history keeps only the last twelve deliveries, so for anyone with a full one eac
 pushed an old one out and the total stood still. A friend on a new save had a short history, and
 theirs counted. The round's earnings are now added up delivery by delivery as each one lands.
 Checked with a full history: two deliveries in a round scored ₹145, then ₹235.
+
+## 2026-11-21: Entry 255, friends are solid, and a bump is only a bump
+
+- **Riding into a friend is hitting something.** Each friend's vehicle (and a friend on foot) is a
+  shape in this rider's own collision world, moved to where they are ten times a second
+  (`SolidFriends` in net/RemoteRiders.tsx). Each browser does it for itself, so both riders feel
+  it. Not while two are on top of each other (both just arrived at one spot), or one would be
+  trapped. Checked with two browsers: the host rode at a friend parked 12 m ahead and was stopped.
+- **Bumps cost far less.** A hard bump over a breaker took too much from an order:
+
+  | | before | now |
+  |---|---|---|
+  | Fragile order's condition, per bump | 14% | 6% |
+  | Hot food's, per bump | 2% | 0.8% |
+  | Ice cream's, per bump | 2% | nothing: shaking doesn't melt it |
+  | Bumps that cost a star, ordinary order | 4 | 10 |
+  | Bumps that cost a star, fragile order (roughness) | 2 | 4 to 5 |
+  | Fragile order's own bump count: a star, two stars | 2, 4 | 4, 8 |
+
+  Crashes are unchanged: they're what should hurt.

@@ -20,7 +20,11 @@ type CargoRule = {
   meter: string | null
   /** The rule in a line, for the order sheet. */
   hint: string
-  /** Condition lost at a hard bump, and at a crash. */
+  /**
+   * Condition lost at a hard bump, and at a crash. A bump is only a bump: a cake survives six or
+   * seven of them before it arrives poor, hot food barely notices, and ice cream doesn't melt for
+   * being shaken. It's a crash that does the damage.
+   */
   bump: number
   crash: number
   /**
@@ -39,9 +43,9 @@ type CargoRule = {
 
 export const CARGO: Record<CargoType, CargoRule> = {
   parcel: { label: '', meter: null, hint: '', bump: 0, crash: 0, lasts: 0, timeShare: 1, payShare: 1, poor: '', ruined: '' },
-  fragile: { label: 'Fragile', meter: 'Intact', hint: 'Fragile: bumps and crashes damage it. Breakers and potholes below half speed.', bump: 0.14, crash: 0.4, lasts: 0, timeShare: 1, payShare: 1, poor: 'Damaged', ruined: 'Smashed' },
-  hot: { label: 'Hot food', meter: 'Hot', hint: 'Hot food: it cools from the counter on. Go straight there.', bump: 0.02, crash: 0.2, lasts: 2.5, timeShare: 1, payShare: 1, poor: 'Lukewarm', ruined: 'Stone cold' },
-  frozen: { label: 'Ice cream', meter: 'Frozen', hint: 'Ice cream: it melts, much faster in the midday sun. Beat the clock by a good margin.', bump: 0.02, crash: 0.15, lasts: 3.25, timeShare: 1, payShare: 1, poor: 'Half melted', ruined: 'Melted' },
+  fragile: { label: 'Fragile', meter: 'Intact', hint: 'Fragile: bumps and crashes damage it. Breakers and potholes below half speed.', bump: 0.06, crash: 0.4, lasts: 0, timeShare: 1, payShare: 1, poor: 'Damaged', ruined: 'Smashed' },
+  hot: { label: 'Hot food', meter: 'Hot', hint: 'Hot food: it cools from the counter on. Go straight there.', bump: 0.008, crash: 0.2, lasts: 2.5, timeShare: 1, payShare: 1, poor: 'Lukewarm', ruined: 'Stone cold' },
+  frozen: { label: 'Ice cream', meter: 'Frozen', hint: 'Ice cream: it melts, much faster in the midday sun. Beat the clock by a good margin.', bump: 0, crash: 0.15, lasts: 3.25, timeShare: 1, payShare: 1, poor: 'Half melted', ruined: 'Melted' },
   medicine: { label: 'Medicine · 2× pay', meter: null, hint: 'Medicine: urgent. A tighter clock, and double the base pay.', bump: 0, crash: 0, lasts: 0, timeShare: 0.8, payShare: 2, poor: '', ruined: '' },
   bulk: { label: 'Bulk', meter: null, hint: 'Bulk: needs a three-wheeler or a van.', bump: 0, crash: 0, lasts: 0, timeShare: 1, payShare: 1, poor: '', ruined: '' },
 }

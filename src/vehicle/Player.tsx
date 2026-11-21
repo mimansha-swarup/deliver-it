@@ -85,7 +85,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <DoorMarker />
       <HomeMarker />
       <PhotoCamera />
-      <RemoteRiders />
+      <RemoteRiders collisions={collisions} />
       <Unstuck scooter={scooterState} traffic={traffic} />
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
       <Errand scooter={scooterState} stores={stores} />

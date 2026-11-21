@@ -6,6 +6,8 @@ import { FLEET_MODELS_URL, getModel, paintModel, PEOPLE_MODELS_URL, TRIPO_MODELS
 import { createRiderModel, createSeatedRiderGeometry, type RiderLook } from '../vehicle/riderModel'
 import { createBuiltFar, createBuiltStill, setFleetModels } from '../vehicle/vehicleBodies'
 import { VEHICLES, type VehicleId } from '../vehicle/vehicleCatalog'
+import { livePlayer } from '../game/livePlayer'
+import { addWall, removeFootprint, type CollisionWorld, type Footprint } from '../world/collision'
 import { useRoomStore, type Rider } from './room'
 
 /*
@@ -13,7 +15,7 @@ import { useRoomStore, type Rider } from './room'
  * towards it, so ten updates a second look like riding and not like jumping. Each is the vehicle
  * they're on, as one still shape, with a rider seated on it in a jacket of their own colour in the
  * room, and their name over them. On foot, their vehicle stands where they left it and
- * they stand beside wherever they've walked to. They're not solid: riders pass through each other.
+ * they stand beside wherever they've walked to. They're solid: riding into one is a bump (`SolidFriends`).
  */
 
 /** Everyone's helmet is the same off-white; it's the jacket that says who they are. */
@@ -117,8 +119,65 @@ function RemoteRider({ id, shapes, material }: { id: string; shapes: Shapes; mat
   )
 }
 
+/** How often each friend's solid shape is moved to where they are, in seconds, and how near is "already touching". */
+const SOLID_EVERY = 0.1
+const TOUCHING = 0.9
+
+/**
+ * Friends are solid: each one's vehicle (and themselves, on foot) is a shape in this rider's own
+ * collision world, moved to where their news puts them ten times a second, so riding into a
+ * friend is hitting something, as hitting a parked car is. Each browser does this for itself, so
+ * both riders feel a bump: the one who rode in, and the one who was ridden into.
+ *
+ * Not while the two are already on top of each other (both just arrived at the same spot, or one
+ * was put there): a shape appearing round a rider would trap them, so it waits until they part.
+ */
+function SolidFriends({ collisions }: { collisions: CollisionWorld }) {
+  const shapes = useRef(new Map<string, Footprint[]>())
+  const since = useRef(0)
+  useEffect(() => {
+    const kept = shapes.current
+    return () => {
+      for (const list of kept.values()) for (const shape of list) removeFootprint(collisions, shape)
+      kept.clear()
+    }
+  }, [collisions])
+
+  useFrame((_, delta) => {
+    since.current += delta
+    if (since.current < SOLID_EVERY) return
+    since.current = 0
+    const { riders } = useRoomStore.getState()
+    for (const [id, list] of shapes.current) {
+      for (const shape of list) removeFootprint(collisions, shape)
+      if (!riders[id]) shapes.current.delete(id)
+    }
+    for (const rider of Object.values(riders)) {
+      const list: Footprint[] = []
+      const { size } = VEHICLES[rider.vehicle] ?? VEHICLES.scooter
+      // Their vehicle: where they are, or where they left it.
+      const [x, z, heading] = rider.onFoot ? [rider.vehicleX, rider.vehicleZ, rider.vehicleHeading] : [rider.x, rider.z, rider.heading]
+      const half = size.length / 2
+      const apart = Math.hypot(x - livePlayer.x, z - livePlayer.z)
+      if (apart > half + TOUCHING) {
+        const dirX = Math.sin(heading)
+        const dirZ = Math.cos(heading)
+        const wall = addWall(collisions, [x - dirX * half, z - dirZ * half], [x + dirX * half, z + dirZ * half], Math.max(0.5, size.width * 0.8))
+        if (wall) list.push(wall)
+      }
+      // Themselves, on foot: a small square.
+      if (rider.onFoot && Math.hypot(rider.x - livePlayer.x, rider.z - livePlayer.z) > TOUCHING) {
+        const post = addWall(collisions, [rider.x - 0.3, rider.z], [rider.x + 0.3, rider.z], 0.6)
+        if (post) list.push(post)
+      }
+      shapes.current.set(rider.id, list)
+    }
+  })
+  return null
+}
+
 /** In the Canvas: everyone else in the room. Nothing is built or drawn outside a room. */
-export function RemoteRiders() {
+export function RemoteRiders({ collisions }: { collisions: CollisionWorld }) {
   const ids = useRoomStore((state) => Object.keys(state.riders).sort().join(','))
   const { scene: people } = useGLTF(PEOPLE_MODELS_URL)
   const { scene: fleet } = useGLTF(FLEET_MODELS_URL)
@@ -169,6 +228,7 @@ export function RemoteRiders() {
   if (!ids) return null
   return (
     <>
+      <SolidFriends collisions={collisions} />
       {ids.split(',').map((id) => (
         <RemoteRider key={id} id={id} shapes={shapes} material={material} />
       ))}
