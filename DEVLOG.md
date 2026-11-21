@@ -11375,3 +11375,22 @@ delivery on its way, your Garage, your EMIs, and then the catalogue.
 
 Checked in the game: no scroll with everything closed, and Switch left the wallet at ₹5,000 with
 the bicycle on its way.
+
+## 2026-11-21: Entry 247, the game speaks: voices from Sarvam's Bulbul
+
+Every line in the voice script now has a recording: 67 lines, 84 files (customers twice, a woman
+and a man), 1.2 MB in all, each fetched the first time its line is spoken. They're AI voices, made
+with Sarvam AI's Bulbul text-to-speech by `scripts/voice_generate.mjs`, which reads the key from
+`.env.local` (ignored by git) and sends each line's text to Sarvam.
+
+- A listening test first (`--test`): six lines with the most Kannada in them, each made two
+  ways. Sarvam's docs suggest Kannada script for Kannada words; heard side by side, the lines
+  as written in Roman letters, read as Indian English, were the more fluent, so that's what was used.
+- Voices: RJ Manju "kavya", Ravi "rahul", customers "priya" and "amit", the guard "ratan", the
+  store's staff "neha". Picked by name; none has been changed after listening yet.
+- The RJ's road line for the animal says a bull is standing in the road, as the event now does.
+- Credits says they are AI voices and not recordings of people.
+
+Checked in the game: going online asks for the list of recordings and plays Ravi's line. Not
+listened to by me (I can't): every line's pronunciation is for the ear to judge. Sarvam's terms
+for shipping generated audio in a public game weren't read.

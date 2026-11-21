@@ -10,10 +10,11 @@
  * Each line's text is sent to api.sarvam.ai. Afterwards run scripts/voice_files.mjs, which lists
  * the recordings for the game and marks them in VOICE_SCRIPT.csv.
  *
- * The lines are English with Kannada words in them. Bulbul reads Kannada best in Kannada script
- * (its docs say Roman-script Indic words lose quality), so a line may carry a `say` beside its
- * `line` in src/audio/voiceScript.json: the same words with the Kannada ones in Kannada script.
- * That's what is spoken; `line` stays what's shown.
+ * The lines are English with Kannada words in them, in Roman letters, and are sent as they are
+ * written, to be read as Indian English. (Bulbul's docs suggest Kannada script for Kannada words;
+ * the listening test, `--test`, makes each of six lines both ways, and as written was the more
+ * fluent.) A line can still carry a `say` beside its `line` in src/audio/voiceScript.json to be
+ * spoken differently from how it's shown: with Kannada script in it, it's read as Kannada.
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'

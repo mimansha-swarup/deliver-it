@@ -382,7 +382,10 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
         </Group>
 
         <Group title="Voices">
-          <p>No recorded voices yet: Ravi, the customers and the family speak in text. When voices are recorded, the people who gave them are named here.</p>
+          <p>
+            Ravi, RJ Manju, the customers, the security guard and the dark store’s staff speak in AI voices: made with Bulbul, Sarvam AI’s text-to-speech, from lines
+            written for the game. They are not recordings of real people. The family’s messages are text.
+          </p>
         </Group>
 
         <Group title="Type">
