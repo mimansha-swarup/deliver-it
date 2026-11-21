@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { isDebug } from '../dev/spawn'
 import { useGameStore } from '../game/gameStore'
-import { ratioRange, startingRatio, useResolution } from '../game/resolution'
+import { firstRatio, ratioRange, rememberRatio, startingRatio, useResolution } from '../game/resolution'
 
 /** How much the resolution moves in one step, in pixels per screen point. */
 const STEP = 0.25
@@ -100,9 +100,17 @@ export function AdaptiveResolution() {
 
   // A new quality starts again from its own resolution, and forgets what was too much.
   useEffect(() => {
-    pending.current = startingRatio(quality)
+    pending.current = firstRatio(quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
     Object.assign(batch.current, { time: 0, frames: [], slow: 0, calm: 0, ceiling: Infinity, sinceRaise: Infinity })
   }, [quality, lowScale])
+
+  // As the ride begins (the loading screen is still up), with the screen's speed now measured: the
+  // resolution to ride at, so a change that was always going to come doesn't come mid-ride.
+  useEffect(() => {
+    if (!started) return
+    const first = firstRatio(quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+    if (first !== useResolution.getState().pixelRatio) pending.current = first
+  }, [started, quality])
 
   useFrame(({ setDpr }, delta) => {
     // Debug: a resolution held still for measuring (`__deliverItLockDpr = 1.5`, with ?debug).
@@ -181,10 +189,12 @@ export function AdaptiveResolution() {
         state.ceilingAge = 0
       }
       pending.current = Math.max(lowest, pixelRatio - STEP)
+      rememberRatio(quality, pending.current)
       state.slow = 0
       state.calm = 0
     } else if (state.calm >= CALM_BATCHES && state.sinceChange >= RAISE_GAP && pixelRatio < highest) {
       pending.current = Math.min(highest, pixelRatio + STEP)
+      rememberRatio(quality, pending.current)
       state.calm = 0
       state.sinceRaise = 0
     }

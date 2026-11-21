@@ -22,6 +22,43 @@ export function startingRatio(quality: Quality): number {
  * because the Canvas sets its resolution from a prop each time it renders, so
  * the prop has to carry the adjusted value.
  */
+/*
+ * Changing the resolution while riding freezes the picture for a fifth of a second or so (every
+ * buffer the picture is drawn through is made again). So the game tries not to: it remembers, on
+ * this device, where each quality settled, and starts there next time; and the first time, on a
+ * screen faster than 60 Hz (where the aim is 80 FPS, which the top resolution rarely makes), it
+ * starts one step under the top, behind the loading screen, rather than finding that out mid-ride.
+ */
+const REMEMBERED = 'swalpa-fast-resolution'
+/** One step of the automatic resolution, as world/AdaptiveResolution.tsx moves it. */
+export const RATIO_STEP = 0.25
+
+function remembered(): Partial<Record<Quality, number>> {
+  try {
+    return JSON.parse(localStorage.getItem(REMEMBERED) ?? '{}') as Partial<Record<Quality, number>>
+  } catch {
+    return {}
+  }
+}
+
+/** Where this quality settled on this device, kept for next time. */
+export function rememberRatio(quality: Quality, ratio: number) {
+  try {
+    localStorage.setItem(REMEMBERED, JSON.stringify({ ...remembered(), [quality]: ratio }))
+  } catch {
+    // Private windows and full storage: it's found again next time.
+  }
+}
+
+/** The resolution to begin a ride at: where it settled last time, or (never having settled) the top, a step under it on a fast screen. */
+export function firstRatio(quality: Quality, fastScreen: boolean): number {
+  const [lowest] = ratioRange(quality)
+  const top = startingRatio(quality)
+  const known = remembered()[quality]
+  if (typeof known === 'number' && Number.isFinite(known)) return Math.min(top, Math.max(Math.min(lowest, top), known))
+  return fastScreen ? Math.max(Math.min(lowest, top), top - RATIO_STEP) : top
+}
+
 export const useResolution = create<{ pixelRatio: number }>(() => ({
-  pixelRatio: startingRatio(useGameStore.getState().quality),
+  pixelRatio: firstRatio(useGameStore.getState().quality, false),
 }))
