@@ -7,6 +7,7 @@ import { firstOrder, TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../g
 import { useDiscovery } from '../game/discovery'
 import { shownPrompts, usePrompts } from '../game/prompts'
 import { hasClearLine } from '../world/collision'
+import { track } from '../analytics'
 import { liveRoom } from '../game/rooms'
 
 /*
@@ -231,6 +232,7 @@ function TutorialCard() {
         <button
           type="button"
           onClick={(event) => {
+            track('tutorial_skip', { n: TUTORIAL_STEPS.indexOf(step) + 1 })
             finish()
             useGameStore.getState().raviSays('No problem, maga. You can replay the tutorial from Settings on your phone.')
             event.currentTarget.blur()
