@@ -83,7 +83,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
   const since = useRef(0)
   // Debug: where the order's next step on foot is, the room and the view, for driving a walk from the console (and recording one).
   useEffect(() => {
-    if (isDebug()) Object.assign(window, { __deliverItFoot: { errand: errandLive, room: liveRoom, view: liveView, exit: ROOM_DOOR } })
+    if (isDebug()) Object.assign(window, { __deliverItFoot: { errand: errandLive, room: liveRoom, view: liveView, exit: ROOM_DOOR, player: livePlayer } })
   }, [])
   const stage = useRef<Stage>({ door: null, step: 'approach', at: 0 })
   /** Whose building the lobby or corridor the rider is in belongs to. */

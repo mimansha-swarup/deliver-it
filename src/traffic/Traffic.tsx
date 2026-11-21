@@ -694,6 +694,44 @@ function addWalkingIndoors(shader: Parameters<typeof addWalking>[0]) {
   shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * ${INDOOR_GLOW.toFixed(2)};`)
 }
 
+/** How one walker stands and moves, read every frame: the place in their stride, how much they're walking (0 standing to 1), what they do standing (IDLE_POSE), and whether they're drawn. */
+export type WalkerPose = { stride: number; walking: number; idle: number; visible: boolean }
+
+const walkerPlace = new THREE.Matrix4()
+const walkerColour = new THREE.Color()
+
+/**
+ * One person by the walking shader, drawn in its parent's own space rather than placed in the
+ * world: the rider on foot (vehicle/Rider.tsx), who so has the pedestrians' build and their walk.
+ * Never seen through: the camera clears the way to this one.
+ */
+export function Walker({ body, pose: poseRef, colour, skin = 0.82 }: { body: THREE.BufferGeometry; pose: RefObject<WalkerPose>; colour: string; skin?: number }) {
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const geometry = useMemo(() => withPersonData(body, 1), [body])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  useLayoutEffect(() => {
+    if (!mesh.current) return
+    mesh.current.setMatrixAt(0, walkerPlace.identity())
+    mesh.current.setColorAt(0, walkerColour.set(colour))
+    mesh.current.instanceMatrix.needsUpdate = true
+    if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true
+  }, [colour, geometry])
+  useFrame(({ clock }) => {
+    if (!mesh.current) return
+    const pose = poseRef.current
+    mesh.current.visible = pose.visible
+    if (!pose.visible) return
+    peopleClock.uTime.value = clock.elapsedTime % 1000
+    ;(geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute).setXYZW(0, pose.stride, skin, 0, pose.walking).needsUpdate = true
+    ;(geometry.getAttribute('aWave') as THREE.InstancedBufferAttribute).setXY(0, 0, pose.idle).needsUpdate = true
+  })
+  return (
+    <instancedMesh ref={mesh} args={[geometry, undefined, 1]} frustumCulled={false} visible={false}>
+      <meshStandardMaterial vertexColors roughness={0.8} onBeforeCompile={addWalking} />
+    </instancedMesh>
+  )
+}
+
 /** A crowd, or just one person, walking by the same shader. */
 export function People({
   items,
