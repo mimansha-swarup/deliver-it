@@ -8,10 +8,12 @@ import { saveKey } from './saveKeys'
  */
 
 /**
- * The first order comes first (VISION.md's first five minutes: open on an order): the rider is put
- * online with an order waiting, and learns to ride on the way to the dark store.
+ * The first five minutes (VISION.md): open on an order, ride it, a doorstep scene, a tip, then
+ * "you're free to explore". Four steps and no more: take the order that's waiting, ride (learnt on
+ * the way), pick up at the dark store, deliver. Everything else (the map, GaadiGo, going offline)
+ * is told afterwards in passing, by Ravi and by the phone's own notifications, not as steps to sit through.
  */
-export const TUTORIAL_STEPS = ['accept', 'ride', 'brake', 'pickup', 'map', 'deliver', 'gaadigo', 'offline'] as const
+export const TUTORIAL_STEPS = ['accept', 'ride', 'pickup', 'deliver'] as const
 export type TutorialStep = (typeof TUTORIAL_STEPS)[number]
 
 type TutorialState = {
@@ -73,4 +75,10 @@ export function shouldStartTutorial(hasProgress: boolean): boolean {
     return false
   }
   return true
+}
+
+/** The first order as it was planned (ui/Tutorial.tsx): how far it is in all, and what's at the door. For timing the first five minutes. */
+export const firstOrder = { metres: 0, scene: '' }
+if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')) {
+  ;(window as unknown as { __deliverItFirstOrder?: typeof firstOrder }).__deliverItFirstOrder = firstOrder
 }

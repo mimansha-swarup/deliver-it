@@ -2,16 +2,14 @@ import { useEffect } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { keyFor, useKeys } from '../game/keyBindings'
 import { livePlayer } from '../game/livePlayer'
-import { TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
-import { useUi } from './uiState'
+import { firstOrder, TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
+import { useDiscovery } from '../game/discovery'
 
 /*
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
  * what to do now, with the keys as they're set. Each step finishes when the rider has done it (the
- * director below watches for that), or with Skip. It opens on an order: the rider is online with
- * their first order waiting, accepts it, then learns riding and steering and a breaker taken slowly
- * on the way to the dark store; picking up, the full map, delivering, GaadiGo (the other vehicles),
- * and going offline for the shift summary (and online again whenever they like). Every step can
+ * director below watches for that), or with Skip. Four steps: accept the first order (the rider is
+ * online with it waiting), ride, pick up at the dark store, deliver. Then "You're free to explore". Every step can
  * be skipped, the whole of it too, and Settings on the phone plays it again.
  */
 
@@ -23,37 +21,19 @@ const STEPS: Record<TutorialStep, StepText> = {
     card: () => `Your first order is waiting. Accept it: ${keyFor('accept')}.`,
   },
   ride: {
-    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer. The arrow at the top points to the dark store.`,
-    card: () => `Ride and steer: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake.`,
-  },
-  brake: {
-    ravi: () => `Chennagide! HSR is full of speed breakers. Slow down with ${keyFor('backward')} before one and roll over it gently: taken flat out it throws you about.`,
-    card: () => `Brake (${keyFor('backward')}) before a speed breaker and take it slowly, under half speed.`,
+    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the green arrow at the top to the dark store.`,
+    card: () => `Ride: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the green arrow.`,
   },
   pickup: {
-    ravi: () => `Follow the arrow at the top and the line on your map to the dark store on 27th Main. Park outside, get off with ${keyFor('mount')}, walk in and collect the bag at the counter with ${keyFor('interact')}.`,
-    card: () => `Ride to the dark store, stop and get off (${keyFor('mount')}). Walk in at its door (${keyFor('interact')}) and pick up the bag at the counter (${keyFor('interact')}). Then back out and on (${keyFor('mount')}).`,
-  },
-  map: {
-    ravi: () => `Got it! Before you go: ${keyFor('map')} opens the full map of HSR. Have a look at where you're going.`,
-    card: () => `Open the full map: ${keyFor('map')} (close it the same way, or with Esc).`,
+    ravi: () => `That's it. The dark store is close: park outside, get off with ${keyFor('mount')}, walk in and take the bag at the counter with ${keyFor('interact')}. (${keyFor('map')} shows the whole map, any time.)`,
+    card: () => `At the dark store: stop, get off (${keyFor('mount')}), walk in at the door (${keyFor('interact')}), take the bag at the counter (${keyFor('interact')}), walk out and get back on (${keyFor('mount')}).`,
   },
   deliver: {
-    ravi: () => "Now take it to the customer's door. They'll rate you: on time and a smooth ride gets the best tip.",
-    card: () => `Deliver it: follow the green arrow, park, get off (${keyFor('mount')}) and walk it to the door. ${keyFor('interact')} rings the bell and hands it over. Then see their rating and tip.`,
-  },
-  gaadigo: {
-    ravi: () => `Sakkath! One more thing: GaadiGo, on your phone (${keyFor('phone')}). It rents and sells other vehicles: a cycle, an electric scooter, later a van for the big orders. Open it and have a look.`,
-    card: () => `Open the phone (${keyFor('phone')}), unlock (Enter), and open GaadiGo: other vehicles to rent or buy, brought to you.`,
-  },
-  offline: {
-    ravi: () => `Last one: ${keyFor('online')} takes you offline, and online again when you want work (the Deliver It app on your phone does it too). Go offline now to end your shift and see how it went.`,
-    card: () => `Go offline (${keyFor('online')}) and look at your shift summary.`,
+    ravi: () => "Got it! Now to the customer's door, it's not far. On time and no crashes gets the best tip.",
+    card: () => `Follow the green arrow to the customer. Park, get off (${keyFor('mount')}), walk to the door, ring the bell and hand it over (${keyFor('interact')}).`,
   },
 }
 
-/** How long the brake step waits for a breaker before a firm stop will do, in milliseconds. */
-const BRAKE_FALLBACK_MS = 60_000
 const POLL_MS = 200
 
 /** Watches for each step being done, and has Ravi introduce each one. */
@@ -65,13 +45,7 @@ function TutorialDirector() {
     if (!step) return
     const game = useGameStore.getState()
     game.raviSays(STEPS[step].ravi())
-    const started = performance.now()
-    const startHeading = livePlayer.heading
-    const startGentle = livePlayer.gentle
-    let bumpsSeen = livePlayer.bumps
-    let fastSince = 0
     let rewardSeen = false
-    let summarySeen = false
     let done = false
     const finish = (line?: string) => {
       if (done) return
@@ -84,36 +58,33 @@ function TutorialDirector() {
     const offerNow = () => {
       const state = useGameStore.getState()
       if (state.duty !== 'online' || state.mission || state.offer) return
-      // A simple one to learn on: a plain parcel to a house's gate, not a flat up a lift or the gated society.
+      // The first order: a plain parcel to a house on the street (not a flat up a lift, nor the gated
+      // society), as near as the planner finds in a good many tries, and with something at the door
+      // worth remembering where it can be had: the dog who only barks.
       if (!state.planner) return
+      const fits = (one: typeof mission) => one.door.kind === 'house' && one.story.cargo === 'parcel' && one.story.care === 'none'
       let mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
-      for (let tries = 0; tries < 20 && (mission.door.kind === 'flat' || mission.door.kind === 'society' || mission.story.cargo !== 'parcel' || mission.door.scene !== 'plain'); tries++) {
+      let best = fits(mission) ? mission : null
+      for (let tries = 0; tries < 60; tries++) {
         mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
+        if (!fits(mission)) continue
+        const better = !best || (mission.door.scene === 'dog' ? 0.75 : 1) * mission.routeLength < (best.door.scene === 'dog' ? 0.75 : 1) * best.routeLength
+        if (better) best = mission
       }
+      mission = best ?? mission
+      firstOrder.metres = mission.routeLength
+      firstOrder.scene = mission.door.scene
       useGameStore.setState({ offer: { mission, expiresAt: performance.now() + 10 * 60 * 1000 } })
     }
 
     const check = () => {
       const state = useGameStore.getState()
       switch (step) {
-        case 'ride': {
-          const turned = Math.abs(Math.atan2(Math.sin(livePlayer.heading - startHeading), Math.cos(livePlayer.heading - startHeading)))
-          if (state.speedKmh >= 15 && turned > 0.6) finish()
+        case 'ride':
+          // Moving is enough (it used to want a turn as well, and a rider who went straight to the
+          // store was left reading "ride and steer" at its door). Anyone already past the pickup has ridden.
+          if (state.speedKmh >= 15 || (state.mission && state.phase !== 'toPickup')) finish()
           break
-        }
-        case 'brake': {
-          if (livePlayer.gentle > startGentle) finish('Nicely done. The breakers cost you nothing but a jolt: it is crashes that hurt an order.')
-          else if (livePlayer.bumps > bumpsSeen) {
-            bumpsSeen = livePlayer.bumps
-            state.raviSays('Too fast, maga! Slow down before the next one.')
-          }
-          // No breaker on the way? A firm stop from speed will do, after a minute.
-          if (state.speedKmh >= 20) fastSince = performance.now()
-          if (performance.now() - started > BRAKE_FALLBACK_MS && fastSince && state.speedKmh <= 4 && performance.now() - fastSince < 3000) {
-            finish('Good braking. Remember it before the humps.')
-          }
-          break
-        }
         case 'accept':
           // The tutorial opens on an order: online without being asked, and the order there at once.
           if (state.duty !== 'online' && !state.mission) state.goOnline()
@@ -123,19 +94,13 @@ function TutorialDirector() {
         case 'pickup':
           if (state.phase !== 'toPickup' && state.mission) finish()
           break
-        case 'map':
-          if (useUi.getState().mapOpen) finish()
-          break
         case 'deliver':
           if (state.lastReward) rewardSeen = true
-          else if (rewardSeen) finish()
-          break
-        case 'gaadigo':
-          if (useUi.getState().phoneApp === 'gaadigo') finish(`That's your fleet. Tricks for the road: hold ${keyFor('handbrake')} in a turn to drift, ${keyFor('nitro')} for nitro, ${keyFor('horn')} for the horn. ${keyFor('help')} shows every control.`)
-          break
-        case 'offline':
-          if (state.shiftSummary) summarySeen = true
-          else if (summarySeen) finish("That's the job, maga. Ride anywhere, go online whenever you like. Nale sigona!")
+          else if (rewardSeen) {
+            // The first delivery is done and its card closed: the city is theirs.
+            finish(`That's the job, maga! You're free to explore. Stay online and orders keep coming; ${keyFor('online')} goes offline, ${keyFor('phone')} is your phone, ${keyFor('map')} the map.`)
+            useDiscovery.getState().showCard('You’re free to explore', 'Orders keep coming while you’re online · P for your phone · Tab for the map')
+          }
           break
       }
     }
