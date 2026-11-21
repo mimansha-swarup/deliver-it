@@ -15,7 +15,14 @@ const MUSIC_VOLUME = 0.32
 const FADE = 0.15
 
 /** `ui`: the menus' own sounds, which keep playing while the game's are hushed behind the pause menu. */
-export type AudioBuses = { context: AudioContext; sfx: GainNode; music: GainNode; ui: GainNode }
+export type AudioBuses = { context: AudioContext; sfx: GainNode; music: GainNode; ui: GainNode; voice: GainNode; master: GainNode }
+/**
+ * The mix, loudest first: voices (Ravi, customers, on their own bus), then music (the radio, with the
+ * RJ in it), then the street and the engine. Everything goes through `master`, the one volume over all.
+ */
+const VOICE_VOLUME = 0.78
+/** While someone speaks on the phone the music drops to this share, and comes back after. */
+const MUSIC_UNDER_VOICE = 0.45
 
 let buses: AudioBuses | null = null
 let musicOn = true
@@ -23,6 +30,8 @@ let sfxOn = true
 /** The player's own volumes, 0 to 1 (game/settings.ts): a share of each bus's level. */
 let musicShare = 1
 let sfxShare = 1
+let masterShare = 1
+let voiceShare = 1
 /** The game's own sounds are hushed while the pause menu is up. */
 let hushed = false
 const sfxLevel = () => (sfxOn && !hushed ? SFX_VOLUME * sfxShare : 0)
@@ -39,7 +48,13 @@ export function unlockAudio() {
     const limiter = context.createDynamicsCompressor()
     limiter.threshold.value = -10
     limiter.ratio.value = 8
-    limiter.connect(context.destination)
+    const master = context.createGain()
+    master.gain.value = masterShare
+    master.connect(context.destination)
+    limiter.connect(master)
+    const voice = context.createGain()
+    voice.gain.value = VOICE_VOLUME * voiceShare
+    voice.connect(limiter)
 
     const sfx = context.createGain()
     sfx.gain.value = sfxLevel()
@@ -50,7 +65,7 @@ export function unlockAudio() {
     const ui = context.createGain()
     ui.gain.value = uiLevel()
     ui.connect(limiter)
-    buses = { context, sfx, music, ui }
+    buses = { context, sfx, music, ui, voice, master }
 
     // Nothing plays while the game is in the background, which saves the battery.
     document.addEventListener('visibilitychange', () => {
@@ -107,4 +122,23 @@ export function setSfxVolume(share: number) {
 export function setHushed(on: boolean) {
   hushed = on
   if (buses) fadeTo(buses.sfx, sfxLevel())
+}
+
+export function setMasterVolume(share: number) {
+  masterShare = Math.max(0, Math.min(1, share))
+  if (buses) fadeTo(buses.master, masterShare)
+}
+
+export function setVoiceVolume(share: number) {
+  voiceShare = Math.max(0, Math.min(1, share))
+  if (buses) fadeTo(buses.voice, VOICE_VOLUME * voiceShare)
+}
+
+/** Someone speaks on the phone from `at` (the audio clock) for `seconds`: the music goes under them and comes back. */
+export function duckMusicFor(at: number, seconds: number) {
+  if (!buses) return
+  const { gain } = buses.music
+  const level = musicLevel()
+  gain.setTargetAtTime(level * MUSIC_UNDER_VOICE, at, 0.08)
+  gain.setTargetAtTime(level, at + seconds + 0.15, 0.25)
 }

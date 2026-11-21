@@ -1,4 +1,4 @@
-import { getAudio, type AudioBuses } from './audioEngine'
+import { duckMusicFor, getAudio, type AudioBuses } from './audioEngine'
 import { showSubtitle } from './subtitle'
 import script from './voiceScript.json'
 
@@ -88,7 +88,7 @@ const chains = new Map<Treatment, GainNode>()
  *   the radio's own volume and "Music off" govern it.
  * - `phone`: 320 Hz to 3.3 kHz and nothing else, more drive, squeezed. On the effects bus.
  */
-function chainFor({ context, music, sfx }: AudioBuses, treatment: Treatment): GainNode {
+function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): GainNode {
   const made = chains.get(treatment)
   if (made) return made
   const input = context.createGain()
@@ -115,9 +115,10 @@ function chainFor({ context, music, sfx }: AudioBuses, treatment: Treatment): Ga
   squeeze.attack.value = 0.004
   squeeze.release.value = 0.14
   const level = context.createGain()
-  // Against the buses' own levels: the RJ sits over the ducked music, a phone voice over the street.
-  level.gain.value = radio ? 2.6 : 3.2
-  input.connect(low).connect(presence).connect(high).connect(drive).connect(squeeze).connect(level).connect(radio ? music : sfx)
+  // The RJ is part of the radio: on the music's bus, over its ducked song, and silent when music is off.
+  // A phone voice has the voices' own bus (and volume), above the music and the street.
+  level.gain.value = radio ? 2.6 : 1
+  input.connect(low).connect(presence).connect(high).connect(drive).connect(squeeze).connect(level).connect(radio ? music : voice)
   chains.set(treatment, input)
   return input
 }
@@ -165,6 +166,7 @@ export async function speak(id: string, treatment: Treatment, voice?: string): P
     at = Math.max(at, phoneFreeAt)
     if (at - buses.context.currentTime > TURNS.patience) return null
     phoneFreeAt = at + buffer.duration / source.playbackRate.value + TURNS.breath
+    duckMusicFor(at, buffer.duration / source.playbackRate.value)
   }
   source.start(at)
   // What it means, on screen from the moment it's heard until it ends.
