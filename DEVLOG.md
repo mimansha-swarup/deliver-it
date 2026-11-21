@@ -11740,3 +11740,32 @@ the walk to a first customer; the cause of the remaining long frame after load.
   trigger gives that share of the pull and holds a lower speed (30% of top at a touch), the left
   trigger brakes that hard. The keys are all or nothing, as before. Checked with a pretend
   controller: half trigger held 35 km/h on the scooter (top 56); half stick turned 21°/s, full 59°/s.
+
+## 2026-11-21: Entry 270, follow-ups from the first order's playtest
+
+- **The dark store's way out**: "Leave" is offered within 1.6 m of the inside of the door (it was
+  1 m round a spot beyond it), and "Go in" within 2.9 m outside (2.2). During the tutorial the
+  order's clock stands still inside the store. The marker and arrow already led to the door, then
+  the scooter, then the customer (entry 260).
+- **Feedback that agrees**: the crash banner says "Package damaged · N% intact" when it is; a
+  delivery under four stars gets the customer's own words from the rating in the chat and no
+  recorded "thank you"; under three stars there is no confetti, and a quiet two-note "delivered".
+- **Weather and time**: a weather lasts at least ten real minutes and changes over about a minute
+  (`minWeatherTime` 600, `weatherResponse` 0.04); the tutorial's stays clear and its clock runs at
+  five times real time.
+- **Only Ravi and the customer during the first order** (game/firstOrder.ts): home's first message,
+  the daily challenge's and the apps' own wait until its result card is closed.
+- **Camera**: pulled in by a wall on foot it moves up to 0.95 m over a shoulder; the shot of rider
+  and customer is held under the result card.
+- **The start**: one frame of 130 to 180 ms came 0.3 to 0.5 s into the ride, as the loading screen
+  faded. The screen now stays whole for 650 ms after the ride starts. Measured after: no frame over
+  50 ms in the first ten seconds, read slowly or skipped fast.
+- **The first order's door is a straight clear walk** of 16 m at most from where the rider parks
+  (`straightWalk`, ui/Tutorial.tsx). A replay had sent the rider into a gap behind a shop, the door
+  9 m away through a wall.
+
+Replayed fresh, twice, by the autopilot on the production build: delivered 89 s and 82 s after the
+title screen, nothing stuck, no frame over 25 ms, 06:50 on the phone at the end.
+
+Not done: the snag on the store's door frame was not found (the wider zones go round it); that
+posts and walls cover under a quarter of the picture was not measured.

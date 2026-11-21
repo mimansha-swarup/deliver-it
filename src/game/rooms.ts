@@ -117,7 +117,7 @@ export function setRoom(kind: RoomKind, at: { x: number; z: number }, exit: Plac
   useRoom.setState({ kind, label })
   roomMover.place(at.x + arrive.x, at.z + arrive.z, arrive.heading)
   // The way out: the street door, where the room has one.
-  if (kind !== 'corridor') setSpot('room:exit', { x: at.x + ROOM_DOOR.x, z: at.z + ROOM_DOOR.z + 0.45, radius: 1.0, text: 'Leave', room: kind, run: () => leaveRoom() })
+  if (kind !== 'corridor') setSpot('room:exit', { x: at.x + ROOM_DOOR.x, z: at.z + ROOM_DOOR.z + 0.1, radius: 1.6, text: 'Leave', room: kind, run: () => leaveRoom() })
 }
 
 /** Back out to the street, where the rider came in. */

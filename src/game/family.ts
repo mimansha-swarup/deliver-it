@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { afterFirstOrder } from './firstOrder'
 import { persist } from 'zustand/middleware'
 import { useGameStore } from './gameStore'
 import { saveKey } from './saveKeys'
@@ -232,7 +233,7 @@ export const useFamily = create<Family>()(
 
 // The story starts a little after the first delivery (not in the tutorial's first minutes), and home writes on new days.
 useGameStore.subscribe((state, previous) => {
-  if (state.history.length > 0 && previous.history.length === 0 && !useFamily.getState().introduced) window.setTimeout(() => useFamily.getState().begin(), 9000)
+  if (state.history.length > 0 && previous.history.length === 0 && !useFamily.getState().introduced) window.setTimeout(() => afterFirstOrder(() => useFamily.getState().begin()), 9000)
   if (state.day !== previous.day) useFamily.getState().newDay(state.day)
 })
 // Home asks for something small after every few deliveries, a little after the result card: not
@@ -258,7 +259,7 @@ useGameStore.subscribe((state, previous) => {
 })
 // A save that already has deliveries behind it starts the story on the next one.
 useGameStore.subscribe((state, previous) => {
-  if (state.history !== previous.history && state.history.length > 1 && !useFamily.getState().introduced) window.setTimeout(() => useFamily.getState().begin(), 9000)
+  if (state.history !== previous.history && state.history.length > 1 && !useFamily.getState().introduced) window.setTimeout(() => afterFirstOrder(() => useFamily.getState().begin()), 9000)
 })
 
 // Debug: the family, for scripts (with ?debug).

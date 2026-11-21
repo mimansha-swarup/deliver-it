@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
+import { playPing } from '../audio/uiSounds'
 import { isDebug } from '../dev/spawn'
 import { sayLine } from '../audio/voiceCues'
 import { useGLTF } from '@react-three/drei'
@@ -366,8 +367,10 @@ export function Handoff({
       phaseTime.current = 0
       arrivedAt.current = null
       if (game.phase === 'handingOver') setShot(carrier(state), getStandingSpot(carrier(state).x, carrier(state).z, customer), collisions)
-      else liveShot.active = false
+      // The shot of the two of them is held under the result card, and let go when it closes.
+      else if (!game.lastReward) liveShot.active = false
     }
+    if (liveShot.active && game.phase !== 'handingOver' && !game.lastReward) liveShot.active = false
     phaseTime.current += dt
     idleTime.current += dt
 
@@ -495,8 +498,11 @@ export function Handoff({
           } else {
             if (confettiAge.current === Infinity && confettiDone.current !== game.missionNumber) {
               confettiDone.current = game.missionNumber
-              confettiAge.current = 0
-              burstConfetti(confetti, hands.x, hands.y + 0.3, hands.z)
+              // Confetti is for a delivery worth it: three stars or more. Under that, a quiet "delivered" and no more.
+              if ((game.pendingReward?.stars ?? 5) >= 3) {
+                confettiAge.current = 0
+                burstConfetti(confetti, hands.x, hands.y + 0.3, hands.z)
+              } else playPing('delivered')
             }
             setLift(customer, floor + Math.abs(Math.sin(joy * HOP_RATE)) * HOP_HEIGHT)
             if (joy >= TIMES.joy) game.finishHandoff()

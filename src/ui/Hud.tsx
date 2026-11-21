@@ -14,15 +14,16 @@ function formatTime(seconds: number): string {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-/** Says so plainly. With an order on board, says it's safe too, as it always survives. */
+/** Says so plainly, and what became of the order on board: safe, or how much of it is left. */
 function CrashNotice() {
   const crashed = useGameStore((state) => state.crashed)
   const carrying = useGameStore((state) => state.phase === 'toCustomer')
+  const intact = useGameStore((state) => Math.round(state.condition * 100))
   if (!crashed) return null
 
   return (
     <p className="hud-crash" role="status">
-      Crash! {carrying && <span>Package is safe</span>}
+      Crash! {carrying && <span>{intact < 100 ? `Package damaged · ${intact}% intact` : 'Package is safe'}</span>}
     </p>
   )
 }

@@ -41,7 +41,7 @@ const CHECK_EVERY = 0.12
 const PARK_RANGE = 45
 /** How far out from its front wall a dark store's door spot is, and how near the rider must be to use it. */
 const STORE_DOOR_OUT = 1.1
-const DOOR_REACH = 2.2
+const DOOR_REACH = 2.9
 /** A kerbside handover is offered stopped within this of the door, in metres, and slower than this, in m/s. */
 const KERB_RANGE = 20
 const KERB_SPEED = 1.2

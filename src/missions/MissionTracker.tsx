@@ -122,7 +122,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     // The clock starts once the grace after accepting is over, moving or not.
     if (stop && game.mission) {
       if (grace.current > 0) grace.current = Math.max(0, grace.current - frameTime)
-      else elapsed.current += frameTime
+      // Not while a first-timer is inside the dark store working out the counter and the way out.
+      else if (!(useTutorial.getState().step !== null && liveRoom.kind === 'store')) elapsed.current += frameTime
     }
 
     // Arriving isn't automatic: the rider parks, walks in and collects, walks up and hands over (Errand.tsx).

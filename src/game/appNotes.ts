@@ -7,7 +7,7 @@ import { NAMMA_SPOTS, useDiscovery } from './discovery'
 import { useFamily } from './family'
 import { UPGRADES, UPGRADE_KINDS } from './garage'
 import { useGameStore } from './gameStore'
-import { useTutorial } from './tutorial'
+import { inFirstOrder } from './firstOrder'
 import { levelFromXp, unlocksBetween } from './progression'
 import { saveKey } from './saveKeys'
 import { CHALLENGE_BONUS, challengeFor, useToday } from './today'
@@ -76,7 +76,7 @@ if (typeof window !== 'undefined') {
     const game = useGameStore.getState()
     if (queue.length === 0 || !game.started || game.photoMode || game.offer || game.phase === 'handingOver' || game.phase === 'collecting') return
     // Not during the tutorial: the apps' own news waits until the first delivery is done.
-    if (useTutorial.getState().step !== null) return
+    if (inFirstOrder()) return
     if (performance.now() - lastShown < PACE.gap && lastShown > 0) return
     const next = queue.shift()
     if (!next) return

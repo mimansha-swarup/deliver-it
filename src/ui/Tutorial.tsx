@@ -5,6 +5,7 @@ import { livePlayer } from '../game/livePlayer'
 import { firstOrder, TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
 import { useDiscovery } from '../game/discovery'
 import { shownPrompts, usePrompts } from '../game/prompts'
+import { hasClearLine } from '../world/collision'
 
 /*
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
@@ -38,6 +39,8 @@ const STEPS: Record<TutorialStep, StepText> = {
 const POLL_MS = 200
 /** The first order's time on the clock, in seconds, at least. */
 const FIRST_ORDER_SECONDS = 180
+/** The first order's door is no further than this from where the rider parks, in metres, and in a straight clear line. */
+const FIRST_WALK_MOST = 16
 /** "You're free to explore" comes this long after the first hand-over, in milliseconds. */
 const FREE_CARD_AFTER_MS = 6500
 
@@ -66,10 +69,20 @@ function TutorialDirector() {
       // society), as near as the planner finds in a good many tries, and with something at the door
       // worth remembering where it can be had: the dog who only barks.
       if (!state.planner) return
-      const fits = (one: typeof mission) => one.door.kind === 'house' && one.story.cargo === 'parcel' && one.story.care === 'none'
+      // And one whose door is a straight walk from where the rider parks: no compound wall or shop
+      // between the two to be walked round (a first order sent its rider into a gap behind a shop).
+      const { collisions } = state.planner
+      const straightWalk = (one: typeof mission) => {
+        const { customer, door } = one
+        const far = Math.hypot(door.x - customer.x, door.z - customer.z)
+        if (far < 2 || far > FIRST_WALK_MOST) return far < 2
+        const short = (far - 1.4) / far
+        return hasClearLine(collisions, customer.x, customer.z, customer.x + (door.x - customer.x) * short, customer.z + (door.z - customer.z) * short, 0.35)
+      }
+      const fits = (one: typeof mission) => one.door.kind === 'house' && one.story.cargo === 'parcel' && one.story.care === 'none' && straightWalk(one)
       let mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
       let best = fits(mission) ? mission : null
-      for (let tries = 0; tries < 60; tries++) {
+      for (let tries = 0; tries < 140; tries++) {
         mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
         if (!fits(mission)) continue
         const better = !best || (mission.door.scene === 'dog' ? 0.75 : 1) * mission.routeLength < (best.door.scene === 'dog' ? 0.75 : 1) * best.routeLength

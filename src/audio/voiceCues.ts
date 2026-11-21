@@ -59,7 +59,12 @@ export function watchVoiceCues(): () => void {
       const { stars } = state.lastReward
       // The customer first, at the door; Ravi a moment after, on the phone.
       const customer = previous.mission?.story.customer
-      if (customer && previous.mission?.door.scene !== 'outside') sayLine('cust.thanks', customer)
+      // What the customer says agrees with the stars they give: thanks for a good one, and for a
+      // poor one what they said about it, in the chat only (there is no recording of an unhappy customer).
+      if (customer && stars < 4) {
+        // Their own words from the rating (orderStory.ts), or a flat one if it has none.
+        state.postChat('customer', customer, state.lastReward.reaction || (stars <= 2 ? 'This is not what I ordered it to look like. Not happy.' : 'Hmm. Okay.'))
+      } else if (customer && previous.mission?.door.scene !== 'outside') sayLine('cust.thanks', customer)
       window.setTimeout(() => {
         raviLast = -Infinity
         ravi(stars >= 5 ? 'good' : stars <= 3 ? 'rough' : 'ok')

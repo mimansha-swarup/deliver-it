@@ -191,6 +191,8 @@ export function Sky() {
     const before = sky.hours
     // Online, the clock runs slower: a shift is a few game hours, and a rush lasts a good while.
     // The tutorial's clock barely moves: a first order that began at 6:40 doesn't end at 8.
+    // And its weather stays as it began: clear.
+    if (useTutorial.getState().step !== null && sky.weatherLeft < 60) sky.weatherLeft = 60
     const learning = useTutorial.getState().step !== null ? (SKY_RULES.tutorialClock * SKY_RULES.dayLength) / 86400 : 1
     stepSky(sky, dt, Math.random, Math.min(learning, useGameStore.getState().duty === 'online' ? ONLINE_CLOCK_SCALE : 1))
     liveSky.totalHours += (sky.hours - before + 24) % 24

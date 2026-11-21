@@ -107,7 +107,7 @@ const FOOT_FOLLOW = { response: 9, snap: 3 }
 const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22, sight: 0.6 }
 /** Getting off and on, the view changes between the vehicle's and the walker's over this long, in seconds, eased at both ends: never a cut. */
 /** Pulled in by a wall on foot, the camera moves this far to the side for each metre it came in, up to `most` metres. */
-const FOOT_SHOULDER = { perMetre: 0.3, most: 0.55, response: 6 }
+const FOOT_SHOULDER = { perMetre: 0.5, most: 0.95, response: 6 }
 const FOOT_BLEND = 0.5
 /**
  * In a room the camera stays inside the walls, and keeps the rider in the picture: `distance`
