@@ -1,3 +1,4 @@
+import { DISPATCHER } from '../game/career'
 import { useGameStore } from '../game/gameStore'
 import { useUpkeep } from '../game/upkeep'
 import { isWoman } from '../missions/orderStory'
@@ -29,11 +30,22 @@ export function sayLine(prefix: string, name: string, { before = '', after = '',
 /** Ravi doesn't talk over himself: at least this long between his cues, in milliseconds. */
 const RAVI_GAP = 6000
 let raviLast = -Infinity
+/**
+ * Ravi's moments that already come with a message of his own, in other words (going online and
+ * offline: gameStore.ts; a breakdown: upkeep.ts). At the rest (an order, a pickup, a crash, how a
+ * delivery went) nothing was shown, and his voice came out of nowhere.
+ */
+const HAS_ITS_OWN_MESSAGE = new Set(['online', 'offline', 'breakdown'])
+
 function ravi(prefix: string) {
   const now = performance.now()
   if (now - raviLast < RAVI_GAP) return
   raviLast = now
-  void speak(pickLine(`ravi.${prefix}`).id, 'phone')
+  const line = pickLine(`ravi.${prefix}`)
+  // Never a voice with nothing on the phone: what he says is also a message from him, word for word,
+  // so it's clear who is speaking and why (and it's there to read with the sound off).
+  if (!HAS_ITS_OWN_MESSAGE.has(prefix) && line.line) useGameStore.getState().postChat('dispatch', DISPATCHER, line.line, prefix === 'crash')
+  void speak(line.id, 'phone')
 }
 
 /** Starts listening for Ravi's moments and the customer's thanks. Call once. */

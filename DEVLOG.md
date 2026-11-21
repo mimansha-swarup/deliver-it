@@ -11403,3 +11403,12 @@ phone and at the door now take turns (`speak` in audio/voice.ts): one that comes
 speaking starts when it has finished, after a short breath, and one that would wait more than
 seven seconds isn't said (its words are in the chat). The RJ is the radio in the background and
 isn't part of it. Not heard by me: the fix is in how each clip's start is timed.
+
+## 2026-11-21: Entry 249, Ravi's voice always comes with his message
+
+Ravi spoke at seven moments, and only three of them (going online, going offline, a breakdown)
+also put a message from him on the phone. At a crash, a pickup, a new order and after a
+delivery his voice came with nothing on screen, which felt like a stray sound. Now every line
+he speaks is also a message from him, word for word, at the same moment (voiceCues.ts), marked
+urgent for a crash. Checked in the game: a crash with an order on board played his line and
+showed "Ey! Yen aaythu? You okay?" as a notification.
