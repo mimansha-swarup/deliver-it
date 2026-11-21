@@ -398,11 +398,10 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
           <p>Baloo Tamma 2 by Ek Type, for English and Kannada, under the SIL Open Font Licence.</p>
         </Group>
 
-        <Group title="What the game counts">
+        <Group title="Statistics and feedback">
           <p>
-            Anonymous counts only, to know whether the first minutes work: that a visit began, the tutorial was finished, a first delivery made, how long the visit was, the
-            picture quality, and that an error happened. No cookies, nothing that identifies you or your device, nothing you type. Feedback you send goes to the site’s own
-            inbox, with an email only if you give one.
+            Anonymous gameplay stats help us improve the game. They are game events only (an order accepted, a delivery made, a crash): no cookies, nothing that identifies
+            you, nothing you type. Feedback you send goes to the site’s own inbox, with an email only if you give one.
           </p>
         </Group>
 

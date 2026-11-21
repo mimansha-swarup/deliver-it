@@ -11818,3 +11818,15 @@ what was there before.
 Not done: every customer's gate was not checked for a walkable way (the first order's door is
 chosen for a straight clear walk, and the nudge is the fallback); the kerb handover's shot was not
 looked at (it is the same held shot as at a door).
+
+## 2026-11-22: Entry 273, anonymous gameplay statistics through PostHog
+
+`src/analytics.ts` is the only file that talks to PostHog (posthog-js 1.453.2); the stub from entry
+260 (game/analytics.ts, which sent nothing) is gone. Off without `VITE_POSTHOG_KEY`, on localhost,
+on deploy previews and with `?debug` or `?fresh`. Autocapture, page views, session recording,
+surveys and flags are off; no person profiles; the anonymous id is in memory only. Most events are
+watched from the game's own stores inside that file; `new_game`, `explore_start` and
+`tutorial_skip` are said where they happen. The README has the variables and the funnel.
+
+`ip: false` is set as asked, and does nothing in this version of the library: discarding IP
+addresses is the PostHog project's setting. No event has been seen arriving: there is no key yet.

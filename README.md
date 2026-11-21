@@ -51,3 +51,33 @@ TypeScript. The city is built in the browser from OpenStreetMap and open buildin
 
 Name "Swalpa Fast", Kannada "ಸ್ವಲ್ಪ ಫಾಸ್ಟ್", tagline "A delivery rider's Bengaluru". Yellow
 `#f6b32b`, charcoal `#0e1116`, cream `#fff6e6`. No real brand names appear in the game.
+
+## Analytics
+
+Anonymous gameplay statistics go to [PostHog](https://posthog.com) from one file, `src/analytics.ts`.
+Nothing is sent unless a key is set, and never from localhost, a Netlify deploy preview, or a visit
+with `?debug` or `?fresh` in the address.
+
+Set these where the site is built (Netlify: Site configuration → Environment variables), or in
+`.env.local` to try it:
+
+| Variable | What it is |
+|---|---|
+| `VITE_POSTHOG_KEY` | The PostHog project's API key (`phc_…`). Without it every call does nothing. |
+| `VITE_POSTHOG_HOST` | The PostHog host, e.g. `https://eu.i.posthog.com`. Defaults to `https://us.i.posthog.com`. |
+
+In the PostHog project, switch on **Discard client IP data**: the `ip: false` option in the code
+has no effect in current versions of posthog-js.
+
+What is on and off: autocapture, page views, session recording, surveys and feature flags are off;
+no person profiles are made; the anonymous id is kept in memory only (no cookie, no local storage),
+so each visit is a new anonymous visitor.
+
+The main funnel:
+
+`page_open` → `new_game` → `order_accepted` → `pickup_done` → `order_delivered`
+
+All events: `page_open {device, quality}`, `new_game`, `explore_start`, `multiplayer_join {players}`,
+`tutorial_step {n}`, `tutorial_skip {n}`, `tutorial_done {seconds}`, `order_accepted {order_no}`,
+`pickup_done`, `order_delivered {stars, seconds, crashes, on_time, vehicle}`, `crash`,
+`vehicle_switch {vehicle}`, `session_end {minutes_played, deliveries}`.

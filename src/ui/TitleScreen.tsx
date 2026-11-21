@@ -1,4 +1,5 @@
 import { markLoad } from '../dev/loadTimeline'
+import { track } from '../analytics'
 import { useEffect, useState } from 'react'
 import { unlockAudio } from '../audio/audioEngine'
 import { GAME_NAME_KANNADA, NOW_RIDING, TAGLINE } from '../game/brand'
@@ -69,6 +70,8 @@ export function TitleScreen() {
   const launch = (explore: boolean) => {
     // Explore: the city to roam, with no orders and any vehicle to drive (game/borrow.ts). Otherwise the career.
     useGameStore.getState().setExplore(explore)
+    if (explore) track('explore_start')
+    else if (firstTime) track('new_game')
     // Sound is only allowed after a click or key press, and this is one.
     unlockAudio()
     markLoad('play pressed')

@@ -6,8 +6,8 @@ import { markLoad } from './dev/loadTimeline'
 import './world/haze'
 import './world/quietThree'
 import './world/brightnessCap'
-// Anonymous counts of how the game is used (game/analytics.ts): nothing is sent until an endpoint is set.
-import './game/analytics'
+// Anonymous gameplay statistics (analytics.ts): off without a key, on localhost, on deploy previews and with ?debug or ?fresh.
+import { pageOpen } from './analytics'
 // A game controller presses the game's own keys (game/gamepad.ts).
 import './game/gamepad'
 import { Suspense, useEffect, useState } from 'react'
@@ -52,6 +52,8 @@ import { PauseClock, PauseMenu } from './ui/PauseMenu'
 import { setMapOpen, usePause } from './ui/uiState'
 import { ChatBubbles } from './ui/ChatBubbles'
 import { Attribution } from './ui/Credits'
+
+pageOpen()
 
 /** The sky and haze before the sky's own colours take over, a frame after start. */
 const SKY_COLOR = '#e3dbc4'
