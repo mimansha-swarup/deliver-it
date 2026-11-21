@@ -11480,3 +11480,15 @@ Frame rate, built game, headless Chrome (which stops at 60): scooter, Vega and E
 and on Low all held 60 with a 16.7 ms median frame; one High run with the E-Cargo averaged 56.
 That shows no fall below the cap, not the 80 the vision asks of High, which this test can't see.
 Screenshots at 10:00 and 17:30, front, side, three-quarter and rear, are in `clips/brand/tripo`.
+
+## 2026-11-21: Entry 253, friends on the map, and jackets in each rider's colour
+
+- **Friends are on both maps.** Each other rider in the room is a dot in their colour with a white
+  rim and the first letter of their name: on the minimap (at its edge, in their direction, when
+  they're further than it shows) and on the full map with their name beside it.
+- **Jackets, not helmets, say who is who.** In a room every rider's jacket is their colour there,
+  for the others and on their own rider too; helmets are all off-white. Alone, the jacket is
+  Deliver It's yellow as before.
+
+Checked with two browsers: the guest, moved 70 m off, showed on the host's full map with their
+name. The jacket colours were built and compile; they weren't looked at close up.

@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
 import { getModel, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
+import { useRoomStore } from '../net/room'
 import { gaitAt, HIP, SHUFFLE, WALK, type Gait, type Probe } from './riderShape'
 import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
@@ -170,7 +171,9 @@ export function Rider({
 
   // The rider is the bike rider from people.glb, in the Deliver It jacket and helmet over his own riding suit and boots.
   const { scene: people } = useGLTF(PEOPLE_MODELS_URL)
-  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, 'biker'), LOOK), [people])
+  // In a room with friends the jacket is this rider's colour there, as the others see it; alone it's Deliver It's yellow.
+  const roomColour = useRoomStore((state) => (state.status === 'on' ? state.me.colour : null))
+  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, 'biker'), roomColour ? { ...LOOK, jacket: roomColour } : LOOK), [people, roomColour])
   const pose: RiderPose = useMemo(
     () => ({ leftArm: new THREE.Vector3(), rightArm: new THREE.Vector3(), leftLeg: new THREE.Vector3(), rightLeg: new THREE.Vector3() }),
     [],

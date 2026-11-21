@@ -11,11 +11,13 @@ import { useRoomStore, type Rider } from './room'
 /*
  * The other riders in the room (net/room.ts), each drawn where their last news put them and eased
  * towards it, so ten updates a second look like riding and not like jumping. Each is the vehicle
- * they're on, as one still shape, with a rider seated on it in the yellow jacket and a helmet in
- * their own colour, and their name over them. On foot, their vehicle stands where they left it and
+ * they're on, as one still shape, with a rider seated on it in a jacket of their own colour in the
+ * room, and their name over them. On foot, their vehicle stands where they left it and
  * they stand beside wherever they've walked to. They're not solid: riders pass through each other.
  */
 
+/** Everyone's helmet is the same off-white; it's the jacket that says who they are. */
+const HELMET = '#ecebe6'
 const LOOK: RiderLook = { jacket: '#f2b82a', glove: '#1c1d20', trousers: '#2b3a55', shoe: '#17171a', ownGear: true }
 /** How quickly a rider closes on where their news says they are, per second, and how far off is a jump (a teleport), not a ride. */
 const EASE = 9
@@ -140,9 +142,10 @@ export function RemoteRiders() {
           person,
           LOOK,
           { hip: new THREE.Vector3(...seat.hip), lean: seat.lean, hands: new THREE.Vector3(seat.grip[0], seat.grip[1], seat.column + seat.grip[2]), feet: new THREE.Vector3(...seat.foot) },
-          colour,
+          HELMET,
         )
-        const rider = paintModel(seated, LOOK.jacket)
+        // Their jacket is their colour in the room: who is who, from any distance.
+        const rider = paintModel(seated, colour)
         seated.dispose()
         rider.translate(seat.side, 0, 0)
         built = { vehicle: createBuiltStill(spec.body, spec.paint ?? '#17181b'), far: createBuiltFar(spec.body, spec.paint ?? '#17181b'), rider }

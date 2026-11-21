@@ -6,7 +6,7 @@ import { livePlayer, liveRoute } from '../game/livePlayer'
 import { loadMapData } from '../world/mapData'
 import { createMapLabels, CURRENT_ROAD_HEIGHT, drawCurrentRoad, drawMapLabels, findCurrentRoad } from './mapLabels'
 import { PLAY_AREA } from '../world/worldUtils'
-import { CURRENT_ROAD_EVERY, EDGE_MARGIN, GROUND_COLOR, IMAGE_SCALE, LAYOUT_RESPONSE, TURN_RESPONSE, createMapImage, currentTarget, drawParkedVehicle, drawPlayer, drawRoute, drawTarget, fitCanvas, toScreen, type View, drawLandmarkDot } from './mapDrawing'
+import { CURRENT_ROAD_EVERY, EDGE_MARGIN, GROUND_COLOR, IMAGE_SCALE, LAYOUT_RESPONSE, TURN_RESPONSE, createMapImage, currentTarget, drawParkedVehicle, drawPlayer, drawRoute, drawTarget, fitCanvas, toScreen, type View, drawLandmarkDot, drawFriends } from './mapDrawing'
 import { mapMarkers } from '../game/mapMarkers'
 
 /** The minimap is redrawn at most this often, in milliseconds (about 30 a second). */
@@ -120,6 +120,8 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
       }
       drawTarget(context, view, time)
       drawParkedVehicle(context, view)
+      // Friends in the room, under the rider's own arrow.
+      drawFriends(context, view)
       drawPlayer(context, view)
       if (currentRoad) drawCurrentRoad(context, currentRoad, width / 2, height - CURRENT_ROAD_HEIGHT - 10)
       context.restore()

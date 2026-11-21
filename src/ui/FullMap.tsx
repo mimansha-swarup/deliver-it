@@ -8,7 +8,8 @@ import { loadMapData } from '../world/mapData'
 import { findNearestNode } from '../world/roadGraph'
 import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from '../world/worldUtils'
 import { createMapLabels, drawMapLabels } from './mapLabels'
-import { createMapImage, currentTarget, drawPin, fitCanvas, GROUND_COLOR, IMAGE_SCALE, PLAYER_COLOR, drawLandmarkDot } from './mapDrawing'
+import { useRoomStore } from '../net/room'
+import { createMapImage, currentTarget, drawFriendDot, drawPin, fitCanvas, GROUND_COLOR, IMAGE_SCALE, PLAYER_COLOR, drawLandmarkDot } from './mapDrawing'
 import { mapMarkers } from '../game/mapMarkers'
 import { setMapOpen, useUi } from './uiState'
 
@@ -145,6 +146,14 @@ function MapCanvas() {
       if (target) {
         const [x, y] = project(target.x, target.z)
         drawPin(context, x, y, target.color, target.pickup)
+      }
+      // Friends in the room, each with their name.
+      const room = useRoomStore.getState()
+      if (room.status === 'on') {
+        for (const rider of Object.values(room.riders)) {
+          const [x, y] = project(rider.x, rider.z)
+          drawFriendDot(context, x, y, rider.colour, rider.name, true)
+        }
       }
       const [riderX, riderY] = project(livePlayer.x, livePlayer.z)
       context.save()

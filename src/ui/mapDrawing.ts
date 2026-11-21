@@ -1,6 +1,7 @@
 /* Drawing the map: the pre-drawn image of HSR, the route, pins, the rider. Shared by the minimap and the full map. */
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveRoute } from '../game/livePlayer'
+import { useRoomStore } from '../net/room'
 import { getCurrentStop } from '../missions/missionLogic'
 import { errandLive } from '../game/doorsteps'
 import type { MapData } from '../world/mapData'
@@ -379,3 +380,53 @@ export function drawParkedVehicle(context: CanvasRenderingContext2D, view: View)
   context.textBaseline = 'middle'
   context.fillText('P', cx, cy + 0.5)
 }
+
+/**
+ * A friend in the room (net/room.ts) on a map: a dot in their own colour with a white rim and the
+ * first letter of their name, and their name beside it where there's room (`named`). `x`, `y`: where
+ * on the canvas.
+ */
+export function drawFriendDot(context: CanvasRenderingContext2D, x: number, y: number, colour: string, name: string, named: boolean) {
+  context.beginPath()
+  context.arc(x, y, 8, 0, Math.PI * 2)
+  context.fillStyle = colour
+  context.fill()
+  context.lineWidth = 2
+  context.strokeStyle = '#ffffff'
+  context.stroke()
+  context.fillStyle = '#0e1116'
+  context.font = "800 10px 'Baloo Tamma 2', system-ui, sans-serif"
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText(name.slice(0, 1).toUpperCase(), x, y + 1)
+  if (!named) return
+  context.font = "700 12px 'Baloo Tamma 2', system-ui, sans-serif"
+  context.textAlign = 'left'
+  const wide = context.measureText(name).width + 10
+  context.fillStyle = 'rgb(14 17 22 / 80%)'
+  context.beginPath()
+  context.roundRect(x + 11, y - 9, wide, 18, 9)
+  context.fill()
+  context.fillStyle = '#fff6e6'
+  context.fillText(name, x + 16, y + 1)
+}
+
+/**
+ * Everyone else in the room on the minimap: where they are, or at its edge in their direction when
+ * they're further than it shows, so a friend can always be ridden towards.
+ */
+export function drawFriends(context: CanvasRenderingContext2D, view: View) {
+  const { riders, status } = useRoomStore.getState()
+  if (status !== 'on') return
+  for (const rider of Object.values(riders)) {
+    let [x, y] = toScreen(view, rider.x, rider.z)
+    const reach = Math.hypot(x, y)
+    const edge = (view.radius ?? Math.min(view.width, view.height) / 2) - 12
+    if (reach > edge) {
+      x *= edge / reach
+      y *= edge / reach
+    }
+    drawFriendDot(context, view.riderX + x, view.riderY + y, rider.colour, rider.name, false)
+  }
+}
+
