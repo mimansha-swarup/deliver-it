@@ -124,6 +124,10 @@ function OfferCard() {
     return () => window.clearInterval(timer)
   }, [offer])
 
+  // Not under a delivery's result card: one thing at the bottom of the screen at a time.
+
+  if (useGameStore.getState().lastReward) return null
+
   if (!offer) return null
   const { mission } = offer
   const left = Math.max(0, Math.min(OFFER_SECONDS, (offer.expiresAt - now) / 1000))
@@ -229,7 +233,7 @@ function FamilyAskCard() {
     }
   }, [ask])
 
-  if (!ask || offer) return null
+  if (!ask || offer || useGameStore.getState().lastReward) return null
   const left = Math.max(0, Math.min(ASK.seconds, (ask.expiresAt - now) / 1000))
   const short = credits < ask.amount
 

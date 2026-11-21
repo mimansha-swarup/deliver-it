@@ -22,7 +22,7 @@ let output: GainNode | null = null
 
 /** How loud the music is under the RJ's voice, against its usual level, and seconds between the RJ's breaks. */
 const DUCKED = 0.22
-const BREAK_EVERY: [number, number] = [70, 115]
+const BREAK_EVERY: [number, number] = [120, 200]
 let breakTimer: number | null = null
 
 /** Turns the playing station down under the RJ's voice, and back up after. */
@@ -37,7 +37,7 @@ function duck(down: boolean) {
 function bookBreak(station: string, first = false) {
   if (breakTimer !== null) window.clearTimeout(breakTimer)
   const [low, high] = BREAK_EVERY
-  const wait = first ? 22 + Math.random() * 20 : low + Math.random() * (high - low)
+  const wait = first ? 45 + Math.random() * 30 : low + Math.random() * (high - low)
   breakTimer = window.setTimeout(() => {
     breakTimer = null
     // Not while the page is in the background: the break waits for the rider.

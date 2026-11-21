@@ -113,7 +113,9 @@ export const SCOOTER = {
   bumpSpeedShare: 0.5,
   /** A landing at least this hard (metres a second) counts as going over a breaker or into a pothole, however slowly. */
   gentleLanding: 0.25,
-  landingSpeedLoss: 0.12,
+  // None: it was 0.12, taken off in one frame at each wheel's landing, front then rear, which jerked the
+  // vehicle back twice over every breaker and flyover joint. A landing is felt in the camera and heard.
+  landingSpeedLoss: 0,
   /** How wet the ground must be to splash, from 0 to 1, and how fast the scooter must go, in m/s. */
   splashWetness: 0.25,
   splashSpeed: 3,

@@ -9,6 +9,7 @@ import { levelFromXp } from '../game/progression'
 import { tutorialHold, useTutorial } from '../game/tutorial'
 import { invitedTo, ROOM } from '../net/room'
 import { FriendsPanel } from './RoomUi'
+import { FeedbackPanel } from './Feedback'
 import { Logo } from './Logo'
 import { ControlsPanel, CreditsPanel, MenuFooter, MenuList, SettingsPanel, type MenuItem } from './Menu'
 import { useT } from './menuText'
@@ -27,7 +28,7 @@ const BACKDROPS = [
 /** How long each picture stays, in milliseconds. */
 const BACKDROP_TIME = 8000
 
-type View = 'menu' | 'story' | 'settings' | 'controls' | 'credits' | 'friends'
+type View = 'menu' | 'story' | 'settings' | 'controls' | 'credits' | 'friends' | 'feedback'
 
 function megabytes(kb: number): string {
   return (kb / 1024).toFixed(1)
@@ -55,6 +56,15 @@ export function TitleScreen() {
   // An invite link opens straight on the room's panel.
   const invited = invitedTo()
   const [view, setView] = useState<View>(invited ? 'friends' : 'menu')
+
+  // While the story's cards are read, the city is built behind them (the title's pictures cover it):
+  // its shapes made, its shaders compiled, its pictures sent to the graphics card. Left until the
+  // last card, all of that landed in the moment after it, as one long frame and a loading screen.
+  useEffect(() => {
+    if (view !== 'story') return
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => useLaunch.setState({ curtainDrawn: true })))
+    return () => cancelAnimationFrame(id)
+  }, [view])
 
   const launch = (explore: boolean) => {
     // Explore: the city to roam, with no orders and any vehicle to drive (game/borrow.ts). Otherwise the career.
@@ -137,6 +147,7 @@ export function TitleScreen() {
       {view === 'settings' && <SettingsPanel onBack={back} />}
       {view === 'controls' && <ControlsPanel onBack={back} />}
       {view === 'credits' && <CreditsPanel onBack={back} />}
+      {view === 'feedback' && <FeedbackPanel onBack={back} />}
       {view === 'friends' && (
         <FriendsPanel
           onBack={back}
@@ -152,7 +163,7 @@ export function TitleScreen() {
         <span aria-hidden="true" />
         In the game: {BACKDROPS[shown].caption}
       </p>
-      <MenuFooter />
+      <MenuFooter onFeedback={() => setView('feedback')} />
     </main>
   )
 }

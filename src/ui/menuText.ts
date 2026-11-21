@@ -30,6 +30,8 @@ const TEXT = {
   medium: ['Medium', 'ಮಧ್ಯಮ'],
   high: ['High', 'ಹೆಚ್ಚು'],
   sound: ['Sound', 'ಧ್ವನಿ'],
+  masterVolume: ['Master', 'ಒಟ್ಟು ಧ್ವನಿ'],
+  voiceVolume: ['Voices', 'ಮಾತು'],
   soundVolume: ['Sound effects', 'ಧ್ವನಿ ಪರಿಣಾಮಗಳು'],
   musicVolume: ['Music', 'ಸಂಗೀತ'],
   camera: ['Camera', 'ಕ್ಯಾಮೆರಾ'],

@@ -4,7 +4,12 @@ import type { Quality } from './game/qualitySettings'
 // and a cap on brightness that stops black frames (see brightnessCap.ts).
 import { markLoad } from './dev/loadTimeline'
 import './world/haze'
+import './world/quietThree'
 import './world/brightnessCap'
+// Anonymous counts of how the game is used (game/analytics.ts): nothing is sent until an endpoint is set.
+import './game/analytics'
+// A game controller presses the game's own keys (game/gamepad.ts).
+import './game/gamepad'
 import { Suspense, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGameStore } from './game/gameStore'
@@ -19,6 +24,7 @@ import { RadioPlayer } from './ui/Radio'
 import { Phone } from './ui/Phone'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
+import { StaticMatrices } from './world/StaticMatrices'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
 import { DevStats } from './dev/DevStats'
 import { FpsOverlay } from './dev/FpsOverlay'
@@ -30,6 +36,7 @@ import { worldPlanner } from './world/planAhead'
 import { DutyUi } from './ui/DutyUi'
 import { Objective } from './ui/Objective'
 import { Prompts } from './ui/Prompts'
+import { ParkHint } from './ui/ParkHint'
 import { Subtitle } from './ui/Subtitle'
 import { RoomCard } from './ui/RoomUi'
 import { RoomFade } from './ui/RoomFade'
@@ -89,6 +96,7 @@ function RidingUi() {
       <DutyUi />
       <Objective />
       <Prompts />
+      <ParkHint />
       <Subtitle />
       <RoomCard />
       <GuardCard />
@@ -134,11 +142,12 @@ function App() {
     <>
       <ErrorBoundary>
         {/* No antialiasing here: everything is drawn through PostEffects, which antialiases its own picture. */}
-        <Canvas shadows dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
+        <Canvas shadows="percentage" dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
           <color attach="background" args={[SKY_COLOR]} />
           <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
           <ViewDistance />
           <AdaptiveResolution />
+          <StaticMatrices />
           <DevStats />
           <PauseClock />
           <PostEffects />

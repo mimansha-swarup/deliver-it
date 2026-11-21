@@ -1805,6 +1805,28 @@ body,
   color: var(--title-kannada);
 }
 
+.menu-footer-link {
+  padding: 0;
+  border: 0;
+  color: var(--title-kannada);
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.feedback textarea {
+  min-width: 0;
+  padding: 8px 12px;
+  border: 2px solid rgb(255 246 230 / 28%);
+  border-radius: 10px;
+  color: var(--title-chalk);
+  background: rgb(255 246 230 / 8%);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+
 .menu-footer {
   position: absolute;
   left: var(--title-left);
@@ -5146,10 +5168,28 @@ body,
 }
 
 /* What a spoken Kannada line means (ui/Subtitle.tsx): bottom centre, above the prompts, and above the order offer when one is up. */
+.park-hint {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--edge) + 86px);
+  z-index: 14;
+  margin: 0;
+  padding: 7px 18px;
+  border-radius: 999px;
+  color: #14171c;
+  background: #f6b32b;
+  font-size: clamp(15px, 1.25vw, 19px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 .voice-subtitle {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--edge) + 58px);
+  /* Clear of the prompt row at the bottom edge, and low enough never to cover the rider. */
+  bottom: calc(var(--edge) + 72px);
   z-index: 15;
   display: grid;
   justify-items: center;

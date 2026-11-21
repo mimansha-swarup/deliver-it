@@ -5,7 +5,10 @@ import * as THREE from 'three'
 import { findColour, HELMETS } from '../game/garage'
 import { useGameStore } from '../game/gameStore'
 import { getModel, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
+import { GAIT as STREET_GAIT, IDLE_POSE, STRIDE_PER_METRE } from '../traffic/gait'
+import { Walker, type WalkerPose } from '../traffic/Traffic'
 import { useRoomStore } from '../net/room'
+import { livePlayer } from '../game/livePlayer'
 import { gaitAt, HIP, SHUFFLE, WALK, type Gait, type Probe } from './riderShape'
 import { createRiderMaterial, createRiderModel, poseLimb, type RiderModel, type RiderPose } from './riderModel'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
@@ -26,6 +29,19 @@ import { BRAND_DYE, BRAND_INK, createHelmetDecalTexture, createJacketPrintTextur
  */
 
 const LOOK = { jacket: BRAND_DYE, glove: '#1c1d20', trousers: '#2b3a55', shoe: '#17171a', ownGear: true }
+/**
+ * On foot the rider is drawn as the pedestrians are: a standing body of their build, walking by
+ * their shader (traffic/Traffic.tsx's Walker), in the jacket and the helmet. The seated model is a
+ * rider's shape, made to sit; stood up it was hunched, with its arms against its sides. It is kept
+ * for the seat, for getting on and off, and for a fall. `swapAt` is how far off the vehicle they
+ * are when the standing body takes over; `full` the pace by which they're fully walking; above
+ * `jogFrom` the strides lengthen (so a jog isn't a blur of tiny steps), by `longer` per metre a second.
+ */
+const ON_FOOT = { swapAt: 0.97, full: 0.6, jogFrom: 1.6, longer: 0.45, response: 9, helmetDown: 0.13, shuffle: 0.4 }
+/** How far a two-wheeler's rider tips forward at full speed, in radians: a little. They sit upright (they used to hunch over the bars). */
+const SPEED_TUCK = 0.06
+/** The one body the rider is, seated and on foot, so getting on or off never changes who they are. */
+const RIDER_BODY = 'office'
 const HELMET = '#f4f3ef'
 const VISOR = '#14191e'
 
@@ -162,6 +178,10 @@ export function Rider({
 }) {
   const body = useRef<THREE.Group>(null)
   const head = useRef<THREE.Group>(null)
+  /** The seated model's own parts (hidden while the standing body is drawn), and what holds the head, bare or helmeted. */
+  const seated = useRef<THREE.Group>(null)
+  const headRoot = useRef<THREE.Group>(null)
+  const walkerPose = useRef<WalkerPose>({ stride: 0, walking: 0, idle: IDLE_POSE.still, visible: false })
   const footDown = useRef(0)
   /** On foot: the gait just now, how fast they're turning (eased), the heading last frame, and the strides taken turning on the spot. */
   const gait = useRef<Gait>({ ...WALK }).current
@@ -169,11 +189,17 @@ export function Rider({
   /** Standing: seconds they've been still, until the next fidget, which it is, how far through, and which way it goes. */
   const fidget = useRef({ still: 0, wait: FIDGET.after, kind: null as Fidget | null, time: 0, side: 1, count: 0 })
 
-  // The rider is the bike rider from people.glb, in the Deliver It jacket and helmet over his own riding suit and boots.
+  // The rider is one of people.glb's bodies (RIDER_BODY), the same seated and on foot, in the Deliver It jacket and helmet over his own trousers and shoes.
   const { scene: people } = useGLTF(PEOPLE_MODELS_URL)
+  // On foot: one of the pedestrians' own bodies (long sleeves that take the jacket's colour, trousers, shoes), and how high his head is.
+  const standing = useMemo(() => {
+    const geometry = getModel(people, RIDER_BODY)
+    geometry.computeBoundingBox()
+    return { geometry, top: geometry.boundingBox?.max.y ?? 1.7 }
+  }, [people])
   // In a room with friends the jacket is this rider's colour there, as the others see it; alone it's Deliver It's yellow.
   const roomColour = useRoomStore((state) => (state.status === 'on' ? state.me.colour : null))
-  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, 'biker'), roomColour ? { ...LOOK, jacket: roomColour } : LOOK), [people, roomColour])
+  const model: RiderModel = useMemo(() => createRiderModel(getModel(people, RIDER_BODY), roomColour ? { ...LOOK, jacket: roomColour } : LOOK), [people, roomColour])
   const pose: RiderPose = useMemo(
     () => ({ leftArm: new THREE.Vector3(), rightArm: new THREE.Vector3(), leftLeg: new THREE.Vector3(), rightLeg: new THREE.Vector3() }),
     [],
@@ -312,7 +338,7 @@ export function Rider({
     const sway = gait.sway * (leftStep.load - rightStep.load) * moving * off + FIDGET.shift * shifted
     // Leans into a bend harder than the scooter. Off it, they stand up straight, tip a little into a walk, more into a jog.
     const afoot = state.rider.phase === 'afoot' ? off : 0
-    const torso = (seat.lean + crouch * (seat.footDown ? 0.16 : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off + state.rider.tip * afoot
+    const torso = (seat.lean + crouch * (seat.footDown ? SPEED_TUCK : 0)) * (1 - off) + (0.02 + gait.lean * moving + BREATH.tip * breath * still) * off + state.rider.tip * afoot
     // Stopped, the hips shift over to the side the foot goes down on.
     const shift = footDown.current * (1 - off)
 
@@ -359,17 +385,47 @@ export function Rider({
       probes[10 + index].point.copy(foot)
     }
 
+    // On foot, the standing body: walking by the distance covered (so the feet don't slide), standing when still.
+    const afootNow = (state.rider.phase === 'afoot' || state.rider.phase === 'walking') && off >= ON_FOOT.swapAt && limp < 0.02
+    const walker = walkerPose.current
+    walker.visible = afootNow
+    walker.indoors = livePlayer.indoors
+    if (seated.current) seated.current.visible = !afootNow
+    if (afootNow) {
+      const perMetre = STRIDE_PER_METRE / (1 + Math.max(0, pace - ON_FOOT.jogFrom) * ON_FOOT.longer)
+      walker.stride += pace * delta * perMetre + Math.abs(turned) * SHUFFLE_STRIDE_PER_RADIAN * (shuffle > 0 ? 1 : 0)
+      const wanted = Math.max(Math.min(1, pace / ON_FOOT.full), shuffle * ON_FOOT.shuffle)
+      walker.walking += (wanted - walker.walking) * (1 - Math.exp(-ON_FOOT.response * delta))
+      walker.idle = phone > 0.5 ? IDLE_POSE.phone : IDLE_POSE.still
+      // The head (helmet or bare) rides on the standing body: upright, dipping with each step as the hips do.
+      const bothDown = (STREET_GAIT.stance - 0.5) / 2
+      const dip = -STREET_GAIT.hipDip * (0.5 + 0.5 * Math.cos(4 * Math.PI * (walker.stride / (2 * Math.PI) - bothDown))) * walker.walking
+      group.position.set(0, HIP.y, HIP.z)
+      group.rotation.set(0, 0, 0)
+      group.updateMatrix()
+      headRoot.current?.position.set(0, standing.top - ON_FOOT.helmetDown + dip - HIP.y, 0.01)
+    } else {
+      walker.walking = 0
+      headRoot.current?.position.set(size.head.x, size.head.y - hipsUp, size.head.z)
+    }
+
     // Looks where it's going: the head turns back against the torso's lean, so the eyes stay level.
     if (head.current) {
       // The head stays facing the way they're going while the shoulders turn under it.
-      head.current.rotation.y = state.steer * 0.3 * (1 - off) + looking - twist
+      head.current.rotation.y = state.steer * 0.3 * (1 - off) + looking - (afootNow ? 0 : twist)
       head.current.rotation.z = state.lean * 0.45 * (1 - off) + FIDGET.tilt * shifted
-      head.current.rotation.x = -torso - crouch * 0.02 * (1 - off) + 0.08 + FIDGET.nod * phone
+      head.current.rotation.x = (afootNow ? 0 : -torso + 0.08) - crouch * 0.02 * (1 - off) + FIDGET.nod * phone
     }
   })
 
   return (
+    <>
+    {/* On foot: the standing body, its feet on the ground under where the hips are. */}
+    <group position={[0, 0, HIP.z]}>
+      <Walker body={standing.geometry} pose={walkerPose} colour={roomColour ?? LOOK.jacket} />
+    </group>
     <group ref={body} position={HIP} matrixAutoUpdate={false}>
+      <group ref={seated}>
       <mesh geometry={model.geometry} material={riderMaterial} position={[0, -hipsUp, 0]} frustumCulled={false} />
       {/* The jacket's dark collar, round the neck. */}
       <mesh position={[0, size.shoulderY - hipsUp + 0.04, size.head.z]} material={materials.trim}>
@@ -380,9 +436,11 @@ export function Rider({
         <cylinderGeometry args={[printRadius, printRadius, PRINT_HEIGHT, 16, 1, true, Math.PI - PRINT_WRAP / 2, PRINT_WRAP]} />
         <meshStandardMaterial map={printTexture} transparent roughness={0.8} depthWrite={false} />
       </mesh>
+      </group>
 
+      <group ref={headRoot} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
       {/* Bare-headed, when the helmet is left off: a head and hair where the helmet would be. */}
-      <group visible={!helmetOn} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
+      <group visible={!helmetOn}>
         <mesh scale={[0.9, 1.05, 0.98]} position={[0, -0.01, 0.005]}>
           <sphereGeometry args={[0.108, 14, 10]} />
           <meshStandardMaterial color="#9a6a48" roughness={0.75} />
@@ -393,7 +451,7 @@ export function Rider({
         </mesh>
       </group>
       {/* Left off (the Garage's choice), the traffic police have something to say about it. */}
-      <group ref={head} visible={helmetOn} position={[size.head.x, size.head.y - hipsUp, size.head.z]}>
+      <group ref={head} visible={helmetOn}>
         {/* The helmet, over the model's head (+z forward). Seen from behind and a little above, as the
             camera sees it: a shell with a dark rubber rim, the visor wrapping round to the sides on
             its pivots, a chin bar, vents on top and at the back, twin stripes, the Deliver It decal and
@@ -451,6 +509,8 @@ export function Rider({
           </mesh>
         ))}
       </group>
+      </group>
     </group>
+    </>
   )
 }

@@ -1,4 +1,5 @@
-import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import { isNearBuilding, pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import { analog } from './analogInput'
 import { ROAD_HEIGHT, type Surface } from '../world/surface'
 import { JOG, stridePerMetre } from './riderShape'
 import { currentGrip, tuning } from './tuning'
@@ -405,6 +406,9 @@ export function isAfoot(state: ScooterState): boolean {
  */
 export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, stepUp: 0.45, stepRise: 18, stepFall: 12, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
+/** On foot and pinned: moving slower than `still` (m/s) for `after` seconds while walking, they're stepped `step` metres to clear ground, trying these turns from the way they were going. */
+const FOOT_PINNED = { still: 0.15, after: 1, step: 0.9, round: [0.8, -0.8, 1.57, -1.57, 2.4, -2.4, Math.PI] }
+let pinnedFor = 0
 const DISMOUNT_SPEED = 2
 
 /** Where the rider stands having got off: beside the seat, on the kerb side of a two-wheeler, at the driver's door of a cab. */
@@ -595,6 +599,23 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   // the gait's own at that speed (riderShape.ts), so a planted foot stays planted in a walk, a jog
   // and anything between.
   const covered = Math.hypot(rider.x - fromX, rider.z - fromZ)
+  // Pinned: walking, and getting nowhere for a second (wedged between a parked bike and a railing,
+  // or in a corner two walls make). They're stepped out to the nearest clear ground, to the side of
+  // the way they were trying to go first, then further round.
+  if (wanted > 0 && !liveRoom.kind && covered < FOOT_PINNED.still * dt) pinnedFor += dt
+  else pinnedFor = 0
+  if (pinnedFor >= FOOT_PINNED.after) {
+    pinnedFor = 0
+    const going = Math.atan2(wishX, wishZ)
+    for (const turn of FOOT_PINNED.round) {
+      const x = rider.x + Math.sin(going + turn) * FOOT_PINNED.step
+      const z = rider.z + Math.cos(going + turn) * FOOT_PINNED.step
+      if (isNearBuilding(collisions, x, z, FOOT.radius + 0.1)) continue
+      rider.x = x
+      rider.z = z
+      break
+    }
+  }
   rider.pace += (covered / Math.max(dt, 0.001) - rider.pace) * (1 - Math.exp(-18 * dt))
   rider.stride += covered * stridePerMetre(rider.pace)
 }
@@ -603,6 +624,8 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
  * `travelX` and `travelZ` are the speed just before the hit, which is what the
  * rider carries on with if they're thrown off.
  */
+/** How much of its speed a cab comes back off a wall with (a scooter: `SCOOTER.wallBounce`). */
+const CAB_WALL_BOUNCE = 0.04
 /** A knock in a cab: no other for this long (s), and this share of the speed is left after it. */
 const JOLT_GAP = 0.9
 const JOLT_KEEPS = 0.35
@@ -728,8 +751,11 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
   state.boostLeft = Math.max(0, state.boostLeft - dt)
 }
 
+const SPEED_LOCK = { from: 12, to: 23, least: 0.6 }
+
 function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
-  const targetSteer = Number(input.left) - Number(input.right)
+  // A stick steers by how far it's pushed; the keys, all the way.
+  const targetSteer = analog.steer !== null && input !== NO_INPUT && input !== HOLD_INPUT ? analog.steer : Number(input.left) - Number(input.right)
   state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * dt)
 
   const absoluteSpeed = Math.abs(state.speed)
@@ -749,9 +775,15 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
     ? clamp(1 - Math.abs(slipAngle) / SCOOTER.maxDriftAngle, 0, 1)
     : 1
 
+  // Every vehicle steers as the scooter does (each one's `turn` is 1): a car that needed a wider
+  // swing than the scooter at every junction was no fun, however true.
+  // At speed the steering has less lock, as a fast car's does: full below `SPEED_LOCK.from` m/s, down
+  // to `SPEED_LOCK.least` of it by `SPEED_LOCK.to`. The scooter barely reaches it; a car at 80 km/h
+  // changes lanes on a tap where it used to swerve.
+  const lock = 1 - (1 - SPEED_LOCK.least) * clamp((absoluteSpeed - SPEED_LOCK.from) / (SPEED_LOCK.to - SPEED_LOCK.from), 0, 1)
+  const turning = state.steer * turnRate * driftBoost * driftLimit * steeringFade * lock
   // Math.sign flips the steering in reverse, as on a real vehicle.
-  state.heading +=
-    state.steer * turnRate * driftBoost * driftLimit * steeringFade * Math.sign(state.speed) * dt
+  state.heading += turning * Math.sign(state.speed) * dt
 }
 
 /**
@@ -794,6 +826,9 @@ function engineForce(speed: number, state: ScooterState): number {
  */
 const STOPPED_SPEED = 0.05
 
+/** The share of top speed the lightest touch of an analog throttle holds. */
+const PART_THROTTLE = 0.3
+
 /** Returns the new speed along the scooter's direction. */
 function applyControls(speed: number, state: ScooterState, input: DriveInput, dt: number): number {
   const limit = speedLimit(state)
@@ -807,11 +842,16 @@ function applyControls(speed: number, state: ScooterState, input: DriveInput, dt
     if (speed > limit) return moveToward(speed, limit, SCOOTER.overspeedDrag * dt)
     // The drive comes in as fast as this vehicle's does: at once on an electric motor, slowly in a loaded van.
     state.drive = Math.min(1, (state.drive ?? 0) + tuning.response * dt)
-    return moveToward(speed, limit, engineForce(speed, state) * state.drive * dt)
+    // A trigger part-way down is part of the pull, and holds a lower speed: a third of the top at a touch, all of it flat out.
+    const throttle = analog.throttle ?? 1
+    const holds = limit * (PART_THROTTLE + (1 - PART_THROTTLE) * throttle)
+    if (speed > holds) return moveToward(speed, holds, tuning.coasting * dt)
+    return moveToward(speed, holds, engineForce(speed, state) * state.drive * throttle * dt)
   }
   state.drive = Math.max(0, (state.drive ?? 0) - tuning.response * 2 * dt)
   if (input.backward) {
-    if (speed > STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * dt)
+    // The brake trigger part-way down brakes that much (never less than a fifth: a touch still slows).
+    if (speed > STOPPED_SPEED) return moveToward(speed, 0, tuning.braking * Math.max(0.2, analog.brake ?? 1) * dt)
     return moveToward(speed, -SCOOTER.maxReverseSpeed, SCOOTER.reverseAcceleration * dt)
   }
   // Off the throttle, it coasts down as usual, whatever the speed.
@@ -916,7 +956,9 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
 
   const directness = hitSpeed / travelSpeed
   if (directness > SCOOTER.headOnThreshold) {
-    const bounce = isCrash ? hitSpeed * SCOOTER.wallBounce : 0
+    // A scooter that hits a wall is thrown back off it. A car stops against it: bounced back, it
+    // lurched backwards and forwards at every touch.
+    const bounce = isCrash ? hitSpeed * (tuning.cab ? CAB_WALL_BOUNCE : SCOOTER.wallBounce) : 0
     state.velocityX = normalX * bounce
     state.velocityZ = normalZ * bounce
     if (!isCrash) nudgeAlongSurface(state, normalX, normalZ, dt)

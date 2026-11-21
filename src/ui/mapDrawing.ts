@@ -286,7 +286,9 @@ export function currentTarget(): { x: number; z: number; color: string; pickup: 
   if (stop) {
     // The pin stands on the door itself, not on the road outside it, once the errand knows which door.
     const goal = errandLive.goal
-    const at = goal && goal.kind === 'door' && !goal.indoors ? goal : stop
+    // Indoors too: with the bag in hand in the dark store the next place is its door, not the customer across town;
+    // and outside on foot, the scooter.
+    const at = goal ? goal : stop
     return { x: at.x, z: at.z, color: stop.color, pickup: phase === 'toPickup' }
   }
   return waypoint ? { x: waypoint.x, z: waypoint.z, color: WAYPOINT_COLOR, pickup: false } : null

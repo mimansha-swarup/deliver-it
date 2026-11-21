@@ -15,11 +15,7 @@ export const SITE_URL = 'https://deliver-simulator.netlify.app'
 /** A file name's start for anything saved from the game (photos, the score card). */
 export const FILE_PREFIX = 'swalpa-fast'
 
-/**
- * Links that are the maker's to give: where feedback goes, and their LinkedIn page. Empty until
- * set; a link with no address isn't shown.
- */
-export const FEEDBACK_URL = ''
+/** The maker's LinkedIn page, linked from Credits. Empty until given; with no address the link isn't shown. */
 export const LINKEDIN_URL = ''
 
 /** The brand's three colours. */

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { isDebug } from '../dev/spawn'
 import { useGameStore } from '../game/gameStore'
-import { ratioRange, startingRatio, useResolution } from '../game/resolution'
+import { firstRatio, ratioRange, rememberRatio, startingRatio, useResolution } from '../game/resolution'
 
 /** How much the resolution moves in one step, in pixels per screen point. */
 const STEP = 0.25
@@ -29,6 +29,8 @@ const FASTEST_REFRESH = 1 / 60
  * screen's rate is read from the browser's frame stamps, which stay on its refresh.
  */
 const TARGET_FPS = 80
+/** A frame rate under this share of the aim is too slow. */
+const NEAR_TARGET = 1.04
 /** On a fast screen the drop waits for this many slow batches running: a step's own hitch costs more than a few seconds a little under the target. */
 const DROP_BATCHES_FAST = 5
 /** A step up is only tried from this much above the target, as it will cost about a fifth of the frame rate. */
@@ -85,24 +87,39 @@ export function AdaptiveResolution() {
    * the browser's frame stamps, once enough have been seen that it isn't a stray one. Otherwise 1/60.
    */
   const screen = useRef({ refresh: SLOWEST_REFRESH, sum: 0, count: 0 })
+  const pending = useRef<number | null>(null)
   useEffect(() => {
     let last = 0
     let id = requestAnimationFrame(function watch(stamp) {
       const gap = (stamp - last) / 1000
       last = stamp
+      const known = screen.current.count >= ENOUGH_GAPS
       noteGap(screen.current, gap)
+      // The moment the screen's speed is known (half a second into the title screen): the resolution
+      // to ride at, set now. Left until the ride began, the change froze its first moments.
+      if (!known && screen.current.count >= ENOUGH_GAPS && !useGameStore.getState().started) {
+        const first = firstRatio(useGameStore.getState().quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+        if (first !== useResolution.getState().pixelRatio) pending.current = first
+      }
       id = requestAnimationFrame(watch)
     })
     return () => cancelAnimationFrame(id)
   }, [])
   /** A resolution waiting to be applied at the start of the next frame. See `applyRatio`. */
-  const pending = useRef<number | null>(null)
 
   // A new quality starts again from its own resolution, and forgets what was too much.
   useEffect(() => {
-    pending.current = startingRatio(quality)
+    pending.current = firstRatio(quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
     Object.assign(batch.current, { time: 0, frames: [], slow: 0, calm: 0, ceiling: Infinity, sinceRaise: Infinity })
   }, [quality, lowScale])
+
+  // As the ride begins (the loading screen is still up), with the screen's speed now measured: the
+  // resolution to ride at, so a change that was always going to come doesn't come mid-ride.
+  useEffect(() => {
+    if (!started) return
+    const first = firstRatio(quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+    if (first !== useResolution.getState().pixelRatio) pending.current = first
+  }, [started, quality])
 
   useFrame(({ setDpr }, delta) => {
     // Debug: a resolution held still for measuring (`__deliverItLockDpr = 1.5`, with ?debug).
@@ -155,7 +172,9 @@ export function AdaptiveResolution() {
     const { refresh } = screen.current
     const fast = refresh < SLOWEST_REFRESH * 0.95
     const target = Math.min(TARGET_FPS, 0.94 / refresh)
-    const tooSlow = fast ? fps < target : lateShare > DROP_SHARE
+    // On a fast screen, hovering a little under the aim counts: at 70 to 80 FPS with 80 the aim, a second
+    // at 81 kept resetting the count and the resolution never came down.
+    const tooSlow = fast ? fps < target * NEAR_TARGET : lateShare > DROP_SHARE
     const calm = lateShare <= CALM_SHARE && (!fast || fps >= target * RAISE_HEADROOM)
     if (state.ceilingAge > CEILING_SECONDS) state.ceiling = Infinity
     // Debug: what the last batch measured (`__deliverItScaler`, with ?debug).
@@ -181,10 +200,12 @@ export function AdaptiveResolution() {
         state.ceilingAge = 0
       }
       pending.current = Math.max(lowest, pixelRatio - STEP)
+      rememberRatio(quality, pending.current)
       state.slow = 0
       state.calm = 0
     } else if (state.calm >= CALM_BATCHES && state.sinceChange >= RAISE_GAP && pixelRatio < highest) {
       pending.current = Math.min(highest, pixelRatio + STEP)
+      rememberRatio(quality, pending.current)
       state.calm = 0
       state.sinceRaise = 0
     }

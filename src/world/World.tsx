@@ -307,6 +307,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   yield STEP
   // Building sites take open plots before trees and lamps do, and are solid to them.
   const sites = [...findConstructionSites(data, collisions), ...infill.sites]
+  if (isDebug()) Object.assign(window, { __deliverItSites: sites, __deliverItInfillSites: infill.sites.length })
   // Petrol bunks take their forecourts before trees and lamps do, and their pillars and pumps are solid.
   const fuel = placeFuelStations(data.roads, data.fuelRoofs, collisions, infill.pumps)
   // An EV charger at each bunk, solid like the pumps (EvChargers.tsx).

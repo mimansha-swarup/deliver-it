@@ -58,6 +58,9 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
  * animation of position or opacity, which the browser runs on its own, so the
  * pictures keep drifting and the spinner keeps turning.
  */
+/** How long the loading screen stays whole after the ride has started, in milliseconds. */
+const HOLD_MS = 650
+
 export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const loading = useGameStore((state) => state.loading)
   const started = useGameStore((state) => state.started)
@@ -115,10 +118,20 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
     return () => cancelAnimationFrame(id)
   }, [allBuilt, started, startGame])
 
+  // The ride's first moments are its heaviest: the riding screen is put up all at once, and a frame
+  // of 130 to 180 ms came 0.3 to 0.5 s in, just as this was fading. So it stays whole for
+  // `HOLD_MS` after the ride starts and only then fades: the long frame is behind it.
+  const [leaving, setLeaving] = useState(false)
+  useEffect(() => {
+    if (!started) return
+    const timer = window.setTimeout(() => setLeaving(true), HOLD_MS)
+    return () => window.clearTimeout(timer)
+  }, [started])
+
   // The fade is a CSS transition. If it doesn't run, as with reduced motion, this ends it anyway.
   useEffect(() => {
     if (!started) return
-    const timer = window.setTimeout(onGone, 900)
+    const timer = window.setTimeout(onGone, 900 + HOLD_MS)
     return () => window.clearTimeout(timer)
   }, [started, onGone])
 
@@ -147,9 +160,9 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
     <main
       ref={root}
       className="loading-screen menu-skin"
-      data-leaving={started}
+      data-leaving={leaving}
       onTransitionEnd={(event) => {
-        if (event.target === event.currentTarget && started) onGone()
+        if (event.target === event.currentTarget && leaving) onGone()
       }}
       aria-busy={!started}
     >

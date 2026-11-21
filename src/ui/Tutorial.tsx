@@ -1,17 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
+import type { Mission } from '../game/gameTypes'
 import { keyFor, useKeys } from '../game/keyBindings'
 import { livePlayer } from '../game/livePlayer'
-import { TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
-import { useUi } from './uiState'
+import { firstOrder, TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
+import { useDiscovery } from '../game/discovery'
+import { shownPrompts, usePrompts } from '../game/prompts'
+import { hasClearLine } from '../world/collision'
+import { liveRoom } from '../game/rooms'
 
 /*
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
  * what to do now, with the keys as they're set. Each step finishes when the rider has done it (the
- * director below watches for that), or with Skip. It opens on an order: the rider is online with
- * their first order waiting, accepts it, then learns riding and steering and a breaker taken slowly
- * on the way to the dark store; picking up, the full map, delivering, GaadiGo (the other vehicles),
- * and going offline for the shift summary (and online again whenever they like). Every step can
+ * director below watches for that), or with Skip. Four steps: accept the first order (the rider is
+ * online with it waiting), ride, pick up at the dark store, deliver. Then "You're free to explore". Every step can
  * be skipped, the whole of it too, and Settings on the phone plays it again.
  */
 
@@ -23,38 +25,29 @@ const STEPS: Record<TutorialStep, StepText> = {
     card: () => `Your first order is waiting. Accept it: ${keyFor('accept')}.`,
   },
   ride: {
-    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer. The arrow at the top points to the dark store.`,
-    card: () => `Ride and steer: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake.`,
-  },
-  brake: {
-    ravi: () => `Chennagide! HSR is full of speed breakers. Slow down with ${keyFor('backward')} before one and roll over it gently: taken flat out it throws you about.`,
-    card: () => `Brake (${keyFor('backward')}) before a speed breaker and take it slowly, under half speed.`,
+    ravi: () => `Super! Now ride: ${keyFor('forward')} to go, ${keyFor('left')} and ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the arrow at the top to the dark store.`,
+    card: () => `Ride: ${keyFor('forward')} to go, ${keyFor('left')} / ${keyFor('right')} to steer, ${keyFor('backward')} to brake. Follow the arrow at the top.`,
   },
   pickup: {
-    ravi: () => `Follow the arrow at the top and the line on your map to the dark store on 27th Main. Park outside, get off with ${keyFor('mount')}, walk in and collect the bag at the counter with ${keyFor('interact')}.`,
-    card: () => `Ride to the dark store, stop and get off (${keyFor('mount')}). Walk in at its door (${keyFor('interact')}) and pick up the bag at the counter (${keyFor('interact')}). Then back out and on (${keyFor('mount')}).`,
-  },
-  map: {
-    ravi: () => `Got it! Before you go: ${keyFor('map')} opens the full map of HSR. Have a look at where you're going.`,
-    card: () => `Open the full map: ${keyFor('map')} (close it the same way, or with Esc).`,
+    ravi: () => `That's it. The dark store is close: park outside, get off with ${keyFor('mount')}, walk in and take the bag at the counter with ${keyFor('interact')}. (${keyFor('map')} shows the whole map, any time.)`,
+    card: () => `At the dark store: stop, get off (${keyFor('mount')}), walk in at the door (${keyFor('interact')}), take the bag at the counter (${keyFor('interact')}), walk out and get back on (${keyFor('mount')}).`,
   },
   deliver: {
-    ravi: () => "Now take it to the customer's door. They'll rate you: on time and a smooth ride gets the best tip.",
-    card: () => `Deliver it: follow the green arrow, park, get off (${keyFor('mount')}) and walk it to the door. ${keyFor('interact')} rings the bell and hands it over. Then see their rating and tip.`,
-  },
-  gaadigo: {
-    ravi: () => `Sakkath! One more thing: GaadiGo, on your phone (${keyFor('phone')}). It rents and sells other vehicles: a cycle, an electric scooter, later a van for the big orders. Open it and have a look.`,
-    card: () => `Open the phone (${keyFor('phone')}), unlock (Enter), and open GaadiGo: other vehicles to rent or buy, brought to you.`,
-  },
-  offline: {
-    ravi: () => `Last one: ${keyFor('online')} takes you offline, and online again when you want work (the Deliver It app on your phone does it too). Go offline now to end your shift and see how it went.`,
-    card: () => `Go offline (${keyFor('online')}) and look at your shift summary.`,
+    ravi: () => "Got it! Now to the customer's door, it's not far. On time and no crashes gets the best tip.",
+    card: () => `Follow the arrow at the top to the customer. Park, get off (${keyFor('mount')}), walk to the door, ring the bell and hand it over (${keyFor('interact')}).`,
   },
 }
 
-/** How long the brake step waits for a breaker before a firm stop will do, in milliseconds. */
-const BRAKE_FALLBACK_MS = 60_000
 const POLL_MS = 200
+/** Looking for the first order: this many tries at most, this many milliseconds of them at each look, and done early once one this near (metres of road) has turned up after at least `least` tries. */
+const FIRST_SEARCH = { tries: 140, msEach: 4, nearEnough: 320, least: 40 }
+const search: { tries: number; best: Mission | null; last: Mission | null } = { tries: 0, best: null, last: null }
+/** The first order's time on the clock, in seconds, at least. */
+const FIRST_ORDER_SECONDS = 180
+/** The first order's door is no further than this from where the rider parks, in metres, and in a straight clear line. */
+const FIRST_WALK_MOST = 16
+/** "You're free to explore" comes this long after the first hand-over, in milliseconds. */
+const FREE_CARD_AFTER_MS = 6500
 
 /** Watches for each step being done, and has Ravi introduce each one. */
 function TutorialDirector() {
@@ -65,13 +58,6 @@ function TutorialDirector() {
     if (!step) return
     const game = useGameStore.getState()
     game.raviSays(STEPS[step].ravi())
-    const started = performance.now()
-    const startHeading = livePlayer.heading
-    const startGentle = livePlayer.gentle
-    let bumpsSeen = livePlayer.bumps
-    let fastSince = 0
-    let rewardSeen = false
-    let summarySeen = false
     let done = false
     const finish = (line?: string) => {
       if (done) return
@@ -84,68 +70,138 @@ function TutorialDirector() {
     const offerNow = () => {
       const state = useGameStore.getState()
       if (state.duty !== 'online' || state.mission || state.offer) return
-      // A simple one to learn on: a plain parcel to a house's gate, not a flat up a lift or the gated society.
+      // The first order: a plain parcel to a house on the street (not a flat up a lift, nor the gated
+      // society), as near as the planner finds in a good many tries, and with something at the door
+      // worth remembering where it can be had: the dog who only barks.
       if (!state.planner) return
-      let mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
-      for (let tries = 0; tries < 20 && (mission.door.kind === 'flat' || mission.door.kind === 'society' || mission.story.cargo !== 'parcel' || mission.door.scene !== 'plain'); tries++) {
-        mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
+      // And one whose door is a straight walk from where the rider parks: no compound wall or shop
+      // between the two to be walked round (a first order sent its rider into a gap behind a shop).
+      const { collisions } = state.planner
+      const straightWalk = (one: Mission) => {
+        const { customer, door } = one
+        const far = Math.hypot(door.x - customer.x, door.z - customer.z)
+        if (far < 2 || far > FIRST_WALK_MOST) return far < 2
+        const short = (far - 1.4) / far
+        return hasClearLine(collisions, customer.x, customer.z, customer.x + (door.x - customer.x) * short, customer.z + (door.z - customer.z) * short, 0.35)
       }
+      const fits = (one: Mission) => one.door.kind === 'house' && one.story.cargo === 'parcel' && one.story.care === 'none' && straightWalk(one)
+      // The search is a little at a time, a few milliseconds of each look: planning an order works out
+      // routes, and a hundred and forty of them at once was a frame of 300 ms as the ride began.
+      const began = performance.now()
+      while (search.tries < FIRST_SEARCH.tries && performance.now() - began < FIRST_SEARCH.msEach) {
+        search.tries++
+        const one = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
+        search.last = one
+        if (!fits(one)) continue
+        const better = !search.best || (one.door.scene === 'dog' ? 0.75 : 1) * one.routeLength < (search.best.door.scene === 'dog' ? 0.75 : 1) * search.best.routeLength
+        if (better) search.best = one
+      }
+      // Until enough have been looked at (or one near enough has turned up), the offer waits: a second or so.
+      const enough = search.tries >= FIRST_SEARCH.tries || (search.best !== null && search.best.routeLength < FIRST_SEARCH.nearEnough && search.tries >= FIRST_SEARCH.least)
+      if (!enough || !search.last) return
+      let mission = search.best ?? search.last
+      // Forgiving: three minutes at least, however near it is (and the customer never worse than waiting: MissionTracker.tsx).
+      mission = { ...mission, onTimeSeconds: Math.max(FIRST_ORDER_SECONDS, mission.onTimeSeconds) }
+      firstOrder.metres = mission.routeLength
+      firstOrder.scene = mission.door.scene
+      search.tries = 0
+      search.best = null
+      search.last = null
       useGameStore.setState({ offer: { mission, expiresAt: performance.now() + 10 * 60 * 1000 } })
     }
 
     const check = () => {
       const state = useGameStore.getState()
       switch (step) {
-        case 'ride': {
-          const turned = Math.abs(Math.atan2(Math.sin(livePlayer.heading - startHeading), Math.cos(livePlayer.heading - startHeading)))
-          if (state.speedKmh >= 15 && turned > 0.6) finish()
+        case 'ride':
+          // Moving is enough (it used to want a turn as well, and a rider who went straight to the
+          // store was left reading "ride and steer" at its door). Anyone already past the pickup has ridden.
+          if (state.speedKmh >= 15 || (state.mission && state.phase !== 'toPickup')) finish()
           break
-        }
-        case 'brake': {
-          if (livePlayer.gentle > startGentle) finish('Nicely done. The breakers cost you nothing but a jolt: it is crashes that hurt an order.')
-          else if (livePlayer.bumps > bumpsSeen) {
-            bumpsSeen = livePlayer.bumps
-            state.raviSays('Too fast, maga! Slow down before the next one.')
-          }
-          // No breaker on the way? A firm stop from speed will do, after a minute.
-          if (state.speedKmh >= 20) fastSince = performance.now()
-          if (performance.now() - started > BRAKE_FALLBACK_MS && fastSince && state.speedKmh <= 4 && performance.now() - fastSince < 3000) {
-            finish('Good braking. Remember it before the humps.')
-          }
-          break
-        }
         case 'accept':
-          // The tutorial opens on an order: online without being asked, and the order there at once.
+          // The tutorial opens on an order: online without being asked, and the order there within a second or so (`searching`, below).
           if (state.duty !== 'online' && !state.mission) state.goOnline()
-          offerNow()
           if (state.mission) finish()
           break
         case 'pickup':
           if (state.phase !== 'toPickup' && state.mission) finish()
           break
-        case 'map':
-          if (useUi.getState().mapOpen) finish()
-          break
         case 'deliver':
-          if (state.lastReward) rewardSeen = true
-          else if (rewardSeen) finish()
-          break
-        case 'gaadigo':
-          if (useUi.getState().phoneApp === 'gaadigo') finish(`That's your fleet. Tricks for the road: hold ${keyFor('handbrake')} in a turn to drift, ${keyFor('nitro')} for nitro, ${keyFor('horn')} for the horn. ${keyFor('help')} shows every control.`)
-          break
-        case 'offline':
-          if (state.shiftSummary) summarySeen = true
-          else if (summarySeen) finish("That's the job, maga. Ride anywhere, go online whenever you like. Nale sigona!")
+          // Handed over: the tutorial is done there and then (its card used to stay up, still saying
+          // "follow the green arrow", until the result card closed). The city is theirs; said a few
+          // seconds on, once the first-order award has had its moment.
+          if (state.lastReward || state.history.length > 0) {
+            finish(`That's the job, maga! You're free to explore. Stay online and orders keep coming; ${keyFor('online')} goes offline, ${keyFor('phone')} is your phone, ${keyFor('map')} the map.`)
+            window.setTimeout(() => useDiscovery.getState().showCard('You’re free to explore', 'Orders keep coming while you’re online · P for your phone · Tab for the map'), FREE_CARD_AFTER_MS)
+          }
           break
       }
     }
     const timer = window.setInterval(check, POLL_MS)
+    // The first order is looked for a little every frame until it's offered.
+    let searching = 0
+    if (step === 'accept') {
+      const look = () => {
+        offerNow()
+        searching = requestAnimationFrame(look)
+      }
+      searching = requestAnimationFrame(look)
+    }
     return () => {
       window.clearInterval(timer)
+      cancelAnimationFrame(searching)
     }
   }, [step, next])
 
   return null
+}
+
+/**
+ * The pickup and the delivery are several small things in a row, and a card that lists all of them
+ * at once is read once and forgotten. So during those two steps the card says only the next thing:
+ * stop in the box, get off, go in, take the bag, back to the scooter, get on; and at the customer's,
+ * stop, get off, to the door, ring, hand over. Worked out from where the rider is and what the
+ * game is offering them just then, a few times a second.
+ */
+const MICRO = { near: 30, stopped: 6, everyMs: 200 }
+function microPrompt(step: TutorialStep): string | null {
+  if (step !== 'pickup' && step !== 'deliver') return null
+  const game = useGameStore.getState()
+  const { mission } = game
+  if (!mission) return null
+  const offered = shownPrompts(usePrompts.getState().list).map(({ text }) => text).join(' ')
+  const use = keyFor('interact')
+  const mount = keyFor('mount')
+  const toStore = game.phase === 'toPickup'
+  // Riding, the stop on the road; on foot, the door.
+  const stop = toStore ? mission.pickup : livePlayer.onFoot ? mission.door : mission.customer
+  const away = Math.hypot(stop.x - livePlayer.x, stop.z - livePlayer.z)
+  if (!livePlayer.onFoot) {
+    if (away > MICRO.near) return toStore ? 'Follow the arrow at the top to the dark store.' : 'Follow the arrow at the top to the customer.'
+    return game.speedKmh > MICRO.stopped ? 'Slow down and stop in the glowing parking box.' : `${mount} · Get off`
+  }
+  // In some other building (they were inside it when the order came): the way back out.
+  if (toStore && livePlayer.indoors && liveRoom.kind !== 'store') return `Wrong door: the Deliver It dark store is next door. ${use} · Leave`
+  if (toStore) return livePlayer.indoors ? `Walk to the counter. ${use} · Take the bag` : `Walk to the door. ${use} · Go in`
+  if (game.phase !== 'toCustomer') return null
+  if (livePlayer.indoors) return `Got it! Walk out by the door. ${use} · Leave`
+  if (/Hand over/i.test(offered)) return `${use} · Hand over the bag`
+  if (/Ring/i.test(offered)) return `${use} · Ring the bell`
+  if (/Get on/i.test(offered) && away > MICRO.near) return `${mount} · Get on`
+  if (away > MICRO.near) return `Walk back to your scooter. ${mount} · Get on`
+  return 'Walk to the customer’s door.'
+}
+
+function useMicroPrompt(step: TutorialStep | null): string | null {
+  const [text, setText] = useState<string | null>(null)
+  useEffect(() => {
+    if (!step) return
+    const update = () => setText(microPrompt(step))
+    update()
+    const timer = window.setInterval(update, MICRO.everyMs)
+    return () => window.clearInterval(timer)
+  }, [step])
+  return step ? text : null
 }
 
 /** The card top-left: which step, what to do, and Skip. */
@@ -155,7 +211,11 @@ function TutorialCard() {
   const finish = useTutorial((state) => state.finish)
   // Re-renders when keys are changed, so the card shows the new ones.
   useKeys((state) => state.bindings)
+  const micro = useMicroPrompt(step)
+  const handedOver = useGameStore((state) => state.phase === 'handingOver' || state.phase === 'delivered' || state.lastReward !== null)
   if (!step) return null
+  // The hand-over is the end of it: the card goes at once (it used to show the step's old long text for a moment).
+  if (step === 'deliver' && (handedOver || micro === null)) return null
   const { card, optional } = STEPS[step]
   return (
     <section className="tutorial-card" aria-live="polite">
@@ -163,7 +223,7 @@ function TutorialCard() {
         Tutorial · {TUTORIAL_STEPS.indexOf(step) + 1} of {TUTORIAL_STEPS.length}
         {optional && <span className="tutorial-optional">Optional</span>}
       </p>
-      <p className="tutorial-text">{card()}</p>
+      <p className="tutorial-text">{micro ?? card()}</p>
       <p className="tutorial-buttons">
         <button type="button" onClick={(event) => { next(); event.currentTarget.blur() }}>
           Skip step

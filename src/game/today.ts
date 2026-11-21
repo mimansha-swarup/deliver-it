@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { afterFirstOrder } from './firstOrder'
 import { persist } from 'zustand/middleware'
 import { todayKey } from './career'
 import { useGameStore } from './gameStore'
@@ -90,7 +91,7 @@ export const useToday = create<Today>()(
             stats.paid = true
             window.setTimeout(() => {
               useGameStore.setState((state) => ({ credits: state.credits + CHALLENGE_BONUS }))
-              useGameStore.getState().raviSays(`Daily challenge done: ${challenge.text}! +₹${CHALLENGE_BONUS}. Your score card is in the Deliver It app: share maadi!`)
+              afterFirstOrder(() => useGameStore.getState().raviSays(`Daily challenge done: ${challenge.text}! +₹${CHALLENGE_BONUS}. Your score card is in the Deliver It app: share maadi!`))
             }, 2500)
           }
           set({ stats })

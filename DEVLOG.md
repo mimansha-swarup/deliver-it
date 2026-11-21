@@ -11587,3 +11587,234 @@ fragile order, on time, is five stars each.
   The target (80 FPS, worst frame 25 ms) is not met.
 
 Not done: a test across two devices on two networks, which this one machine can't do.
+
+## 2026-11-21: Entry 260, polish sprint 1: the first fifteen minutes
+
+A feature freeze, on branch `polish-1`. The whole account, item by item, with the numbers, is in
+POLISH_REPORT.md. What a later reader needs from it:
+
+- **The tutorial is four steps** (accept, ride, pick up, deliver), the first order is the nearest
+  plain parcel to a house, and it ends at the hand-over with "You're free to explore" a few seconds
+  later. An autopilot at normal speed delivers 1 min 51 s after the title screen.
+- **On foot the rider is a standing body** (people.glb's `office`, by traffic's walking shader,
+  `Walker` in traffic/Traffic.tsx), in the jacket's colour and the helmet. The seated model is for
+  the seat, getting on and off, and falls. A jog is the walk with longer strides.
+- **With the bag in hand the store's door is marked**; the door's beam is hidden within 3.5 m (it
+  washed the view on walking out).
+- **The freezes on High were the resolution scaler** changing resolution mid-ride (0.2 s each).
+  It starts a step under the top on screens faster than 60 Hz and remembers where each quality
+  settled (`swalpa-fast-resolution`). High at 17:30: 83 to 96 FPS on four spawns, from 66 to 74.
+- **world/StaticMatrices.tsx** freezes the placement of scene objects that don't move, and thaws
+  any that later do. Low with the CPU slowed 4× is still 40 FPS (the aim is 60): the player's own
+  75 meshes are a quarter of that frame.
+- **Sound**: a voices bus above the music, the music dipping under a phone voice, and Master and
+  Voices sliders. **Feedback** posts to Netlify Forms (the hidden form in index.html).
+  **game/analytics.ts** sends nothing until its address is set.
+- The scooter's mirrors are lowered at load (`shortenMirrors`), not in the model file.
+- clips/tools/play.mjs is the autopilot that plays a fresh game and records it; drive.mjs now
+  collects console messages and can record the page.
+
+Not done: parked-bike model quality, the entrance audit, traffic indicators, a door-opening
+animation, the LinkedIn link, the two-device room test.
+
+## 2026-11-21: Entry 261, one rider, seated and on foot
+
+Entry 260 gave the rider a standing body on foot and left the seated one as it was, so getting on
+or off changed who they were: a different build, different trousers and boots. The seated rider is
+now built from the same body (`RIDER_BODY` in vehicle/Rider.tsx, people.glb's `office`), posed on
+the vehicle as before. Checked on the scooter and the Vega 150.
+
+## 2026-11-21: Entry 262, the RJ is played in softly, and the drone under her is gone
+
+The radio breaks grated: three quick bright notes, her voice straight on top, and three held
+notes under every word that droned like a harmonium.
+
+- **The ident** before she speaks is a slow phrase of six soft bell notes (sines, each dying away,
+  with an echo), 2.5 s long. She waits for it.
+- **The held bed is removed.** She speaks over the station's own song, turned down as before.
+- The notes between lines are two soft low ones. Her voice has less edge (presence +2 dB, not +4;
+  less drive; a little quieter).
+- Breaks come every 2 to 3.3 minutes, not every 70 to 115 s; the first after 45 to 75 s.
+
+Checked that a break plays through with no errors. Nobody has listened to it yet: it was written
+by the numbers.
+
+## 2026-11-21: Entry 263, cars that drive like cars, riders upright, flyover joins, and a tune for the RJ
+
+From playing the deploy preview.
+
+- **Cabs (car, auto, van, bus) steered like scooters**: a tap swung them round. Their wheel now
+  winds on at half the speed, they turn no tighter than a circle 1.3 of their lengths in radius,
+  and no harder at speed than 5.5 m/s² sideways (`CAB_STEERING`, ScooterController.ts). They came
+  back off a wall with 30% of their speed, which lurched them backwards and forwards at every
+  touch: now 4%. Measured: the car no longer goes backwards after a hit.
+- **Riders sit upright** on two-wheelers: seat leans 0.03 to 0.1 rad (were 0.12 to 0.34), and only
+  a small tuck at speed. The borrowed bike turns a little less keenly.
+- **A bus keeps the camera out**: traffic 7 m long or more blocks the camera as a wall does
+  (FollowCamera.tsx). On foot beside one, the camera was inside it.
+- **Flyovers** (transitPlacement.ts): ends within 4 m are one joint and meet at one height, easing
+  to each deck's own over 70 m; no barrier, drawn or solid, where a deck's edge lies on another
+  deck's roadway; an upper deck is lifted to leave 5.4 m over one it crosses; a deck under the metro
+  comes down to 7.2 m; building sites keep off flyovers (none on one now, of 437).
+  **Not finished:** at the Silk Board interchange seven places still have two sections overlapping
+  0.6 to 2.7 m apart in height (near x −2956 z −837, −2965 −830, −3125 −1039, −2935 −850,
+  −3118 −789, −3127 −1032). They run nearly side by side there, which the crossing rule leaves alone.
+  None of this was looked at in the game: it was checked by the numbers only.
+- **The RJ's ident is a tune**: ten plucked notes in D major over four bass notes, 4.6 s. Nobody
+  has listened to it.
+- The jitter reported on the scooter and bike was not reproduced as a fault: on a level street the
+  camera and vehicle are steady frame to frame; over breakers and flyover joints the camera's
+  height moves up to 0.2 m.
+
+## 2026-11-21: Entry 264, a game controller
+
+`game/gamepad.ts`: a controller presses the game's own keys, each button and stick direction
+standing for one action's key (whatever it's bound to), and the right stick turns the view. So
+riding, walking, the phone and the menus all work with it and nothing else changed. The layout is
+in the file's header and under the key list in Controls. Steering and the triggers are on or off,
+not by how far they're pushed. Checked with a pretend controller in a headless browser (the menu's
+A, RT, the stick, LT, X, the right stick, Menu and B); no real controller was tried.
+
+## 2026-11-21: Entry 265, every vehicle turns nearly as tightly as the scooter
+
+"Turns are too big" meant too wide, not too sharp: entry 263 read it the wrong way round and made
+the cabs wider still. Undone and reversed. The vehicles' `turn` values are now 0.78 to 0.95 of the
+scooter's (they were 0.48 to 0.72; the bus and tanker 0.55, were 0.3), and the cabs' limits are an
+arcade's (`CAB_STEERING`: a circle 0.7 of the vehicle's length, 10 m/s² sideways, the wheel at
+0.85 of the handlebars' speed). Measured, one second of full lock from the same spot: scooter 70°
+(radius 8.4 m at 37 km/h), Vega 104°, e-scooter 63°, cargo three-wheeler 68°, car 57° (9.2 m at
+33 km/h), van 69°. Cabs still stop against a wall and don't bounce back off it.
+
+## 2026-11-21: Entry 266, every vehicle steers exactly as the scooter does
+
+Asked for outright: every vehicle's `turn` is 1 (the bicycle's 1.55 and the e-scooter's 1.1 too),
+and the cabs' own steering limits and slower wheel (entries 263, 265) are gone. Measured from
+25 km/h, 0.6 s of full lock, each from a fresh start: scooter 45°, cargo three-wheeler 41°, car
+49°, van 48°. The small differences are the top speeds: the turn rate eases off towards each
+vehicle's own top speed. Cabs still stop against a wall and don't bounce back off it.
+
+## 2026-11-21: Entry 267, the jerk over breakers and flyover joints
+
+Riding jerked forward and back "in between". Measured frame by frame: the speed fell 0.3 to 0.9 m/s
+in a single frame, twice a few frames apart, at every breaker and flyover joint. It was
+`landingSpeedLoss` (vehicleConfig.ts): a hard landing took up to 12% of the speed off at once, and
+the front and rear wheels each land. It is now 0, as bumps cost nothing anywhere else. After it:
+no sudden drop on the residential street or the flyover except at a real collision.
+
+## 2026-11-21: Entry 268, first-time-player polish from the preview's playtest
+
+- **The first order is forgiving**: three minutes on its clock at least, and during the tutorial the
+  customer is never worse than "Waiting" (frustration held at 0.38, MissionTracker.tsx).
+- **One prompt at a time** in the tutorial's pickup and delivery steps (`microPrompt`, ui/Tutorial.tsx):
+  follow the arrow, stop in the box, get off, go in, take the bag, walk out, back to the scooter,
+  get on; then stop, get off, to the door, ring, hand over. "Green arrow" is "the arrow at the top".
+- **A parking box** glows on the road at each stop, lying along the road (MissionMarker.tsx); it and
+  the pointer pulse slower within 30 m. "Slow down · park here" shows within 20 m while still moving
+  (ui/ParkHint.tsx).
+- **A first game starts at 6:40** in the morning, as the story's first card says (it was 17:30).
+  During the tutorial the clock runs at most 10 times real time, and the apps' own notifications
+  wait. Badges read "9+" past nine.
+- **Camera on foot**: pulled in by a wall, it also moves up to 0.55 m over a shoulder (the right, or
+  the left if the right is a wall). Anything drawn see-through fades away within 1.5 m of the lens.
+- **Subtitles** sit a little higher, clear of the prompt row.
+- **The resolution for the ride** is set half a second into the title screen, not as the ride
+  begins (entry 260 had put a 0.2 to 0.4 s freeze there).
+
+Playtest, a fresh save on the production build, by the autopilot: first delivery 98 s after the
+title screen (75 s of play); 06:40 on the phone at the start and 07:00 at the end; one frame of
+183 ms and one more over 50 ms in the run. One slow point: 13 s getting to the dark store's door
+round a car that traffic had stopped beside the parked scooter. High, by scripts/bench.mjs: 92 FPS
+main-road, 86 residential at 17:30, 87 residential at 6:40; load to ride 9.0 s (it was 7 to 8).
+
+Not done: checking that a wall never fills more than 30% of the picture; the low compound walls on
+the walk to a first customer; the cause of the remaining long frame after load.
+
+## 2026-11-21: Entry 269, three things borrowed from how GTA handles vehicles
+
+- **Less steering lock at speed** (`SPEED_LOCK`, ScooterController.ts): full below 12 m/s, down to
+  0.6 of it by 23 m/s, for every vehicle. The scooter (top 15.6 m/s) barely reaches it.
+- **Heavier vehicles pull away more slowly**: the `pull` of the cabs is lower (car 0.7, cargo
+  three-wheeler 0.55, van 0.42, bus 0.28). From rest to 30 km/h: scooter 2.1 s, car 2.7 s, van 4.6 s.
+- **A controller's stick and triggers are analog** (vehicle/analogInput.ts, set by game/gamepad.ts):
+  the stick steers by how far it's pushed (a curve, so small movements are fine ones), the right
+  trigger gives that share of the pull and holds a lower speed (30% of top at a touch), the left
+  trigger brakes that hard. The keys are all or nothing, as before. Checked with a pretend
+  controller: half trigger held 35 km/h on the scooter (top 56); half stick turned 21°/s, full 59°/s.
+
+## 2026-11-21: Entry 270, follow-ups from the first order's playtest
+
+- **The dark store's way out**: "Leave" is offered within 1.6 m of the inside of the door (it was
+  1 m round a spot beyond it), and "Go in" within 2.9 m outside (2.2). During the tutorial the
+  order's clock stands still inside the store. The marker and arrow already led to the door, then
+  the scooter, then the customer (entry 260).
+- **Feedback that agrees**: the crash banner says "Package damaged · N% intact" when it is; a
+  delivery under four stars gets the customer's own words from the rating in the chat and no
+  recorded "thank you"; under three stars there is no confetti, and a quiet two-note "delivered".
+- **Weather and time**: a weather lasts at least ten real minutes and changes over about a minute
+  (`minWeatherTime` 600, `weatherResponse` 0.04); the tutorial's stays clear and its clock runs at
+  five times real time.
+- **Only Ravi and the customer during the first order** (game/firstOrder.ts): home's first message,
+  the daily challenge's and the apps' own wait until its result card is closed.
+- **Camera**: pulled in by a wall on foot it moves up to 0.95 m over a shoulder; the shot of rider
+  and customer is held under the result card.
+- **The start**: one frame of 130 to 180 ms came 0.3 to 0.5 s into the ride, as the loading screen
+  faded. The screen now stays whole for 650 ms after the ride starts. Measured after: no frame over
+  50 ms in the first ten seconds, read slowly or skipped fast.
+- **The first order's door is a straight clear walk** of 16 m at most from where the rider parks
+  (`straightWalk`, ui/Tutorial.tsx). A replay had sent the rider into a gap behind a shop, the door
+  9 m away through a wall.
+
+Replayed fresh, twice, by the autopilot on the production build: delivered 89 s and 82 s after the
+title screen, nothing stuck, no frame over 25 ms, 06:50 on the phone at the end.
+
+Not done: the snag on the store's door frame was not found (the wider zones go round it); that
+posts and walls cover under a quarter of the picture was not measured.
+
+## 2026-11-21: Entry 271, the last of the first order's issues
+
+- **In the dark store with the bag**, the map's pin is on the way out too (`currentTarget`,
+  ui/mapDrawing.ts, followed only outdoor doors; the arrow and the distance already led there).
+  Checked in the store: the arrow aims at the door, 1 m, "Leave" offered.
+- **The phone's badge** counts each sender once during the first order (ui/Phone.tsx): Ravi and the
+  customer talk a first-timer through it line by line, and it passed nine before the delivery.
+- **The shot of rider and customer** under the result card clears a way 2.6 m wide through trees,
+  poles and people to the point between the two (`SHOT_SIGHT`, FollowCamera.tsx).
+- **The tutorial's card goes at the hand-over**, and never falls back to the step's long text.
+- **The city is built while the story's cards are read** (ui/TitleScreen.tsx sets `curtainDrawn` as
+  the story opens). The loading screen after the last card is about 1.2 s, and the first ten
+  seconds of the ride have no frame over 50 ms. One frame of about 300 ms remains, behind the
+  loading screen as it comes up.
+- **The resolution scaler** counts a frame rate within 4% of its aim as too slow on a fast screen
+  (it hovered at 70 to 80 with 80 the aim, and never came down).
+
+Replayed fresh three times by the autopilot on the production build: delivered 83, 84 and 81 s
+after the title screen (five stars, ₹30 tip in the one that was read), nothing stuck, no frame
+over 50 ms. High by scripts/bench.mjs: 103 FPS on main-road and 94 on residential-street, both at
+the top resolution.
+
+## 2026-11-21: Entry 272, the frame after the story's cards, prompts that conflict, and `?fresh=1`
+
+- **The 300 ms frame after the last card was the tutorial choosing the first order**: up to 140
+  orders planned in one frame, each working out road routes (a CPU profile: 298 of 357 busy
+  milliseconds in `planMission`). Nothing was compiling or uploading. The search now takes 4 ms of
+  each frame until it has one (ui/Tutorial.tsx, `FIRST_SEARCH`), about a second, and dispatch's own
+  offers wait for it (`makeOffer`, gameStore.ts): without that, an ordinary order got in first and
+  the forgiving one was never offered. After: no frame over 40 ms after the last card. The frames
+  while the cards are read are long (up to 0.7 s), which is the city building behind them.
+- **No eatery's door is offered** within 28 m of a dark store an order is waiting at, nor at any
+  point of the tutorial (missions/Eating.tsx). Inside some other building with a pickup to make,
+  the tutorial says "Wrong door: the Deliver It dark store is next door".
+- **Pinned on foot** (walking and getting nowhere for a second), the rider is stepped 0.9 m to clear
+  ground, to the side first (`FOOT_PINNED`, ScooterController.ts).
+- **The customer's thanks agree**: "Aah, finally" is said only for a late order. No offer bar shows
+  under a delivery's result card.
+- **`?fresh=1`**: a brand-new player for testing. The game's saved keys are kept in memory for the
+  visit, so nothing saved is read or written (game/saveKeys.ts, imported first by main.tsx).
+
+Replayed with `?fresh=1&debug`, three times, by the autopilot on the production build: delivered
+79, 78 and 85 s after the title screen, nothing stuck, worst frame 17 ms. The real save had only
+what was there before.
+
+Not done: every customer's gate was not checked for a walkable way (the first order's door is
+chosen for a straight clear walk, and the nudge is the fallback); the kerb handover's shot was not
+looked at (it is the same held shot as at a door).

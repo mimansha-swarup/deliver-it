@@ -62,7 +62,8 @@ function plotCorners({ x, z, rotation, width, depth }: Omit<ConstructionSite, 'f
 export function findConstructionSites(data: MapData, collisions: CollisionWorld): ConstructionSite[] {
   const random = createRandom(20261114)
   const pieces = toRoadPieces(data.roads)
-  const roadIndex = indexRoadPieces(pieces)
+  // Clear of the flyovers too: a site was put up across a ramp, pillars in both lanes.
+  const roadIndex = indexRoadPieces(toRoadPieces([...data.roads, ...data.flyovers]))
   const toOutline = (ring: [number, number][]) =>
     ring.slice(0, -1).map((position): GroundPoint => {
       const [x, , z] = lonLatToWorld(position)

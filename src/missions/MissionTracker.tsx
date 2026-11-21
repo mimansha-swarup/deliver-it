@@ -13,6 +13,10 @@ import { getCurrentStop } from './missionLogic'
 import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
 import { FRUSTRATION, timeFrustration } from './customerChat'
+import { useTutorial } from '../game/tutorial'
+
+/** During the tutorial the customer's frustration stops here: "Waiting" (customerChat.ts' moodOf), never "Annoyed". */
+const TUTORIAL_MOOD = 0.38
 
 /** How often the HUD gets new numbers. Far less often than the game runs. */
 const TELEMETRY_INTERVAL = 0.1
@@ -118,7 +122,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
     // The clock starts once the grace after accepting is over, moving or not.
     if (stop && game.mission) {
       if (grace.current > 0) grace.current = Math.max(0, grace.current - frameTime)
-      else elapsed.current += frameTime
+      // Not while a first-timer is inside the dark store working out the counter and the way out.
+      else if (!(useTutorial.getState().step !== null && liveRoom.kind === 'store')) elapsed.current += frameTime
     }
 
     // Arriving isn't automatic: the rider parks, walks in and collects, walks up and hands over (Errand.tsx).
@@ -197,6 +202,8 @@ export function MissionTracker({ scooter }: { scooter: RefObject<ScooterState> }
       let frustration = riding && game.mission
         ? timeFrustration(used, game.mission.story.care, game.mission.story.patience)
         : game.mission ? game.frustration : 0
+      // A first-timer's customer waits, and no worse: the tutorial isn't the place to be fumed at.
+      if (useTutorial.getState().step !== null) frustration = Math.min(frustration, TUTORIAL_MOOD)
       fuming.current = riding && frustration >= FRUSTRATION.fumingAt ? fuming.current + TELEMETRY_INTERVAL : 0
       // What's on board ages: hot food cools, ice cream melts, faster in clear daylight (cargo.ts).
       // Once a second is plenty: the meter moves a hundredth at a time.

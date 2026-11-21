@@ -1,4 +1,5 @@
 import { useKeyName } from '../game/keyBindings'
+import { inFirstOrder } from '../game/firstOrder'
 import { isKey } from '../game/keyBindings'
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
@@ -44,7 +45,7 @@ function StatusBar({ unread = 0 }: { unread?: number }) {
     <header className="phone-status">
       <span className="phone-time">
         {skyTime}
-        {unread > 0 && <span className="phone-tab-count" aria-label={`${unread} unread`}>{unread}</span>}
+        {unread > 0 && <span className="phone-tab-count" aria-label={`${unread} unread`}>{unread > 9 ? '9+' : unread}</span>}
       </span>
       <span className="phone-island" aria-hidden="true" />
       <span className="phone-status-right">
@@ -152,7 +153,7 @@ function MiniPhone({ unread, alert, bounce, onOpen, phoneKey }: { unread: number
         <span className="mini-phone-weather">
           <WeatherIcon weather={weather} night={night} /> {WEATHERS[weather].label}
         </span>
-        {unread > 0 && <span className="mini-phone-unread">{unread}</span>}
+        {unread > 0 && <span className="mini-phone-unread">{unread > 9 ? '9+' : unread}</span>}
         <span className="mini-phone-key">{phoneKey}</span>
       </span>
     </button>
@@ -208,7 +209,7 @@ function AppIcon({ app, nav, badge, label = true }: { app: (typeof APPS)[number]
     <button type="button" aria-label={app.name} onClick={(event) => { nav.go(app.id); event.currentTarget.blur() }}>
       <span className="phone-icon" style={{ background: `linear-gradient(160deg, ${app.color}, color-mix(in srgb, ${app.color} 70%, #000))` }}>
         <AppGlyph path={app.glyph} />
-        {badge > 0 && <span className="phone-badge">{badge}</span>}
+        {badge > 0 && <span className="phone-badge">{badge > 9 ? '9+' : badge}</span>}
       </span>
       {label && <span className="phone-icon-name">{app.name}</span>}
     </button>
@@ -279,7 +280,9 @@ export function Phone() {
     const from = note.thread
     setNotes((list) => [note, ...list].slice(0, 6))
     if (reading.current === from) return
-    setUnread((counts) => ({ ...counts, [from]: (counts[from] ?? 0) + 1 }))
+    // During the first order each sender counts once, however much they say: Ravi and the customer talk
+    // a first-timer through it line by line, and the badge passed nine before the first delivery.
+    setUnread((counts) => ({ ...counts, [from]: inFirstOrder() ? 1 : (counts[from] ?? 0) + 1 }))
   })
   const notification = useNotifications(countMessage)
 

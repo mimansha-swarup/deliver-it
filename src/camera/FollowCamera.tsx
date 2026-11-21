@@ -10,6 +10,7 @@ import { liveRoom, ROOM } from '../game/rooms'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { tuning } from '../vehicle/tuning'
 import { blocksView, type CollisionWorld } from '../world/collision'
+import { borrow } from '../game/borrow'
 import { liveLook, settleLook, useMouseLook } from './mouseLook'
 import { liveSight } from './seeThrough'
 
@@ -73,6 +74,8 @@ const SHOT_HEIGHT = 1.75
 const SHOT_LOOK_HEIGHT = 1.05
 /** How quickly the camera moves in and out of such a moment. */
 const SHOT_RESPONSE = 3.5
+/** How wide a way is cleared through trees, poles and people to the middle of a set shot, in metres. */
+const SHOT_SIGHT = 2.6
 
 /** How far the camera rattles in the hardest hit, in metres. */
 const SHAKE_SIZE = 0.35
@@ -105,6 +108,8 @@ const FOOT_FOLLOW = { response: 9, snap: 3 }
  */
 const FOOT_WALLS = { response: 12, nearest: 1.3, rise: 0.22, sight: 0.6 }
 /** Getting off and on, the view changes between the vehicle's and the walker's over this long, in seconds, eased at both ends: never a cut. */
+/** Pulled in by a wall on foot, the camera moves this far to the side for each metre it came in, up to `most` metres. */
+const FOOT_SHOULDER = { perMetre: 0.5, most: 0.95, response: 6 }
 const FOOT_BLEND = 0.5
 /**
  * In a room the camera stays inside the walls, and keeps the rider in the picture: `distance`
@@ -138,7 +143,9 @@ function findClearDistance(
   walking = false,
 ): number {
   const nearest = walking ? FOOT_WALLS.nearest : MIN_DISTANCE
-  const blocked = (distance: number) => blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, walking ? false : low)
+  const blocked = (distance: number) =>
+    blocksView(collisions, x - forwardX * distance, z - forwardZ * distance, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low, walking ? false : low) ||
+    insideBigVehicle(x - forwardX * distance, z - forwardZ * distance)
   for (let distance = nearest; distance < reach; distance += PROBE_STEP) {
     if (!blocked(distance)) continue
     // Then to within a few centimetres of the wall, so that swinging the view along it moves the
@@ -159,6 +166,29 @@ function findClearDistance(
  * Keeps the camera behind the target, lagging slightly through turns, and moves
  * it closer when a building would otherwise block the view.
  */
+/**
+ * A bus is a wall to the camera. Small vehicles between camera and rider are seen through
+ * (seeThrough.ts), which is right for a scooter or a car the camera looks over; standing beside a
+ * bus, the camera went inside it and the view was the bus's own insides. Anything in the traffic
+ * at least `BIG_VEHICLE` long (half its length, in metres) keeps the camera out, with this margin.
+ */
+const BIG_VEHICLE = { halfLength: 3.5, margin: 0.35 }
+function insideBigVehicle(x: number, z: number): boolean {
+  const world = borrow.world
+  if (!world) return false
+  for (let i = 0; i < borrow.count; i++) {
+    const vehicle = world.vehicles[i]
+    if (!vehicle || vehicle.halfLength < BIG_VEHICLE.halfLength || vehicle === borrow.vehicle) continue
+    const dx = x - vehicle.x
+    const dz = z - vehicle.z
+    if (Math.abs(dx) > vehicle.halfLength + 1 || Math.abs(dz) > vehicle.halfLength + 1) continue
+    const sin = Math.sin(vehicle.heading)
+    const cos = Math.cos(vehicle.heading)
+    if (Math.abs(dx * sin + dz * cos) < vehicle.halfLength + BIG_VEHICLE.margin && Math.abs(dx * cos - dz * sin) < vehicle.radius + BIG_VEHICLE.margin) return true
+  }
+  return false
+}
+
 const view = { distance: 1, height: 1, look: 1 }
 const sight = new Vector3()
 
@@ -178,6 +208,7 @@ export function FollowCamera({
   /** How high the scooter is (up on a flyover), eased, so the camera rises with it smoothly. */
   const level = useRef(0)
   const cameraHeading = useRef<number | null>(null)
+  const shoulder = useRef(0)
   const cameraDistance = useRef(DISTANCE_BEHIND)
   const introStart = useRef<Vector3 | null>(null)
   const introTime = useRef(0)
@@ -304,6 +335,21 @@ export function FollowCamera({
     const bob = afoot ? -Math.cos(state.rider.stride * 2) * FOOT_BOB.walk * Math.min(1, state.rider.pace / FOOT_BOB.fullAt) * (1 + Math.max(0, state.rider.pace - FOOT_BOB.fullAt) * FOOT_BOB.jog) : 0
     const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen + bob
     camera.position.set(focusX - forwardX * back, cameraY + level.current, focusZ - forwardZ * back)
+    // Brought in by a wall on foot, it also moves out over a shoulder, so the wall is to one side
+    // of the picture and the rider's helmet isn't the whole of it: to the right, or to the left if
+    // the right is a wall too, eased so it never jumps.
+    {
+      const pulled = afoot && !indoors ? Math.max(0, reach - distance) : 0
+      let wanted = Math.min(FOOT_SHOULDER.most, pulled * FOOT_SHOULDER.perMetre)
+      if (wanted > 0.05) {
+        const open = (side: number) => !blocksView(collisions, camera.position.x + forwardZ * side, camera.position.z - forwardX * side, WALL_CLEARANCE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, false, false)
+        const keep = Math.sign(shoulder.current) || 1
+        wanted = open(keep * wanted) ? keep * wanted : open(-keep * wanted) ? -keep * wanted : 0
+      }
+      shoulder.current += (wanted - shoulder.current) * (1 - Math.exp(-FOOT_SHOULDER.response * delta))
+      camera.position.x += forwardZ * shoulder.current
+      camera.position.z -= forwardX * shoulder.current
+    }
 
     // A hit rattles the camera. Two speeds of wobble stop it looking regular.
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
@@ -399,7 +445,13 @@ export function FollowCamera({
     sway.current += (swayTarget - sway.current) * (1 - Math.exp(-SWAY_RESPONSE * delta))
     camera.rotateZ(sway.current)
     // On foot, whatever stands between the camera and the rider's chest gives way (seeThrough.ts): where they are, as the camera sees them.
-    if (walk > 0.01 && follow > 0.5) {
+    if (amount > 0.5) {
+      // In the set shot of rider and customer (the hand-over and its result), a wider way is cleared, to where the
+      // shot is looking: between the two of them. No branch or pole stands in front of either.
+      camera.updateMatrixWorld()
+      sight.set(liveShot.lookX, SHOT_LOOK_HEIGHT + level.current, liveShot.lookZ).applyMatrix4(camera.matrixWorldInverse)
+      liveSight.value.set(sight.x, sight.y, sight.z, SHOT_SIGHT)
+    } else if (walk > 0.01 && follow > 0.5) {
       camera.updateMatrixWorld()
       sight.set(state.rider.x, state.rider.y + 0.25, state.rider.z).applyMatrix4(camera.matrixWorldInverse)
       liveSight.value.set(sight.x, sight.y, sight.z, FOOT_WALLS.sight * walk)

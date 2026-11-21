@@ -44,6 +44,15 @@
     <link rel="canonical" href="https://deliver-simulator.netlify.app/" />
   </head>
   <body>
+    <!-- The feedback form (ui/Feedback.tsx posts to it). Netlify finds forms in the page's HTML at deploy time; this one is never shown. -->
+    <form name="feedback" data-netlify="true" netlify-honeypot="bot-field" hidden>
+      <input name="bot-field" />
+      <textarea name="liked"></textarea>
+      <textarea name="broke"></textarea>
+      <input name="email" />
+      <input name="version" />
+      <input name="quality" />
+    </form>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

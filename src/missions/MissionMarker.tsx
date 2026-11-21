@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { DoubleSide, type Group, type Mesh, type MeshBasicMaterial } from 'three'
-import { livePlayer, useOnFoot } from '../game/livePlayer'
+import { livePlayer, liveRoute, useOnFoot } from '../game/livePlayer'
 import { errandLive } from '../game/doorsteps'
 import { useGameStore } from '../game/gameStore'
 import { MISSION_RULES } from '../game/missionConfig'
@@ -13,6 +13,12 @@ const RING_WIDTH = 0.5
 const POINTER_HEIGHT = 7
 /** The stop's beam and pointer go this far outside its ring, in metres, so the rider is never inside the beam. */
 const BEAM_CLEAR = 6
+/**
+ * Where to park: a glowing box on the road at the stop, a scooter's length and a bit, lying along
+ * the road. It pulses, and so does the pointer over the stop, slower once within `calmWithin`
+ * metres: an urgent blink is for finding the place, not for stopping in it.
+ */
+const PARK_BOX = { width: 2.4, length: 3.8, line: 0.16, lift: 0.14, pulse: 4.5, calmPulse: 1.6, calmWithin: 30 }
 
 const HOME_COLOR = '#7fb2ff'
 /** Home's marker only shows off duty, and only this close, in metres. */
@@ -55,6 +61,8 @@ export function HomeMarker() {
   )
 }
 
+/** Nearer the door than this, in metres, its beam isn't drawn. */
+const DOOR_BEAM_GONE_WITHIN = 3.5
 /** The door's marker shows from this far, in metres; its pointer grows with distance, up to this many times. */
 const DOOR_SHOWN_WITHIN = 110
 const DOOR_POINTER_HEIGHT = 3.3
@@ -91,7 +99,9 @@ export function DoorMarker() {
     group.current.visible = shown
     if (!goal || !shown) return
     group.current.position.set(goal.x, goal.y, goal.z)
-    if (beam.current) beam.current.visible = !goal.indoors
+    // At the door itself the beam goes (its pointer stays): standing in it, as on walking out of the
+    // dark store, the camera looked through it and the whole view was washed its colour.
+    if (beam.current) beam.current.visible = !goal.indoors && distance > DOOR_BEAM_GONE_WITHIN
     if (pointer.current) {
       const size = goal.indoors ? 0.55 : Math.min(DOOR_POINTER_LARGEST, Math.max(1, distance / DOOR_POINTER_GROWS_OVER))
       pointer.current.scale.setScalar(size)
@@ -129,16 +139,37 @@ export function MissionMarker() {
   const onFoot = useOnFoot((state) => state.onFoot)
   const pointer = useRef<Mesh>(null)
   const beam = useRef<Mesh>(null)
+  const box = useRef<Group>(null)
+  const boxGlow = useRef<MeshBasicMaterial>(null)
+  const boxLine = useRef<MeshBasicMaterial>(null)
+  const beat = useRef(0)
   const stop = getCurrentStop(mission, phase)
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     if (!pointer.current || !beam.current || !stop) return
     // Arrived, the beam goes too: from inside it the whole street was tinted its colour, door and all.
     const far = !onFoot && Math.hypot(stop.x - livePlayer.x, stop.z - livePlayer.z) > MISSION_RULES.zoneRadius + BEAM_CLEAR
     beam.current.visible = far
     pointer.current.visible = far
-    pointer.current.position.y = POINTER_HEIGHT + Math.sin(clock.elapsedTime * 2.5) * 0.6
+    const away = Math.hypot(stop.x - livePlayer.x, stop.z - livePlayer.z)
+    // One beat for the pointer and the box, slower close by.
+    beat.current += delta * (away < PARK_BOX.calmWithin ? PARK_BOX.calmPulse : PARK_BOX.pulse)
+    pointer.current.position.y = POINTER_HEIGHT + Math.sin(beat.current * 0.6) * 0.6
     pointer.current.rotation.y = clock.elapsedTime * 1.5
+    if (box.current) {
+      box.current.visible = !onFoot
+      // Along the road: the way the route comes in to the stop.
+      const { points } = liveRoute
+      if (liveRoute.active && points.length >= 4) {
+        const n = points.length
+        const dx = points[n - 2] - points[n - 4]
+        const dz = points[n - 1] - points[n - 3]
+        if (Math.hypot(dx, dz) > 0.5) box.current.rotation.y = Math.atan2(dx, dz)
+      }
+      const glow = 0.5 + 0.5 * Math.sin(beat.current)
+      if (boxGlow.current) boxGlow.current.opacity = 0.1 + 0.16 * glow
+      if (boxLine.current) boxLine.current.opacity = 0.65 + 0.35 * glow
+    }
   })
 
   if (!stop) return null
@@ -166,6 +197,27 @@ export function MissionMarker() {
         <ringGeometry args={[MISSION_RULES.zoneRadius - RING_WIDTH, MISSION_RULES.zoneRadius, 48]} />
         <meshBasicMaterial color={stop.color} fog={false} />
       </mesh>
+
+      {/* The parking box: a soft fill and a bright outline, on the road. */}
+      <group ref={box} position={[0, PARK_BOX.lift, 0]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} renderOrder={9}>
+          <planeGeometry args={[PARK_BOX.width, PARK_BOX.length]} />
+          <meshBasicMaterial ref={boxGlow} color={stop.color} transparent opacity={0.2} depthWrite={false} fog={false} />
+        </mesh>
+        {(
+          [
+            [0, PARK_BOX.length / 2, PARK_BOX.width, PARK_BOX.line],
+            [0, -PARK_BOX.length / 2, PARK_BOX.width, PARK_BOX.line],
+            [PARK_BOX.width / 2, 0, PARK_BOX.line, PARK_BOX.length],
+            [-PARK_BOX.width / 2, 0, PARK_BOX.line, PARK_BOX.length],
+          ] as const
+        ).map(([x, z, wide, long], index) => (
+          <mesh key={index} position={[x, 0.01, z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={9}>
+            <planeGeometry args={[wide + (index < 2 ? PARK_BOX.line : 0), long]} />
+            <meshBasicMaterial ref={index === 0 ? boxLine : undefined} color={stop.color} transparent depthWrite={false} fog={false} />
+          </mesh>
+        ))}
+      </group>
 
       {/* A cone's tip points up by default, so this flips it to point at the ground. */}
       <mesh ref={pointer} rotation={[Math.PI, 0, 0]}>

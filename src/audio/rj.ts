@@ -11,9 +11,9 @@ import { lineText, pickLine, readingTime, speak, VOICE_LINES, type Playing } fro
  *
  * A break is a few recorded lines in a row (audio/voice.ts; their words are in voiceScript.json): a
  * hello, what the roads are doing, the rain if it's raining, a sign-off; or one ad. It opens with
- * the station's three-note jingle, a small sting separates the lines, and a soft bed of held notes
- * sits under the voice with the station's music turned down, as on a real station. The voice comes
- * through the radio's own filter and compressor.
+ * the station's ident (a short plucked tune that plays her in), two soft notes separate the
+ * lines, and she speaks over the station's own music turned down, as on a real station. The voice
+ * comes through the radio's own filter and compressor.
  *
  * The words are on the phone as they're said. A line that hasn't been recorded yet is only there,
  * for as long as it takes to read: the browser's speech synthesis, which this used to use, is gone.
@@ -51,96 +51,96 @@ function trafficUpdate({ hours, rain, night, events }: RoadReport): Segment[] {
 /** Ads for businesses that don't exist, in turn. */
 const ADS = VOICE_LINES.filter(({ id }) => id.startsWith('manju.ad.')).map(({ id }) => id)
 
-/** The jingle: three rising notes and a shimmer, on the music bus. */
+/**
+ * The station's ident, before she speaks: a little tune, as a radio station plays you in before its
+ * RJ. Ten plucked notes in D major over four soft bass notes, about four and a half seconds, ending
+ * on a held high D with an echo that lets it ring. Each note is plucked and dies away (nothing is
+ * held: held notes droned like a harmonium). She waits for it. Composed here; on the music bus.
+ */
+const EIGHTH = 0.3
+/** The tune: [when, in eighths of a beat; pitch in Hz; how long it rings, in seconds]. */
+const IDENT_TUNE: [number, number, number][] = [
+  [0, 370, 0.5], [1, 440, 0.5], [2, 587.3, 0.9],
+  [4, 493.9, 0.5], [5, 440, 0.5], [6, 370, 0.9],
+  [8, 329.6, 0.5], [9, 370, 0.5], [10, 440, 0.7],
+  [12, 587.3, 1.6],
+]
+/** Under it, one soft low note a bar: D, G, A, D. */
+const IDENT_BASS: [number, number][] = [[0, 146.8], [4, 196], [8, 220], [12, 146.8]]
+const IDENT_SECONDS = 12 * EIGHTH + 1.0
 function jingle() {
   const buses = getAudioEvenIfPaused()
   if (!buses) return
   const { context, music } = buses
   const start = context.currentTime + 0.05
-  ;[659, 784, 1047].forEach((hz, index) => {
-    const at = start + index * 0.14
-    for (const [ratio, share] of [[1, 1], [2, 0.3]]) {
-      const tone = context.createOscillator()
-      tone.type = 'triangle'
-      tone.frequency.value = hz * ratio
-      const level = context.createGain()
-      level.gain.setValueAtTime(0, at)
-      level.gain.linearRampToValueAtTime(0.5 * share, at + 0.015)
-      level.gain.exponentialRampToValueAtTime(0.0001, at + (index === 2 ? 0.9 : 0.3))
-      tone.connect(level).connect(music)
-      tone.start(at)
-      tone.stop(at + 1)
-    }
-  })
+  // Everything through one soft filter, and an echo that fades on its own.
+  const soften = context.createBiquadFilter()
+  soften.type = 'lowpass'
+  soften.frequency.value = 2600
+  const echo = context.createDelay(1)
+  echo.delayTime.value = EIGHTH * 1.5
+  const again = context.createGain()
+  again.gain.value = 0.25
+  soften.connect(music)
+  soften.connect(echo).connect(again).connect(echo)
+  again.connect(music)
+  const pluck = (at: number, hz: number, rings: number, loud: number, type: OscillatorType) => {
+    const tone = context.createOscillator()
+    tone.type = type
+    tone.frequency.value = hz
+    const level = context.createGain()
+    level.gain.setValueAtTime(0, at)
+    level.gain.linearRampToValueAtTime(loud, at + 0.012)
+    level.gain.exponentialRampToValueAtTime(0.0001, at + rings)
+    tone.connect(level).connect(soften)
+    tone.start(at)
+    tone.stop(at + rings + 0.05)
+  }
+  for (const [when, hz, rings] of IDENT_TUNE) {
+    const at = start + when * EIGHTH
+    // A plucked string: the note, and a quieter octave over it that dies sooner.
+    pluck(at, hz, rings, 0.2, 'triangle')
+    pluck(at, hz * 2, rings * 0.5, 0.05, 'sine')
+  }
+  for (const [when, hz] of IDENT_BASS) pluck(start + when * EIGHTH, hz, 1.1, 0.16, 'sine')
+  window.setTimeout(() => {
+    soften.disconnect()
+    again.disconnect()
+  }, (IDENT_SECONDS + 4) * 1000)
 }
 
-/** Between two lines of a break: two quick notes, quieter than the jingle. */
+/** Between two lines of a break, and at its end: two soft notes of the ident, quieter than it. */
 function sting() {
   const buses = getAudioEvenIfPaused()
   if (!buses) return
   const { context, music } = buses
   const start = context.currentTime + 0.02
-  ;[880, 1175].forEach((hz, index) => {
-    const at = start + index * 0.09
+  ;[440, 587.3].forEach((hz, index) => {
+    const at = start + index * 0.16
     const tone = context.createOscillator()
-    tone.type = 'triangle'
+    tone.type = 'sine'
     tone.frequency.value = hz
     const level = context.createGain()
     level.gain.setValueAtTime(0, at)
-    level.gain.linearRampToValueAtTime(0.22, at + 0.012)
-    level.gain.exponentialRampToValueAtTime(0.0001, at + 0.22)
+    level.gain.linearRampToValueAtTime(0.11, at + 0.03)
+    level.gain.exponentialRampToValueAtTime(0.0001, at + 0.7)
     tone.connect(level).connect(music)
     tone.start(at)
-    tone.stop(at + 0.3)
+    tone.stop(at + 0.8)
   })
 }
 
-/**
- * The bed under the voice: three held notes, soft and filtered, swelling a little, for as long as the
- * break lasts. Returns what fades it out.
+/*
+ * There is no bed under her voice. There was one: three held notes for as long as the break
+ * lasted, which droned like a harmonium under every word. She speaks over the station's own song,
+ * turned well down (radio.ts), which is what a radio does.
  */
-function startBed(): () => void {
-  const buses = getAudioEvenIfPaused()
-  if (!buses) return () => {}
-  const { context, music } = buses
-  const now = context.currentTime
-  const out = context.createGain()
-  out.gain.setValueAtTime(0.0001, now)
-  out.gain.exponentialRampToValueAtTime(0.16, now + 0.6)
-  const soften = context.createBiquadFilter()
-  soften.type = 'lowpass'
-  soften.frequency.value = 900
-  // A slow swell, so it isn't a flat drone.
-  const swell = context.createOscillator()
-  swell.frequency.value = 0.35
-  const depth = context.createGain()
-  depth.gain.value = 0.05
-  swell.connect(depth).connect(out.gain)
-  swell.start(now)
-  const tones = [220, 277.2, 329.6].map((hz, index) => {
-    const tone = context.createOscillator()
-    tone.type = index === 0 ? 'sine' : 'triangle'
-    tone.frequency.value = hz
-    tone.detune.value = (index - 1) * 6
-    tone.connect(soften)
-    tone.start(now)
-    return tone
-  })
-  soften.connect(out).connect(music)
-  return () => {
-    const end = context.currentTime
-    out.gain.cancelScheduledValues(end)
-    out.gain.setTargetAtTime(0.0001, end, 0.18)
-    for (const tone of [...tones, swell]) tone.stop(end + 1)
-    window.setTimeout(() => out.disconnect(), 1300)
-  }
-}
 
 let nextId = 1
 let ad = Math.floor(Math.random() * Math.max(1, ADS.length))
 let lastWasAd = Math.random() < 0.5
-/** The break on air: what stops its bed and its voice. */
-let onAir: { id: number; stopBed: () => void; voice: Playing | null } | null = null
+/** The break on air, and its voice while she's speaking. */
+let onAir: { id: number; voice: Playing | null } | null = null
 
 const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 
@@ -155,14 +155,14 @@ export function playBreak(station: string, duck: (down: boolean) => void, done: 
   const id = nextId++
   jingle()
   duck(true)
-  const live = { id, stopBed: startBed(), voice: null as Playing | null }
+  const live = { id, voice: null as Playing | null }
   onAir = live
   useOnAir.setState({ line: { id, station, kind, text: lines.map(({ text }) => text).join(' ') } })
   const stillOn = () => onAir === live
 
   void (async () => {
-    // The jingle rings out first.
-    await wait(750)
+    // The ident plays her in first.
+    await wait(IDENT_SECONDS * 1000)
     for (const [index, line] of lines.entries()) {
       if (!stillOn()) return
       if (index > 0) {
@@ -183,7 +183,6 @@ export function playBreak(station: string, duck: (down: boolean) => void, done: 
     if (!stillOn()) return
     sting()
     onAir = null
-    live.stopBed()
     useOnAir.setState({ line: null })
     duck(false)
     done()
@@ -193,7 +192,6 @@ export function playBreak(station: string, duck: (down: boolean) => void, done: 
 /** Cuts the RJ off: the station was changed or the music turned off. */
 export function stopBreak() {
   onAir?.voice?.stop()
-  onAir?.stopBed()
   onAir = null
   useOnAir.setState({ line: null })
 }
