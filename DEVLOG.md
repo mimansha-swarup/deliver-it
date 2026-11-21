@@ -11791,3 +11791,30 @@ Replayed fresh three times by the autopilot on the production build: delivered 8
 after the title screen (five stars, ₹30 tip in the one that was read), nothing stuck, no frame
 over 50 ms. High by scripts/bench.mjs: 103 FPS on main-road and 94 on residential-street, both at
 the top resolution.
+
+## 2026-11-21: Entry 272, the frame after the story's cards, prompts that conflict, and `?fresh=1`
+
+- **The 300 ms frame after the last card was the tutorial choosing the first order**: up to 140
+  orders planned in one frame, each working out road routes (a CPU profile: 298 of 357 busy
+  milliseconds in `planMission`). Nothing was compiling or uploading. The search now takes 4 ms of
+  each frame until it has one (ui/Tutorial.tsx, `FIRST_SEARCH`), about a second, and dispatch's own
+  offers wait for it (`makeOffer`, gameStore.ts): without that, an ordinary order got in first and
+  the forgiving one was never offered. After: no frame over 40 ms after the last card. The frames
+  while the cards are read are long (up to 0.7 s), which is the city building behind them.
+- **No eatery's door is offered** within 28 m of a dark store an order is waiting at, nor at any
+  point of the tutorial (missions/Eating.tsx). Inside some other building with a pickup to make,
+  the tutorial says "Wrong door: the Deliver It dark store is next door".
+- **Pinned on foot** (walking and getting nowhere for a second), the rider is stepped 0.9 m to clear
+  ground, to the side first (`FOOT_PINNED`, ScooterController.ts).
+- **The customer's thanks agree**: "Aah, finally" is said only for a late order. No offer bar shows
+  under a delivery's result card.
+- **`?fresh=1`**: a brand-new player for testing. The game's saved keys are kept in memory for the
+  visit, so nothing saved is read or written (game/saveKeys.ts, imported first by main.tsx).
+
+Replayed with `?fresh=1&debug`, three times, by the autopilot on the production build: delivered
+79, 78 and 85 s after the title screen, nothing stuck, worst frame 17 ms. The real save had only
+what was there before.
+
+Not done: every customer's gate was not checked for a walkable way (the first order's door is
+chosen for a straight clear walk, and the nudge is the fallback); the kerb handover's shot was not
+looked at (it is the same held shot as at a door).

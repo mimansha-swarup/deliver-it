@@ -1,4 +1,4 @@
-import { pushOutOfBuildings, type CollisionWorld } from '../world/collision'
+import { isNearBuilding, pushOutOfBuildings, type CollisionWorld } from '../world/collision'
 import { analog } from './analogInput'
 import { ROAD_HEIGHT, type Surface } from '../world/surface'
 import { JOG, stridePerMetre } from './riderShape'
@@ -406,6 +406,9 @@ export function isAfoot(state: ScooterState): boolean {
  */
 export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, stepUp: 0.45, stepRise: 18, stepFall: 12, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
+/** On foot and pinned: moving slower than `still` (m/s) for `after` seconds while walking, they're stepped `step` metres to clear ground, trying these turns from the way they were going. */
+const FOOT_PINNED = { still: 0.15, after: 1, step: 0.9, round: [0.8, -0.8, 1.57, -1.57, 2.4, -2.4, Math.PI] }
+let pinnedFor = 0
 const DISMOUNT_SPEED = 2
 
 /** Where the rider stands having got off: beside the seat, on the kerb side of a two-wheeler, at the driver's door of a cab. */
@@ -596,6 +599,23 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   // the gait's own at that speed (riderShape.ts), so a planted foot stays planted in a walk, a jog
   // and anything between.
   const covered = Math.hypot(rider.x - fromX, rider.z - fromZ)
+  // Pinned: walking, and getting nowhere for a second (wedged between a parked bike and a railing,
+  // or in a corner two walls make). They're stepped out to the nearest clear ground, to the side of
+  // the way they were trying to go first, then further round.
+  if (wanted > 0 && !liveRoom.kind && covered < FOOT_PINNED.still * dt) pinnedFor += dt
+  else pinnedFor = 0
+  if (pinnedFor >= FOOT_PINNED.after) {
+    pinnedFor = 0
+    const going = Math.atan2(wishX, wishZ)
+    for (const turn of FOOT_PINNED.round) {
+      const x = rider.x + Math.sin(going + turn) * FOOT_PINNED.step
+      const z = rider.z + Math.cos(going + turn) * FOOT_PINNED.step
+      if (isNearBuilding(collisions, x, z, FOOT.radius + 0.1)) continue
+      rider.x = x
+      rider.z = z
+      break
+    }
+  }
   rider.pace += (covered / Math.max(dt, 0.001) - rider.pace) * (1 - Math.exp(-18 * dt))
   rider.stride += covered * stridePerMetre(rider.pace)
 }

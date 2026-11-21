@@ -5,6 +5,29 @@
  */
 
 /** Whether this visit uses the debug save: `?debug` or `?debug=1` in the address. */
+/**
+ * `?fresh=1`: a brand-new player, for testing the first minutes. Nothing saved is read and nothing is
+ * written back: the game's keys live in memory for this visit only, so the real save (and the debug
+ * one) is exactly as it was afterwards. Done here, before any store opens its save.
+ */
+export const FRESH: boolean = typeof location !== 'undefined' && new URLSearchParams(location.search).has('fresh')
+if (FRESH && typeof Storage !== 'undefined') {
+  const ours = (key: string) => key.startsWith('swalpa-fast-') || key.startsWith('deliver-it-')
+  const memory = new Map<string, string>()
+  const { getItem, setItem, removeItem } = Storage.prototype
+  Storage.prototype.getItem = function (key: string) {
+    return ours(key) ? (memory.get(key) ?? null) : getItem.call(this, key)
+  }
+  Storage.prototype.setItem = function (key: string, value: string) {
+    if (ours(key)) memory.set(key, String(value))
+    else setItem.call(this, key, value)
+  }
+  Storage.prototype.removeItem = function (key: string) {
+    if (ours(key)) memory.delete(key)
+    else removeItem.call(this, key)
+  }
+}
+
 export const DEBUG_SAVE: boolean = typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')
 
 /** Every debug key made so far, so the debug panel can clear them all. */

@@ -764,6 +764,8 @@ export const useGameStore = create<GameState>()(
   makeOffer: () =>
     set((state) => {
       if (state.duty !== 'online' || state.mission || state.offer || !state.planner || state.offlineAfterOrder) return state
+      // The tutorial makes its own first offer (ui/Tutorial.tsx), a second or so in: dispatch's doesn't get in ahead of it.
+      if (useTutorial.getState().step === 'accept') return state
       const mission = state.planner.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp), dayPeriod(liveSky.hours))
       return { offer: { mission, expiresAt: performance.now() + OFFER_SECONDS * 1000 } }
     }),

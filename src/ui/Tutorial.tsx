@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../game/gameStore'
+import type { Mission } from '../game/gameTypes'
 import { keyFor, useKeys } from '../game/keyBindings'
 import { livePlayer } from '../game/livePlayer'
 import { firstOrder, TUTORIAL_STEPS, useTutorial, type TutorialStep } from '../game/tutorial'
 import { useDiscovery } from '../game/discovery'
 import { shownPrompts, usePrompts } from '../game/prompts'
 import { hasClearLine } from '../world/collision'
+import { liveRoom } from '../game/rooms'
 
 /*
  * The tutorial: Ravi teaches one control at a time, in the world, in chat, and a small card says
@@ -37,6 +39,9 @@ const STEPS: Record<TutorialStep, StepText> = {
 }
 
 const POLL_MS = 200
+/** Looking for the first order: this many tries at most, this many milliseconds of them at each look, and done early once one this near (metres of road) has turned up after at least `least` tries. */
+const FIRST_SEARCH = { tries: 140, msEach: 4, nearEnough: 320, least: 40 }
+const search: { tries: number; best: Mission | null; last: Mission | null } = { tries: 0, best: null, last: null }
 /** The first order's time on the clock, in seconds, at least. */
 const FIRST_ORDER_SECONDS = 180
 /** The first order's door is no further than this from where the rider parks, in metres, and in a straight clear line. */
@@ -72,27 +77,36 @@ function TutorialDirector() {
       // And one whose door is a straight walk from where the rider parks: no compound wall or shop
       // between the two to be walked round (a first order sent its rider into a gap behind a shop).
       const { collisions } = state.planner
-      const straightWalk = (one: typeof mission) => {
+      const straightWalk = (one: Mission) => {
         const { customer, door } = one
         const far = Math.hypot(door.x - customer.x, door.z - customer.z)
         if (far < 2 || far > FIRST_WALK_MOST) return far < 2
         const short = (far - 1.4) / far
         return hasClearLine(collisions, customer.x, customer.z, customer.x + (door.x - customer.x) * short, customer.z + (door.z - customer.z) * short, 0.35)
       }
-      const fits = (one: typeof mission) => one.door.kind === 'house' && one.story.cargo === 'parcel' && one.story.care === 'none' && straightWalk(one)
-      let mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
-      let best = fits(mission) ? mission : null
-      for (let tries = 0; tries < 140; tries++) {
-        mission = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
-        if (!fits(mission)) continue
-        const better = !best || (mission.door.scene === 'dog' ? 0.75 : 1) * mission.routeLength < (best.door.scene === 'dog' ? 0.75 : 1) * best.routeLength
-        if (better) best = mission
+      const fits = (one: Mission) => one.door.kind === 'house' && one.story.cargo === 'parcel' && one.story.care === 'none' && straightWalk(one)
+      // The search is a little at a time, a few milliseconds of each look: planning an order works out
+      // routes, and a hundred and forty of them at once was a frame of 300 ms as the ride began.
+      const began = performance.now()
+      while (search.tries < FIRST_SEARCH.tries && performance.now() - began < FIRST_SEARCH.msEach) {
+        search.tries++
+        const one = state.planner.planMission(livePlayer.x, livePlayer.z, 1)
+        search.last = one
+        if (!fits(one)) continue
+        const better = !search.best || (one.door.scene === 'dog' ? 0.75 : 1) * one.routeLength < (search.best.door.scene === 'dog' ? 0.75 : 1) * search.best.routeLength
+        if (better) search.best = one
       }
-      mission = best ?? mission
+      // Until enough have been looked at (or one near enough has turned up), the offer waits: a second or so.
+      const enough = search.tries >= FIRST_SEARCH.tries || (search.best !== null && search.best.routeLength < FIRST_SEARCH.nearEnough && search.tries >= FIRST_SEARCH.least)
+      if (!enough || !search.last) return
+      let mission = search.best ?? search.last
       // Forgiving: three minutes at least, however near it is (and the customer never worse than waiting: MissionTracker.tsx).
       mission = { ...mission, onTimeSeconds: Math.max(FIRST_ORDER_SECONDS, mission.onTimeSeconds) }
       firstOrder.metres = mission.routeLength
       firstOrder.scene = mission.door.scene
+      search.tries = 0
+      search.best = null
+      search.last = null
       useGameStore.setState({ offer: { mission, expiresAt: performance.now() + 10 * 60 * 1000 } })
     }
 
@@ -105,9 +119,8 @@ function TutorialDirector() {
           if (state.speedKmh >= 15 || (state.mission && state.phase !== 'toPickup')) finish()
           break
         case 'accept':
-          // The tutorial opens on an order: online without being asked, and the order there at once.
+          // The tutorial opens on an order: online without being asked, and the order there within a second or so (`searching`, below).
           if (state.duty !== 'online' && !state.mission) state.goOnline()
-          offerNow()
           if (state.mission) finish()
           break
         case 'pickup':
@@ -125,8 +138,18 @@ function TutorialDirector() {
       }
     }
     const timer = window.setInterval(check, POLL_MS)
+    // The first order is looked for a little every frame until it's offered.
+    let searching = 0
+    if (step === 'accept') {
+      const look = () => {
+        offerNow()
+        searching = requestAnimationFrame(look)
+      }
+      searching = requestAnimationFrame(look)
+    }
     return () => {
       window.clearInterval(timer)
+      cancelAnimationFrame(searching)
     }
   }, [step, next])
 
@@ -157,6 +180,8 @@ function microPrompt(step: TutorialStep): string | null {
     if (away > MICRO.near) return toStore ? 'Follow the arrow at the top to the dark store.' : 'Follow the arrow at the top to the customer.'
     return game.speedKmh > MICRO.stopped ? 'Slow down and stop in the glowing parking box.' : `${mount} · Get off`
   }
+  // In some other building (they were inside it when the order came): the way back out.
+  if (toStore && livePlayer.indoors && liveRoom.kind !== 'store') return `Wrong door: the Deliver It dark store is next door. ${use} · Leave`
   if (toStore) return livePlayer.indoors ? `Walk to the counter. ${use} · Take the bag` : `Walk to the door. ${use} · Go in`
   if (game.phase !== 'toCustomer') return null
   if (livePlayer.indoors) return `Got it! Walk out by the door. ${use} · Leave`

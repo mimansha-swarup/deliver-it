@@ -3,6 +3,10 @@ import { useFrame } from '@react-three/fiber'
 import { playPing } from '../audio/uiSounds'
 import { eateryAt, FRESH, MEALS } from '../game/eateries'
 import { useGameStore } from '../game/gameStore'
+import { useTutorial } from '../game/tutorial'
+
+/** With an order to collect, no eatery's door is offered within this of the dark store's stop, in metres. */
+const STORE_QUIET = 28
 import { discover } from '../game/discovery'
 import { clearSpots, setSpot } from '../game/interact'
 import { liveSky } from '../game/livePlayer'
@@ -34,7 +38,11 @@ export function Eating({ scooter }: { scooter: RefObject<ScooterState> }) {
     }
     if (!liveRoom.kind) {
       setSpot('eat:counter', null)
-      const eatery = eateryAt(state.rider.x, state.rider.z, 2.6)
+      // Not while an order is being collected at a dark store close by, nor at any point of the tutorial:
+      // "Go in to eat" beside "Go in" at the dark store sent first-timers into the darshini next door.
+      const game = useGameStore.getState()
+      const collecting = game.mission !== null && game.phase === 'toPickup' && Math.hypot(game.mission.pickup.x - state.rider.x, game.mission.pickup.z - state.rider.z) < STORE_QUIET
+      const eatery = collecting || useTutorial.getState().step !== null ? null : eateryAt(state.rider.x, state.rider.z, 2.6)
       if (!eatery) {
         setSpot('eat:door', null)
         return
