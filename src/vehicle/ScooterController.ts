@@ -730,18 +730,9 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
   state.boostLeft = Math.max(0, state.boostLeft - dt)
 }
 
-/**
- * How a vehicle with a cab steers: its wheel winds on at this share of the handlebars' speed; its
- * tightest circle's radius is this many of its own lengths; and it turns no harder than this
- * sideways pull, in m/s². These are generous, an arcade's and not a driving school's: with a real
- * car's circle (1.3 lengths) and pull (5.5), every junction needed a wide swing the scooter never does.
- */
-const CAB_STEERING = { wheel: 0.85, circle: 0.7, sideways: 10 }
-
 function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   const targetSteer = Number(input.left) - Number(input.right)
-  // A steering wheel takes a moment to wind on and off; handlebars are flicked.
-  state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * (tuning.cab ? CAB_STEERING.wheel : 1) * dt)
+  state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * dt)
 
   const absoluteSpeed = Math.abs(state.speed)
   const speedRatio = Math.min(absoluteSpeed / tuning.maxSpeed, 1)
@@ -760,14 +751,9 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
     ? clamp(1 - Math.abs(slipAngle) / SCOOTER.maxDriftAngle, 0, 1)
     : 1
 
-  let turning = state.steer * turnRate * driftBoost * driftLimit * steeringFade
-  // Four wheels (and three) turn as their length lets them: no tighter than the circle the vehicle
-  // can make, so it can't swing round on the spot, and no harder at speed than its tyres would hold,
-  // so a touch of the key on a main road is a lane change and not a swerve.
-  if (tuning.cab) {
-    const most = Math.min(absoluteSpeed / (tuning.halfLength * 2 * CAB_STEERING.circle), CAB_STEERING.sideways / Math.max(absoluteSpeed, 1))
-    turning = clamp(turning, -most, most)
-  }
+  // Every vehicle steers as the scooter does (each one's `turn` is 1): a car that needed a wider
+  // swing than the scooter at every junction was no fun, however true.
+  const turning = state.steer * turnRate * driftBoost * driftLimit * steeringFade
   // Math.sign flips the steering in reverse, as on a real vehicle.
   state.heading += turning * Math.sign(state.speed) * dt
 }

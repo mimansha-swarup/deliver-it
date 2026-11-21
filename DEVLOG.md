@@ -11684,3 +11684,11 @@ arcade's (`CAB_STEERING`: a circle 0.7 of the vehicle's length, 10 m/s² sideway
 0.85 of the handlebars' speed). Measured, one second of full lock from the same spot: scooter 70°
 (radius 8.4 m at 37 km/h), Vega 104°, e-scooter 63°, cargo three-wheeler 68°, car 57° (9.2 m at
 33 km/h), van 69°. Cabs still stop against a wall and don't bounce back off it.
+
+## 2026-11-21: Entry 266, every vehicle steers exactly as the scooter does
+
+Asked for outright: every vehicle's `turn` is 1 (the bicycle's 1.55 and the e-scooter's 1.1 too),
+and the cabs' own steering limits and slower wheel (entries 263, 265) are gone. Measured from
+25 km/h, 0.6 s of full lock, each from a fresh start: scooter 45°, cargo three-wheeler 41°, car
+49°, van 48°. The small differences are the top speeds: the turn rate eases off towards each
+vehicle's own top speed. Cabs still stop against a wall and don't bounce back off it.
