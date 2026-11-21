@@ -1,4 +1,5 @@
 import { getAudio, type AudioBuses } from './audioEngine'
+import { showSubtitle } from './subtitle'
 import script from './voiceScript.json'
 
 /*
@@ -19,7 +20,11 @@ import script from './voiceScript.json'
  * playback is a shade faster or slower, higher or lower, so a line heard twice isn't the same twice.
  */
 
-export type VoiceLine = { id: string; character: string; line: string; notes: string }
+/** `english`: what a line with Kannada in it means, for the subtitle shown while it's spoken (subtitle.ts). */
+export type VoiceLine = { id: string; character: string; line: string; notes: string; english?: string }
+
+/** Who a line is said by, as the subtitle names them. */
+const SPEAKERS: Record<string, string> = { 'RJ Manju': 'RJ Manju · radio', 'Ravi (dispatch)': 'Ravi', Customer: 'Customer', 'Security guard': 'Security guard', 'Dark store staff': 'Dark store' }
 export const VOICE_LINES = script as VoiceLine[]
 const BY_ID = new Map(VOICE_LINES.map((line) => [line.id, line]))
 
@@ -162,6 +167,9 @@ export async function speak(id: string, treatment: Treatment, voice?: string): P
     phoneFreeAt = at + buffer.duration / source.playbackRate.value + TURNS.breath
   }
   source.start(at)
+  // What it means, on screen from the moment it's heard until it ends.
+  const spoken = BY_ID.get(id)
+  if (spoken?.english) showSubtitle(SPEAKERS[spoken.character] ?? spoken.character, spoken.english, at - buses.context.currentTime, buffer.duration / source.playbackRate.value)
   return {
     stop: () => {
       try {

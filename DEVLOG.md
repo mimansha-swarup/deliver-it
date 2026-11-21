@@ -11412,3 +11412,14 @@ delivery his voice came with nothing on screen, which felt like a stray sound. N
 he speaks is also a message from him, word for word, at the same moment (voiceCues.ts), marked
 urgent for a crash. Checked in the game: a crash with an order on board played his line and
 showed "Ey! Yen aaythu? You okay?" as a notification.
+
+## 2026-11-21: Entry 250, subtitles for the Kannada in the voices
+
+While a recorded line with Kannada in it is spoken, what it means in English shows at the bottom
+centre with who is saying it ("Ravi · Oh no, careful, buddy! Check the order, is it fine?"), from
+the moment the voice starts (its turn, if it waited) until it ends. Fifty of the 67 lines carry a
+translation (`english` in voiceScript.json); the seventeen that are all English get no subtitle.
+It sits above the prompts, and above the order offer when one is up. The RJ's lines are
+subtitled too. The translations are mine and want a Kannada speaker's eye.
+
+Checked in the game: a crash with an order on board showed the subtitle with Ravi's line.
