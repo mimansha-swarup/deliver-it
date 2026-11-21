@@ -733,9 +733,10 @@ function updateDrift(state: ScooterState, input: DriveInput, dt: number) {
 /**
  * How a vehicle with a cab steers: its wheel winds on at this share of the handlebars' speed; its
  * tightest circle's radius is this many of its own lengths; and it turns no harder than this
- * sideways pull, in m/s² (a brisk corner in a car is about 5).
+ * sideways pull, in m/s². These are generous, an arcade's and not a driving school's: with a real
+ * car's circle (1.3 lengths) and pull (5.5), every junction needed a wide swing the scooter never does.
  */
-const CAB_STEERING = { wheel: 0.5, circle: 1.3, sideways: 5.5 }
+const CAB_STEERING = { wheel: 0.85, circle: 0.7, sideways: 10 }
 
 function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   const targetSteer = Number(input.left) - Number(input.right)

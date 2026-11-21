@@ -11674,3 +11674,13 @@ riding, walking, the phone and the menus all work with it and nothing else chang
 in the file's header and under the key list in Controls. Steering and the triggers are on or off,
 not by how far they're pushed. Checked with a pretend controller in a headless browser (the menu's
 A, RT, the stick, LT, X, the right stick, Menu and B); no real controller was tried.
+
+## 2026-11-21: Entry 265, every vehicle turns nearly as tightly as the scooter
+
+"Turns are too big" meant too wide, not too sharp: entry 263 read it the wrong way round and made
+the cabs wider still. Undone and reversed. The vehicles' `turn` values are now 0.78 to 0.95 of the
+scooter's (they were 0.48 to 0.72; the bus and tanker 0.55, were 0.3), and the cabs' limits are an
+arcade's (`CAB_STEERING`: a circle 0.7 of the vehicle's length, 10 m/s² sideways, the wheel at
+0.85 of the handlebars' speed). Measured, one second of full lock from the same spot: scooter 70°
+(radius 8.4 m at 37 km/h), Vega 104°, e-scooter 63°, cargo three-wheeler 68°, car 57° (9.2 m at
+33 km/h), van 69°. Cabs still stop against a wall and don't bounce back off it.
