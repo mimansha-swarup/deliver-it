@@ -11587,3 +11587,32 @@ fragile order, on time, is five stars each.
   The target (80 FPS, worst frame 25 ms) is not met.
 
 Not done: a test across two devices on two networks, which this one machine can't do.
+
+## 2026-11-21: Entry 260, polish sprint 1: the first fifteen minutes
+
+A feature freeze, on branch `polish-1`. The whole account, item by item, with the numbers, is in
+POLISH_REPORT.md. What a later reader needs from it:
+
+- **The tutorial is four steps** (accept, ride, pick up, deliver), the first order is the nearest
+  plain parcel to a house, and it ends at the hand-over with "You're free to explore" a few seconds
+  later. An autopilot at normal speed delivers 1 min 51 s after the title screen.
+- **On foot the rider is a standing body** (people.glb's `office`, by traffic's walking shader,
+  `Walker` in traffic/Traffic.tsx), in the jacket's colour and the helmet. The seated model is for
+  the seat, getting on and off, and falls. A jog is the walk with longer strides.
+- **With the bag in hand the store's door is marked**; the door's beam is hidden within 3.5 m (it
+  washed the view on walking out).
+- **The freezes on High were the resolution scaler** changing resolution mid-ride (0.2 s each).
+  It starts a step under the top on screens faster than 60 Hz and remembers where each quality
+  settled (`swalpa-fast-resolution`). High at 17:30: 83 to 96 FPS on four spawns, from 66 to 74.
+- **world/StaticMatrices.tsx** freezes the placement of scene objects that don't move, and thaws
+  any that later do. Low with the CPU slowed 4× is still 40 FPS (the aim is 60): the player's own
+  75 meshes are a quarter of that frame.
+- **Sound**: a voices bus above the music, the music dipping under a phone voice, and Master and
+  Voices sliders. **Feedback** posts to Netlify Forms (the hidden form in index.html).
+  **game/analytics.ts** sends nothing until its address is set.
+- The scooter's mirrors are lowered at load (`shortenMirrors`), not in the model file.
+- clips/tools/play.mjs is the autopilot that plays a fresh game and records it; drive.mjs now
+  collects console messages and can record the page.
+
+Not done: parked-bike model quality, the entrance audit, traffic indicators, a door-opening
+animation, the LinkedIn link, the two-device room test.
