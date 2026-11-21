@@ -11830,3 +11830,12 @@ watched from the game's own stores inside that file; `new_game`, `explore_start`
 
 `ip: false` is set as asked, and does nothing in this version of the library: discarding IP
 addresses is the PostHog project's setting. No event has been seen arriving: there is no key yet.
+
+## 2026-11-22: Entry 274, Netlify's secrets scan and the PostHog host
+
+The first build with `VITE_POSTHOG_HOST` set failed: Netlify's secrets scan found the variable's
+value in README.md and src/analytics.ts, where the default host had been written out. Neither
+names an address now (without the variable, posthog-js uses its own default). The library's own
+code has that address in it too, so the built JavaScript would have failed the scan next;
+`netlify.toml` (new) lists `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in `SECRETS_SCAN_OMIT_KEYS`.
+Both are public values: every `VITE_` variable is built into the page.

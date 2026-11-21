@@ -1,0 +1,7 @@
+# Build settings (command, publish folder) are the site's own, in Netlify. This file only adds to them.
+
+[build.environment]
+  # The PostHog key and host are public values: Vite builds every VITE_ variable into the page's
+  # JavaScript, and a PostHog project key is meant to be in the browser. Without this, Netlify's
+  # secrets scan finds them in the build's output and fails the build.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_POSTHOG_KEY,VITE_POSTHOG_HOST"

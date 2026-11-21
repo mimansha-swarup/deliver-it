@@ -64,7 +64,12 @@ Set these where the site is built (Netlify: Site configuration → Environment v
 | Variable | What it is |
 |---|---|
 | `VITE_POSTHOG_KEY` | The PostHog project's API key (`phc_…`). Without it every call does nothing. |
-| `VITE_POSTHOG_HOST` | The PostHog host, e.g. `https://eu.i.posthog.com`. Defaults to `https://us.i.posthog.com`. |
+| `VITE_POSTHOG_HOST` | The PostHog host address for your project's region (PostHog shows it beside the key). Optional: without it the library uses PostHog's US cloud. |
+
+Both values are public by nature: anything named `VITE_…` is built into the page's JavaScript, and a
+PostHog project key is made to be shipped to browsers. Netlify's secrets scan would still fail the
+build for finding them in its output, so `netlify.toml` tells it to leave these two alone
+(`SECRETS_SCAN_OMIT_KEYS`). Don't write either value into the repository.
 
 In the PostHog project, switch on **Discard client IP data**: the `ip: false` option in the code
 has no effect in current versions of posthog-js.

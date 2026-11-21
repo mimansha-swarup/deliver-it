@@ -53,7 +53,9 @@ const on = Boolean(KEY) && !switchedOff()
 
 if (on && KEY) {
   posthog.init(KEY, {
-    api_host: HOST || 'https://us.i.posthog.com',
+    // The host only when one is given; without it the library uses its own default (PostHog's US cloud).
+    // (No address is written here: Netlify's secrets scan fails a build that has an environment variable's value in the repository.)
+    ...(HOST ? { api_host: HOST } : {}),
     autocapture: false,
     capture_pageview: false,
     capture_pageleave: false,
