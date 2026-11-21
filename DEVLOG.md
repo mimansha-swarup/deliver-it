@@ -11521,3 +11521,20 @@ Checked with a full history: two deliveries in a round scored ₹145, then ₹23
   | Fragile order's own bump count: a star, two stars | 2, 4 | 4, 8 |
 
   Crashes are unchanged: they're what should hurt.
+
+## 2026-11-21: Entry 256, an on-time, clean delivery is five stars
+
+A delivery with no crash, on time, could still come back with three stars and Ravi's "customer
+complained". Two causes:
+
+- **The wait cost stars inside the time.** Stars came from the customer's frustration, which
+  starts rising at half the clock: 87% of the time used was already four stars, an "event" order
+  at the limit three, and an impatient customer's clock ran faster still. Now an order that
+  arrives inside its time loses no star for the wait (their mood still shows on the meter and
+  trims the tip); late, the wait sets the stars as before.
+- **Bumps counted before the order was on board.** A breaker taken hard on the way to the store
+  added to the ride's roughness and its bump count, as crashes once did. They count only with the
+  order on board now.
+
+Checked the rating itself: clean and on time is five stars at 50%, 90% and 100% of the clock, for a
+patient and an impatient customer and for an event order; 20% late is four, or three if impatient.

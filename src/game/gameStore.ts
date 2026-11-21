@@ -906,11 +906,17 @@ export const useGameStore = create<GameState>()(
           },
     ),
   recordKnock: () =>
-    set((state) => ({
-      knocks: state.knocks + 1,
-      rough: state.rough + (state.mission?.story.care === 'fragile' ? FRUSTRATION.fragileKnock : FRUSTRATION.knock),
-      condition: state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].bump) : state.condition,
-    })),
+    // As a crash: only with the order on board. A breaker taken hard on the way to the store shook
+    // nothing of the customer's, but it used to count against the delivery all the same.
+    set((state) =>
+      state.phase !== 'toCustomer'
+        ? state
+        : {
+            knocks: state.knocks + 1,
+            rough: state.rough + (state.mission?.story.care === 'fragile' ? FRUSTRATION.fragileKnock : FRUSTRATION.knock),
+            condition: state.mission ? Math.max(0, state.condition - CARGO[state.mission.story.cargo].bump) : state.condition,
+          },
+    ),
   ageOrder: (seconds, sun, rain) =>
     set((state) => {
       if (state.phase !== 'toCustomer' || !state.mission) return state

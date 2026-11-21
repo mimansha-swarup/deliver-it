@@ -215,7 +215,10 @@ export function rateDelivery({ story, seconds, onTimeSeconds, crashes, knocks, s
   // With the customer's frustration known, the wait sets the stars and the parcel's condition takes
   // some off at the door; the reasons above say what caused it.
   if (frustration !== undefined) {
-    stars = Math.max(1, starsFromFrustration(frustration) - roughStars(roughness))
+    // On time is on time: however the wait felt to them (an impatient customer, most of the clock
+    // used), an order that arrives inside its time loses no star for the wait. Their mood still
+    // shows on the meter and trims the tip. Late, the wait sets the stars.
+    stars = Math.max(1, (late ? starsFromFrustration(frustration) : 5) - roughStars(roughness))
     lost.splice(0, lost.length, ...lost.map((reason) => reason.replace(/ −\d★$/, '')))
     if (stars < 5 && lost.length === 0) lost.push('Kept waiting')
   }
