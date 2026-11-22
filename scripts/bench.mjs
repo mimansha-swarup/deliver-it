@@ -69,7 +69,7 @@ const chrome = spawn(CHROME, [
   `--remote-debugging-port=${PORT}`,
   `--user-data-dir=${profileDir}`,
   '--no-first-run',
-  '--no-default-browser-check',
+  '--no-default-browser-check', '--mute-audio',
   '--window-size=1500,900',
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',

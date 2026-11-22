@@ -33,6 +33,8 @@ const chrome = spawn(
     ...(WINDOWED ? [] : ['--headless=new']),
     `--window-size=${WIDTH},${HEIGHT + (WINDOWED ? 90 : 0)}`,
     '--autoplay-policy=no-user-gesture-required',
+    // Silent: the game's sound still runs (so its code is exercised), but nothing comes out of the speakers. SOUND=1 to hear it.
+    ...(process.env.SOUND ? [] : ['--mute-audio']),
     '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',

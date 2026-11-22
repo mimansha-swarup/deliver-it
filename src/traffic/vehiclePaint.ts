@@ -9,6 +9,7 @@ export const PARKED_COLORS = ['#c8c9cc', '#2f3136', '#8c2f2f', '#2f4f7f', '#e6e4
  * bus.ts's): the shader knows it by that (darker than anything but a tyre, and bluer than one), and
  * makes it smooth and mirror-like, so windows carry the sky and the street by day and go dark at
  * night, in place of the flat matt black they were. No extra shape, texture or draw call.
+ * Call it after `addLampGlow`, whose night uniform it reads.
  */
 export function addWindowGlass(shader: THREE.WebGLProgramParametersWithUniforms) {
   shader.fragmentShader = shader.fragmentShader
@@ -19,7 +20,8 @@ export function addWindowGlass(shader: THREE.WebGLProgramParametersWithUniforms)
   #ifdef USE_COLOR
     windowGlass = (1.0 - smoothstep(0.06, 0.11, max(vColor.r, max(vColor.g, vColor.b)))) * smoothstep(1.12, 1.35, vColor.b / max(vColor.r, 0.0005));
     // What the glass shows of its surroundings: a cool grey, so it reflects about a third of the sky.
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.26, 0.31, 0.36), windowGlass);
+    // By night there's no sky in it: nearly black, as a dark window is (uLampNight is the lamps own, vehicleLamps.ts).
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.26, 0.31, 0.36) * (1.0 - 0.88 * uLampNight), windowGlass);
   #endif`,
     )
     .replace(

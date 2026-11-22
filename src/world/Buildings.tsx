@@ -88,13 +88,15 @@ function toRing(ring: LonLat[]): THREE.Vector2[] {
  * the horizontal position is measured along the wall so windows line up. Roofs
  * all use one plain spot on the texture, so they get no windows.
  */
-function applyFacadeMapping(geometry: THREE.BufferGeometry, color: THREE.Color, bayWidth: number, weather: number) {
+function applyFacadeMapping(geometry: THREE.BufferGeometry, color: THREE.Color, bayWidth: number, weather: number, variant: number) {
   const position = geometry.attributes.position
   const normal = geometry.attributes.normal
   const uvs = new Float32Array(position.count * 2)
   const colors = new Float32Array(position.count * 3)
   // How weathered this building is, for the shader (weathering.ts): some are freshly painted, some not for years.
   geometry.setAttribute('aWeather', new THREE.BufferAttribute(new Float32Array(position.count).fill(weather), 1))
+  // Which of its look's window designs this building has (facadeTextures.ts' `variants`).
+  geometry.setAttribute('aVariant', new THREE.BufferAttribute(new Float32Array(position.count).fill(variant), 1))
   const roofColor = color.clone().multiplyScalar(ROOF_SHADE)
 
   for (let i = 0; i < position.count; i++) {
@@ -120,13 +122,14 @@ function createFloors(
   look: FacadeLook,
   color: THREE.Color,
   weather: number,
+  pick: number,
 ): BuildingPart {
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: (toFloor - fromFloor) * FLOOR_HEIGHT,
     bevelEnabled: false,
   })
   geometry.translate(0, 0, fromFloor * FLOOR_HEIGHT)
-  applyFacadeMapping(geometry, color, FACADE_LOOKS[look].bayWidth, weather)
+  applyFacadeMapping(geometry, color, FACADE_LOOKS[look].bayWidth, weather, pick % (FACADE_LOOKS[look].variants?.length ?? 1))
   return { look, geometry }
 }
 
@@ -143,11 +146,13 @@ function createBuildingParts(building: BuildingFeature): BuildingPart[] {
   const floors = getFloors(building)
 
   // On stilts the ground floor is open: pillars and parking from the house kit, under the floors above.
-  if (hasStilts(building)) return [createFloors(shape, 1, floors, upper, color, weather)]
-  if (ground === upper || floors <= 1) return [createFloors(shape, 0, floors, ground, color, weather)]
+  // Its own window design, from another part of its number than its colour, so the two don't go together.
+  const pick = (hash >>> 18) % 12
+  if (hasStilts(building)) return [createFloors(shape, 1, floors, upper, color, weather, pick)]
+  if (ground === upper || floors <= 1) return [createFloors(shape, 0, floors, ground, color, weather, pick)]
   return [
-    createFloors(shape, 0, 1, ground, color, weather),
-    createFloors(shape, 1, floors, upper, color, weather),
+    createFloors(shape, 0, 1, ground, color, weather, pick),
+    createFloors(shape, 1, floors, upper, color, weather, pick),
   ]
 }
 
@@ -211,6 +216,34 @@ function prepareWallPhotos(textures: THREE.Texture[]) {
   }
 }
 
+/**
+ * Lets one wall material show several window designs. The look's image has its designs stacked
+ * (`count` of them, facadeTextures.ts); each building says which is its own in `aVariant`, and
+ * the wall's colour is read from that band of the image: the bay and floor repeat within the
+ * band, with the smoothing worked out from the unbroken coordinates, so there's no seam where
+ * they wrap. One draw call and one texture per look, as before.
+ */
+function addWindowVariants(material: THREE.MeshStandardMaterial, count: number) {
+  if (count <= 1) return
+  const previous = material.onBeforeCompile
+  material.onBeforeCompile = (shader, renderer) => {
+    previous.call(material, shader, renderer)
+    shader.vertexShader = shader.vertexShader.replace('void main() {', 'attribute float aVariant;\nvarying float vVariant;\nvoid main() {\n  vVariant = aVariant;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'varying float vVariant;\nvoid main() {')
+      .replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+          vec2 bayUv = vec2(vMapUv.x, (fract(vMapUv.y) + floor(vVariant + 0.5)) / ${count.toFixed(1)});
+          vec4 sampledDiffuseColor = textureGrad(map, bayUv, dFdx(vMapUv), dFdy(vMapUv) / ${count.toFixed(1)});
+          diffuseColor *= sampledDiffuseColor;
+        #endif`,
+      )
+  }
+  const previousKey = material.customProgramCacheKey.bind(material)
+  material.customProgramCacheKey = () => `${previousKey()}|variants:${count}`
+}
+
 function updateWindowGlow(material: THREE.MeshStandardMaterial) {
   material.emissiveIntensity = liveSky.look.night * WINDOW_GLOW
 }
@@ -265,6 +298,7 @@ export function Buildings({ buildings }: { buildings: BuildingFeature[] }) {
         })
         // Streaks follow the windows, so only where they're drawn.
         addWeathering(material, { streaks: windows ? WINDOW_SPANS[look] : null })
+        if (windows) addWindowVariants(material, FACADE_LOOKS[look].variants?.length ?? 1)
         return material
       }),
     [windows, surfaces, textures, plasterBumps, concreteBumps, brickBumps],

@@ -68,6 +68,32 @@ const COMMUTER_SEAT: Seat = {
   lean: 0.38,
   hands: new THREE.Vector3(0.3, 0.98, 0.33),
   feet: new THREE.Vector3(0.18, 0.42, -0.12),
+  // Stopped, the left foot is on the road beside the bike.
+  footDown: new THREE.Vector3(0.36, 0.06, -0.02),
+}
+/**
+ * Riders in traffic lean into their turns as the rider's own scooter does: by the turn's sideways
+ * pull (speed times turning rate over gravity), this share of it, at most `most` radians, followed
+ * at `response` a second. Stopped (slower than `stoppedBelow` m/s) the foot goes down over
+ * `footTime` seconds and the bike tips `rest` radians onto it.
+ */
+const BIKE_LEAN = { share: 0.85, most: 0.46, response: 5, stoppedBelow: 0.5, footTime: 0.3, rest: 0.07 }
+/** Works out each two-wheeler's lean and whether its rider's foot is down, once a frame, before anything of it is drawn. */
+function updateBikeLean(items: Moving[], dt: number) {
+  if (dt <= 0) return
+  for (const item of items) {
+    const last = item.leanFrom ?? item.heading
+    const turned = Math.atan2(Math.sin(item.heading - last), Math.cos(item.heading - last))
+    item.leanFrom = item.heading
+    const speed = item.speed ?? 0
+    // Not while it's down, or waiting off the map.
+    const stopped = speed < BIKE_LEAN.stoppedBelow && !item.fallen && !item.rotation && Math.abs(item.x) < NOWHERE
+    item.footDown = Math.max(0, Math.min(1, (item.footDown ?? 0) + ((stopped ? 1 : -1) * dt) / BIKE_LEAN.footTime))
+    // Positive leans left, as a left turn (the heading rising) does.
+    const pull = Math.max(-BIKE_LEAN.most, Math.min(BIKE_LEAN.most, ((turned / dt) * speed * BIKE_LEAN.share) / 9.81))
+    const wanted = item.fallen ? 0 : pull + BIKE_LEAN.rest * (item.footDown ?? 0)
+    item.lean = (item.lean ?? 0) + (wanted - (item.lean ?? 0)) * (1 - Math.exp(-BIKE_LEAN.response * dt))
+  }
 }
 const COMMUTER_HELMET = '#26282c'
 /** The riders who come in their own kit: nothing of theirs is changed but the pale panels' colour. */
@@ -102,6 +128,13 @@ const CLOTHES_COLORS = [
   '#c2307a', // rani pink
   '#3a4a6b', // navy
   '#7c7f86', // grey
+  '#a9c6a0', // pale green
+  '#d8b7c4', // dusty pink
+  '#8b5a3c', // brown
+  '#4f3a6b', // deep purple
+  '#c9502e', // brick orange
+  '#2b2d33', // charcoal
+  '#e3d3a6', // khaki
   '#a8502e', // rust
   '#5a3f8e', // indigo
 ]
@@ -131,6 +164,12 @@ type Moving = {
   tint: number
   /** A full 3D rotation, when physics has it tumbling. */
   rotation?: [number, number, number, number] | null
+  /** A two-wheeler in traffic: how fast it's going, how far it leans (radians, positive left), its heading last frame, and how far its rider's foot is down (0 to 1). See `updateBikeLean`. */
+  speed?: number
+  lean?: number
+  leanFrom?: number
+  footDown?: number
+  fallen?: unknown
   /** Not drawn, such as a thrown bike rider who is back on the bike. */
   hidden?: boolean
   /** A bike whose rider has been thrown off, so its seated rider isn't drawn. */
@@ -228,7 +267,7 @@ const NOWHERE = 5000
  * other level shrunk to nothing, which still cost all their corners: with 22,000-triangle near cars
  * that was most of a million triangles for traffic nowhere near.
  */
-function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: number, isSeatedRider: boolean, from: number, palette: string[], signal?: THREE.InstancedBufferAttribute | null, time = 0) {
+function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: number, isSeatedRider: boolean, from: number, palette: string[], signal?: THREE.InstancedBufferAttribute | null, time = 0, foot?: THREE.InstancedBufferAttribute | null) {
   const color = nearColor
   let drawn = 0
   for (const item of items) {
@@ -238,11 +277,13 @@ function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: num
     // On a raised footpath, on top of it. Up on a flyover, its lift is the deck's height: no footpath below lifts it.
     transform.position.set(item.x, (item.deck ? ROAD_HEIGHT : Math.max(ROAD_HEIGHT, groundLift.at(item.x, item.z))) + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
-    else transform.rotation.set(0, item.heading, 0)
+    // A two-wheeler leans about the line its tyres stand on (Euler XYZ turns about z, its length, first).
+    else transform.rotation.set(0, item.heading, item.lean ? -item.lean : 0)
     transform.scale.setScalar(1)
     transform.updateMatrix()
     instances.setMatrixAt(drawn, transform.matrix)
     instances.setColorAt(drawn, color.set(palette[Math.floor(item.tint * palette.length * 0.999)]))
+    if (foot) foot.setX(drawn, item.rotation ? 0 : (item.footDown ?? 0))
     if (signal) {
       // Its lamps: the brakes, and whichever indicators are lit at this moment. Each flashes in its own time, as no two cars' ever keep step.
       const lit = (item.indicator || item.hazard) && (time * BLINK_RATE + item.tint * 7) % 1 < BLINK_ON
@@ -254,6 +295,7 @@ function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: num
   instances.instanceMatrix.needsUpdate = true
   if (instances.instanceColor) instances.instanceColor.needsUpdate = true
   if (signal) signal.needsUpdate = true
+  if (foot) foot.needsUpdate = true
 }
 
 function updateReflection(material: THREE.MeshStandardMaterial) {
@@ -327,6 +369,15 @@ function MovingInstances({
     return attribute
   }, [lamps, items.length, geometry])
 
+  // A seated rider whose shape has the foot-down pose (`aDown`): each copy says how far its foot is down (`aFoot`).
+  const foot = useMemo(() => {
+    if (!seatedRider || items.length === 0 || !geometry.getAttribute('aDown')) return null
+    const attribute = new THREE.InstancedBufferAttribute(new Float32Array(items.length), 1)
+    attribute.setUsage(THREE.DynamicDrawUsage)
+    geometry.setAttribute('aFoot', attribute)
+    return attribute
+  }, [seatedRider, items.length, geometry])
+
   useFrame(({ clock }) => {
     if (!mesh.current) return
     if (nearestOnly && reach !== undefined) {
@@ -337,7 +388,7 @@ function MovingInstances({
       }
       writeNearest(mesh.current, near.items, reach, palette, from)
     }
-    else writePacked(mesh.current, items, reach ?? Infinity, seatedRider, from, palette, signal, clock.elapsedTime)
+    else writePacked(mesh.current, items, reach ?? Infinity, seatedRider, from, palette, signal, clock.elapsedTime, foot)
     if (material.current) updateReflection(material.current)
   })
 
@@ -360,7 +411,7 @@ function MovingInstances({
         // caught a different bit of sky in every dent, which read as speckled paint.
         roughness={cloth ? 0.85 : baked ? 0.5 : 0.45}
         metalness={cloth ? 0 : baked ? 0.15 : 0.1}
-        onBeforeCompile={lamps ? LAMPS_SEEN_THROUGH : baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
+        onBeforeCompile={lamps ? LAMPS_SEEN_THROUGH : foot ? RIDER_SEEN_THROUGH : baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
       />
     </instancedMesh>
   )
@@ -554,13 +605,41 @@ const WALK_FUNCTIONS = /* glsl */ `
  * arms fling out one forward and one back, and their legs part, by how limp they
  * are (`aPerson.z`). Clothes take the person's colour, and the rest take their skin tone.
  */
-function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
+/**
+ * Variety, from each person's own number (their skin tone, which never changes, hashed), so no
+ * list of people has to say it. `plain` leaves it all out: the player's own rider on foot.
+ *
+ * Walks: most walk as before; some walk briskly (a bigger arm swing, elbows bent, leaning into
+ * it), some stroll with one arm held still as if carrying a bag, and some walk looking at their phone.
+ * Standing (those with nothing particular to do): some put their hands behind their back, some
+ * fold their arms, and some look slowly up and down the street.
+ * Clothes: plain, striped across, striped down or checked, drawn onto the top in the fragment shader.
+ */
+const STYLE = { brisk: [0.5, 0.7], stroll: [0.7, 0.86], phoneWalk: [0.86, 1], behind: [0, 0.2], folded: [0.2, 0.38], looking: [0.38, 0.7] } as const
+const within = (name: string, [from, to]: readonly [number, number]) => `(step(${glsl(from)}, ${name}) * (1.0 - step(${glsl(to)}, ${name})))`
+
+function addWalking(shader: THREE.WebGLProgramParametersWithUniforms, plain = false) {
   Object.assign(shader.uniforms, peopleClock)
+  shader.fragmentShader = shader.fragmentShader
+    .replace('void main() {', 'varying vec4 vCloth;\nvoid main() {')
+    .replace(
+      '#include <color_fragment>',
+      `#include <color_fragment>
+      if (vCloth.w > 0.5) {
+        // A pattern on the top: stripes across, stripes down or checks, in a darker shade of its own colour.
+        float pattern = vCloth.z;
+        float across = step(0.5, fract(vCloth.y * 13.0));
+        float down = step(0.5, fract(vCloth.x * 21.0));
+        float mark = pattern < 0.52 ? 0.0 : pattern < 0.68 ? across : pattern < 0.82 ? down : pattern < 0.92 ? abs(across - down) : 0.0;
+        diffuseColor.rgb *= 1.0 - 0.24 * mark;
+      }`,
+    )
   shader.vertexShader = `
     attribute vec3 _limb;
     attribute vec4 aPerson;
     attribute vec2 aWave;
     uniform float uTime;
+    varying vec4 vCloth;
     ${WALK_FUNCTIONS}
     ${shader.vertexShader}
   `
@@ -576,14 +655,26 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
     .replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
+      // Each person's own two numbers, for how they walk and stand and what their top looks like.
+      float styleA = ${plain ? '0.0' : 'fract(aPerson.y * 37.71 + 0.13)'};
+      float styleB = ${plain ? '0.9' : 'fract(aPerson.y * 91.37 + 0.57)'};
+      vCloth = vec4(position.x, position.y, ${plain ? '0.0' : 'fract(aPerson.y * 53.9 + 0.31)'}, _limb.z);
       float walking = aPerson.w * (1.0 - aPerson.z);
+      float brisk = walking * ${within('styleA', STYLE.brisk)};
+      float stroll = walking * ${within('styleA', STYLE.stroll)};
+      float phoneWalk = walking * ${within('styleA', STYLE.phoneWalk)};
       // Standing still isn't standing frozen: each person breathes and shifts their weight, in their own time.
       float still = (1.0 - walking) * (1.0 - aPerson.z);
       float own = aPerson.x * 3.7;
       // What they're doing while they stand (IDLE_POSE), only while standing.
       float pose = aWave.y;
       float weight = still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.weight.toFixed(1)})));
-      float phone = still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.phone.toFixed(1)})));
+      float phone = max(still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.phone.toFixed(1)}))), phoneWalk);
+      // With nothing particular to do (standing, or shifting their weight), some do one of these instead.
+      float atEase = still * (1.0 - step(1.5, pose));
+      float behind = atEase * ${within('styleB', STYLE.behind)};
+      float folded = atEase * ${within('styleB', STYLE.folded)};
+      float looking = atEase * ${within('styleB', STYLE.looking)};
       float chat = still * (1.0 - step(0.5, abs(pose - ${IDLE_POSE.chat.toFixed(1)})));
       // Talking comes in bursts: a hand up for a few seconds, then down while the other talks.
       float burst = pow(max(0.0, sin(uTime * ${glsl(CHAT.speed)} + own)), 2.0);
@@ -599,11 +690,17 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
         vec2 foot = mix(vec2(0.0), footAt(phase), walking);
         vec2 point = vec2(position.z, position.y);
         if (isArm) {
-          float swing = -${glsl(GAIT.armSwing)} * foot.x / REACH * follow;
-          swing += still * ${glsl(IDLE.armSway)} * sin(uTime * 1.3 + own + side) * follow;
           // The phone and the talking hand are the arm that doesn't wave.
           float other = _limb.x > 0.0 ? follow : 0.0;
+          // A brisk walker's arms swing further; a stroller's hardly at all, and the arm with the bag (or the phone) is held.
+          float swing = -${glsl(GAIT.armSwing)} * foot.x / REACH * follow * (1.0 + 0.6 * brisk - 0.45 * stroll) * (1.0 - other * (0.85 * stroll + 0.9 * phoneWalk));
+          swing += still * ${glsl(IDLE.armSway)} * sin(uTime * 1.3 + own + side) * follow * (1.0 - behind - folded);
           float bend = 0.0;
+          // Elbows bent in a brisk walk; a little for the hand holding a bag.
+          bend += follow * (brisk * 0.75 + other * stroll * 0.22);
+          // Hands behind the back: both arms back a little. Arms folded: both forearms up across the chest.
+          swing += follow * (folded * 0.3 - behind * 0.34);
+          bend += follow * folded * 1.72;
           swing += other * (phone * ${glsl(PHONE.upper)} + chat * burst * ${glsl(CHAT.upper)});
           bend += other * phone * (${glsl(PHONE.forearm)} + 0.03 * sin(uTime * 2.3 + own));
           bend += other * chat * burst * ${glsl(CHAT.forearm)} * (0.75 + 0.25 * sin(uTime * ${glsl(CHAT.beat)} + own));
@@ -616,7 +713,11 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
           float angle = mix(swing, -_limb.x * ${glsl(SPRAWL_ARM)}, aPerson.z);
           // The forearm bends up at the elbow first, as the shin does at the knee, then the whole arm turns.
           float elbowY = _limb.y - ${glsl(ELBOW_DROP)};
-          if (position.y < elbowY) point = turnForward(point, elbowY, bend);
+          if (position.y < elbowY) {
+            point = turnForward(point, elbowY, bend);
+            // Folded arms cross over the chest; hands behind the back meet in the middle.
+            transformed.x -= sign(position.x) * (folded * 0.16 + behind * 0.1) * clamp((elbowY - position.y) / 0.28, 0.0, 1.0) * (1.0 - aPerson.z);
+          }
           point = turnForward(point, _limb.y, angle);
         } else {
           // The leg reaches from the dipped hip down to the foot on the ground. Each model has its
@@ -638,7 +739,14 @@ function addWalking(shader: THREE.WebGLProgramParametersWithUniforms) {
         vec2 bowed = turnForward(vec2(transformed.z, transformed.y), ${glsl(PHONE.neck)}, phone * ${glsl(PHONE.head)} + chat * 0.08 * burst);
         transformed.z = bowed.x;
         transformed.y = bowed.y;
+        // Looking up and down the street: the head turns slowly one way, holds, and comes back.
+        float turned = looking * 0.62 * sin(uTime * 0.37 + own) * smoothstep(0.2, 0.9, abs(sin(uTime * 0.37 + own)));
+        float lookCos = cos(turned);
+        float lookSin = sin(turned);
+        transformed.xz = vec2(transformed.x * lookCos + transformed.z * lookSin, transformed.z * lookCos - transformed.x * lookSin);
       }
+      // A brisk walker leans into it, from the hips up.
+      transformed.z += brisk * 0.07 * max(0.0, position.y - ${glsl(HIP)});
       // Weight on one hip, held there a while, then on the other: the feet stay put and the body moves over them.
       float onHip = sin(uTime * ${glsl(WEIGHT.speed)} + own);
       float hips = weight * ${glsl(WEIGHT.shift)} * sign(onHip) * pow(abs(onHip), 0.35);
@@ -684,6 +792,13 @@ const WALKING_INDOORS_SEEN_THROUGH = seeThrough((shader) => addWalkingIndoors(sh
 /** A far-away stand-in with plain tail and head lamps. */
 const farWithLamps = (geometry: THREE.BufferGeometry, kind: VehicleKind) => withLamps(geometry, kind, true)
 const PAINT_SEEN_THROUGH = seeThrough(tintPaintOnly)
+/** A seated rider: the jacket takes the copy's colour, and the left leg moves to the road as `aFoot` goes to 1. */
+const RIDER_SEEN_THROUGH = seeThrough((shader) => {
+  tintPaintOnly(shader)
+  shader.vertexShader = shader.vertexShader
+    .replace('void main() {', 'attribute vec3 aDown;\nattribute float aFoot;\nvoid main() {')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed = mix(transformed, aDown, aFoot * aFoot * (3.0 - 2.0 * aFoot));')
+})
 const LAMPS_SEEN_THROUGH = seeThrough((shader) => {
   tintPaintOnly(shader)
   addLampGlow(shader)
@@ -702,7 +817,8 @@ export type WalkerPose = { stride: number; walking: number; idle: number; visibl
 /** In a room the walker is lit by the room, as the people standing in it are: 1 indoors, 0 out. */
 const walkerIndoors = { value: 0 }
 function addWalkingAnywhere(shader: Parameters<typeof addWalking>[0]) {
-  addWalking(shader)
+  // The player's own rider: no style of their own, so they always walk and stand the plain way.
+  addWalking(shader, true)
   shader.uniforms.uWalkerIndoors = walkerIndoors
   shader.fragmentShader = shader.fragmentShader
     .replace('void main() {', 'uniform float uWalkerIndoors;\nvoid main() {')
@@ -851,7 +967,7 @@ function VehicleWheels({ items, wheels, reach = Infinity }: { items: Moving[]; w
 
       transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
       if (item.rotation) transform.quaternion.set(...item.rotation)
-      else transform.rotation.set(0, item.heading, 0)
+      else transform.rotation.set(0, item.heading, item.lean ? -item.lean : 0)
       // Past `reach` the vehicle is a stand-in with wheels of its own, so these shrink to nothing.
       transform.scale.setScalar(reach === Infinity || isDetailed(item, reach) ? 1 : 0)
       transform.updateMatrix()
@@ -1093,6 +1209,7 @@ export function Traffic({
     }
   }, [world, vehicles])
   const inPlay = useMemo(() => world.vehicles.slice(0, vehicles), [world, vehicles])
+  const bikesInPlay = useMemo(() => inPlay.filter((vehicle) => vehicle.kind === 'bike'), [inPlay])
   const people = useMemo(() => world.pedestrians.slice(0, pedestrians), [world, pedestrians])
   // Bike riders who can be thrown off. They're hidden while they're on the bike.
   const thrownRiders = useMemo(
@@ -1112,8 +1229,9 @@ export function Traffic({
     lampUniforms.uLampNight.value = liveSky.look.night
     // Slowed with the rider's own vehicle for the moment after a crash (game/slowMotion.ts).
     stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP) * liveTime.scale)
+    updateBikeLean(bikesInPlay, Math.min(delta, MAX_STEP) * liveTime.scale)
     // Debug: the traffic, for checking from the console that no two vehicles overlap.
-    if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: world.vehicles.slice(0, vehicles) }
+    if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: inPlay, people }
     takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))
     takeImpacts(world, ({ x, z, strength }) => playImpact(x, z, strength, rider))
     updateTrafficSounds(inPlay, rider, Math.min(delta, MAX_STEP))

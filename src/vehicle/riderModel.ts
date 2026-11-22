@@ -602,7 +602,8 @@ function poseOnCpu(model: RiderModel, pose: RiderPose): { positions: Float32Arra
 }
 
 /** Where a seated rider's body goes on a bike, in the bike's own space (x right, y up, z forward). */
-export type Seat = { hip: THREE.Vector3; lean: number; hands: THREE.Vector3; feet: THREE.Vector3 }
+/** `footDown`: where the left foot goes when the bike is stopped (the sole on the road, out to the side). With it, the shape also carries that pose (`aDown`). */
+export type Seat = { hip: THREE.Vector3; lean: number; hands: THREE.Vector3; feet: THREE.Vector3; footDown?: THREE.Vector3 }
 
 /**
  * A rider sitting on a bike in one pose, as one shape in the bike's own space: the dressed model
@@ -626,6 +627,13 @@ export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, se
     poseLimb(index === 0 ? pose.leftLeg : pose.rightLeg, new THREE.Vector3(size.hipX * side, size.hipY, 0), foot, size.thigh, size.shin, size.legRest, side, true, middle, toModelSpace, toRiderSpace)
   }
   const { positions, normals } = poseOnCpu(model, pose)
+  // The same pose with the left foot down on the road, for a bike that's stopped: only where each
+  // corner goes is kept (`aDown`), and the shader moves between the two (Traffic.tsx).
+  let down: Float32Array | null = null
+  if (seat.footDown) {
+    poseLimb(pose.leftLeg, new THREE.Vector3(size.hipX, size.hipY, 0), seat.footDown, size.thigh, size.shin, size.legRest, 1, true, middle, toModelSpace, toRiderSpace)
+    down = poseOnCpu(model, pose).positions
+  }
 
   // Only whole visible triangles: the head and hair under the helmet go.
   const geometry = model.geometry
@@ -640,17 +648,19 @@ export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, se
     if (tri.reduce((sum, corner) => sum + hidden.getX(corner), 0) / 3 > 0.5) continue
     kept.push(...tri)
   }
-  const out = {
+  const out: Record<string, Float32Array> = {
     position: new Float32Array(kept.length * 3),
     normal: new Float32Array(kept.length * 3),
     color: new Float32Array(kept.length * 3),
     _paint: new Float32Array(kept.length),
   }
+  if (down) out.aDown = new Float32Array(kept.length * 3)
   const p = new THREE.Vector3()
   const n = new THREE.Vector3()
   const turnNormals = new THREE.Matrix3().getNormalMatrix(toRiderSpace)
   kept.forEach((corner, k) => {
     p.fromArray(positions, corner * 3).applyMatrix4(toRiderSpace).toArray(out.position, k * 3)
+    if (down) p.fromArray(down, corner * 3).applyMatrix4(toRiderSpace).toArray(out.aDown, k * 3)
     n.fromArray(normals, corner * 3).applyMatrix3(turnNormals).normalize().toArray(out.normal, k * 3)
     const r = colors.getX(corner)
     const g = colors.getY(corner)
@@ -682,6 +692,8 @@ export function createSeatedRiderGeometry(model: RiderModel, look: RiderLook, se
   const helmetRgb = new THREE.Color(helmetColor)
   helmet.setAttribute('color', new THREE.BufferAttribute(new Float32Array(helmet.getAttribute('position').count * 3).map((_, i) => [helmetRgb.r, helmetRgb.g, helmetRgb.b][i % 3]), 3))
   helmet.setAttribute('_paint', new THREE.BufferAttribute(new Float32Array(helmet.getAttribute('position').count), 1))
+  // The helmet doesn't move when the foot goes down.
+  if (down) helmet.setAttribute('aDown', helmet.getAttribute('position').clone())
 
   const merged = mergeGeometries([body, helmet])
   body.dispose()
