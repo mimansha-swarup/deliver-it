@@ -38,6 +38,8 @@ const chrome = spawn(
     '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',
+    // CHROME_FLAGS="--disable-frame-rate-limit --disable-gpu-vsync": frames as fast as they can be made, to see costs a 120 Hz screen hides.
+    ...(process.env.CHROME_FLAGS ? process.env.CHROME_FLAGS.split(' ') : []),
     'about:blank',
   ],
   { stdio: 'ignore' },

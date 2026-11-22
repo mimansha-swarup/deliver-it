@@ -15,6 +15,9 @@ import { createPlaceSounds } from './placeSounds'
 import { createAreaSounds } from './areaSounds'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 
+/** The engine, the street and the weather are mixed this often, in seconds (see the frame loop). */
+const MIX_EVERY = 1 / 30
+
 /** How quickly revs follow the throttle, per second. Revving up is quicker than dropping. */
 const REV_UP = 4
 const REV_DOWN = 2.5
@@ -57,6 +60,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const crashes = useRef(0)
   const bumps = useRef(0)
   const bagBounces = useRef(0)
+  const sinceMix = useRef(MIX_EVERY)
   const splashes = useRef(0)
 
   useEffect(
@@ -89,20 +93,29 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     const throttle = input.current.forward ? Math.max(0.35, state.drive ?? 1) : 0
     const riding = state.crashLeft === 0
 
-    // Revs follow speed, and the throttle adds a bit more. Standing still on the
-    // throttle revs the engine, as it does for real while waiting at a light.
-    const wanted = riding ? Math.max(Math.min(speed / tuning.maxSpeed, 1) * 0.85 + throttle * 0.15, throttle * STANDING_REV) : 0
-    const rate = wanted > revs.current ? REV_UP : REV_DOWN
-    revs.current += (wanted - revs.current) * (1 - Math.exp(-rate * dt))
-    // A crash stalls the engine until the rider is back on.
-    // An electric motor is a quiet whine, and a bicycle makes no engine sound at all.
-    engine.current.update(revs.current, riding ? throttle : 0, riding ? vehicle.engineVolume : 0)
+    // The mix is set 30 times a second, not every frame: each setting is a handful of scheduled
+    // changes to the audio graph, and on a 120 Hz screen four times as many as the ear can tell apart
+    // were being made. What happens at a moment (a thud, a splash, a step) is still caught every frame.
+    sinceMix.current += dt
+    const mix = sinceMix.current >= MIX_EVERY
+    const mixDt = sinceMix.current
+    if (mix) sinceMix.current = 0
+    if (mix) {
+      // Revs follow speed, and the throttle adds a bit more. Standing still on the
+      // throttle revs the engine, as it does for real while waiting at a light.
+      const wanted = riding ? Math.max(Math.min(speed / tuning.maxSpeed, 1) * 0.85 + throttle * 0.15, throttle * STANDING_REV) : 0
+      const rate = wanted > revs.current ? REV_UP : REV_DOWN
+      revs.current += (wanted - revs.current) * (1 - Math.exp(-rate * mixDt))
+      // A crash stalls the engine until the rider is back on.
+      // An electric motor is a quiet whine, and a bicycle makes no engine sound at all.
+      engine.current.update(revs.current, riding ? throttle : 0, riding ? vehicle.engineVolume : 0)
 
-    ambience.current.update(
-      // A fallen scooter sliding on its side scrapes too, for as long as it's moving.
-      { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0, rolling: riding && vehicle.id !== 'bicycle' ? Math.min(1, speed / 16) : riding ? Math.min(1, speed / 16) * 0.4 : 0, wet: Math.max(liveSky.rain, state.puddle), scrape: Math.max(state.scrape, riding || state.pickedUp ? 0 : Math.min(1, speed / 7)) },
-      dt,
-    )
+      ambience.current.update(
+        // A fallen scooter sliding on its side scrapes too, for as long as it's moving.
+        { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0, rolling: riding && vehicle.id !== 'bicycle' ? Math.min(1, speed / 16) : riding ? Math.min(1, speed / 16) * 0.4 : 0, wet: Math.max(liveSky.rain, state.puddle), scrape: Math.max(state.scrape, riding || state.pickedUp ? 0 : Math.min(1, speed / 7)) },
+        mixDt,
+      )
+    }
 
     // A bicycle's own sound: the chain ticking over as it's pedalled, the freewheel's quicker, lighter
     // tick when it's coasting.
@@ -116,13 +129,15 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     }
 
     // Temple bells, the junction's horns, rain on and under the flyover (placeSounds.ts).
-    places.current.update(
-      { x: state.x, z: state.z, height: Math.min(state.frontWheel.height, state.rearWheel.height), rain: liveSky.rain, night: liveSky.look.night, hours: liveSky.hours },
-      dt,
-    )
+    if (mix) {
+      places.current.update(
+        { x: state.x, z: state.z, height: Math.min(state.frontWheel.height, state.rearWheel.height), rain: liveSky.rain, night: liveSky.look.night, hours: liveSky.hours },
+        mixDt,
+      )
+    }
 
     // The sounds of where the rider is: the street's traffic, a signal's horns, a shop's radio, a vendor, a temple, the lake, rain on what's around (areaSounds.ts).
-    area.current.update({ x: livePlayer.x, z: livePlayer.z, night: liveSky.look.night, rain: liveSky.rain, hours: liveSky.hours, speed, indoors: livePlayer.indoors }, dt)
+    if (mix) area.current.update({ x: livePlayer.x, z: livePlayer.z, night: liveSky.look.night, rain: liveSky.rain, hours: liveSky.hours, speed, indoors: livePlayer.indoors }, mixDt)
 
     // Footsteps on foot: one as each foot comes down (twice a stride), on what's under it.
     const rider = state.rider

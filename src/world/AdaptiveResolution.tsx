@@ -73,6 +73,11 @@ const SETTLE = 2.5
 const COVERED = { warmUp: 0.4, window: 0.5, settle: 0.8, margin: 1.1, raiseFrom: 1.45, batches: 2 }
 /** Once riding, a step up (which freezes a few frames) is only made while the rider is slower than this, in km/h: stopped at a signal or a door, where nobody is watching the road go by. */
 const RAISE_BELOW_KMH = 2
+/**
+ * Dropped below where the quality starts (High at 1× where it starts at 1.25×), it steps back up as
+ * soon as there's headroom for it: `batches` calm seconds running, and `gap` seconds since the last change.
+ */
+const REGAIN = { batches: 8, gap: 15 }
 
 /** Gaps between frame stamps this short, in seconds, are a faster screen's own refresh (under 4 ms is two callbacks in one frame). */
 const SHORT_GAP = [0.004, 0.014]
@@ -195,7 +200,11 @@ export function AdaptiveResolution() {
     const target = Math.min(TARGET_FPS, 0.94 / refresh)
     // On a fast screen, hovering a little under the aim counts: at 70 to 80 FPS with 80 the aim, a second
     // at 81 kept resetting the count and the resolution never came down.
-    const tooSlow = fast ? fps < target * NEAR_TARGET * (covered ? COVERED.margin : 1) : lateShare > DROP_SHARE
+    // Behind the loading screen the judge is the usual frame (the middle one of the batch), not the
+    // count: the ride's first frames are long whatever the resolution, and counting them had a laptop
+    // with plenty to spare dropped to 1× for a hitch that wasn't the resolution's doing.
+    const usualFps = 1 / sorted[Math.floor(sorted.length / 2)]
+    const tooSlow = covered && fast ? usualFps < target * NEAR_TARGET * COVERED.margin : fast ? fps < target * NEAR_TARGET : lateShare > DROP_SHARE
     const calm = lateShare <= CALM_SHARE && (!fast || fps >= target * RAISE_HEADROOM)
     if (state.ceilingAge > CEILING_SECONDS) state.ceiling = Infinity
     // Debug: what the last batch measured (`__deliverItScaler`, with ?debug).
@@ -209,6 +218,8 @@ export function AdaptiveResolution() {
     const highest = Math.min(best, state.ceiling - STEP)
     // Never below the quality's own lowest resolution: 1x on High and Medium, 0.75x on Low.
     const lowest = Math.min(ratioRange(quality)[0], best)
+    // Where this quality starts on this screen, with nothing remembered: a step under the top on a fast screen.
+    const resting = fast ? Math.max(lowest, best - STEP) : best
 
     state.slow = tooSlow ? state.slow + 1 : 0
     state.calm = calm ? state.calm + 1 : 0
@@ -232,7 +243,15 @@ export function AdaptiveResolution() {
       pending.current = Math.min(highest, pixelRatio + STEP)
       rememberRatio(quality, pending.current)
       state.sinceRaise = 0
-    } else if (state.calm >= CALM_BATCHES && state.sinceChange >= RAISE_GAP && pixelRatio < highest && useGameStore.getState().speedKmh < RAISE_BELOW_KMH) {
+    } else if (
+      pixelRatio < highest &&
+      state.calm >= (pixelRatio < resting ? REGAIN.batches : CALM_BATCHES) &&
+      state.sinceChange >= (pixelRatio < resting ? REGAIN.gap : RAISE_GAP) &&
+      // Back up to the resolution the quality starts at (1.25× on High on a fast screen), riding or
+      // not: it was only left because of a slow spell, and there's headroom again. Past that, to the
+      // screen's own, only at a standstill.
+      (pixelRatio < resting || useGameStore.getState().speedKmh < RAISE_BELOW_KMH)
+    ) {
       pending.current = Math.min(highest, pixelRatio + STEP)
       rememberRatio(quality, pending.current)
       state.calm = 0

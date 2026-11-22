@@ -12,6 +12,11 @@ import { debugAsked } from './spawn'
  *   worst      the slowest frame in the last second, and in the last 10 s
  *   >20 ms     how many frames in the last 10 s took longer than 20 ms
  *   calls/tris the last frame's draw calls and triangles, and the resolution's pixels per point
+ *   work       what the game itself spends on a frame (its JavaScript and handing the picture to
+ *              the GPU), averaged over the last second, and the share of a frame's time that is.
+ *              A low frame rate with little work in it is the browser or the GPU holding frames
+ *              back (a battery saver, DevTools open, another tab's work), not the game's code.
+ *   screen     the rate frames come at when nothing is late: the screen's own, as the browser gives it
  */
 
 const WINDOW_MS = 10_000
@@ -29,6 +34,23 @@ export function FpsOverlay() {
     let counted = { calls: 0, triangles: 0 }
     let last = performance.now()
     let shown = last
+    // The game's own work in each frame: every animation-frame callback of the frame, timed and added up.
+    const works: { at: number; ms: number }[] = []
+    const nativeFrame = window.requestAnimationFrame
+    let workStamp = -1
+    let workSoFar = 0
+    window.requestAnimationFrame = (callback) =>
+      nativeFrame.call(window, (stamp) => {
+        const began = performance.now()
+        callback(stamp)
+        const took = performance.now() - began
+        if (stamp !== workStamp) {
+          if (workStamp >= 0) works.push({ at: began, ms: workSoFar })
+          workStamp = stamp
+          workSoFar = 0
+        }
+        workSoFar += took
+      })
     let id = requestAnimationFrame(function tick(now) {
       const ms = now - last
       last = now
@@ -47,16 +69,23 @@ export function FpsOverlay() {
         const worstWindow = Math.max(...frames.map((frame) => frame.ms))
         const slow = frames.filter((frame) => frame.ms > 20).length
         const ratio = useResolution.getState().pixelRatio
+        while (works.length && works[0].at < now - 1000) works.shift()
+        const work = works.length ? works.reduce((sum, frame) => sum + frame.ms, 0) / works.length : 0
+        const usual = second.length ? second.reduce((sum, frame) => sum + frame.ms, 0) / second.length : 0
+        // The quickest tenth of the last ten seconds' frames: the screen's own rate, give or take.
+        const quick = frames.map((frame) => frame.ms).sort((a, b) => a - b)[Math.floor(frames.length * 0.1)] ?? 0
         text.current.textContent =
           `${second.length} FPS  worst ${worstSecond.toFixed(1)} ms (10 s: ${worstWindow.toFixed(1)})\n` +
           `>20 ms in 10 s: ${slow}` +
           `  ${counted.calls} calls  ${Math.round(counted.triangles / 1000)}k tris` +
-          `  ${ratio}×`
+          `  ${ratio}×\n` +
+          `work ${work.toFixed(1)} ms a frame (${usual > 0 ? Math.round((work / usual) * 100) : 0}% of it)  screen ~${quick > 0 ? Math.round(1000 / quick) : 0} Hz`
         text.current.dataset.slow = worstSecond > 33 ? 'bad' : worstSecond > 20 ? 'warn' : 'ok'
       }
       id = requestAnimationFrame(tick)
     })
     return () => {
+      window.requestAnimationFrame = nativeFrame
       cancelAnimationFrame(id)
       const gl = info()
       if (gl) gl.autoReset = true

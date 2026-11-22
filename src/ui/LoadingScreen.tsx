@@ -65,10 +65,10 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
  * longer than `hitch` ms in it. Never less than `least` ms, and never more than `longest`: two
  * seconds after the scene is ready it lifts whatever the frame rate (on a laptop saving its
  * battery, where the browser holds everything to 30 frames a second, it waited its full five).
- * It also waits for the automatic resolution to settle. `fps` is 58, not 60: a 60 Hz screen delivers 59 or 60 frames in any one second, never more.
+ * It also waits for the automatic resolution to settle. `fps` is 55: about a second at 55 frames a second or better, as a 60 Hz screen at its best gives 59 or 60.
  * The rider's controls are held until it goes (`useLaunch`'s `covered`), so nobody rides blind.
  */
-const SETTLE = { fps: 58, hitch: 50, least: 800, longest: 2000 }
+const SETTLE = { fps: 55, hitch: 50, least: 1000, longest: 2000 }
 
 export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const loading = useGameStore((state) => state.loading)
