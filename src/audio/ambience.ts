@@ -26,6 +26,9 @@ export type AmbienceState = {
   slide: number
   /** How hard the vehicle is scraping along a wall or a railing, from 0 to 1. */
   scrape?: number
+  /** The rider's own vehicle: how fast it's rolling, as a share of a fast ride (0 to 1), and how wet the road under it is (0 to 1). */
+  rolling?: number
+  wet?: number
 }
 
 const RUMBLE_VOLUME = 0.45
@@ -34,7 +37,8 @@ const PASSING_VOLUME = 0.5
 const MURMUR_VOLUME = 0.22
 const KOEL_VOLUME = 0.28
 /** Seconds between distant horns, by day and by night, at random within each range. */
-const DISTANT_HORNS_DAY: [number, number] = [2.5, 8]
+// Sparing: a horn somewhere every ten seconds or so, not a wall of them (they were every 2.5 to 8 s).
+const DISTANT_HORNS_DAY: [number, number] = [7, 19]
 const DISTANT_HORNS_NIGHT: [number, number] = [10, 25]
 const DISTANT_HORN_VOICES: HornVoice[] = ['sedan', 'hatchback', 'auto', 'auto', 'bike', 'bike', 'suv']
 /** Seconds between koel songs. It sings mostly by day, and rarely at night. */
@@ -52,6 +56,9 @@ const RAIN_VOLUME = 0.32
 const CRICKET_VOLUME = 0.06
 const BIRD_VOLUME = 0.05
 const SKID_VOLUME = 0.7
+/** The tyres' own sounds at speed: the hiss of water thrown off a wet road, and the low rumble of the road's surface coming up through the wheels. */
+const TYRE_HISS_VOLUME = 0.3
+const ROAD_RUMBLE_VOLUME = 0.34
 /** Scraping along a wall, at its hardest. */
 const SCRAPE_VOLUME = 0.55
 /** A slide slower than this, in m/s, makes no sound. Above, it gets louder up to `SKID_FULL`. */
@@ -84,7 +91,9 @@ export function createAmbience(context: AudioContext, output: AudioNode) {
   // Scraping along a wall: metal and plastic grinding (a harsh high band) over the body's low drag.
   const scrapeGrind = noiseLoop(context, 'bandpass', 2700, 2.6)
   const scrapeDrag = noiseLoop(context, 'bandpass', 340, 1.1)
-  for (const { level } of [rumble, passing, murmur, rain, skid, scrapeGrind, scrapeDrag]) level.connect(output)
+  const tyreHiss = noiseLoop(context, 'highpass', 3800)
+  const roadRumble = noiseLoop(context, 'lowpass', 120, 0.9)
+  for (const { level } of [rumble, passing, murmur, rain, skid, scrapeGrind, scrapeDrag, tyreHiss, roadRumble]) level.connect(output)
 
   // A tyre squeals at a pitch, as rubber catches and slips on the road over and over. Two
   // tones that wobble quickly, through a narrow filter, make that sound.
@@ -356,7 +365,11 @@ export function createAmbience(context: AudioContext, output: AudioNode) {
   let untilKoel = between([4, 10])
 
   return {
-    update: ({ night, rain: raining, slide, scrape = 0 }: AmbienceState, dt: number) => {
+    update: ({ night, rain: raining, slide, scrape = 0, rolling = 0, wet = 0 }: AmbienceState, dt: number) => {
+      // Tyres on a wet road hiss, more the faster; any road rumbles, and the rumble's pitch rises a little with speed.
+      tyreHiss.level.gain.setTargetAtTime(TYRE_HISS_VOLUME * wet * Math.min(1, rolling * 1.3), context.currentTime, 0.15)
+      roadRumble.level.gain.setTargetAtTime(ROAD_RUMBLE_VOLUME * rolling * rolling, context.currentTime, 0.2)
+      roadRumble.filter.frequency.setTargetAtTime(90 + 90 * rolling, context.currentTime, 0.3)
       scrapeGrind.level.gain.setTargetAtTime(SCRAPE_VOLUME * scrape, context.currentTime, 0.03)
       scrapeDrag.level.gain.setTargetAtTime(SCRAPE_VOLUME * 0.8 * scrape, context.currentTime, 0.03)
       const busy = 1 - night * 0.65
@@ -494,6 +507,69 @@ export function playFootstep(context: AudioContext, output: AudioNode, footing: 
   heel.connect(heelLevel).connect(output)
   heel.start(time)
   heel.stop(time + 0.09)
+}
+
+/**
+ * A crash: heavier than a thud. A deep boom that drops away, the crunch of plastic and metal
+ * giving, and a clatter of loose parts settling over the half second after: three or four short
+ * metallic knocks at odd pitches. `strength` from 0 to 1.
+ */
+export function playCrash(context: AudioContext, output: AudioNode, strength: number, pan = 0) {
+  const time = context.currentTime + 0.01
+  const loudness = 0.55 + strength * 0.6
+  const panner = context.createStereoPanner()
+  panner.pan.value = pan
+  panner.connect(output)
+
+  // The boom: two low tones falling, the lower one long.
+  for (const [from, to, length, share] of [[150, 34, 0.55, 1], [70, 26, 0.8, 0.8]] as const) {
+    const boom = context.createOscillator()
+    boom.type = 'sine'
+    boom.frequency.setValueAtTime(from, time)
+    boom.frequency.exponentialRampToValueAtTime(to, time + length * 0.6)
+    const level = context.createGain()
+    level.gain.setValueAtTime(0.0001, time)
+    level.gain.exponentialRampToValueAtTime(loudness * share, time + 0.006)
+    level.gain.exponentialRampToValueAtTime(0.0001, time + length)
+    boom.connect(level).connect(panner)
+    boom.start(time)
+    boom.stop(time + length + 0.05)
+  }
+
+  // The crunch: a burst of noise, wide and bright at first, closing quickly.
+  const crunch = context.createBufferSource()
+  crunch.buffer = getNoise(context)
+  const crunchFilter = context.createBiquadFilter()
+  crunchFilter.type = 'lowpass'
+  crunchFilter.frequency.setValueAtTime(5200, time)
+  crunchFilter.frequency.exponentialRampToValueAtTime(380, time + 0.32)
+  const crunchLevel = context.createGain()
+  crunchLevel.gain.setValueAtTime(0.0001, time)
+  crunchLevel.gain.exponentialRampToValueAtTime(loudness * 0.85, time + 0.004)
+  crunchLevel.gain.exponentialRampToValueAtTime(0.0001, time + 0.4)
+  crunch.connect(crunchFilter).connect(crunchLevel).connect(panner)
+  crunch.start(time, Math.random() * 0.4)
+  crunch.stop(time + 0.45)
+
+  // The clatter: loose metal and plastic coming to rest.
+  const knocks = 3 + Math.round(strength * 2)
+  for (let knock = 0; knock < knocks; knock++) {
+    const at = time + 0.07 + knock * (0.07 + Math.random() * 0.09)
+    const ring = context.createOscillator()
+    ring.type = 'square'
+    ring.frequency.value = 420 + Math.random() * 1700
+    const ringFilter = context.createBiquadFilter()
+    ringFilter.type = 'bandpass'
+    ringFilter.frequency.value = ring.frequency.value * 1.5
+    ringFilter.Q.value = 6
+    const level = context.createGain()
+    level.gain.setValueAtTime(0.0001, at)
+    level.gain.exponentialRampToValueAtTime(loudness * 0.22 * (1 - knock / (knocks + 1)), at + 0.003)
+    level.gain.exponentialRampToValueAtTime(0.0001, at + 0.07 + Math.random() * 0.05)
+    ring.connect(ringFilter).connect(level).connect(panner)
+    ring.start(at)
+    ring.stop(at + 0.15)
+  }
 }
 
 export function playThud(context: AudioContext, output: AudioNode, strength: number, pan = 0) {

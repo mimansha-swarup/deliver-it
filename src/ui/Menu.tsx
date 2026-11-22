@@ -369,6 +369,14 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
           </p>
         </Group>
 
+        <Group title="Sound and music">
+          <p>
+            Every sound in the game is original, made in code as it plays, with no recordings and no samples: the engines and their idle, tyres on dry and wet roads, the road’s rumble, crashes, scrapes
+            and thuds, five kinds of horn, rain, birds, dogs, the pressure cooker’s whistle, temple bells, vendors’ calls, footsteps, the shop radio’s tune and every radio station’s music. The
+            voices are credited below.
+          </p>
+        </Group>
+
         <Group title="3D models">
           <p>
             Traffic and people, each simplified and recoloured for the game, CC BY 4.0: cars by BHP3D, the auto by bhagathartworks, the delivery bike by Caitlin Pillay, people by

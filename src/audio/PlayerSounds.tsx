@@ -5,7 +5,7 @@ import { liveSky, livePlayer } from '../game/livePlayer'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
 import { tuning } from '../vehicle/tuning'
 import { useDriveInput } from '../vehicle/useDriveInput'
-import { createAmbience, playFootstep, playSplash, playThud, type Footing } from './ambience'
+import { createAmbience, playCrash, playFootstep, playSplash, playThud, type Footing } from './ambience'
 import { FOOT } from '../vehicle/ScooterController'
 import { liveRoom } from '../game/rooms'
 import { Surface, worldSurface } from '../world/surfaceMap'
@@ -85,7 +85,8 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
 
     const state = scooter.current
     const speed = getTravelSpeed(state)
-    const throttle = input.current.forward ? 1 : 0
+    // The throttle as the engine has it: the drive follows the key at the vehicle's own rate (ScooterController), so the sound opens up as the pull does.
+    const throttle = input.current.forward ? Math.max(0.35, state.drive ?? 1) : 0
     const riding = state.crashLeft === 0
 
     // Revs follow speed, and the throttle adds a bit more. Standing still on the
@@ -99,7 +100,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
 
     ambience.current.update(
       // A fallen scooter sliding on its side scrapes too, for as long as it's moving.
-      { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0, scrape: Math.max(state.scrape, riding || state.pickedUp ? 0 : Math.min(1, speed / 7)) },
+      { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0, rolling: riding && vehicle.id !== 'bicycle' ? Math.min(1, speed / 16) : riding ? Math.min(1, speed / 16) * 0.4 : 0, wet: Math.max(liveSky.rain, state.puddle), scrape: Math.max(state.scrape, riding || state.pickedUp ? 0 : Math.min(1, speed / 7)) },
       dt,
     )
 
@@ -136,7 +137,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
 
     if (state.crashCount !== crashes.current) {
       crashes.current = state.crashCount
-      playThud(audio.context, audio.sfx, Math.max(0.5, state.impact))
+      playCrash(audio.context, audio.sfx, Math.max(0.4, state.impact))
     }
     // The box knocked off in a crash: a hollow knock each time it hits the road.
     if (state.bag.bounces !== bagBounces.current) {
