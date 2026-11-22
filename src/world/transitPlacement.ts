@@ -108,20 +108,48 @@ const toGround = (position: LonLat): GroundPoint => {
   return [x, z]
 }
 
+/**
+ * A line with its kinks taken out: each point moved towards the middle of its neighbours (a quarter
+ * of each, half of itself), `passes` times over, the two ends left exactly where they are so that
+ * what joins there still joins. The map's lines have corners every few metres (their points are
+ * rounded to about a metre, and drawn by hand), and a flyover or a viaduct built straight along
+ * them zig-zags; a real one is a run of straights and smooth curves.
+ */
+export function smoothLine(points: GroundPoint[], passes: number): GroundPoint[] {
+  let line = points
+  for (let pass = 0; pass < passes && line.length > 2; pass++) {
+    line = line.map(([x, z], i): GroundPoint => {
+      if (i === 0 || i === line.length - 1) return [x, z]
+      return [x * 0.5 + (line[i - 1][0] + line[i + 1][0]) * 0.25, z * 0.5 + (line[i - 1][1] + line[i + 1][1]) * 0.25]
+    })
+  }
+  return line
+}
+
 /** The metro line's ways, stitched end to end into one line, the longest run. */
 export function stitchLine(ways: GroundPoint[][]): GroundPoint[] {
-  const left = ways.map((way) => way.slice())
+  // The longest way first, and the rest joined to its ends.
+  const left = ways.map((way) => way.slice()).sort((a, b) => lengthOf(b) - lengthOf(a))
   if (left.length === 0) return []
   let line = left.shift()!
   const near = (a: GroundPoint, b: GroundPoint) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 3
+  // A way is only joined on if it carries on the way the line was going. The metro's two tracks are
+  // separate ways whose ends lie within a few metres of each other: joined regardless, the line ran
+  // up one track, turned back down the other and up again, and the viaduct was built as that zig-zag.
+  const carriesOn = (from: GroundPoint, at: GroundPoint, to: GroundPoint) => (at[0] - from[0]) * (to[0] - at[0]) + (at[1] - from[1]) * (to[1] - at[1]) > 0
   for (let grew = true; grew && left.length > 0; ) {
     grew = false
     for (let i = 0; i < left.length; i++) {
       const way = left[i]
-      if (near(line[line.length - 1], way[0])) line = [...line, ...way.slice(1)]
-      else if (near(line[line.length - 1], way[way.length - 1])) line = [...line, ...way.reverse().slice(1)]
-      else if (near(line[0], way[way.length - 1])) line = [...way.slice(0, -1), ...line]
-      else if (near(line[0], way[0])) line = [...way.reverse().slice(0, -1), ...line]
+      if (way.length < 2 || line.length < 2) continue
+      const end = line[line.length - 1]
+      const beforeEnd = line[line.length - 2]
+      const start = line[0]
+      const afterStart = line[1]
+      if (near(end, way[0]) && carriesOn(beforeEnd, end, way[1])) line = [...line, ...way.slice(1)]
+      else if (near(end, way[way.length - 1]) && carriesOn(beforeEnd, end, way[way.length - 2])) line = [...line, ...way.reverse().slice(1)]
+      else if (near(start, way[way.length - 1]) && carriesOn(afterStart, start, way[way.length - 2])) line = [...way.slice(0, -1), ...line]
+      else if (near(start, way[0]) && carriesOn(afterStart, start, way[1])) line = [...way.reverse().slice(0, -1), ...line]
       else continue
       left.splice(i, 1)
       grew = true
@@ -131,13 +159,15 @@ export function stitchLine(ways: GroundPoint[][]): GroundPoint[] {
   return line
 }
 
+const lengthOf = (way: GroundPoint[]) => way.reduce((sum, [x, z], i) => (i === 0 ? 0 : sum + Math.hypot(x - way[i - 1][0], z - way[i - 1][1])), 0)
+
 /** The Yellow Line as OSM has it, stitched into one path, or an empty path with no metro on the map. */
 export function metroLine(data: MapData): Path {
   const lineWays = data.transit.filter(
     (feature): feature is Feature<{ type: 'LineString'; coordinates: LonLat[] }> =>
       feature.geometry.type === 'LineString' && feature.properties.railway === 'subway' && /yellow/i.test(feature.properties.name ?? feature.properties['name:en'] ?? ''),
   )
-  return makePath(stitchLine(lineWays.map((way) => way.geometry.coordinates.map(toGround))))
+  return makePath(smoothLine(stitchLine(lineWays.map((way) => way.geometry.coordinates.map(toGround))), 2))
 }
 
 /** Pillars further from OSM's line than this stand on another road that happens to share Hosur Road's name. */
@@ -169,7 +199,24 @@ export function planMetro({
   metro.report.pillarsOffLine = landmarks.pillars.length - ordered.length
   metro.report.pillarsMeanOffset = ordered.length ? Math.round((ordered.reduce((sum, { off }) => sum + off, 0) / ordered.length) * 10) / 10 : 0
   if (ordered.length < 2) return metro
-  metro.path = makePath(ordered.map(({ x, z }): GroundPoint => [x, z]))
+  // Through the pillars, smoothed: pillar to pillar exactly, the viaduct swung from side to side
+  // (each pillar stands where the ground let it, a metre or two off the line). The deck is far
+  // wider than that, so every pillar is still well under it.
+  // The viaduct runs along the map's own line for the metro, between the first and last pillars that
+  // stand on it, sampled every `METRO_STEP` metres and smoothed. It used to run from pillar to pillar,
+  // and the pillars near the line aren't all the metro's (the flyovers beside it have theirs, up to
+  // 30 m off): the viaduct swung 15 to 20 m from side to side all the way down Hosur Road.
+  const onLine = ordered.filter(({ off }) => off < PILLARS_ON_LINE)
+  const span = onLine.length >= 2 ? onLine : ordered
+  const from = span[0].along
+  const to = span[span.length - 1].along
+  const places: GroundPoint[] = []
+  const steps = Math.max(1, Math.ceil((to - from) / METRO_STEP))
+  for (let k = 0; k <= steps; k++) {
+    const { x, z } = pointOnPath(line, from + ((to - from) * k) / steps)
+    places.push([x, z])
+  }
+  metro.path = makePath(smoothLine(places, METRO_SMOOTHING))
   // Nothing tall under the viaduct's deck, and nothing reaching up into it (overheadClearance.ts).
   for (const outline of pathFootprint(metro.path, VIADUCT_HALF_WIDTH)) surface.markOverhead(outline, VIADUCT_UNDERSIDE)
 
@@ -410,6 +457,12 @@ const PILLAR_GROUND = new Set<Surface>([Surface.Median, Surface.Open, Surface.Fo
 
 /** Below this height the deck can't be ridden under: a solid ramp, walled each side, in metres. */
 export const RIDE_UNDER = 3.6
+/** How many smoothing passes a flyover's line gets at its 4 m points (about 12 m of line is evened out), and the metro's at its pillars. */
+const DECK_SMOOTHING = 10
+const METRO_SMOOTHING = 4
+/** The metro's own pillars are within this far of its line, in metres; the viaduct's line is sampled this often. */
+const PILLARS_ON_LINE = 8
+const METRO_STEP = 10
 /** The decks are resampled every this many metres, so ramps slope smoothly and stand on the ground. */
 const DECK_STEP = 4
 /** The ground kept clear either side of a deck, past its edges, in metres. */
@@ -460,7 +513,8 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
       const { x, z } = pointOnPath(raw, (raw.length * k) / steps)
       points.push([x, z])
     }
-    const path = makePath(points)
+    // Smoothed, ends pinned (so joints still meet): see `smoothLine`.
+    const path = makePath(smoothLine(points, DECK_SMOOTHING))
     const top = topOf(i)
     const startJoint = heightAtEnd(line[0])
     const endJoint = heightAtEnd(line[line.length - 1])

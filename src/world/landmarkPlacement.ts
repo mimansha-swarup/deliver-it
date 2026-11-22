@@ -1,4 +1,4 @@
-import { metroLine, PILLAR_LINE_REACH, projectOnPath } from './transitPlacement'
+import { metroLine, pointOnPath, projectOnPath } from './transitPlacement'
 import { addPost, addWall, isNearBuilding, type CollisionWorld } from './collision'
 import type { MapData } from './mapData'
 import { nearestRoadPiece, PointGrid, type Prop, type RoadIndex } from './props'
@@ -51,6 +51,8 @@ const LAKE_PARK = 'Agara Lake Park'
 const LAKE_SHORE = 30
 const METRO_ROAD = 'Hosur Road'
 const PILLAR_EVERY = 32
+/** A viaduct pillar stands within this far of the metro's line, in metres: under its deck. */
+const PILLAR_UNDER_DECK = 8
 /** The viaduct joins pillars no further apart than this, in metres. */
 const SPAN_MAX = 46
 const SHELTER_EVERY = 520
@@ -217,7 +219,10 @@ export function placeLandmarks({ data, surface, roads, collisions }: { data: Map
   // ---- The metro viaduct: pillars in the median between Hosur Road's two carriageways ----
   // Only near the line as OSM maps it (transitPlacement.ts), where it has one: other roads share the name.
   const line = metroLine(data)
-  const onLine = (x: number, z: number) => line.length === 0 || projectOnPath(line, x, z).off < PILLAR_LINE_REACH
+  // A pillar stands under the deck, so within `PILLAR_UNDER_DECK` metres of the line. (It was 30 m,
+  // which took in the dividers of the service roads either side as well: the deck, drawn from one
+  // pillar to the next, swung from side to side across the whole road.)
+  const onLine = (x: number, z: number) => line.length === 0 || projectOnPath(line, x, z).off < PILLAR_UNDER_DECK
   const pillarGrid = new PointGrid(16)
   for (const piece of roads.pieces) {
     if (data.roads[piece.road].properties.name !== METRO_ROAD) continue
@@ -253,11 +258,20 @@ export function placeLandmarks({ data, surface, roads, collisions }: { data: Map
   // Spans: along OSM's line, pillar to pillar in its order. With no line, each pillar to its nearest
   // neighbours, at most two.
   if (line.length > 0) {
-    const ordered = landmarks.pillars.map(({ x, z }) => ({ x, z, along: projectOnPath(line, x, z).along })).sort((a, b) => a.along - b.along)
-    for (let i = 1; i < ordered.length; i++) {
-      const from = ordered[i - 1]
-      const to = ordered[i]
-      if (Math.hypot(to.x - from.x, to.z - from.z) < SPAN_MAX * 1.6) landmarks.spans.push({ from: [from.x, from.z], to: [to.x, to.z] })
+    // The deck runs along the line itself, from the first pillar to the last, in spans of a pillar's
+    // spacing: straight where the line is straight and curved where it curves, whatever side of it
+    // each pillar had to stand.
+    const alongs = landmarks.pillars.map(({ x, z }) => projectOnPath(line, x, z).along)
+    if (alongs.length >= 2) {
+      const from = Math.min(...alongs)
+      const to = Math.max(...alongs)
+      const count = Math.max(1, Math.round((to - from) / PILLAR_EVERY))
+      let last = pointOnPath(line, from)
+      for (let k = 1; k <= count; k++) {
+        const next = pointOnPath(line, from + ((to - from) * k) / count)
+        landmarks.spans.push({ from: [last.x, last.z], to: [next.x, next.z] })
+        last = next
+      }
     }
   }
   const seen = new Set<string>()
