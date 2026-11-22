@@ -520,7 +520,9 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
     const endJoint = heightAtEnd(line[line.length - 1])
     const startsLow = startJoint === null
     const endsLow = endJoint === null
-    const ramp = Math.min(RAMP, path.length / 2)
+    // A deck that comes down at one end only has its whole length to do it in (half, coming down at both):
+    // an 88 m slip road that used 44 m of it was a 23% slope.
+    const ramp = Math.min(RAMP, startsLow && endsLow ? path.length / 2 : path.length)
     const ease = Math.min(JOINT.ease, path.length / 2)
     // An S-curve up each ramp: level where it leaves the road and where it meets the deck, steepest
     // halfway (1.5 times the average: about 8% on the 6.8 m flyovers), so riding over the top and the
@@ -554,7 +556,7 @@ export function planFlyoverDecks(data: MapData): Flyover[] {
  * own ends, which stay where the road or the next deck has them. Decks running side by side into
  * one another (a merge, not a crossing: within `HEADROOM.parallel` of the same direction) are left alone.
  */
-const HEADROOM = { clear: 5.4, ease: 90, ends: 25, parallel: 0.85 }
+const HEADROOM = { clear: 5.4, ease: 90, ends: 25, parallel: 0.85, fork: 130, grade: 0.07 }
 /**
  * The metro's viaduct is the highest thing on the road (its rails at 13.6 m, its girders' underside
  * about 2 m below), and a flyover passing under it at 9.4 m left a bus no room. Under the metro a
@@ -603,14 +605,21 @@ function giveHeadroom(decks: Flyover[]) {
     return u * u * (3 - 2 * u)
   }
   const lifts = decks.map((deck) => deck.heights.map(() => 0))
+  const endsOf = (deck: Flyover) => [deck.path.points[0], deck.path.points[deck.path.points.length - 1]]
   for (let a = 0; a < decks.length; a++) {
     for (let b = a + 1; b < decks.length; b++) {
       const A = decks[a]
       const B = decks[b]
       const reach = (A.width + B.width) / 2
+      // Where the two are one road: ends of theirs that meet (a joint). Leading away from a joint
+      // they lie over each other for a while at an angle, which is a fork, not one crossing over the
+      // other. Taken for a crossing, each was lifted clear of the other in turn, pass after pass: at
+      // Silk Board two decks stood up into 25 m tents with slopes steeper than one in one.
+      const shared = endsOf(A).filter(([x, z]) => endsOf(B).some(([ox, oz]) => Math.hypot(ox - x, oz - z) <= JOINT.within + 1))
       for (let i = 1; i < A.path.points.length; i++) {
         const [ax, az] = A.path.points[i]
         const [pax, paz] = A.path.points[i - 1]
+        if (shared.some(([x, z]) => Math.hypot(ax - x, az - z) < HEADROOM.fork)) continue
         for (let j = 1; j < B.path.points.length; j++) {
           const [bx, bz] = B.path.points[j]
           if (Math.hypot(ax - bx, az - bz) > reach) continue
@@ -632,7 +641,15 @@ function giveHeadroom(decks: Flyover[]) {
       }
     }
   }
-  decks.forEach((deck, n) => deck.heights.forEach((height, k) => (deck.heights[k] = height + lifts[n][k])))
+  decks.forEach((deck, n) => {
+    // No lift is a spike: it rises and falls no steeper than `HEADROOM.grade` on top of the deck's own
+    // slope (each point no more than that above its neighbours, worked along the deck both ways).
+    const lift = lifts[n]
+    const { at } = deck.path
+    for (let k = 1; k < lift.length; k++) lift[k] = Math.min(lift[k], lift[k - 1] + (at[k] - at[k - 1]) * HEADROOM.grade)
+    for (let k = lift.length - 2; k >= 0; k--) lift[k] = Math.min(lift[k], lift[k + 1] + (at[k + 1] - at[k]) * HEADROOM.grade)
+    deck.heights.forEach((height, k) => (deck.heights[k] = height + lift[k]))
+  })
 }
 
 /** How far below a deck's top its underside is, girders and all, in metres (Transit.tsx' deck). */
