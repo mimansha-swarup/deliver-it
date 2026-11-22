@@ -62,3 +62,10 @@ export function firstRatio(quality: Quality, fastScreen: boolean): number {
 export const useResolution = create<{ pixelRatio: number }>(() => ({
   pixelRatio: firstRatio(useGameStore.getState().quality, false),
 }))
+
+/**
+ * Whether the automatic resolution (world/AdaptiveResolution.tsx) is content with the frame rate at
+ * the resolution it has, as judged behind the loading screen: the screen waits for this before it
+ * lifts, so the resolution's own steps (each a short freeze) are over before the street is seen.
+ */
+export const liveScaler = { content: false }

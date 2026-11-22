@@ -4,6 +4,7 @@ import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch, WORLD_PART_COUNT, WORLD_PARTS } from '../game/launch'
+import { liveScaler } from '../game/resolution'
 
 /** The longest the ride waits for the squares round the rider, once every part is on screen, in milliseconds. */
 const NEAR_WAIT_MS = 4000
@@ -63,10 +64,10 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
  * behind it: the average over the last second is at least `fps` frames a second with no frame
  * longer than `hitch` ms in it. Never less than `least` ms (there has to be a second to average),
  * and never more than `longest` (a computer that can't reach it isn't kept waiting for ever).
- * `fps` is 58, not 60: a 60 Hz screen delivers 59 or 60 frames in any one second, never more.
+ * It also waits for the automatic resolution to settle. `fps` is 58, not 60: a 60 Hz screen delivers 59 or 60 frames in any one second, never more.
  * The rider's controls are held until it goes (`useLaunch`'s `covered`), so nobody rides blind.
  */
-const SETTLE = { fps: 58, hitch: 50, least: 1000, longest: 4500 }
+const SETTLE = { fps: 58, hitch: 50, least: 1000, longest: 5000 }
 
 export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const loading = useGameStore((state) => state.loading)
@@ -139,7 +140,8 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
       const waited = now - began
       let longest = 0
       for (let i = 1; i < frames.length; i++) longest = Math.max(longest, frames[i] - frames[i - 1])
-      const smooth = waited >= SETTLE.least && frames.length >= SETTLE.fps && longest <= SETTLE.hitch
+      // And the automatic resolution has made up its mind (game/resolution.ts): its steps freeze a frame or two each.
+      const smooth = waited >= SETTLE.least && frames.length >= SETTLE.fps && longest <= SETTLE.hitch && liveScaler.content
       if (smooth || waited >= SETTLE.longest) {
         markLoad(`cover lifts: ${frames.length} FPS over the last second, after ${(waited / 1000).toFixed(1)} s${smooth ? '' : ' (gave up waiting)'}`)
         useLaunch.setState({ covered: false })

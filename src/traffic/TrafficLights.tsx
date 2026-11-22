@@ -204,8 +204,10 @@ export function TrafficLights({ world }: { world: TrafficWorld }) {
       </instancedMesh>
 
       {/* Basic materials ignore the sun, which is what makes a lamp look lit. */}
-      <instancedMesh ref={lamps} args={[undefined, undefined, posts.length * LAMPS_PER_POST]} frustumCulled={false}>
-        <sphereGeometry args={[LAMP_RADIUS, 8, 5]} />
+      {/* A lens is a flat disc in its housing: as a ball, the map's 3,600 lamps were 230,000 triangles a frame.
+          Kept whole (`keepAll`): the lamps are recoloured by their numbers, so their order mustn't change (world/NearInstances.tsx). */}
+      <instancedMesh ref={lamps} args={[undefined, undefined, posts.length * LAMPS_PER_POST]} frustumCulled={false} userData={{ keepAll: true }}>
+        <circleGeometry args={[LAMP_RADIUS, 10]} />
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
 

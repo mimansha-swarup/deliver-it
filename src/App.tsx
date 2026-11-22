@@ -25,6 +25,7 @@ import { Phone } from './ui/Phone'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
 import { StaticMatrices } from './world/StaticMatrices'
+import { NearInstances } from './world/NearInstances'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
 import { DevStats } from './dev/DevStats'
 import { FpsOverlay } from './dev/FpsOverlay'
@@ -152,6 +153,7 @@ function App() {
           <ViewDistance />
           <AdaptiveResolution />
           <StaticMatrices />
+          <NearInstances />
           <DevStats />
           <PauseClock />
           <PostEffects />
