@@ -62,12 +62,13 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
 /**
  * The loading screen stays whole after the ride has started until the game is running smoothly
  * behind it: the average over the last second is at least `fps` frames a second with no frame
- * longer than `hitch` ms in it. Never less than `least` ms (there has to be a second to average),
- * and never more than `longest` (a computer that can't reach it isn't kept waiting for ever).
+ * longer than `hitch` ms in it. Never less than `least` ms, and never more than `longest`: two
+ * seconds after the scene is ready it lifts whatever the frame rate (on a laptop saving its
+ * battery, where the browser holds everything to 30 frames a second, it waited its full five).
  * It also waits for the automatic resolution to settle. `fps` is 58, not 60: a 60 Hz screen delivers 59 or 60 frames in any one second, never more.
  * The rider's controls are held until it goes (`useLaunch`'s `covered`), so nobody rides blind.
  */
-const SETTLE = { fps: 58, hitch: 50, least: 1000, longest: 5000 }
+const SETTLE = { fps: 58, hitch: 50, least: 800, longest: 2000 }
 
 export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const loading = useGameStore((state) => state.loading)

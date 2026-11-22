@@ -288,7 +288,9 @@ function merge(source: THREE.BufferGeometry, lamp: Float32Array, copies: { from:
  * Near 1 the bloom gives it a soft edge. The picture's tone curve turns a bright red towards pink
  * and orange (which is how the old lamps looked), so a brake lamp stays under 1 to stay red.
  */
-const GLOW = { tailDay: 0.05, tailNight: 0.4, brake: 0.6, headDay: 0.05, headNight: 2.2, indicator: 1.0 }
+// `headNight` was 2.2: through the picture's bloom, and more so through rain's haze, an oncoming headlamp
+// swelled into a white ball the size of a helmet. At 0.9 it is a lit lamp with a small soft edge.
+const GLOW = { tailDay: 0.05, tailNight: 0.4, brake: 0.6, headDay: 0.05, headNight: 0.9, indicator: 1.0 }
 
 /**
  * Adds the lamps' glow to a vehicle body's material. A lamp's triangles have corners of their own,

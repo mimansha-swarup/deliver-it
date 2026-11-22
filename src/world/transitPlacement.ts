@@ -873,13 +873,46 @@ export function onAnotherDeck(decks: Flyover[], own: Flyover, x: number, z: numb
       const ez = bz - az
       const lengthSquared = ex * ex + ez * ez
       if (lengthSquared < 0.01) continue
-      const t = ((x - ax) * ex + (z - az) * ez) / lengthSquared
-      if (t < 0 || t > 1) continue
-      if (Math.abs((x - ax) * ez - (z - az) * ex) / Math.sqrt(lengthSquared) > half - JOIN.inside) continue
+      // Measured to the nearest point of this stretch, its ends included: at a bend, a point in the
+      // wedge between two stretches is "past the end" of both, and was taken to be off the deck (a
+      // barrier was then left standing across the road there, unseen).
+      const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / lengthSquared))
+      if (Math.hypot(x - (ax + ex * t), z - (az + ez * t)) > half - JOIN.inside) continue
       if (Math.abs(deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t - height) < JOIN.level) return true
     }
   }
   return false
+}
+
+/** What became of the decks' ends up in the air: closed with a wall, or left open because they run into another deck (for the load timeline). */
+export const deckReport = { endsClosed: 0, endsLeftOpen: 0 }
+
+/** Another deck's roadway counts as over or under a barrier from this much height apart, in metres (nearer than that they're one road: `JOIN`). */
+const STACKED = 0.4
+
+/** The heights of every other deck whose roadway is over or under a point. */
+function roadwaysAt(decks: Flyover[], own: Flyover, x: number, z: number): number[] {
+  const heights: number[] = []
+  for (const deck of decks) {
+    if (deck === own) continue
+    const { points } = deck.path
+    const half = deck.width / 2
+    const bounds = deckBounds.get(deck)
+    if (bounds && (x < bounds[0] - half || z < bounds[1] - half || x > bounds[2] + half || z > bounds[3] + half)) continue
+    for (let i = 1; i < points.length; i++) {
+      const [ax, az] = points[i - 1]
+      const [bx, bz] = points[i]
+      const ex = bx - ax
+      const ez = bz - az
+      const lengthSquared = ex * ex + ez * ez
+      if (lengthSquared < 0.01) continue
+      const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / lengthSquared))
+      if (Math.hypot(x - (ax + ex * t), z - (az + ez * t)) > half) continue
+      heights.push(deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t)
+      break
+    }
+  }
+  return heights
 }
 
 export function createDeckLevels(decks: Flyover[]): DeckLevels {
@@ -888,8 +921,20 @@ export function createDeckLevels(decks: Flyover[]): DeckLevels {
   const bands = new Map<number, CollisionWorld>()
   const empty: CollisionWorld = new Map()
   /** A wall, in each band from `low` to `high` metres up. */
-  const wall = (from: GroundPoint, to: GroundPoint, thickness: number, low: number, high: number) => {
-    for (let band = Math.floor((low - BAND_SLACK) / BAND); band <= Math.floor((high + BAND_SLACK) / BAND); band++) {
+  /**
+   * `others`: the heights of other decks' roadways passing over or under the wall's middle. The
+   * wall isn't solid at their height: where two decks run one above the other a metre or two apart
+   * (coming into a join), the lower one's barrier stopped vehicles on the upper one, from underneath
+   * and out of sight. It keeps to the bands on its own side of each of them (and always its own).
+   */
+  const wall = (from: GroundPoint, to: GroundPoint, thickness: number, low: number, high: number, others: number[] = []) => {
+    let first = Math.floor((low - BAND_SLACK) / BAND)
+    let last = Math.floor((high + BAND_SLACK) / BAND)
+    for (const other of others) {
+      if (other > high + STACKED) last = Math.min(last, Math.max(Math.floor(high / BAND), Math.floor(other / BAND) - 1))
+      else if (other < low - STACKED) first = Math.max(first, Math.min(Math.floor(low / BAND), Math.floor(other / BAND) + 1))
+    }
+    for (let band = first; band <= last; band++) {
       const world = bands.get(band) ?? new Map()
       addWall(world, from, to, thickness)
       bands.set(band, world)
@@ -926,9 +971,11 @@ export function createDeckLevels(decks: Flyover[]): DeckLevels {
           const t0 = p / pieces
           const t1 = (p + 1) / pieces
           const mid = (t0 + t1) / 2
-          const height = deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * mid
-          if (onAnotherDeck(decks, deck, ax + (bx - ax) * mid + sx * side, az + (bz - az) * mid + sz * side, height)) continue
-          wall([ax + (bx - ax) * t0 + sx * side, az + (bz - az) * t0 + sz * side], [ax + (bx - ax) * t1 + sx * side, az + (bz - az) * t1 + sz * side], 0.4, low, high)
+          // Its middle or either end on another deck's roadway: no barrier there.
+          if ([t0, mid, t1].some((t) => onAnotherDeck(decks, deck, ax + (bx - ax) * t + sx * side, az + (bz - az) * t + sz * side, deck.heights[i - 1] + (deck.heights[i] - deck.heights[i - 1]) * t))) continue
+          const midX = ax + (bx - ax) * mid + sx * side
+          const midZ = az + (bz - az) * mid + sz * side
+          wall([ax + (bx - ax) * t0 + sx * side, az + (bz - az) * t0 + sz * side], [ax + (bx - ax) * t1 + sx * side, az + (bz - az) * t1 + sz * side], 0.4, low, high, roadwaysAt(decks, deck, midX, midZ))
         }
       }
     }
@@ -941,6 +988,16 @@ export function createDeckLevels(decks: Flyover[]): DeckLevels {
       if (low || joined || (ends.get(endKey(points[index])) ?? 0) > 1) continue
       const { x, z, dirX, dirZ } = pointOnPath(deck.path, s)
       const height = heightOnFlyover(deck, s)
+      // Or it runs into the side of another deck part-way along it (a slip road joining a flyover):
+      // the road carries on there, and closing the end left a wall nobody could see across both lanes.
+      // Looked for at the end itself and a little past it, in the middle and towards each side.
+      const out = index === 0 ? -1 : 1
+      const meets = [0, 2, 4].some((past) => [0, 0.5, -0.5].some((across) => onAnotherDeck(decks, deck, x + dirX * out * past + dirZ * half * across, z + dirZ * out * past - dirX * half * across, height)))
+      if (meets) {
+        deckReport.endsLeftOpen++
+        continue
+      }
+      deckReport.endsClosed++
       wall([x + dirZ * half, z - dirX * half], [x - dirZ * half, z + dirX * half], 0.6, height, height)
     }
   }

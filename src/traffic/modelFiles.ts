@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { removeBadges } from './vehicleBadges'
 
 export const TRAFFIC_MODELS_URL = '/models/traffic.glb'
 /**
@@ -33,6 +34,8 @@ export function getModel(scene: THREE.Group, name: string): THREE.BufferGeometry
     if (child instanceof THREE.Mesh) geometry = child.geometry
   })
   if (!geometry) throw new Error(`No model called ${name}`)
+  // No maker's badge on any of them (vehicleBadges.ts): taken off here, where every user of a model gets it from.
+  removeBadges(geometry, name)
   return geometry
 }
 

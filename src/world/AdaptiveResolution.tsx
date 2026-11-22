@@ -64,8 +64,10 @@ const SETTLE = 2.5
  * with its freeze: judging starts after `warmUp` seconds, in batches of `window`, a single slow
  * batch drops a step, and a change's own slow frames are skipped for `settle`. Standing at the
  * start is lighter than riding, so "slow" there is anything under `margin` times the usual aim.
- * A step up is tried there too, once, if there is that much to spare (`raiseFrom` times the aim:
- * Low on a fast laptop starts a step under its top and has twice the frame rate it needs).
+ * On Low a step up is tried there too, once, if there is that much to spare (`raiseFrom` times the
+ * aim: Low on a fast laptop starts a step under its top and has twice the frame rate it needs).
+ * Never on Medium or High: standing at the start says little about riding there, and a step up
+ * that riding can't hold costs far more than it gives.
  * The loading screen waits for `liveScaler.content` (LoadingScreen.tsx).
  */
 const COVERED = { warmUp: 0.4, window: 0.5, settle: 0.8, margin: 1.1, raiseFrom: 1.45 }
@@ -224,7 +226,7 @@ export function AdaptiveResolution() {
       rememberRatio(quality, pending.current)
       state.slow = 0
       state.calm = 0
-    } else if (covered && !raisedCovered.current && fast && fps >= target * COVERED.raiseFrom && lateShare <= CALM_SHARE && pixelRatio < highest) {
+    } else if (covered && !raisedCovered.current && quality === 'low' && fast && fps >= target * COVERED.raiseFrom && lateShare <= CALM_SHARE && pixelRatio < highest) {
       // Behind the loading screen, with plenty to spare: the step up is made now, not 45 seconds into the ride.
       raisedCovered.current = true
       pending.current = Math.min(highest, pixelRatio + STEP)

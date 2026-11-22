@@ -25,7 +25,7 @@ const STREAK = { short: 0.3, long: 1.3, width: 0.016 }
 /** How far the wind pushes the rain over as it falls: metres sideways for each metre down, in the strongest wind. */
 const SLANT = 0.34
 /** Splashes: this share as many as there are streaks, within this far of the camera, each lasting this long (s) and opening to this radius (m). */
-const SPLASH = { share: 0.18, reach: 12, life: 0.38, radius: 0.085 }
+const SPLASH = { share: 0.18, reach: 12, life: 0.38, radius: 0.05, fadeFrom: 3.5 }
 
 const uniforms = {
   uTime: { value: 0 },
@@ -93,6 +93,7 @@ const SPLASH_VERTEX = /* glsl */ `
   uniform float uGround;
   varying vec2 vAt;
   varying float vAge;
+  varying float vNear;
 
   void main() {
     // Each lives ${SPLASH.life} s, over and over, at its own moment; every new life it lands somewhere else.
@@ -101,7 +102,13 @@ const SPLASH_VERTEX = /* glsl */ `
     vAge = fract(clock);
     vec2 jump = fract(sin(vec2(life * 12.9898 + aSplash.x, life * 78.233 + aSplash.y)) * 43758.5453) * ${(SPLASH.reach * 2).toFixed(1)};
     vec2 spot = mod(aSplash.xy + jump - uCentre.xz, ${(SPLASH.reach * 2).toFixed(1)}) - ${SPLASH.reach.toFixed(1)} + uCentre.xz;
-    float radius = ${SPLASH.radius.toFixed(2)} * (0.25 + 0.75 * sqrt(vAge)) * (0.6 + aSplash.z * 0.8);
+    // Sizes from a third of the largest up, most of them small.
+    float radius = ${SPLASH.radius.toFixed(3)} * (0.25 + 0.75 * sqrt(vAge)) * (0.35 + aSplash.z * aSplash.z * 1.0);
+    // Fewer further off: each has its own distance past which it isn't drawn, so they thin out
+    // evenly from a few metres away to none at the edge. None right under the camera either.
+    float away = length(spot - cameraPosition.xz);
+    float most = mix(${SPLASH.fadeFrom.toFixed(1)}, ${SPLASH.reach.toFixed(1)}, fract(aSplash.w * 7.31 + aSplash.z * 3.7));
+    vNear = (1.0 - smoothstep(most * 0.8, most, away)) * smoothstep(1.0, 2.2, away);
     vAt = position.xy;
     vec3 corner = vec3(spot.x + position.x * radius * 2.0, uGround + 0.03, spot.y + position.y * radius * 2.0);
     gl_Position = projectionMatrix * viewMatrix * vec4(corner, 1.0);
@@ -112,13 +119,14 @@ const SPLASH_FRAGMENT = /* glsl */ `
   uniform float uOpacity;
   varying vec2 vAt;
   varying float vAge;
+  varying float vNear;
 
   void main() {
     // A ring that thins as it opens, with a bright dot in the middle at the first moment: the drop itself.
     float away = length(vAt) * 2.0;
     float ring = smoothstep(0.5, 0.82, away) * smoothstep(1.0, 0.88, away);
     float dot = (1.0 - smoothstep(0.0, 0.3, away)) * (1.0 - smoothstep(0.0, 0.25, vAge));
-    float alpha = uOpacity * (ring * (1.0 - vAge) * 0.3 + dot * 0.5);
+    float alpha = uOpacity * vNear * (ring * (1.0 - vAge) * 0.16 + dot * 0.3);
     if (alpha < 0.004) discard;
     gl_FragColor = vec4(0.8, 0.86, 0.92, alpha);
     #include <colorspace_fragment>

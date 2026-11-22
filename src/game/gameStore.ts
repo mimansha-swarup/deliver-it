@@ -763,7 +763,7 @@ export const useGameStore = create<GameState>()(
 
   makeOffer: () =>
     set((state) => {
-      if (state.duty !== 'online' || state.mission || state.offer || !state.planner || state.offlineAfterOrder) return state
+      if (state.duty !== 'online' || state.mission || state.offer || !state.planner || state.offlineAfterOrder || state.explore) return state
       // The tutorial makes its own first offer (ui/Tutorial.tsx), a second or so in: dispatch's doesn't get in ahead of it.
       if (useTutorial.getState().step === 'accept') return state
       const mission = state.planner.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp), dayPeriod(liveSky.hours))
@@ -891,7 +891,8 @@ export const useGameStore = create<GameState>()(
       }
     }),
   postChat: (from, name, text, urgent = false, always = false) =>
-    set((state) => (state.duty === 'online' || always ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now(), urgent }].slice(-CHAT_KEPT) } : state)),
+    // Never an empty message: a line with no words (a recording that has no text of its own) isn't posted at all.
+    set((state) => (text.trim() !== '' && (state.duty === 'online' || always) ? { chat: [...state.chat, { id: nextMessageId++, from, name, text, at: performance.now(), urgent }].slice(-CHAT_KEPT) } : state)),
 
   setTelemetry: (telemetry) => set(telemetry),
   setAtBunk: (atBunk) => set({ atBunk }),
