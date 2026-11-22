@@ -70,7 +70,7 @@ const SETTLE = 2.5
  * that riding can't hold costs far more than it gives.
  * The loading screen waits for `liveScaler.content` (LoadingScreen.tsx).
  */
-const COVERED = { warmUp: 0.4, window: 0.5, settle: 0.8, margin: 1.1, raiseFrom: 1.45 }
+const COVERED = { warmUp: 0.4, window: 0.5, settle: 0.8, margin: 1.1, raiseFrom: 1.45, batches: 2 }
 /** Once riding, a step up (which freezes a few frames) is only made while the rider is slower than this, in km/h: stopped at a signal or a door, where nobody is watching the road go by. */
 const RAISE_BELOW_KMH = 2
 
@@ -215,7 +215,7 @@ export function AdaptiveResolution() {
 
     // Behind the loading screen: content once a batch has passed, or there's no lower to go.
     if (covered) liveScaler.content = !tooSlow || pixelRatio <= lowest
-    if (state.slow >= (covered ? 1 : fast ? DROP_BATCHES_FAST : DROP_BATCHES) && pixelRatio > lowest) {
+    if (state.slow >= (covered ? COVERED.batches : fast ? DROP_BATCHES_FAST : DROP_BATCHES) && pixelRatio > lowest) {
       // Too much just after a step up: that level isn't tried again for a while,
       // so the picture doesn't keep sharpening and blurring.
       if (state.sinceRaise <= 3) {
