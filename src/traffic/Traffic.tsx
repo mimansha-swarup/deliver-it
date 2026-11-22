@@ -10,6 +10,7 @@ import { playHorn } from '../audio/horns'
 import { playImpact, updateTrafficSounds } from '../audio/trafficSounds'
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
+import { liveTime } from '../game/slowMotion'
 import { useFrame, useThree } from '@react-three/fiber'
 import { JunctionWatch } from './JunctionWatch'
 import * as THREE from 'three'
@@ -1105,7 +1106,8 @@ export function Traffic({
     easeDensity(world, dayPeriod(liveSky.hours).traffic, delta)
     // Traffic's lamps come up with the dark (vehicleLamps.ts).
     lampUniforms.uLampNight.value = liveSky.look.night
-    stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP))
+    // Slowed with the rider's own vehicle for the moment after a crash (game/slowMotion.ts).
+    stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP) * liveTime.scale)
     // Debug: the traffic, for checking from the console that no two vehicles overlap.
     if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: world.vehicles.slice(0, vehicles) }
     takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))

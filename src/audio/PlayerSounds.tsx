@@ -56,6 +56,7 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
   const revs = useRef(0)
   const crashes = useRef(0)
   const bumps = useRef(0)
+  const bagBounces = useRef(0)
   const splashes = useRef(0)
 
   useEffect(
@@ -97,7 +98,8 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     engine.current.update(revs.current, riding ? throttle : 0, riding ? vehicle.engineVolume : 0)
 
     ambience.current.update(
-      { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0 },
+      // A fallen scooter sliding on its side scrapes too, for as long as it's moving.
+      { night: liveSky.look.night, rain: liveSky.rain, slide: riding ? Math.abs(state.slip) : 0, scrape: Math.max(state.scrape, riding || state.pickedUp ? 0 : Math.min(1, speed / 7)) },
       dt,
     )
 
@@ -135,6 +137,11 @@ export function PlayerSounds({ scooter }: { scooter: RefObject<ScooterState> }) 
     if (state.crashCount !== crashes.current) {
       crashes.current = state.crashCount
       playThud(audio.context, audio.sfx, Math.max(0.5, state.impact))
+    }
+    // The box knocked off in a crash: a hollow knock each time it hits the road.
+    if (state.bag.bounces !== bagBounces.current) {
+      bagBounces.current = state.bag.bounces
+      playThud(audio.context, audio.sfx, 0.1 + state.bag.lastBounce * 0.35)
     }
     // Landing off a breaker or a kerb: a softer thud than a crash.
     if (state.bumpCount !== bumps.current) {

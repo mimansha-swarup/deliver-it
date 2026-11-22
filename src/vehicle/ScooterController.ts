@@ -6,6 +6,7 @@ import { currentGrip, tuning } from './tuning'
 import { liveRoom } from '../game/rooms'
 import { liveView } from '../game/livePlayer'
 import { SCOOTER, SCOOTER_SPAWN, WORLD_LIMITS } from './vehicleConfig'
+import { startSlowMotion } from '../game/slowMotion'
 
 export type DriveInput = {
   forward: boolean
@@ -76,6 +77,40 @@ export type ScooterState = {
   /** Splashes so far, and how fast the scooter was going through the last, in m/s. `Splashes` throws water for each. */
   splashCount: number
   splashSpeed: number
+  /** How hard it's scraping along a wall, a railing or a parked car right now, from 0 to 1. It fades; `PlayerSounds` grinds with it. */
+  scrape: number
+  /** The delivery box, once a crash has knocked it off the rack. See `stepLooseBag`. */
+  bag: LooseBag
+  /**
+   * After a crash that threw the rider: how dark the screen is, from 0 to 1 (ui/CrashFade.tsx). It
+   * goes dark as they lie there and comes back on them getting up beside the scooter, stood on its
+   * wheels again, so nothing is seen snapping into place.
+   */
+  recoverDark: number
+  /** The scooter has been stood back up while the screen was dark, and waits for the rider to get on. */
+  pickedUp: boolean
+}
+
+/**
+ * The delivery box off its rack after a crash: where its middle is in the world, how fast it's
+ * going, how it's turned (two tumbling angles and a heading), how many times it has hit the ground
+ * (`PlayerSounds` knocks for each) and how hard the last was, from 0 to 1.
+ */
+export type LooseBag = {
+  loose: boolean
+  x: number
+  y: number
+  z: number
+  velocityX: number
+  velocityY: number
+  velocityZ: number
+  heading: number
+  tumble: number
+  roll: number
+  tumbleSpeed: number
+  rollSpeed: number
+  bounces: number
+  lastBounce: number
 }
 
 /**
@@ -188,6 +223,10 @@ export function createScooterState(): ScooterState {
     puddle: 0,
     splashCount: 0,
     splashSpeed: 0,
+    scrape: 0,
+    bag: { loose: false, x: 0, y: 0, z: 0, velocityX: 0, velocityY: 0, velocityZ: 0, heading: 0, tumble: 0, roll: 0, tumbleSpeed: 0, rollSpeed: 0, bounces: 0, lastBounce: 0 },
+    recoverDark: 0,
+    pickedUp: false,
   }
 }
 
@@ -256,6 +295,29 @@ function throwRiderOff(state: ScooterState, travelX: number, travelZ: number) {
   rider.onGround = false
   rider.off = 1
   rider.limp = 0.3
+}
+
+/**
+ * Coming back from a crash (see the `lying` phase): the screen takes `darken` seconds to go dark,
+ * stays so for `hold`, and takes `lighten` to come back. The rider is then getting up from a crouch
+ * beside the seat: bent forward by `crouch` radians, hips `hipFrom` metres up, a little limp.
+ */
+const RECOVER = { darken: 0.3, hold: 0.14, lighten: 0.4, crouch: 0.5, hipFrom: 0.62, limp: 0.35 }
+
+/** Stands a fallen scooter back on its wheels where it lies, still, with its box back on (done while the screen is dark). */
+function standScooterUp(state: ScooterState) {
+  state.pickedUp = true
+  // Short of `getUpTime`, so it isn't leant back over on the next step.
+  state.crashLeft = 0.1
+  state.lean = 0
+  state.pitch = 0
+  state.spin = 0
+  state.steer = 0
+  state.velocityX = 0
+  state.velocityZ = 0
+  state.speed = 0
+  state.slip = 0
+  state.bag.loose = false
 }
 
 /** The nearest angle at which the body lies flat, face down or on its back. */
@@ -327,19 +389,39 @@ function stepThrownRider(state: ScooterState, collisions: CollisionWorld, surfac
   }
 
   if (rider.phase === 'lying') {
-    if (rider.time > RIDER_LIE_TIME) {
+    // They lie where they stopped, and the screen goes dark over the last of it. In the dark the
+    // scooter is stood back on its wheels, the box goes back on its rack, and the rider is put
+    // beside the seat, half up: the picture comes back on them straightening and getting on. It
+    // used to show the body rolling upright, a jog back and the scooter springing off the road.
+    const darkening = rider.time - (RIDER_LIE_TIME - RECOVER.darken)
+    state.recoverDark = clamp(darkening / RECOVER.darken, 0, 1)
+    if (rider.time > RIDER_LIE_TIME + RECOVER.hold) {
+      standScooterUp(state)
+      const [x, z] = exitSpot(state, collisions)
+      rider.x = x
+      rider.z = z
+      rider.ground = surface.heightAt(x, z, (state.frontWheel.height + state.rearWheel.height) / 2)
+      rider.heading = state.heading
+      rider.rollAxisX = Math.cos(state.heading)
+      rider.rollAxisZ = -Math.sin(state.heading)
       rider.phase = 'rising'
       rider.time = 0
-      rider.lyingRoll = rider.roll
+      rider.lyingRoll = RECOVER.crouch
+      rider.roll = RECOVER.crouch
+      rider.rollSpeed = 0
+      rider.velocityX = 0
+      rider.velocityZ = 0
     }
     return
   }
 
   if (rider.phase === 'rising') {
+    // The picture comes back as they straighten up.
+    state.recoverDark = clamp(1 - rider.time / RECOVER.lighten, 0, 1)
     const amount = Math.min(1, rider.time / RIDER_RISE_TIME)
     const eased = amount * amount * (3 - 2 * amount)
-    rider.limp = 1 - eased
-    rider.y = rider.ground + LYING_HIP_HEIGHT + (RIDER_HIP_HEIGHT - LYING_HIP_HEIGHT) * eased
+    rider.limp = RECOVER.limp * (1 - eased)
+    rider.y = rider.ground + RECOVER.hipFrom + (RIDER_HIP_HEIGHT - RECOVER.hipFrom) * eased
     if (amount >= 1) {
       rider.phase = 'walking'
       rider.time = 0
@@ -380,8 +462,85 @@ function stepThrownRider(state: ScooterState, collisions: CollisionWorld, surfac
 
   if (rider.phase === 'mounting') {
     rider.off = Math.max(0, 1 - rider.time / RIDER_MOUNT_TIME)
-    if (rider.off === 0) rider.phase = 'on'
+    if (rider.off === 0) {
+      rider.phase = 'on'
+      state.pickedUp = false
+    }
   }
+}
+
+/** The box's size as it tumbles: half its width, height and length, in metres. Matches the model's box near enough. */
+const BAG = { half: 0.24, drag: 0.5, bounce: 0.42, grip: 0.55, rest: 0.6, spinLoss: 0.55 }
+
+/** A crash knocks the delivery box off its rack: it carries on with the scooter's speed, up and a little to one side, tumbling. */
+function dropBag(state: ScooterState, travelX: number, travelZ: number) {
+  const bag = state.bag
+  if (bag.loose) return
+  const speed = Math.hypot(travelX, travelZ)
+  const ground = (state.frontWheel.height + state.rearWheel.height) / 2
+  bag.loose = true
+  // The rack is behind the seat.
+  bag.x = state.x - Math.sin(state.heading) * 0.62
+  bag.z = state.z - Math.cos(state.heading) * 0.62
+  bag.y = ground + 1.05
+  bag.velocityX = travelX * 0.55 + Math.cos(state.heading) * state.crashSide * -0.9
+  bag.velocityZ = travelZ * 0.55 - Math.sin(state.heading) * state.crashSide * -0.9
+  bag.velocityY = 2.4 + Math.min(1.6, speed * 0.12)
+  bag.heading = state.heading
+  bag.tumble = 0
+  bag.roll = 0
+  bag.tumbleSpeed = 3 + speed * 0.5
+  bag.rollSpeed = state.crashSide * (1.5 + speed * 0.15)
+  bag.lastBounce = 0
+}
+
+/**
+ * The loose box: a throw under gravity, a bounce off the road that loses most of its speed each
+ * time, then a short slide to rest flat on a face. Walls stop it. Simple maths, like the rider's
+ * own throw: one box, and the look of the bounces matters more than their exactness.
+ */
+function stepLooseBag(state: ScooterState, collisions: CollisionWorld, surface: Surface, dt: number) {
+  const bag = state.bag
+  if (!bag.loose) return
+  const ground = surface.heightAt(bag.x, bag.z, bag.y) + BAG.half
+  bag.velocityY -= 9.81 * dt
+  bag.x += bag.velocityX * dt
+  bag.y += bag.velocityY * dt
+  bag.z += bag.velocityZ * dt
+  const beforeX = bag.x
+  const beforeZ = bag.z
+  pushOutOfBuildings(collisions, bag, BAG.half)
+  if (bag.x !== beforeX || bag.z !== beforeZ) {
+    bag.velocityX *= -0.25
+    bag.velocityZ *= -0.25
+  }
+  if (bag.y <= ground) {
+    bag.y = ground
+    const landing = -bag.velocityY
+    if (landing > BAG.rest) {
+      bag.velocityY = landing * BAG.bounce
+      bag.velocityX *= BAG.grip
+      bag.velocityZ *= BAG.grip
+      bag.tumbleSpeed *= BAG.spinLoss
+      bag.rollSpeed *= BAG.spinLoss
+      bag.bounces++
+      bag.lastBounce = Math.min(1, landing / 6)
+    } else {
+      // Down for good: it slides to a stop and settles onto its nearest face.
+      bag.velocityY = 0
+      const slide = Math.exp(-6 * dt)
+      bag.velocityX *= slide
+      bag.velocityZ *= slide
+      bag.tumbleSpeed = 0
+      bag.rollSpeed = 0
+      const settle = 1 - Math.exp(-14 * dt)
+      const quarter = Math.PI / 2
+      bag.tumble += (Math.round(bag.tumble / quarter) * quarter - bag.tumble) * settle
+      bag.roll += (Math.round(bag.roll / quarter) * quarter - bag.roll) * settle
+    }
+  }
+  bag.tumble += bag.tumbleSpeed * dt
+  bag.roll += bag.rollSpeed * dt
 }
 
 /** Whether the rider is off the vehicle by choice: stepping off it, or walking about. */
@@ -400,11 +559,15 @@ export function isAfoot(state: ScooterState): boolean {
  * radians for each radian a second of turning at a jog, up to `leanMost`; `tip`: how far they tip
  * forward for each m/s² of setting off (and back, pulling up), up to `tipMost`.
  *
- * `radius`: the body's, as a capsule, in metres. `stepUp`: the highest rise it walks straight up,
+ * `radius`: the body's, as a capsule, in metres: against walls, gates and door frames. `slim`: its
+ * size against small things (a parked two-wheeler, a pole, a bollard), which a person turns their
+ * shoulders past; at the full radius the gap between two parked bikes or a bike and a railing was
+ * a snag. `turnFirst`: turning to walk the other way, they come round on the spot first, moving at
+ * no less than this share of their speed until they face the way they're going. `stepUp`: the highest rise it walks straight up,
  * in metres (a kerb is 0.15 to 0.2, a doorstep a little more); `stepRise` and `stepFall`: how
  * quickly it comes up onto one and down off one, per second.
  */
-export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.3, stepUp: 0.45, stepRise: 18, stepFall: 12, dismountTime: 0.45, reach: 2.4 }
+export const FOOT = { walk: 1.9, run: 4.3, ease: 0.24, facing: 11, turnMost: 9, lean: 0.045, leanMost: 0.16, tip: 0.012, tipMost: 0.09, radius: 0.26, slim: 0.12, turnFirst: 0.3, stepUp: 0.45, stepRise: 18, stepFall: 12, dismountTime: 0.45, reach: 2.4 }
 /** The vehicle must be slower than this to get off it, in m/s. */
 /** On foot and pinned: moving slower than `still` (m/s) for `after` seconds while walking, they're stepped `step` metres to clear ground, trying these turns from the way they were going. */
 const FOOT_PINNED = { still: 0.15, after: 1, step: 0.9, round: [0.8, -0.8, 1.57, -1.57, 2.4, -2.4, Math.PI] }
@@ -490,7 +653,7 @@ export function getOn(state: ScooterState): boolean {
  * (setting off and pulling up alike), and the body comes round at a rate that's quick at first
  * and gentle at the end, never faster than a person can turn.
  */
-function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, dt: number) {
+function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, dt: number, wishHeading: number | null = null) {
   const before = Math.hypot(rider.walkX, rider.walkZ)
   const blend = 1 - Math.exp(-dt / (FOOT.ease / 2.3))
   rider.walkX += (wishX - rider.walkX) * blend
@@ -501,7 +664,8 @@ function walkTowards(rider: ThrownRider, wishX: number, wishZ: number, dt: numbe
     rider.walkZ = 0
   }
   // Round to the way they're going, once they're going anywhere; standing, they keep facing as they were.
-  const towards = speed > 0.25 ? Math.atan2(rider.walkX, rider.walkZ) : rider.heading
+  // Turning on the spot, it's the way they've been asked to go that they turn to.
+  const towards = wishHeading !== null ? wishHeading : speed > 0.25 ? Math.atan2(rider.walkX, rider.walkZ) : rider.heading
   const off = Math.atan2(Math.sin(towards - rider.heading), Math.cos(towards - rider.heading))
   const turn = Math.max(-FOOT.turnMost * dt, Math.min(FOOT.turnMost * dt, off * (1 - Math.exp(-FOOT.facing * dt))))
   rider.heading += turn
@@ -541,9 +705,13 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
   let wishZ = Math.cos(yaw) * ahead - Math.sin(yaw) * across
   const any = Math.hypot(wishX, wishZ)
   const wanted = liveRoom.frozen || any === 0 ? 0 : input.nitro ? FOOT.run : FOOT.walk
-  wishX = any > 0 ? (wishX / any) * wanted : 0
-  wishZ = any > 0 ? (wishZ / any) * wanted : 0
-  walkTowards(rider, wishX, wishZ, dt)
+  // Asked to go a way they aren't facing, they turn on the spot first and set off as they come
+  // round: the more they still have to turn, the slower they move. A reversal is a turn, not a slide backwards.
+  const off = any > 0 ? Math.abs(angleBetween(rider.heading, Math.atan2(wishX, wishZ))) : 0
+  const facing = FOOT.turnFirst + (1 - FOOT.turnFirst) * clamp(1.25 - off / (Math.PI * 0.6), 0, 1)
+  wishX = any > 0 ? (wishX / any) * wanted * facing : 0
+  wishZ = any > 0 ? (wishZ / any) * wanted * facing : 0
+  walkTowards(rider, wishX, wishZ, dt, any > 0 ? Math.atan2(wishX, wishZ) : null)
   const fromX = rider.x
   const fromZ = rider.z
   // The body is an upright capsule, `FOOT.radius` round. It moves in steps shorter than that, so it
@@ -560,7 +728,7 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
     else {
       rider.x = clamp(rider.x, WORLD_LIMITS.minX, WORLD_LIMITS.maxX)
       rider.z = clamp(rider.z, WORLD_LIMITS.minZ, WORLD_LIMITS.maxZ)
-      pushOutOfBuildings(collisions, rider, FOOT.radius)
+      pushOutOfBuildings(collisions, rider, FOOT.radius, FOOT.slim)
       // Not through their own vehicle either.
       const awayX = rider.x - state.x
       const awayZ = rider.z - state.z
@@ -572,8 +740,15 @@ function stepOnFoot(state: ScooterState, input: DriveInput, collisions: Collisio
       }
       // Up a kerb or a step (`FOOT.stepUp`) they simply go. Anything higher is a ledge, and stops them like a wall.
       if (surface.heightAt(rider.x, rider.z, rider.ground) - rider.ground > FOOT.stepUp) {
-        rider.x = freeX - (rider.walkX * dt) / pieces
-        rider.z = freeZ - (rider.walkZ * dt) / pieces
+        // They slide along a ledge as along a wall: whichever of the step's two directions isn't up it is kept.
+        const backX = freeX - (rider.walkX * dt) / pieces
+        const backZ = freeZ - (rider.walkZ * dt) / pieces
+        if (surface.heightAt(rider.x, backZ, rider.ground) - rider.ground <= FOOT.stepUp) rider.z = backZ
+        else if (surface.heightAt(backX, rider.z, rider.ground) - rider.ground <= FOOT.stepUp) rider.x = backX
+        else {
+          rider.x = backX
+          rider.z = backZ
+        }
       }
     }
     const outX = rider.x - freeX
@@ -650,12 +825,20 @@ function startCrash(state: ScooterState, side: number, strength: number, travelX
   state.crashLeft = SCOOTER.crashTime
   state.crashSide = side >= 0 ? 1 : -1
   state.crashCount++
+  state.pickedUp = false
+  // The moment of the hit plays slowly (game/slowMotion.ts), and the camera takes a hard, short knock.
+  startSlowMotion()
+  state.impact = Math.max(state.impact, 0.75)
   state.spin = state.crashSide * Math.min(strength * 0.5, 5)
   state.drifting = false
   state.boostLeft = 0
   state.nitroOn = false
   // Nobody's thrown from a vehicle they aren't on (it was parked, and something hit it).
-  if (state.rider.phase === 'on' && Math.hypot(travelX, travelZ) > SCOOTER.throwOffSpeed) throwRiderOff(state, travelX, travelZ)
+  if (state.rider.phase === 'on' && Math.hypot(travelX, travelZ) > SCOOTER.throwOffSpeed) {
+    throwRiderOff(state, travelX, travelZ)
+    // The box comes off its rack too (only the rider's own scooter carries one: Scooter.tsx draws it).
+    dropBag(state, travelX, travelZ)
+  }
 }
 
 /**
@@ -756,10 +939,14 @@ const SPEED_LOCK = { from: 12, to: 23, least: 0.6 }
 function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   // A stick steers by how far it's pushed; the keys, all the way.
   const targetSteer = analog.steer !== null && input !== NO_INPUT && input !== HOLD_INPUT ? analog.steer : Number(input.left) - Number(input.right)
-  state.steer = moveToward(state.steer, targetSteer, SCOOTER.steerRate * dt)
-
   const absoluteSpeed = Math.abs(state.speed)
   const speedRatio = Math.min(absoluteSpeed / tuning.maxSpeed, 1)
+  // The bars come over a little slower at speed, where a flick is a swerve, and go back to the
+  // middle quicker than they left it, so letting go straightens up at once.
+  const centring = Math.abs(targetSteer) < Math.abs(state.steer) || targetSteer * state.steer < 0
+  const steerRate = SCOOTER.steerRate * (1 - SCOOTER.steerSlowAtSpeed * speedRatio) * (centring ? SCOOTER.steerReturn : 1)
+  state.steer = moveToward(state.steer, targetSteer, steerRate * dt)
+
   const steeringFade = Math.min(absoluteSpeed / SCOOTER.fullSteeringSpeed, 1)
   const driftBoost = state.drifting ? SCOOTER.driftTurnBoost : 1
   // A little tighter still at walking and turning speeds, below about 20 km/h, for junctions.
@@ -781,7 +968,10 @@ function updateSteering(state: ScooterState, input: DriveInput, dt: number) {
   // to `SPEED_LOCK.least` of it by `SPEED_LOCK.to`. The scooter barely reaches it; a car at 80 km/h
   // changes lanes on a tap where it used to swerve.
   const lock = 1 - (1 - SPEED_LOCK.least) * clamp((absoluteSpeed - SPEED_LOCK.from) / (SPEED_LOCK.to - SPEED_LOCK.from), 0, 1)
-  const turning = state.steer * turnRate * driftBoost * driftLimit * steeringFade * lock
+  // The first part of the bars' travel turns less than the last (full lock is what it always was):
+  // a tap is a small correction, not a third of a swerve, and a turn builds instead of starting with a jerk.
+  const eased = state.steer * (1 - SCOOTER.steerSoftness + SCOOTER.steerSoftness * Math.abs(state.steer))
+  const turning = eased * turnRate * driftBoost * driftLimit * steeringFade * lock
   // Math.sign flips the steering in reverse, as on a real vehicle.
   state.heading += turning * Math.sign(state.speed) * dt
 }
@@ -947,21 +1137,39 @@ function reactToPush(state: ScooterState, pushX: number, pushZ: number, dt: numb
   state.velocityZ = alongZ
 
   const hitSpeed = -intoWall
-  const isCrash = hitSpeed > SCOOTER.wallCrashSpeed
+  // How square-on the hit is: 1 straight into the wall, 0 running along it.
+  const directness = hitSpeed / travelSpeed
+  // Only a near head-on hit, hard enough, is a crash. Anything shallower is a scrape, however fast.
+  const isCrash = directness > SCOOTER.crashDirectness && hitSpeed > SCOOTER.wallCrashSpeed
   if (isCrash) {
     // Which side the wall is on decides which way the scooter falls.
     const side = normalX * Math.cos(state.heading) - normalZ * Math.sin(state.heading)
     startCrash(state, side, hitSpeed, travelX, travelZ)
-  }
-
-  const directness = hitSpeed / travelSpeed
-  if (directness > SCOOTER.headOnThreshold) {
     // A scooter that hits a wall is thrown back off it. A car stops against it: bounced back, it
     // lurched backwards and forwards at every touch.
-    const bounce = isCrash ? hitSpeed * (tuning.cab ? CAB_WALL_BOUNCE : SCOOTER.wallBounce) : 0
+    const bounce = hitSpeed * (tuning.cab ? CAB_WALL_BOUNCE : SCOOTER.wallBounce)
     state.velocityX = normalX * bounce
     state.velocityZ = normalZ * bounce
-    if (!isCrash) nudgeAlongSurface(state, normalX, normalZ, dt)
+    return
+  }
+
+  // A scrape: it slides along the surface. The speed into the wall is gone (taken off above), and
+  // rubbing takes some of the rest, in proportion to how hard it pressed: a brush costs next to
+  // nothing, 45° costs about a third, and nothing short of square-on stops it.
+  const alongSpeed = Math.hypot(alongX, alongZ)
+  if (alongSpeed > 0) {
+    const keep = Math.max(0, alongSpeed - hitSpeed * SCOOTER.scrapeFriction) / alongSpeed
+    state.velocityX *= keep
+    state.velocityZ *= keep
+  }
+  if (hitSpeed > 0.4 && alongSpeed > 1.5) {
+    state.scrape = Math.max(state.scrape, Math.min(1, 0.25 + hitSpeed / 6 + alongSpeed / 30))
+    state.impact = Math.max(state.impact, Math.min(0.5, hitSpeed / 14))
+  }
+
+  if (directness > SCOOTER.headOnThreshold) {
+    // Nose-on and slow: nothing to slide along, so the throttle turns it towards running along the wall.
+    nudgeAlongSurface(state, normalX, normalZ, dt)
     return
   }
 
@@ -1137,8 +1345,11 @@ export function stepScooter(
     // The scooter stays on its side until the rider is back to pick it up.
     const { phase } = state.rider as { phase: RiderPhase }
     const away = phase !== 'on' && phase !== 'mounting'
-    if (away) state.crashLeft = Math.max(state.crashLeft, SCOOTER.getUpTime + 0.05)
-  }
+    // Once it has been stood up (in the dark), it only waits, upright, for them to get on.
+    if (away) state.crashLeft = state.pickedUp ? Math.max(state.crashLeft, 0.1) : Math.max(state.crashLeft, SCOOTER.getUpTime + 0.05)
+  } else if (state.recoverDark > 0) state.recoverDark = Math.max(0, state.recoverDark - dt / RECOVER.lighten)
+  stepLooseBag(state, collisions, surface, dt)
+  state.scrape *= Math.exp(-9 * dt)
 
   state.heading += state.spin * dt
   state.spin *= Math.exp(-3 * dt)

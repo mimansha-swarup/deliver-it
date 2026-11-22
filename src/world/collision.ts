@@ -246,11 +246,20 @@ export function findNearestWall(
   return best
 }
 
-/** Moves a circle out of any buildings it overlaps. Updates `point` in place. */
+/** Things narrower than this, in metres, are "small" to a walker: posts, poles, parked two-wheelers (see `pushOutOfBuildings`). */
+const SMALL_THING = 1.7
+
+/**
+ * Moves a circle out of any buildings it overlaps. Updates `point` in place.
+ * `smallRadius`: the circle's size against small things, under `SMALL_THING` metres across (a parked
+ * two-wheeler's post, a pole, a bollard): a person on foot turns their shoulders past those, where a
+ * wall takes their full width. Left out, the one radius is used for everything.
+ */
 export function pushOutOfBuildings(
   world: CollisionWorld,
   point: { x: number; z: number },
-  radius: number,
+  fullRadius: number,
+  smallRadius = fullRadius,
 ) {
   for (let pass = 0; pass < PUSH_PASSES; pass++) {
     const nearby = world.get(cellKey(toCell(point.x), toCell(point.z)))
@@ -258,6 +267,9 @@ export function pushOutOfBuildings(
 
     let moved = false
     for (const footprint of nearby) {
+      const radius = smallRadius !== fullRadius && measure(footprint).span < SMALL_THING ? smallRadius : fullRadius
+      const box = (footprint as Boxed).box
+      if (box && (point.x < box[0] - radius || point.x > box[1] + radius || point.z < box[2] - radius || point.z > box[3] + radius)) continue
       const { nearestX, nearestZ, distance, inside } = measureFootprint(footprint, point.x, point.z)
       if (!inside && distance >= radius) continue
       if (distance === 0) continue

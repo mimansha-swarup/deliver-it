@@ -5250,6 +5250,16 @@ body,
   letter-spacing: 0.02em;
 }
 
+/* After a crash: the screen dips to dark while the scooter is stood up, and comes back (ui/CrashFade.tsx sets the opacity each frame). */
+.crash-fade {
+  position: fixed;
+  inset: 0;
+  background: #0b0c0e;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 39;
+}
+
 /* The society guard's card: the OTP read out, then the register signed. Bottom centre, above the prompts. */
 .guard-card {
   position: fixed;

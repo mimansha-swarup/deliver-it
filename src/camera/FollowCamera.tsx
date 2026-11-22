@@ -41,10 +41,30 @@ const NITRO_FOV = 6
 const SLIDE_FOLLOW = 0.65
 
 /** In a turn the camera rolls with the scooter's lean, this share of it, and at most this far, in radians. */
-const SWAY_SHARE = 0.18
-const SWAY_MAX = 0.06
+const SWAY_SHARE = 0.2
+const SWAY_MAX = 0.07
 /** How quickly the roll follows the lean: slower than the lean, so it sways rather than snaps. */
 const SWAY_RESPONSE = 2.5
+
+/**
+ * Going fast: above `from` m/s (45 km/h), reaching full by `full`, the view widens by `fov` degrees
+ * more and the camera trembles by up to `shake` metres, so top speed feels like top speed.
+ */
+const FAST = { from: 12.5, full: 16.5, fov: 4, shake: 0.011 }
+/**
+ * Over a hump or a pothole the camera dips and springs back: a hard landing kicks it down at up to
+ * `hard` m/s, a gentle one (taken slowly) at `gentle`; `stiffness` and `damping` are the spring's,
+ * a little under-damped, so it bounces once and is still. Never more than `most` metres.
+ */
+const BOUNCE = { hard: 0.95, gentle: 0.3, stiffness: 150, damping: 15, most: 0.09 }
+/**
+ * Braking hard, the camera closes up on the rider by up to `closer` metres and the view dips by
+ * `dip`, in proportion to how hard; let go, it settles back with one small overshoot (`stiffness`,
+ * `damping`). `smooth`: how quickly the measured slowing is followed, per second.
+ */
+const BRAKE_SETTLE = { closer: 0.3, dip: 0.11, stiffness: 62, damping: 9.5, smooth: 9 }
+/** The camera is never left inside or this close to anything solid, in metres: checked last, after every offset. */
+const NEVER_INSIDE = 0.24
 
 /** How close the camera may come to the scooter when backed against a wall. */
 const MIN_DISTANCE = 1.4
@@ -125,7 +145,7 @@ const FOOT_BOB = { walk: 0.011, fullAt: 1.6, jog: 0.3 }
  * at this rate at the most (radians a second, at 45° off), faster than `from` m/s, and not for
  * this long after the mouse last moved the view (ms).
  */
-const FOOT_DRIFT = { rate: 1.5, from: 0.5, afterMouse: 1200 }
+const FOOT_DRIFT = { rate: 1.7, from: 0.5, afterMouse: 1200 }
 /** In a room, the camera keeps this far inside its walls and under its ceiling, in metres. */
 const ROOM_MARGIN = 0.35
 
@@ -222,6 +242,10 @@ export function FollowCamera({
   const onFoot = useRef(0)
   /** In a room: where the camera is, and which side of the rider it went to along a wall. */
   const roomCamera = useRef<{ x: number; z: number; side: number } | null>(null)
+  /** The spring over humps: how far the camera is off (metres, down is negative) and how fast it's moving; and the landings already felt. */
+  const bounce = useRef({ at: 0, speed: 0, bumps: -1, gentle: -1 })
+  /** The dive under braking: how far in (0 to 1), how fast that's changing, the speed last frame and the slowing measured from it. */
+  const dive = useRef({ at: 0, speed: 0, last: 0, slowing: 0 })
 
   useMouseLook()
 
@@ -280,7 +304,10 @@ export function FollowCamera({
       } else if (state.rider.pace > FOOT_DRIFT.from && performance.now() - liveLook.movedAt > FOOT_DRIFT.afterMouse) {
         const going = Math.atan2(state.rider.walkX, state.rider.walkZ)
         const round = Math.atan2(Math.sin(going - previous - liveLook.yaw), Math.cos(going - previous - liveLook.yaw))
-        if (Math.abs(round) < Math.PI / 2) heading += Math.sin(2 * round) * FOOT_DRIFT.rate * delta
+        // Whichever way they turn, the view comes round after them: quickest when they walk straight
+        // across it, not at all when they walk towards it (or it would spin about them).
+        const share = Math.abs(round) < Math.PI / 2 ? Math.sin(round) : Math.sin(round) * Math.max(0, 1 - (Math.abs(round) - Math.PI / 2) / 0.9)
+        heading += share * FOOT_DRIFT.rate * delta
       }
     }
     liveView.snapBehind = false
@@ -330,10 +357,43 @@ export function FollowCamera({
     const pivot = ORBIT_HEIGHT * view.height
     const cameraAbove = HEIGHT * view.height - pivot
     // A wall behind brings the camera in along the ground, at the height it was.
-    const back = Math.min(distance, Math.max(MIN_DISTANCE * 0.5, -(-distance * cos + cameraAbove * sin)))
+    // Braking hard closes the camera up on the rider, and it settles back afterwards (`BRAKE_SETTLE`).
+    {
+      const braking = dive.current
+      const riding = !riderOff && !afoot && state.crashLeft === 0
+      const slowing = delta > 0 && riding ? Math.max(0, (braking.last - state.speed) / delta) : 0
+      braking.last = state.speed
+      braking.slowing += (Math.min(slowing, tuning.braking * 1.2) - braking.slowing) * (1 - Math.exp(-BRAKE_SETTLE.smooth * delta))
+      // Coasting and ordinary slowing are nothing: only the brake's own bite counts.
+      const wanted = riding ? Math.max(0, Math.min(1, (braking.slowing - 3.5) / (tuning.braking - 3.5))) : 0
+      const step = Math.min(delta, 1 / 30)
+      braking.speed += ((wanted - braking.at) * BRAKE_SETTLE.stiffness - braking.speed * BRAKE_SETTLE.damping) * step
+      braking.at += braking.speed * step
+    }
+    const settle = dive.current.at
+    const back = Math.min(distance, Math.max(MIN_DISTANCE * 0.5, -(-distance * cos + cameraAbove * sin))) - settle * BRAKE_SETTLE.closer * (1 - walk)
     // On foot the picture dips a touch as each foot lands: twice a stride, more in a jog. Hardly seen, but felt.
     const bob = afoot ? -Math.cos(state.rider.stride * 2) * FOOT_BOB.walk * Math.min(1, state.rider.pace / FOOT_BOB.fullAt) * (1 + Math.max(0, state.rider.pace - FOOT_BOB.fullAt) * FOOT_BOB.jog) : 0
-    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen + bob
+    // A hump or a pothole: the camera dips and springs back (`BOUNCE`).
+    {
+      const spring = bounce.current
+      if (spring.bumps < 0) {
+        spring.bumps = state.bumpCount
+        spring.gentle = state.gentleCount
+      }
+      if (state.bumpCount !== spring.bumps) {
+        spring.bumps = state.bumpCount
+        spring.speed -= BOUNCE.gentle + (BOUNCE.hard - BOUNCE.gentle) * state.bump
+      }
+      if (state.gentleCount !== spring.gentle) {
+        spring.gentle = state.gentleCount
+        spring.speed -= BOUNCE.gentle
+      }
+      const step = Math.min(delta, 1 / 30)
+      spring.speed += (-spring.at * BOUNCE.stiffness - spring.speed * BOUNCE.damping) * step
+      spring.at = Math.max(-BOUNCE.most, Math.min(BOUNCE.most, spring.at + spring.speed * step))
+    }
+    const cameraY = Math.max(LOWEST_CAMERA, pivot + distance * sin + cameraAbove * cos) + risen + bob + bounce.current.at * (1 - walk)
     camera.position.set(focusX - forwardX * back, cameraY + level.current, focusZ - forwardZ * back)
     // Brought in by a wall on foot, it also moves out over a shoulder, so the wall is to one side
     // of the picture and the rider's helmet isn't the whole of it: to the right, or to the left if
@@ -355,6 +415,33 @@ export function FollowCamera({
     camera.position.x += Math.sin(clock.elapsedTime * 47) * state.impact * SHAKE_SIZE
     camera.position.y += Math.sin(clock.elapsedTime * 61) * state.impact * SHAKE_SIZE * 0.6
 
+    // Flat out, it trembles a little: the road coming up through the bars.
+    const fast = Math.max(0, Math.min(1, (travelSpeed - FAST.from) / (FAST.full - FAST.from))) * (1 - walk) * (1 - follow)
+    if (fast > 0) {
+      camera.position.x += (Math.sin(clock.elapsedTime * 53) + Math.sin(clock.elapsedTime * 31.7)) * 0.5 * fast * FAST.shake
+      camera.position.y += (Math.sin(clock.elapsedTime * 67) + Math.sin(clock.elapsedTime * 41.3)) * 0.5 * fast * FAST.shake * 0.8
+    }
+
+    // Last, after every offset: never inside a wall, or close enough to one to see through it. If
+    // it is, it comes back along its line to the rider until it's clear.
+    if (!indoors && !liveShot.active && shotAmount.current < 0.01) {
+      const solid = up && deckCollisions ? deckCollisions(height) : collisions
+      const inside = (x: number, z: number) => blocksView(solid, x, z, NEVER_INSIDE, CAMERA_BLOCKED.post, CAMERA_BLOCKED.thin, low || afoot, afoot ? false : low) || insideBigVehicle(x, z)
+      if (inside(camera.position.x, camera.position.z)) {
+        const fromX = camera.position.x - focusX
+        const fromZ = camera.position.z - focusZ
+        let clear = 0.15
+        let hit = 1
+        for (let pass = 0; pass < 6; pass++) {
+          const middle = (clear + hit) / 2
+          if (inside(focusX + fromX * middle, focusZ + fromZ * middle)) hit = middle
+          else clear = middle
+        }
+        camera.position.x = focusX + fromX * clear
+        camera.position.z = focusZ + fromZ * clear
+      }
+    }
+
     // Blends from the title view, starting and finishing gently.
     if (introTime.current < INTRO_TIME) {
       introTime.current += delta
@@ -370,7 +457,7 @@ export function FollowCamera({
     const lookAbove = rideHeight + (FOOT_LOOK_HEIGHT - rideHeight) * walk - pivot
     const lookAlong = lookAhead * cos + lookAbove * sin
     let lookX = focusX + forwardX * lookAlong
-    let lookY: number = pivot - lookAhead * sin + lookAbove * cos + level.current
+    let lookY: number = pivot - lookAhead * sin + lookAbove * cos + level.current - settle * BRAKE_SETTLE.dip * (1 - walk)
     let lookZ = focusZ + forwardZ * lookAlong
 
     // Eases across to a set shot and back, so that it never cuts.
@@ -465,7 +552,7 @@ export function FollowCamera({
     if (camera instanceof PerspectiveCamera) {
       // Nitro widens the view a little more, for the rush.
       const targetFov =
-        BASE_FOV + SPEED_FOV * Math.min(travelSpeed / tuning.maxSpeed, 1.4) + (state.nitroOn ? NITRO_FOV : 0)
+        BASE_FOV + SPEED_FOV * Math.min(travelSpeed / tuning.maxSpeed, 1.4) + FAST.fov * fast + (state.nitroOn ? NITRO_FOV : 0)
       camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-FOV_RESPONSE * delta))
       camera.updateProjectionMatrix()
     }

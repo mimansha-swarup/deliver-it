@@ -22,6 +22,11 @@ export const SCOOTER = {
 
   /** How quickly the handlebars reach full lock, in full turns of input per second. */
   steerRate: 5,
+  /** At top speed the bars move this share slower; going back to the middle they move this many times faster. */
+  steerSlowAtSpeed: 0.3,
+  steerReturn: 1.35,
+  /** How much softer the first of the bars' travel is than the last, from 0 (straight) to 1. Full lock turns as before. */
+  steerSoftness: 0.35,
   /** Turning speed in radians per second, at low speed and at top speed. */
   turnRateLow: 2,
   turnRateHigh: 1,
@@ -143,6 +148,13 @@ export const SCOOTER = {
   crashLean: 1.3,
   /** Share of the speed kept when bouncing off a wall in a crash. */
   wallBounce: 0.3,
+  /**
+   * A wall is a crash only when hit more squarely than this (the share of the speed that was straight
+   * into it: 0.72 is within about 45° of square-on) and faster into it than `wallCrashSpeed`.
+   */
+  crashDirectness: 0.72,
+  /** Scraping along a wall takes this much speed along it for each m/s of speed into it. */
+  scrapeFriction: 0.35,
   /** Hits more direct than this are head-on, and don't deflect. 1 is dead straight. */
   headOnThreshold: 0.8,
   /** How quickly a glancing hit swings the scooter along the wall. */

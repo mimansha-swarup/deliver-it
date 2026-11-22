@@ -24,6 +24,8 @@ export type AmbienceState = {
   rain: number
   /** Sideways slide, in m/s, and speed, for the tyre skid. */
   slide: number
+  /** How hard the vehicle is scraping along a wall or a railing, from 0 to 1. */
+  scrape?: number
 }
 
 const RUMBLE_VOLUME = 0.45
@@ -50,6 +52,8 @@ const RAIN_VOLUME = 0.32
 const CRICKET_VOLUME = 0.06
 const BIRD_VOLUME = 0.05
 const SKID_VOLUME = 0.7
+/** Scraping along a wall, at its hardest. */
+const SCRAPE_VOLUME = 0.55
 /** A slide slower than this, in m/s, makes no sound. Above, it gets louder up to `SKID_FULL`. */
 const SKID_START = 1.2
 const SKID_FULL = 5
@@ -77,7 +81,10 @@ export function createAmbience(context: AudioContext, output: AudioNode) {
   const murmur = noiseLoop(context, 'bandpass', 420, 2.5)
   const rain = noiseLoop(context, 'highpass', 1500)
   const skid = noiseLoop(context, 'bandpass', 950, 1.6)
-  for (const { level } of [rumble, passing, murmur, rain, skid]) level.connect(output)
+  // Scraping along a wall: metal and plastic grinding (a harsh high band) over the body's low drag.
+  const scrapeGrind = noiseLoop(context, 'bandpass', 2700, 2.6)
+  const scrapeDrag = noiseLoop(context, 'bandpass', 340, 1.1)
+  for (const { level } of [rumble, passing, murmur, rain, skid, scrapeGrind, scrapeDrag]) level.connect(output)
 
   // A tyre squeals at a pitch, as rubber catches and slips on the road over and over. Two
   // tones that wobble quickly, through a narrow filter, make that sound.
@@ -349,7 +356,9 @@ export function createAmbience(context: AudioContext, output: AudioNode) {
   let untilKoel = between([4, 10])
 
   return {
-    update: ({ night, rain: raining, slide }: AmbienceState, dt: number) => {
+    update: ({ night, rain: raining, slide, scrape = 0 }: AmbienceState, dt: number) => {
+      scrapeGrind.level.gain.setTargetAtTime(SCRAPE_VOLUME * scrape, context.currentTime, 0.03)
+      scrapeDrag.level.gain.setTargetAtTime(SCRAPE_VOLUME * 0.8 * scrape, context.currentTime, 0.03)
       const busy = 1 - night * 0.65
       const now = context.currentTime
 

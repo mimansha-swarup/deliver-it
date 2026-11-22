@@ -40,6 +40,7 @@ import { ParkHint } from './ui/ParkHint'
 import { Subtitle } from './ui/Subtitle'
 import { RoomCard } from './ui/RoomUi'
 import { RoomFade } from './ui/RoomFade'
+import { CrashFade } from './ui/CrashFade'
 import { GuardCard } from './ui/GuardCard'
 import { BreakdownCard } from './ui/BreakdownCard'
 import { PoliceCard } from './ui/PoliceCard'
@@ -118,6 +119,7 @@ function RidingUi() {
       <PhotoModeUi />
       <Discovery />
       <RoomFade />
+      <CrashFade />
       <FpsOverlay />
       <HelpOverlay />
       <PauseMenu />
