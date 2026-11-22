@@ -182,6 +182,17 @@ export function createParkedScooterGeometry(scene: THREE.Group, steeringZ: numbe
 }
 
 /**
+ * The same scooter as it's ridden in traffic: upright, bars straight, no box, its wheels part of
+ * the one shape (they don't spin; at a commuter's speed and from behind, nobody sees).
+ */
+export function createRidingScooterGeometry(scene: THREE.Group): THREE.BufferGeometry {
+  const { wheelPositions } = scene.getObjectByName('delivery')?.userData as WheelData
+  const [frontAxle, rearAxle] = [...wheelPositions].sort((a, b) => b[2] - a[2])
+  const part = (name: string) => plain(getModel(scene, name))
+  return merge([withoutBox(part('delivery')), part('delivery-front'), part('delivery-wheel').translate(...frontAxle), part('delivery-wheel').translate(...rearAxle)])
+}
+
+/**
  * A parked car: one of the traffic models from `traffic.glb` with its wheels
  * fixed in place, as one shape that can be copied many times.
  */

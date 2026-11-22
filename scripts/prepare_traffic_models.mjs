@@ -112,20 +112,8 @@ const VEHICLES = [
     whiteNode: /^Box$/,
     singleTrack: true,
   },
-  {
-    // Kept in its own file, as its licence differs from everything else here.
-    name: 'bike',
-    file: 'sportbike.glb',
-    folder: 'yamaha_yzf_2021',
-    reverse: true,
-    length: 1.95,
-    triangles: 7000,
-    wrapCell: 0.012,
-    wheelJoint: /^(wheel_l[rf]|wheel_[lr][fr])/,
-    wheelMaterial: /wheel_map/,
-    paintMaterial: /^Material\.004$/,
-    singleTrack: true,
-  },
+  // The traffic's motorbike and moped aren't baked here: scripts/prepare_two_wheelers.mjs makes
+  // them (models/two-wheelers.glb) from the Vega 150 and the scooter the game already has.
   {
     name: 'auto',
     folder: 'autorikshaw_-_indian_tuk_tuk',

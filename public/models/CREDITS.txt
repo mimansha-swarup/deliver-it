@@ -67,12 +67,11 @@ textures replaced by colours, the tank's lettering painted out, the cargo box ma
 
 city-kit.glb: Downtown City MegaKit [Standard] by Quaternius, CC0 1.0. https://quaternius.com
 
-REPLACE BEFORE ANY MONETISATION: sportbike.glb is non-commercial (CC BY-NC-SA). While the game is
-free with no ads, sales or sponsorship it may be used; before the game earns anything, this
-model must be swapped for one that allows commercial use.
+two-wheelers.glb: the motorbike and the moped in traffic (scripts/prepare_two_wheelers.mjs). Made from
+models already credited above, simplified again for traffic: the motorbike from the Vega 150
+(Tripo AI, commercial use), the moped from "Vespa scooty" by yogendraprajapati298 (CC BY 4.0).
+The traffic's third two-wheeler is the delivery bike ("Checkers Sixty60 Bike") without its box.
 
-sportbike.glb is licensed differently, and is kept in its own file:
-"Yamaha YZF 2021" by VTX, CC BY-NC-SA 4.0: https://creativecommons.org/licenses/by-nc-sa/4.0/
-  https://sketchfab.com/3d-models/yamaha-yzf-2021-0af46985abc54219be3aaf0991f5a3de
-This changed version (simplified, textures replaced by colours, recoloured) is shared under the same
-licence, and may not be used commercially.
+Every model in this folder allows commercial use (CC BY 4.0, CC0, or made on a commercial plan).
+The non-commercial sports bike that used to be in traffic ("sportbike.glb") was removed in polish
+sprint 2, and nothing of it remains in the game.

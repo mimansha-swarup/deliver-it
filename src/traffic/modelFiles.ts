@@ -16,8 +16,11 @@ export const FLEET_MODELS_URL = '/models/fleet.glb'
 /** GaadiGo's motorbike and cargo three-wheeler, made with Tripo AI (art/tripo), cut up the same way. */
 export const TRIPO_MODELS_URL = '/models/tripo.glb'
 
-/** Kept apart from the rest, because its licence is different. See `models/CREDITS.txt`. */
-export const SPORT_BIKE_MODEL_URL = '/models/sportbike.glb'
+/**
+ * The traffic's two-wheelers (scripts/prepare_two_wheelers.mjs): `bike`, a commuter motorbike made
+ * from the Vega 150, and `moped`, a step-through scooter, each with its far version and a wheel.
+ */
+export const TWO_WHEELERS_URL = '/models/two-wheelers.glb'
 
 /** The paint on delivery bikes. Their box is white in the model itself. */
 export const DELIVERY_BIKE_COLOR = '#17181b'

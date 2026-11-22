@@ -372,8 +372,7 @@ export function CreditsPanel({ onBack }: { onBack: () => void }) {
         <Group title="3D models">
           <p>
             Traffic and people, each simplified and recoloured for the game, CC BY 4.0: cars by BHP3D, the auto by bhagathartworks, the delivery bike by Caitlin Pillay, people by
-            Kalakar, Pixel_Monster, Aashutosh Dabhade and dk8026854; riders by Atrikumar Das and newArteest; the bull by stealth86. Your scooter by yogendraprajapati298; GaadiGo’s bicycle by Tidominer, catering car by higan69 and van by Ddiaz Design; the bus by Meshmill. Vega 150 and Bhaara E-Cargo models generated with Tripo AI. City pieces: Downtown City MegaKit by Quaternius (CC0). The sports bike by VTX is CC BY-NC-SA 4.0, which is
-            non-commercial: it is to be replaced before the game earns any money. The game has no connection with any
+            Kalakar, Pixel_Monster, Aashutosh Dabhade and dk8026854; riders by Atrikumar Das and newArteest; the bull by stealth86. Your scooter by yogendraprajapati298; GaadiGo’s bicycle by Tidominer, catering car by higan69 and van by Ddiaz Design; the bus by Meshmill. Vega 150 and Bhaara E-Cargo models generated with Tripo AI; the traffic’s motorbike is the Vega 150 and its moped the same scooter. City pieces: Downtown City MegaKit by Quaternius (CC0). The game has no connection with any
             vehicle maker. <Outside href={file('models/CREDITS.txt')}>Every model, with links</Outside>
             {' · '}
             <Outside href={file('textures/CREDITS.txt')}>Textures</Outside>

@@ -24,7 +24,7 @@ import { isDebug } from '../dev/spawn'
 import { createRiderModel, createSeatedRiderGeometry, type RiderLook, type Seat } from '../vehicle/riderModel'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { getStreetReflection } from './carModel'
-import { getModel, TRAFFIC_MODELS_URL, SPORT_BIKE_MODEL_URL, EXTRA_PEOPLE, FLEET_MODELS_URL, PEOPLE_MODELS_URL } from './modelFiles'
+import { getModel, TRAFFIC_MODELS_URL, TWO_WHEELERS_URL, EXTRA_PEOPLE, FLEET_MODELS_URL, PEOPLE_MODELS_URL } from './modelFiles'
 import { GAIT, HIP, IDLE_POSE, KNEE } from './gait'
 import { createWomanFrom } from './peopleShapes'
 import { createBusFromModel, createBusGeometry } from './bus'
@@ -44,12 +44,12 @@ import {
   createFarBikeGeometry,
   createParkedCarGeometry,
   createParkedScooterGeometry,
+  createRidingScooterGeometry,
 } from './vehicleShapes'
-import { CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
+import { addWindowGlass, CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
 import { groundLift } from '../world/groundLift'
 import { seeThrough } from '../camera/seeThrough'
 import { addLampGlow, lampUniforms, withLamps } from './vehicleLamps'
-import { createMotorcycleGeometry, createScooterGeometry } from './twoWheelers'
 import { createProxyGeometry } from './vehicleProxies'
 import { createPlateAtlas, createPlateGeometry, plateCell, showPlateCell, type PlateFit } from './numberPlates'
 
@@ -687,6 +687,7 @@ const PAINT_SEEN_THROUGH = seeThrough(tintPaintOnly)
 const LAMPS_SEEN_THROUGH = seeThrough((shader) => {
   tintPaintOnly(shader)
   addLampGlow(shader)
+  addWindowGlass(shader)
 })
 const SEEN_THROUGH = seeThrough()
 
@@ -932,7 +933,7 @@ const PLATES: Record<VehicleKind, PlateFit & { commercial: boolean }> = {
   bus: { width: 0.52, height: 0.13, at: 0.5, front: true, back: true, commercial: true },
 }
 
-/** Which of the three two-wheeler shapes a bike is: the model, a scooter or a motorcycle. Fixed for each bike. */
+/** Which of the three two-wheeler shapes a bike is: the motorbike, the moped or the scooter. Fixed for each bike. */
 function bikeShapeOf(item: Moving): number {
   return Math.floor(item.tint * 997) % 3
 }
@@ -976,7 +977,7 @@ export function Traffic({
   const { vehicles, pedestrians, shadowSize, carLights, vehicleDetailDistance: detail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
-  const { scene: sportBike } = useGLTF(SPORT_BIKE_MODEL_URL)
+  const { scene: twoWheelers } = useGLTF(TWO_WHEELERS_URL)
   const { scene: extraPeople } = useGLTF(PEOPLE_MODELS_URL)
 
   // The bus is a model with the game's wheels in its arches (bus.ts), or the one built in code if the model isn't there: either needs freeing.
@@ -998,10 +999,10 @@ export function Traffic({
       suv: withLamps(getModel(scene, 'suv'), 'suv'),
       mpv: withLamps(getModel(scene, 'mpv'), 'mpv'),
       auto: withLamps(getModel(scene, 'auto'), 'auto'),
-      bike: withLamps(getModel(sportBike, 'bike'), 'bike'),
+      bike: withLamps(getModel(twoWheelers, 'bike'), 'bike'),
       bus: withLamps(busShape, 'bus'),
     }),
-    [scene, sportBike, busShape],
+    [scene, twoWheelers, busShape],
   )
   useEffect(() => () => Object.values(shapes).forEach((geometry) => geometry.dispose()), [shapes])
   const wheels = useMemo(
@@ -1011,9 +1012,10 @@ export function Traffic({
       suv: getWheels(scene, 'suv'),
       mpv: getWheels(scene, 'mpv'),
       auto: getWheels(scene, 'auto'),
-      bike: getWheels(sportBike, 'bike'),
+      bike: getWheels(twoWheelers, 'bike'),
+      moped: getWheels(twoWheelers, 'moped'),
     }),
-    [scene, sportBike],
+    [scene, twoWheelers],
   )
   // Two women, made from the modelled man in a kurta (peopleShapes.ts): they need freeing, the loaded models don't.
   const women = useMemo(() => [createWomanFrom(getModel(scene, 'man'), 'elder'), createWomanFrom(getModel(scene, 'man'), 'young')], [scene])
@@ -1033,13 +1035,15 @@ export function Traffic({
     }),
     [scene, extraPeople],
   )
-  // Two of the three two-wheeler shapes are built in code (twoWheelers.ts).
+  // The three two-wheelers: the motorbike and the moped (models/two-wheelers.glb), whose wheels are
+  // drawn apart and spin, and the scooter the rider's own is made from, without its box, wheels and all.
+  // (The last two were shapes built from blocks in code, which is what they looked like beside the camera.)
   const bikeShapes = useMemo(() => {
-    const built = [createScooterGeometry(), createMotorcycleGeometry()]
-    const lit = built.map((geometry) => withLamps(geometry, 'bike'))
-    built.forEach((geometry) => geometry.dispose())
+    const scooter = createRidingScooterGeometry(scene)
+    const lit = [withLamps(getModel(twoWheelers, 'moped'), 'bike'), withLamps(scooter, 'bike')]
+    scooter.dispose()
     return [shapes.bike, ...lit]
-  }, [shapes])
+  }, [shapes, scene, twoWheelers])
   const bikePlates = useMemo(() => bikeShapes.map((shape) => createPlateGeometry(shape, PLATES.bike)), [bikeShapes])
   useEffect(() => () => {
     bikeShapes.slice(1).forEach((geometry) => geometry.dispose())
@@ -1053,10 +1057,10 @@ export function Traffic({
       Object.fromEntries(
         VEHICLES.map(({ kind }) => [
           kind,
-          farWithLamps(kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(sportBike, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
+          farWithLamps(kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(twoWheelers, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
         ]),
       ) as Record<VehicleKind, THREE.BufferGeometry>,
-    [shapes, scene, sportBike],
+    [shapes, scene, twoWheelers],
   )
   useEffect(() => () => Object.values(proxies).forEach((geometry) => geometry.dispose()), [proxies])
   const plateAtlas = useMemo(() => createPlateAtlas(), [])
@@ -1137,8 +1141,9 @@ export function Traffic({
                 <MovingInstances key={who} items={byRider[who]} geometry={geometry} palette={JACKET_COLORS} castShadow={shadowSize > 0} reflection={reflection} seatedRider cloth reach={detail} />
               ))}
               <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked lamps reflection={reflection} from={detail} />
-              {/* Only the model has separate wheels to spin. The built shapes carry theirs. */}
+              {/* The motorbike's and the moped's wheels are separate, and spin. The scooter carries its own. */}
               <VehicleWheels items={byShape[0]} wheels={wheels.bike} reach={detail} />
+              <VehicleWheels items={byShape[1]} wheels={wheels.moped} reach={detail} />
             </group>
           )
         }
