@@ -5745,3 +5745,60 @@ body,
   outline-offset: 2px;
   border-radius: 8px;
 }
+
+/*
+ * A message from home (DutyUi.tsx's family card) is not an order, and doesn't look like one: a warm
+ * cream card with charcoal words and the brand's yellow, where an order is dark with green. The same
+ * place, the same two keys; told apart at a glance.
+ */
+.duty-offer[data-family] {
+  color: #2a2118;
+  background: #fff3dc;
+  border: 0;
+  border-left: 5px solid #f6b32b;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+.duty-offer[data-family] .hud-detail {
+  color: #6a5a45;
+}
+.duty-offer[data-family] .duty-offer-kind {
+  color: #fff6e6;
+  background: #b0562b;
+}
+.duty-offer[data-family] .duty-offer-pay {
+  color: #a8431f;
+}
+.duty-offer[data-family] .duty-offer-ring-track {
+  stroke: rgb(42 33 24 / 14%);
+}
+.duty-offer[data-family] .duty-offer-ring-left {
+  stroke: #f6b32b;
+}
+.duty-offer[data-family][data-hurry='true'] .duty-offer-ring-left {
+  stroke: #c9432f;
+}
+.duty-offer[data-family] .duty-offer-ring text {
+  fill: #2a2118;
+}
+.duty-offer[data-family] .duty-accept {
+  color: #2a2118;
+  background: #f6b32b;
+}
+.duty-offer[data-family] .duty-accept:disabled {
+  opacity: 0.45;
+}
+.duty-offer[data-family] .duty-decline {
+  color: #2a2118;
+  background: rgb(42 33 24 / 10%);
+}
+.duty-offer[data-family] kbd {
+  color: #2a2118;
+  background: rgb(42 33 24 / 12%);
+  border-color: rgb(42 33 24 / 25%);
+}
+/* What home is asking for is shown in full, on two lines if it needs them. */
+.duty-offer[data-family] .duty-offer-top strong {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
