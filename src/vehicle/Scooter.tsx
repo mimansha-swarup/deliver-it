@@ -38,6 +38,7 @@ import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './Scoo
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { useDriveInput } from './useDriveInput'
 import { NitroFlame } from './NitroFlame'
+import { useLaunch } from '../game/launch'
 import { liveCrash, liveTime, stepSlowMotion } from '../game/slowMotion'
 
 /** Longest a single frame may count for, so a paused tab can't cause a huge jump. */
@@ -411,7 +412,8 @@ export function Scooter({
     const { started, phase } = useGameStore.getState()
     if (started) {
       const handingOver = phase === 'collecting' || phase === 'handingOver'
-      const controls = handingOver ? HOLD_INPUT : input.current
+      // Held too while the loading screen is still up over the first moments of the ride (game/launch.ts).
+      const controls = handingOver || useLaunch.getState().covered ? HOLD_INPUT : input.current
       const level = scooterLevel(state)
       const solid = deckCollisions && level > UP_ON_DECK ? deckCollisions(level) : collisions
       // A crash plays slowly for a moment (game/slowMotion.ts): the vehicle, the rider and the box all step by the slowed time.

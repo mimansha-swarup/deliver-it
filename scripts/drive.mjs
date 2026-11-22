@@ -124,7 +124,8 @@ const page = {
   },
   /** A real key press, as the browser delivers one (focus, default actions and all). */
   key: async (key, code = key, keyCode = 0) => {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: keyCode })
+    // Enter needs its character too, or a focused button doesn't take it as a press.
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: keyCode, ...(key === 'Enter' ? { text: '\r' } : {}) })
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode })
   },
   shot: async (file) => {

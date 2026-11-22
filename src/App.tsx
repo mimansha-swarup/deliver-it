@@ -82,7 +82,7 @@ function GameUi() {
     <>
       {!requested && <TitleScreen />}
       {started && <RidingUi />}
-      {requested && !curtainGone && <LoadingScreen onGone={() => { markLoad('loading screen gone'); setCurtainGone(true) }} />}
+      {requested && !curtainGone && <LoadingScreen onGone={() => { markLoad('loading screen gone'); useLaunch.setState({ covered: false }); setCurtainGone(true) }} />}
     </>
   )
 }
