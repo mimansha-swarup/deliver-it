@@ -1,7 +1,10 @@
 import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { livePlayer, liveSky } from '../game/livePlayer'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rain and particles')
 
 /*
  * Rain, in three parts, all moved on the GPU (JavaScript passes the time, the camera and the wind):

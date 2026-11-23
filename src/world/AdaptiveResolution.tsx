@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { isDebug } from '../dev/spawn'
 import { useGameStore } from '../game/gameStore'
 import { firstRatio, liveScaler, ratioRange, rememberRatio, startingRatio, useResolution } from '../game/resolution'
 import { useLaunch } from '../game/launch'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('resolution scaler')
 
 /** How much the resolution moves in one step, in pixels per screen point. */
 const STEP = 0.25

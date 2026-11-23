@@ -11,7 +11,8 @@ import { playImpact, updateTrafficSounds } from '../audio/trafficSounds'
 import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
 import { liveTime } from '../game/slowMotion'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timed, timedFrame } from '../dev/frameTimes'
 import { JunctionWatch } from './JunctionWatch'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
@@ -52,6 +53,10 @@ import { seeThrough } from '../camera/seeThrough'
 import { addLampGlow, lampUniforms, withLamps } from './vehicleLamps'
 import { createProxyGeometry } from './vehicleProxies'
 import { createPlateAtlas, createPlateGeometry, plateCell, showPlateCell, type PlateFit } from './numberPlates'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('traffic drawing (instances, wheels, lamps)')
+const usePeopleFrame = timedFrame('pedestrians')
 
 
 /** An auto's colours come from its model, so its tint changes nothing. */
@@ -844,7 +849,7 @@ export function Walker({ body, pose: poseRef, colour, skin = 0.82 }: { body: THR
     mesh.current.instanceMatrix.needsUpdate = true
     if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true
   }, [colour, geometry])
-  useFrame(({ clock }) => {
+  usePeopleFrame(({ clock }) => {
     if (!mesh.current) return
     const pose = poseRef.current
     mesh.current.visible = pose.visible
@@ -884,7 +889,7 @@ export function People({
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
-  useFrame(({ clock }) => {
+  usePeopleFrame(({ clock }) => {
     if (!mesh.current) return
     peopleClock.uTime.value = clock.elapsedTime % 1000
     writeTransforms(mesh.current, items, Infinity, false, ground)
@@ -1228,13 +1233,13 @@ export function Traffic({
     // Traffic's lamps come up with the dark (vehicleLamps.ts).
     lampUniforms.uLampNight.value = liveSky.look.night
     // Slowed with the rider's own vehicle for the moment after a crash (game/slowMotion.ts).
-    stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP) * liveTime.scale)
+    timed('traffic AI', () => stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP) * liveTime.scale))
     updateBikeLean(bikesInPlay, Math.min(delta, MAX_STEP) * liveTime.scale)
     // Debug: the traffic, for checking from the console that no two vehicles overlap.
     if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: inPlay, people }
     takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))
     takeImpacts(world, ({ x, z, strength }) => playImpact(x, z, strength, rider))
-    updateTrafficSounds(inPlay, rider, Math.min(delta, MAX_STEP))
+    timed('audio updates', () => updateTrafficSounds(inPlay, rider, Math.min(delta, MAX_STEP)))
   })
 
   return (

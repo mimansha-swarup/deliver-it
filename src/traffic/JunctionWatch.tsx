@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { agaraPlaces } from '../game/agaraPlaces'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
@@ -10,6 +10,9 @@ import { getLight } from './trafficSignals'
 import { POLICE, policePosts, showPoliceCard } from '../game/police'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { playWhistle } from '../audio/doorSounds'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('traffic AI')
 
 /*
  * The Agara junction's rules (game/rush.ts):

@@ -1,3 +1,4 @@
+import { timed } from '../dev/frameTimes'
 import type { CrashPhysics, CrashShape, CrashSurface, Quaternion, Tumbler } from '../physics/crashPhysics'
 import { tuning } from '../vehicle/tuning'
 import { addDeckLanes, deckHeightOn, UP_ON_DECK_TRAFFIC } from './deckLanes'
@@ -3143,7 +3144,7 @@ export function stepTraffic(
   updatePushers(world, activeVehicles, contact)
   // The city's walls are in the physics world only round the rider; this adds them as the rider goes.
   world.physics.wallsNear(rider.x, rider.z)
-  world.physics.step(dt)
+  timed('physics (Rapier)', () => world.physics.step(dt))
   blockThrownRider(world, contact, activeVehicles)
 
   for (const person of world.pedestrians.slice(0, pedestrianCount)) {

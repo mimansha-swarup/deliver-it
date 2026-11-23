@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useFleet } from '../game/fleet'
 import { useGameStore } from '../game/gameStore'
@@ -12,6 +12,9 @@ import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { createRiderModel, createSeatedRiderGeometry } from './riderModel'
 import { createBuiltStill } from './vehicleBodies'
 import { VEHICLES, type VehicleId } from './vehicleCatalog'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 /*
  * GaadiGo in the world (game/fleet.ts). It drives the fleet's clock (running costs, the rental's

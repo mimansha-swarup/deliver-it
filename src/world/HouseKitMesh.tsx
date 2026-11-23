@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useTexture } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveView } from '../game/livePlayer'
@@ -11,6 +11,9 @@ import { createPlasterMaterial, PLASTER_PHOTO, preparePlasterPhoto } from './pla
 import { addWeathering } from './weathering'
 import { createPosterAtlas } from './posters'
 import { NEAR_BUDGET, setNearWaiting } from '../game/launch'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** Chajjas are small, so past this they can't be told apart from the wall, in metres. */
 const CHAJJA_DISTANCE = 180

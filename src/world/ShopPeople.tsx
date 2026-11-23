@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { useGLTF } from '@react-three/drei'
 import { STRIDE_PER_METRE } from '../traffic/gait'
 import { getModel, TRAFFIC_MODELS_URL, EXTRA_PEOPLE, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
@@ -9,6 +9,9 @@ import { livePlayer } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { ShopLife, ShopPerson, ShopWalker } from './shopPeoplePlacement'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('pedestrians')
 
 /*
  * People at the shops (ART_DIRECTION.md: a street with life in it), planned by

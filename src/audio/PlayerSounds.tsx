@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { useGameStore } from '../game/gameStore'
 import { liveSky, livePlayer } from '../game/livePlayer'
 import { getTravelSpeed, type ScooterState } from '../vehicle/ScooterController'
@@ -14,6 +14,9 @@ import { createEngineVoice, type EngineVoice } from './engines'
 import { createPlaceSounds } from './placeSounds'
 import { createAreaSounds } from './areaSounds'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('audio updates')
 
 /** The engine, the street and the weather are mixed this often, in seconds (see the frame loop). */
 const MIX_EVERY = 1 / 30

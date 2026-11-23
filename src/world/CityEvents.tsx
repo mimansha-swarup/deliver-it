@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { areaAt } from '../game/areas'
 import { cityEvents, type CityEvent, type CityEventKind } from '../game/cityEvents'
@@ -16,6 +16,9 @@ import { closeLanes, isPlainRoad, setObstacle, type Pedestrian, type TrafficWorl
 import { createBrokenBus, createDigSite, createWeddingCar } from './cityEventShapes'
 import { addPost, addWall, removeFootprint, removePost, type CollisionWorld, type Footprint } from './collision'
 import { setClosedLinks, type RoadGraph } from './roadGraph'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Things that happen on the roads, one at a time, somewhere ahead of the rider (game/cityEvents.ts

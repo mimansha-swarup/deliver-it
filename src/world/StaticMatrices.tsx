@@ -1,6 +1,9 @@
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import type { Object3D } from 'three'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Nearly nothing in the city moves as an object: roads, kerbs, markings, buildings, cables and

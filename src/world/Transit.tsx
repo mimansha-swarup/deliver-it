@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { splitIntoSquares } from './splitGeometry'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
@@ -20,6 +20,9 @@ import { box, colored, merge } from './simpleShapes'
 import { createPosterAtlas, POSTER_COLUMNS, POSTER_ROWS } from './posters'
 import { createBusGeometry } from '../traffic/bus'
 import { BUS_STAND, heightOnFlyover, onAnotherDeck, RIDE_UNDER, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Draws the metro planned in transitPlacement.ts: the tracks and overhead line on the viaduct's deck, the

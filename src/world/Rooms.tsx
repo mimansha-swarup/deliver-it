@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import { liveRoom, ROOM_DEPTH, useRoom, type RoomKind } from '../game/rooms'
@@ -10,6 +10,9 @@ import { People } from '../traffic/Traffic'
 import type { Pedestrian } from '../traffic/trafficLogic'
 import { SHIRT_COLOR } from '../vehicle/shirtPrint'
 import { planRoom } from './roomShapes'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * The room the rider is in, if any (game/rooms.ts): one mesh, its sign, and whoever works there.

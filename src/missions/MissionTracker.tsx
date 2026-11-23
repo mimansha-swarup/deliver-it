@@ -1,5 +1,5 @@
 import { useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { borrow } from '../game/borrow'
 import { useGameStore } from '../game/gameStore'
 import { liveMission, livePlayer, liveRoute, liveSky, useOnFoot } from '../game/livePlayer'
@@ -14,6 +14,9 @@ import { clearLiveRoute, updateLiveRoute } from './routeTracking'
 import { acceptanceRate, dayPeriod, LOW_ACCEPTANCE, LOW_ACCEPTANCE_SLOWDOWN } from '../game/duty'
 import { FRUSTRATION, timeFrustration } from './customerChat'
 import { useTutorial } from '../game/tutorial'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 /** During the tutorial the customer's frustration stops here: "Waiting" (customerChat.ts' moodOf), never "Annoyed". */
 const TUTORIAL_MOOD = 0.38

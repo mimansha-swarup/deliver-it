@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from './frameTimes'
 import type { ScooterState } from '../vehicle/ScooterController'
 import { SURFACE_NAMES, worldSurface, type SurfaceMap } from '../world/surfaceMap'
 import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from '../world/worldUtils'
 import { isDebug } from './spawn'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('other callbacks')
 
 /*
  * Debug only (`?debug=1`): F8 colours the ground by the surface map (surfaceMap.ts), so placement

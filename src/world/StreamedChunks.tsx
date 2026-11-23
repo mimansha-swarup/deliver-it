@@ -2,11 +2,14 @@ import { useEffect, useId, useRef } from 'react'
 import { NEAR_BUDGET, setNearWaiting } from '../game/launch'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { useGameStore } from '../game/gameStore'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { livePlayer, liveView } from '../game/livePlayer'
 import { CHUNK_SIZE, chunkCentre } from './chunks'
 import { RECHECK_DISTANCE, RECHECK_FRAMES } from './ChunkedMesh'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Builds a part of the world one map square at a time, near the rider first, a

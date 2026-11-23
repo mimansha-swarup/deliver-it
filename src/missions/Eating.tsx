@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { playPing } from '../audio/uiSounds'
 import { eateryAt, FRESH, MEALS } from '../game/eateries'
 import { useGameStore } from '../game/gameStore'
@@ -13,6 +13,9 @@ import { liveSky } from '../game/livePlayer'
 import { goThrough, liveRoom } from '../game/rooms'
 import { isAfoot, type ScooterState } from '../vehicle/ScooterController'
 import { enterRoom, ROOM_SPOTS } from '../world/roomShapes'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 /*
  * Walking into a chai stall or a darshini to eat and rest (game/eateries.ts): the door on the street,

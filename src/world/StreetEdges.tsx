@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { ROAD_TEXTURES } from './assetUrls'
 import { useTexture } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { ROAD_HEIGHT } from './surface'
 import { useGameStore } from '../game/gameStore'
@@ -15,6 +15,9 @@ import { DECAL_COLUMNS, DECAL_ROWS, STREET } from './streetEdgeConfig'
 import { CONCRETE_PHOTO, createPlasterMaterial, preparePlasterPhoto } from './plaster'
 import type { StreetEdges as Edges } from './streetEdgeGeometry'
 import { prepareSurfaceTextures } from './surfaceMaterial'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** Small things are only drawn this close, in metres. */
 const KERB_DISTANCE = 260

@@ -1,7 +1,7 @@
 import { isDebug } from '../dev/spawn'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { useEffect, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { PerspectiveCamera, Vector3 } from 'three'
 import { liveShot, liveView } from '../game/livePlayer'
 import type { ScooterState } from '../vehicle/ScooterController'
@@ -13,6 +13,9 @@ import { blocksView, type CollisionWorld } from '../world/collision'
 import { borrow } from '../game/borrow'
 import { liveLook, settleLook, useMouseLook } from './mouseLook'
 import { liveSight } from './seeThrough'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('camera')
 
 /*
  * Low and close: just over the rider's helmet and a few metres back, so buildings and trees

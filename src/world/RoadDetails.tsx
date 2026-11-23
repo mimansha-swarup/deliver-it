@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import { getStreetReflection } from '../traffic/carModel'
@@ -9,6 +10,9 @@ import { chunkKey } from './chunks'
 import { QuadBuilder } from './quads'
 import { BREAKER, breakerHeight, water, type RoadFeatures, type RoadPatch, type SpeedBreaker } from './roadFeatures'
 import { ROAD_HEIGHT } from './surface'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** Breakers, potholes and puddles are small, so they're only drawn this close, in metres. */
 const BREAKER_DISTANCE = 220

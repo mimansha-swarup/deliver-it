@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import {
   BufferGeometry,
@@ -40,6 +41,9 @@ import { useDriveInput } from './useDriveInput'
 import { NitroFlame } from './NitroFlame'
 import { useLaunch } from '../game/launch'
 import { liveCrash, liveTime, stepSlowMotion } from '../game/slowMotion'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rider and vehicle')
 
 /** Longest a single frame may count for, so a paused tab can't cause a huge jump. */
 const MAX_FRAME_TIME = 0.05

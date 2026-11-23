@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import type { BusStop, Landmarks } from './landmarkPlacement'
@@ -7,6 +7,9 @@ import { PropInstances } from './RoadsideProps'
 import { box, colored, merge } from './simpleShapes'
 import { createPosterAtlas, POSTER_ASPECT, POSTER_COLUMNS, POSTER_COUNT, POSTER_ROWS } from './posters'
 import { PLAY_AREA } from './worldUtils'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Draws the landmarks planned in landmarkPlacement.ts: Agara Lake's water, the metro viaduct on

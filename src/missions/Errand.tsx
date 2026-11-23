@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { playPing } from '../audio/uiSounds'
 import { useGameStore } from '../game/gameStore'
 import { borrow } from '../game/borrow'
@@ -19,6 +19,9 @@ import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterCo
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import type { DarkStore } from '../world/darkStore'
 import { enterRoom, planRoom, ROOM_SPOTS } from '../world/roomShapes'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 /*
  * An order's steps on foot. Riding there is the mission tracker's; from the kerb on it's this:

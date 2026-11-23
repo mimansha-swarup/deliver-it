@@ -12,13 +12,15 @@ export function DevStats() {
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
   const camera = useThree((state) => state.camera)
+  // The whole of react-three-fiber's state, for the frame timing's look at its callbacks (dev/FpsOverlay.tsx).
+  const get = useThree((state) => state.get)
   useEffect(() => {
     if (!isDebug()) return
     const target = window as unknown as { __deliverIt?: unknown }
-    target.__deliverIt = { gl, scene, camera }
+    target.__deliverIt = { gl, scene, camera, get }
     return () => {
       delete target.__deliverIt
     }
-  }, [gl, scene, camera])
+  }, [gl, scene, camera, get])
   return null
 }

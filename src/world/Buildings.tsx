@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { WALL_BUMP_MAPS, WALL_COLOR_PHOTOS } from './assetUrls'
 import { useCompressedTextures } from './ktx2'
 import { useTexture } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
@@ -16,6 +16,9 @@ import { createFacadeTextures, FACADE_LOOKS, type FacadeLook } from './facadeTex
 import type { BuildingFeature } from './mapData'
 import { addWeathering } from './weathering'
 import { isRingInPlayArea, lonLatToLocal, type LonLat } from './worldUtils'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 type KindStyle = {
   /** The street level can look different from the floors above it. */

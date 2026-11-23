@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { FLEET_MODELS_URL, getModel, paintModel, PEOPLE_MODELS_URL, TRIPO_MODELS_URL } from '../traffic/modelFiles'
@@ -9,6 +9,9 @@ import { VEHICLES, type VehicleId } from '../vehicle/vehicleCatalog'
 import { livePlayer } from '../game/livePlayer'
 import { addWall, removeFootprint, type CollisionWorld, type Footprint } from '../world/collision'
 import { useRoomStore, type Rider } from './room'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rider and vehicle')
 
 /*
  * The other riders in the room (net/room.ts), each drawn where their last news put them and eased

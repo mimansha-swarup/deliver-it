@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import type { ScooterState } from './ScooterController'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rain and particles')
 
 /** Where the flame comes out, on the scooter's body, in metres: low on the right, behind the rear wheel. */
 const EXHAUST: [number, number, number] = [-0.17, 0.3, -0.78]

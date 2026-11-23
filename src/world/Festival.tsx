@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { agaraPlaces, isFestivalDay } from '../game/agaraPlaces'
 import { useGameStore } from '../game/gameStore'
@@ -11,6 +11,9 @@ import { setClosedLinks, type RoadGraph } from './roadGraph'
 import { ShopPeople } from './ShopPeople'
 import { box, colored, merge } from './simpleShapes'
 import { useHours } from './useHours'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * A festival procession at the Jagannath temple, in the spirit of the Rath Yatra: on festival days

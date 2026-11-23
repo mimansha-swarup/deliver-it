@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { getStreetReflection } from '../traffic/carModel'
 import { TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
@@ -10,6 +11,9 @@ import { STEERING_Z } from '../vehicle/Rider'
 import type { StiltVehicle } from './houseKit'
 import { cameraDistance, isDetailed, lodCamera } from '../traffic/vehicleLod'
 import { seeThrough } from '../camera/seeThrough'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** Parked vehicles give way to the camera's view of the rider on foot (camera/seeThrough.ts). */
 const PAINT_SEEN_THROUGH = seeThrough(tintPaintOnly)

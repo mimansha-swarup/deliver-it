@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { livePlayer } from '../game/livePlayer'
 import { getModel, TRAFFIC_MODELS_URL } from '../traffic/modelFiles'
@@ -9,6 +9,9 @@ import { People } from '../traffic/Traffic'
 import type { Pedestrian } from '../traffic/trafficLogic'
 import { box, merge } from './simpleShapes'
 import { SOCIETY_GATE, type SocietyPlan } from './society'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * The gated society's gate (society.ts): a striped boom barrier, a sentry box with a tin roof, a

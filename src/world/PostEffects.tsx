@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isDebug } from '../dev/spawn'
 import type { N8AOPostPass } from 'n8ao'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { Bloom, EffectComposer, FXAA, GodRays, LUT, N8AO, SMAA, ToneMapping } from '@react-three/postprocessing'
 import { KernelSize, ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
@@ -12,6 +13,9 @@ import { createCleanPicturePass } from './cleanPicture'
 import { createGradeLut } from './colorGrade'
 import { AO, applyExposure, BLOOM, SUN, skipTransparencyPass } from './postSettings'
 import { SunHazeEffect } from './sunHaze'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** A disc where the sun is, for the sun shafts to shine from: buildings and leaves in front of it block them. Never drawn itself. */
 function createSunDisc(): THREE.Mesh {

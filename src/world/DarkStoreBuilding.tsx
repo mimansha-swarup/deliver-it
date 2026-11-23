@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import {
   DELIVERY_BIKE_COLOR,
@@ -11,6 +11,9 @@ import {
 import { livePlayer } from '../game/livePlayer'
 import type { DarkStore } from './darkStore'
 import { groundLift } from './groundLift'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 const FRONT_HEIGHT = 3.4
 const FRONT_DEPTH = 0.3

@@ -1,3 +1,4 @@
+import { timed } from '../dev/frameTimes'
 import { useKeyName } from '../game/keyBindings'
 import { use, useEffect, useMemo, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
@@ -52,11 +53,15 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
     let currentRoad: string | null = null
     let lastRoadCheck = -Infinity
 
+    // Timed under its step for `?debug=2` (dev/frameTimes.ts).
+    function timedDraw(time: number) {
+      timed('minimap and arrow', () => draw(time))
+    }
     const draw = (time: number) => {
       // Redrawn at most MAP_FRAME_MS apart: a small map turning with the rider looks smooth at 30 a
       // second, and redrawing it, names and all, every frame was a noticeable share of each frame.
       if (time - previousTime < MAP_FRAME_MS) {
-        frame = requestAnimationFrame(draw)
+        frame = requestAnimationFrame(timedDraw)
         return
       }
       const delta = Math.max(0, (time - previousTime) / 1000)
@@ -126,10 +131,10 @@ export function Minimap({ onOpen }: { onOpen: () => void }) {
       if (currentRoad) drawCurrentRoad(context, currentRoad, width / 2, height - CURRENT_ROAD_HEIGHT - 10)
       context.restore()
 
-      frame = requestAnimationFrame(draw)
+      frame = requestAnimationFrame(timedDraw)
     }
 
-    frame = requestAnimationFrame(draw)
+    frame = requestAnimationFrame(timedDraw)
     return () => cancelAnimationFrame(frame)
   }, [mapImage, labels, wantedScale])
 

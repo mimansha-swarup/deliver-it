@@ -1,9 +1,13 @@
 import { FILE_PREFIX } from '../game/brand'
 import { pauseClock, resumeClock } from '../game/clock'
 import { useEffect, useRef } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('camera')
 
 /*
  * Photo mode, from the phone's Camera app: the game pauses (R3F's clock stops, so every frame's

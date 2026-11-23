@@ -1,5 +1,5 @@
 import { use, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import { StreamedChunks } from './StreamedChunks'
@@ -26,6 +26,9 @@ import { groundLift } from './groundLift'
 import { createRandom } from './props'
 import { isDebug } from '../dev/spawn'
 import { PREFIXES, TYPE_WORDS, type Name } from './shopNames'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /**
  * Every shop front: an open doorway with the shop inside, a signboard above

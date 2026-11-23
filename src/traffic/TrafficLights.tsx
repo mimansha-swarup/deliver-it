@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { box, colored, merge } from '../world/simpleShapes'
 import { getLight, ZEBRA_DEPTH, type SignalLight, type SignalPost, type TrafficSignals } from './trafficSignals'
 import type { TrafficWorld } from './trafficLogic'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('traffic drawing (instances, wheels, lamps)')
 
 const POLE_COLOR = '#23262a'
 const HOUSING_COLOR = '#14161a'
