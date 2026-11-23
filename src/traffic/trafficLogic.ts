@@ -706,6 +706,7 @@ export function createTrafficWorld(
     // A quarter of the road out from the middle: 1.6 m on a 6.5 m residential street, never under 1.4.
     sideOffset: (roadWidth) => Math.max(1.4, roadWidth / 4),
     clearance: 1.1,
+    obeyOneWay: true,
   })
   for (const lane of roadLanes) {
     const street = streetAt((lane.startX + lane.endX) / 2, (lane.startZ + lane.endZ) / 2)
