@@ -24,6 +24,8 @@ import { RadioPlayer } from './ui/Radio'
 import { Phone } from './ui/Phone'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
+import { startFramePacing } from './game/framePacing'
+import { PowerToast } from './ui/PowerToast'
 import { StaticMatrices } from './world/StaticMatrices'
 import { NearInstances } from './world/NearInstances'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
@@ -56,6 +58,8 @@ import { ChatBubbles } from './ui/ChatBubbles'
 import { Attribution } from './ui/Credits'
 
 pageOpen()
+// Frames are drawn when the pacing asks for them (game/framePacing.ts), not on every refresh of the screen.
+startFramePacing()
 
 /** The sky and haze before the sky's own colours take over, a frame after start. */
 const SKY_COLOR = '#e3dbc4'
@@ -147,7 +151,7 @@ function App() {
     <>
       <ErrorBoundary>
         {/* No antialiasing here: everything is drawn through PostEffects, which antialiases its own picture. */}
-        <Canvas shadows="percentage" dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
+        <Canvas frameloop="demand" shadows="percentage" dpr={pixelRatio} camera={{ fov: 60, near: 0.5, far: 1500 }} gl={{ antialias: false }}>
           <color attach="background" args={[SKY_COLOR]} />
           <fog attach="fog" args={[SKY_COLOR, 520, 1300]} />
           <ViewDistance />
@@ -165,6 +169,7 @@ function App() {
         </Canvas>
 
         <GameUi />
+        <PowerToast />
       </ErrorBoundary>
 
       <AttributionLine />

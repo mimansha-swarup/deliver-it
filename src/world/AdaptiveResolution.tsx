@@ -4,6 +4,8 @@ import { isDebug } from '../dev/spawn'
 import { useGameStore } from '../game/gameStore'
 import { firstRatio, liveScaler, ratioRange, rememberRatio, startingRatio, useResolution } from '../game/resolution'
 import { useLaunch } from '../game/launch'
+import { livePacing } from '../game/framePacing'
+import { useSettings } from '../game/settings'
 
 /** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
 const useFrame = timedFrame('resolution scaler')
@@ -105,6 +107,13 @@ export function AdaptiveResolution() {
   const started = useGameStore((state) => state.started)
   const quality = useGameStore((state) => state.quality)
   const lowScale = useGameStore((state) => state.lowScale)
+  const sharpPicture = useSettings((state) => state.sharpPicture)
+  /**
+   * Whether frames come faster than 60 a second: a screen that refreshes faster, and a game that's
+   * let to (game/framePacing.ts: Unlimited). Paced to 60 or 30, a fast screen is judged as a 60 Hz
+   * one is, by its late frames: an aim of 80 it's never allowed to reach would only blur the picture.
+   */
+  const fastNow = () => screen.current.refresh < SLOWEST_REFRESH * 0.95 && livePacing.cap === 0
   const batch = useRef({ time: 0, frames: [] as number[], slow: 0, calm: 0, ceiling: Infinity, ceilingAge: 0, sinceRaise: Infinity, sinceChange: Infinity, warmUp: WARM_UP, refresh: SLOWEST_REFRESH })
   /**
    * The screen's refresh, in seconds, if it's faster than 60 Hz: the average of the short gaps between
@@ -124,7 +133,7 @@ export function AdaptiveResolution() {
       // The moment the screen's speed is known (half a second into the title screen): the resolution
       // to ride at, set now. Left until the ride began, the change froze its first moments.
       if (!known && screen.current.count >= ENOUGH_GAPS && !useGameStore.getState().started) {
-        const first = firstRatio(useGameStore.getState().quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+        const first = firstRatio(useGameStore.getState().quality, fastNow())
         if (first !== useResolution.getState().pixelRatio) pending.current = first
       }
       id = requestAnimationFrame(watch)
@@ -135,15 +144,15 @@ export function AdaptiveResolution() {
 
   // A new quality starts again from its own resolution, and forgets what was too much.
   useEffect(() => {
-    pending.current = firstRatio(quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+    pending.current = firstRatio(quality, fastNow())
     Object.assign(batch.current, { time: 0, frames: [], slow: 0, calm: 0, ceiling: Infinity, sinceRaise: Infinity })
-  }, [quality, lowScale])
+  }, [quality, lowScale, sharpPicture])
 
   // As the ride begins (the loading screen is still up), with the screen's speed now measured: the
   // resolution to ride at, so a change that was always going to come doesn't come mid-ride.
   useEffect(() => {
     if (!started) return
-    const first = firstRatio(quality, screen.current.refresh < SLOWEST_REFRESH * 0.95)
+    const first = firstRatio(quality, fastNow())
     if (first !== useResolution.getState().pixelRatio) pending.current = first
   }, [started, quality])
 
@@ -177,6 +186,14 @@ export function AdaptiveResolution() {
       state.warmUp = WARM_UP
       return
     }
+    // Resting (a menu up, or standing idle at 30 a second: game/framePacing.ts), the frames come
+    // slowly on purpose and say nothing about the device: none are judged, and the batch starts again after.
+    if (livePacing.resting && !covered) {
+      state.frames = []
+      state.time = 0
+      state.warmUp = Math.max(state.warmUp, 0.5)
+      return
+    }
     state.sinceChange += delta
     if (covered) state.warmUp = Math.min(state.warmUp, COVERED.warmUp)
     if (state.warmUp > 0) {
@@ -195,11 +212,13 @@ export function AdaptiveResolution() {
     // match a slow game, so this remembers the best it has seen.
     const sorted = [...state.frames].sort((a, b) => a - b)
     state.refresh = Math.min(state.refresh, Math.max(FASTEST_REFRESH, sorted[Math.floor(sorted.length * 0.1)]))
-    const lateShare = state.frames.filter((frame) => frame > state.refresh * LATE).length / state.frames.length
+    // Paced under the screen's rate (60 on a 120 Hz screen, 30 in Battery saver), a frame is late by that pace, not the screen's.
+    const pace = livePacing.cap > 0 && !covered ? Math.max(state.refresh, livePacing.interval) : state.refresh
+    const lateShare = state.frames.filter((frame) => frame > pace * LATE).length / state.frames.length
     // A fast screen is judged by its frame rate, a 60 Hz one by its late frames.
     const fps = state.frames.length / state.time
     const { refresh } = screen.current
-    const fast = refresh < SLOWEST_REFRESH * 0.95
+    const fast = refresh < SLOWEST_REFRESH * 0.95 && (livePacing.cap === 0 || covered)
     const target = Math.min(TARGET_FPS, 0.94 / refresh)
     // On a fast screen, hovering a little under the aim counts: at 70 to 80 FPS with 80 the aim, a second
     // at 81 kept resetting the count and the resolution never came down.

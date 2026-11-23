@@ -255,6 +255,19 @@ export function SettingsPanel({ onBack, inGame = false, onTutorial }: { onBack: 
           options={QUALITY_LEVELS.map((level) => ({ id: level, text: t(level as TextKey) }))}
           onChange={(level) => useGameStore.getState().setQuality(level)}
         />
+        <Choice
+          label={t('frameRate')}
+          value={settings.frameRate ?? 'smooth'}
+          options={[
+            { id: 'saver', text: t('frameSaver') },
+            { id: 'smooth', text: t('frameSmooth') },
+            { id: 'unlimited', text: t('frameUnlimited') },
+          ]}
+          onChange={(frameRate) => settings.set({ frameRate })}
+        />
+        <p className="menu-note">{t('frameNote')}</p>
+        <Switch label={t('autoSaver')} checked={settings.autoSaver ?? true} onChange={(autoSaver) => settings.set({ autoSaver })} />
+        <Switch label={t('sharpPicture')} checked={settings.sharpPicture ?? false} onChange={(sharpPicture) => settings.set({ sharpPicture })} />
       </Group>
       <Group title={t('sound')}>
         <Slider label={t('masterVolume')} value={settings.masterVolume ?? 1} min={0} max={1} step={0.05} show={percent(settings.masterVolume ?? 1)} onChange={(masterVolume) => settings.set({ masterVolume })} />
