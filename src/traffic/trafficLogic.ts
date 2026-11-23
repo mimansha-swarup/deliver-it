@@ -225,6 +225,8 @@ export const TRAFFIC_RULES = {
 
 type Mover = {
   lane: number
+  /** Time not yet stepped, in seconds, while it's far from the player and stepped less often (`FAR_SIM`). */
+  owed?: number
   /** The lane it will take after this one, once chosen. -1 or missing until then. */
   nextLane?: number
   /** The lane it came from, for finishing the curve round the corner between them. -1 or missing if none. */
@@ -2903,6 +2905,15 @@ function stepDrivers(world: TrafficWorld, rider: ScooterState, dt: number) {
   }
 }
 
+/**
+ * Traffic and people more than `from` metres from the player are worked out `1 / every` times a
+ * second, not every frame: at that distance a car is a dozen pixels in the haze, and stepping it
+ * three times less often can't be seen. Each step covers the time since the last, up to `most`
+ * (the longest step the driving is steady at). Nothing is kept further than 220 m away at all
+ * (`vehicleRemoveAt`, `pedestrianRemoveAt`), so there's nothing beyond that to freeze.
+ */
+const FAR_SIM = { from: 150, every: 0.05, most: 0.05 }
+
 export function stepTraffic(
   world: TrafficWorld,
   rider: ScooterState,
@@ -3029,6 +3040,15 @@ export function stepTraffic(
       continue
     }
 
+    // Far from the player, a vehicle is stepped less often (`FAR_SIM`), with the time it's owed.
+    let stepDt = dt
+    if (!vehicle.taken && Math.hypot(vehicle.x - at.x, vehicle.z - at.z) > FAR_SIM.from) {
+      vehicle.owed = (vehicle.owed ?? 0) + dt
+      if (vehicle.owed < FAR_SIM.every) continue
+      stepDt = Math.min(vehicle.owed, FAR_SIM.most)
+    }
+    vehicle.owed = 0
+
     const up = isUp(vehicle)
     const peers = up ? upVehicles : groundVehicles
     const seen = up === riderUp ? rider : far
@@ -3036,7 +3056,7 @@ export function stepTraffic(
     // edges through after a moment (`mayBarge`). One still locked where the rider can't see is taken
     // away, and appears elsewhere.
     const locked = () => {
-      vehicle.knot = (vehicle.knot ?? 0) + dt
+      vehicle.knot = (vehicle.knot ?? 0) + stepDt
       if (vehicle.knot > rules.knotTime && !vehicle.taken && Math.hypot(vehicle.x - at.x, vehicle.z - at.z) > rules.pinnedRemoveDistance) vehicle.lane = -1
     }
     // Touching another that's in front of it: it stops. If the other is stopped by this one too,
@@ -3047,7 +3067,7 @@ export function stepTraffic(
     const ring = inWay ? null : ringToBreak(vehicle, activeVehicles)
     const knot = vehicle.knot ?? 0
     if (!inWay && (vehicle.holdOff ?? 0) > 0) {
-      vehicle.holdOff = (vehicle.holdOff ?? 0) - dt
+      vehicle.holdOff = (vehicle.holdOff ?? 0) - stepDt
       vehicle.speed = 0
       vehicle.braking = true
       if (trafficDebug.reasons) vehicle.reason = 'backed off, letting the other through'
@@ -3069,14 +3089,14 @@ export function stepTraffic(
       vehicle.speed = 0
       vehicle.braking = true
       if (trafficDebug.reasons) vehicle.reason = 'touching another in front of it'
-      maybeHonk(world, vehicle, seen, false, dt)
+      maybeHonk(world, vehicle, seen, false, stepDt)
       locked()
       if (vehicle.lane === -1) continue
       // Back off, if it's the lighter: straight back a little way, never into anything behind.
       const backed = vehicle.backedOff ?? 0
       if (knot > rules.backOffAfter && backed < rules.backOffMost && !vehicle.taken && !outranks(vehicle, inWay, activeVehicles)) {
         const before = overlapWithTraffic(vehicle, peers)
-        const step = rules.backOffSpeed * dt
+        const step = rules.backOffSpeed * stepDt
         const fromX = vehicle.x
         const fromZ = vehicle.z
         vehicle.x -= Math.sin(vehicle.heading) * step
@@ -3101,7 +3121,7 @@ export function stepTraffic(
     const kept = { x: vehicle.x, z: vehicle.z, heading: vehicle.heading, along: vehicle.along, lane: vehicle.lane, prevLane: vehicle.prevLane, nextLane: vehicle.nextLane, onward: vehicle.onward ? [...vehicle.onward] : undefined, shift: vehicle.shift, deck: vehicle.deck, lift: vehicle.lift }
     // Going through a lock: at a crawl, and not held at a line by the very one it's locked with.
     if (vehicle.barging) vehicle.junctionSpeed = rules.bargeSpeed
-    stepVehicle(world, vehicle, peers, seen, dt)
+    stepVehicle(world, vehicle, peers, seen, stepDt)
     if (vehicle.lane === -1) continue
     // Pulled up for the player: the driver gets out, and it stands empty.
     if (vehicle.taken === 'hailed' && vehicle.speed < 0.15) {
@@ -3123,15 +3143,15 @@ export function stepTraffic(
       }
     } else if (vehicle.barging || ring) locked()
     else {
-      vehicle.knot = Math.max(0, knot - dt)
+      vehicle.knot = Math.max(0, knot - stepDt)
       if (vehicle.knot === 0) vehicle.backedOff = 0
     }
     // Up on a deck there's no crash physics (it's all on the ground): it just never drives through the rider.
     if (up) {
-      blockRider(vehicle, seen, dt)
+      blockRider(vehicle, seen, stepDt)
       continue
     }
-    hitRider(world, vehicle, contact, dt)
+    hitRider(world, vehicle, contact, stepDt)
     for (const person of world.pedestrians.slice(0, pedestrianCount)) {
       if (person.lane === -1 || person.body || person.fallen) continue
       if (Math.abs(person.x - vehicle.x) > 4 || Math.abs(person.z - vehicle.z) > 4) continue
@@ -3174,8 +3194,15 @@ export function stepTraffic(
       stepKnockedPedestrian(world, person, dt)
       continue
     }
-
-    stepPedestrian(world, person, contact, activeVehicles, dt)
+    // Far from the player, people are stepped less often too.
+    let personDt = dt
+    if (Math.hypot(person.x - at.x, person.z - at.z) > FAR_SIM.from) {
+      person.owed = (person.owed ?? 0) + dt
+      if (person.owed < FAR_SIM.every) continue
+      personDt = Math.min(person.owed, FAR_SIM.most)
+    }
+    person.owed = 0
+    stepPedestrian(world, person, contact, activeVehicles, personDt)
     hitPedestrian(world, person, contact)
   }
   separatePeople(world.pedestrians.slice(0, pedestrianCount), dt)
