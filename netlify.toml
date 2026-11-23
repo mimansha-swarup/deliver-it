@@ -5,3 +5,11 @@
   # JavaScript, and a PostHog project key is meant to be in the browser. Without this, Netlify's
   # secrets scan finds them in the build's output and fails the build.
   SECRETS_SCAN_OMIT_KEYS = "VITE_POSTHOG_KEY,VITE_POSTHOG_HOST"
+
+# Lets a page start the browser's own JavaScript sampling profiler (`new Profiler(...)`), which
+# is how a slow frame is traced in a player's own browser. It allows nothing else, and nothing
+# runs unless a script asks for it.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Document-Policy = "js-profiling"
