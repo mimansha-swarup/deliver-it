@@ -1,3 +1,4 @@
+import { timed } from '../dev/frameTimes'
 import { useEffect, useRef } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveRoute } from '../game/livePlayer'
@@ -107,6 +108,10 @@ export function DirectionArrow() {
     let previousTime = performance.now()
     let shownAngle = 0
 
+    // Timed under its step for `?debug=2` (dev/frameTimes.ts).
+    function timedUpdate(time: number) {
+      timed('minimap and arrow', () => update(time))
+    }
     const update = (time: number) => {
       const delta = Math.max(0, (time - previousTime) / 1000)
       previousTime = time
@@ -119,10 +124,10 @@ export function DirectionArrow() {
       if (arrow.current) arrow.current.style.transform = `rotate(${shownAngle}rad)`
       const colour = currentTarget()?.color
       if (path.current && colour && path.current.getAttribute('fill') !== colour) path.current.setAttribute('fill', colour)
-      frame = requestAnimationFrame(update)
+      frame = requestAnimationFrame(timedUpdate)
     }
 
-    frame = requestAnimationFrame(update)
+    frame = requestAnimationFrame(timedUpdate)
     return () => cancelAnimationFrame(frame)
   }, [])
 

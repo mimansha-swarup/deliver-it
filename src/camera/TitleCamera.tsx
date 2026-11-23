@@ -1,4 +1,7 @@
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('camera')
 
 const ORBIT_RADIUS = 300
 const ORBIT_HEIGHT = 170

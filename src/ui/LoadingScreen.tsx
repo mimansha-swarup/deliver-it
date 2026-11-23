@@ -4,6 +4,7 @@ import { markLoad } from '../dev/loadTimeline'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useGameStore } from '../game/gameStore'
 import { useLaunch, WORLD_PART_COUNT, WORLD_PARTS } from '../game/launch'
+import { liveScaler } from '../game/resolution'
 
 /** The longest the ride waits for the squares round the rider, once every part is on screen, in milliseconds. */
 const NEAR_WAIT_MS = 4000
@@ -58,8 +59,16 @@ function Bar({ share, busy = false }: { share: number; busy?: boolean }) {
  * animation of position or opacity, which the browser runs on its own, so the
  * pictures keep drifting and the spinner keeps turning.
  */
-/** How long the loading screen stays whole after the ride has started, in milliseconds. */
-const HOLD_MS = 650
+/**
+ * The loading screen stays whole after the ride has started until the game is running smoothly
+ * behind it: the average over the last second is at least `fps` frames a second with no frame
+ * longer than `hitch` ms in it. Never less than `least` ms, and never more than `longest`: two
+ * seconds after the scene is ready it lifts whatever the frame rate (on a laptop saving its
+ * battery, where the browser holds everything to 30 frames a second, it waited its full five).
+ * It also waits for the automatic resolution to settle. `fps` is 55: about a second at 55 frames a second or better, as a 60 Hz screen at its best gives 59 or 60.
+ * The rider's controls are held until it goes (`useLaunch`'s `covered`), so nobody rides blind.
+ */
+const SETTLE = { fps: 55, hitch: 50, least: 1000, longest: 2000 }
 
 export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const loading = useGameStore((state) => state.loading)
@@ -124,16 +133,31 @@ export function LoadingScreen({ onGone }: { onGone: () => void }) {
   const [leaving, setLeaving] = useState(false)
   useEffect(() => {
     if (!started) return
-    const timer = window.setTimeout(() => setLeaving(true), HOLD_MS)
-    return () => window.clearTimeout(timer)
+    const began = performance.now()
+    const frames: number[] = []
+    let id = requestAnimationFrame(function watch(now) {
+      frames.push(now)
+      while (frames.length > 0 && frames[0] < now - 1000) frames.shift()
+      const waited = now - began
+      let longest = 0
+      for (let i = 1; i < frames.length; i++) longest = Math.max(longest, frames[i] - frames[i - 1])
+      // And the automatic resolution has made up its mind (game/resolution.ts): its steps freeze a frame or two each.
+      const smooth = waited >= SETTLE.least && frames.length >= SETTLE.fps && longest <= SETTLE.hitch && liveScaler.content
+      if (smooth || waited >= SETTLE.longest) {
+        markLoad(`cover lifts: ${frames.length} FPS over the last second, after ${(waited / 1000).toFixed(1)} s${smooth ? '' : ' (gave up waiting)'}`)
+        useLaunch.setState({ covered: false })
+        setLeaving(true)
+      } else id = requestAnimationFrame(watch)
+    })
+    return () => cancelAnimationFrame(id)
   }, [started])
 
   // The fade is a CSS transition. If it doesn't run, as with reduced motion, this ends it anyway.
   useEffect(() => {
-    if (!started) return
-    const timer = window.setTimeout(onGone, 900 + HOLD_MS)
+    if (!leaving) return
+    const timer = window.setTimeout(onGone, 900)
     return () => window.clearTimeout(timer)
-  }, [started, onGone])
+  }, [leaving, onGone])
 
   const failed = loading.stage === 'error'
   const downloaded = loading.stage === 'downloaded'

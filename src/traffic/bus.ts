@@ -61,16 +61,123 @@ function wheel(x: number, z: number, radius: number, width: number): THREE.Buffe
  */
 export function createBusFromModel(model: THREE.BufferGeometry, arches: { z: number }[]): THREE.BufferGeometry {
   const flat = model.index ? model.toNonIndexed() : model.clone()
-  const body = new THREE.BufferGeometry()
-  for (const name of ['position', 'normal', 'color', '_paint']) body.setAttribute(name, flat.getAttribute(name).clone())
+  const body = repaintBus(flat)
   flat.dispose()
-  const parts = [body]
+  const L = HALF_LENGTH
+  const W = HALF_WIDTH
+  const parts = [
+    body,
+    // Set just proud of the model's own ends, which the livery leaves plain: the screen, the
+    // destination board, bumpers, lamps and the engine grille, each a clean flat panel.
+    slab([-W + 0.16, 1.38, L - 0.05], [W - 0.16, 2.42, L + 0.035], GLASS),
+    slab([-W + 0.3, 2.52, L - 0.05], [W - 0.3, 2.84, L + 0.04], BOARD),
+    slab([-W + 0.45, 2.6, L], [W - 0.95, 2.76, L + 0.05], BOARD_GLOW),
+    slab([-W + 0.04, 0.36, L - 0.12], [W - 0.04, 0.62, L + 0.07], DARK),
+    slab([-W + 0.14, 0.72, L - 0.05], [-W + 0.46, 0.9, L + 0.045], LAMP),
+    slab([W - 0.46, 0.72, L - 0.05], [W - 0.14, 0.9, L + 0.045], LAMP),
+    slab([-W + 0.04, 0.36, -L - 0.07], [W - 0.04, 0.62, -L + 0.12], DARK),
+    slab([-W + 0.14, 0.72, -L - 0.045], [-W + 0.34, 0.9, -L + 0.05], TAIL),
+    slab([W - 0.34, 0.72, -L - 0.045], [W - 0.14, 0.9, -L + 0.05], TAIL),
+    slab([-0.62, 0.7, -L - 0.035], [0.62, 1.18, -L + 0.05], DARK),
+    slab([-W + 0.3, 1.5, -L - 0.035], [W - 0.3, 2.3, -L + 0.05], GLASS),
+  ]
+  // The side windows: a row of panes down each side, with the pillars between them, and the two
+  // doors on the left (the kerb side). The model's own windows were a few dark smears.
+  const side = (flat.boundingBox ?? new THREE.Box3().setFromBufferAttribute(flat.getAttribute('position') as THREE.BufferAttribute)).max.x
+  const doors = [L - 1.85, -0.95]
+  for (let z = -L + 0.55; z < L - 0.75; z += 1.12) {
+    for (const x of [-1, 1]) {
+      if (x < 0 && doors.some((door) => z + 0.98 > door && z < door + 1.05)) continue
+      parts.push(slab(x < 0 ? [-side - 0.02, 1.52, z] : [side - 0.03, 1.52, z], x < 0 ? [-side + 0.03, 2.32, z + 0.98] : [side + 0.02, 2.32, z + 0.98], GLASS))
+    }
+  }
+  for (const door of doors) {
+    parts.push(slab([-side - 0.025, 0.66, door], [-side + 0.03, 2.36, door + 1.05], DARK))
+    for (const leaf of [0.06, 0.56]) parts.push(slab([-side - 0.035, 1.2, door + leaf], [-side + 0.03, 2.28, door + leaf + 0.43], GLASS))
+  }
+  for (const part of parts.slice(1)) part.computeVertexNormals()
   for (const x of [-HALF_WIDTH + 0.2, HALF_WIDTH - 0.2]) for (const { z } of arches) parts.push(...wheel(x, z, 0.5, 0.36))
   const merged = mergeGeometries(parts)
   parts.forEach((part) => part.dispose())
   if (!merged) throw new Error('The bus could not be put together')
   merged.computeBoundingSphere()
   return merged
+}
+
+/** The livery's lines, in metres up: grime below `sill`, paint to `belt`, a cream stripe to `stripe`, cream above. */
+const LIVERY = { sill: 0.62, belt: 1.3, stripe: 1.4 }
+
+/**
+ * The bus model with a clean livery. Its own colours were sampled from a photo texture onto a few
+ * thousand corners, so every stripe and the whole front came out as smears. Here its shape is
+ * kept and its paint redone: each triangle is cut along the livery's lines (so the lines are
+ * straight whatever the mesh), and each piece is one flat colour by its height: grime, the paint
+ * (which takes each bus's colour), a stripe, cream. Windows, doors and both ends are left plain,
+ * for the panels `createBusFromModel` puts over them.
+ */
+function repaintBus(flat: THREE.BufferGeometry): THREE.BufferGeometry {
+  const position = flat.getAttribute('position')
+  const normal = flat.getAttribute('normal')
+  type Corner = { p: Vec; n: Vec }
+  const out = { position: [] as number[], normal: [] as number[], color: [] as number[], paint: [] as number[] }
+  const tones = { cream: new THREE.Color(CREAM), grime: new THREE.Color(GRIME), paint: new THREE.Color(PAINT), roof: new THREE.Color('#cfc8b6') }
+  const lerp = (a: Corner, b: Corner, t: number): Corner => ({
+    p: [a.p[0] + (b.p[0] - a.p[0]) * t, a.p[1] + (b.p[1] - a.p[1]) * t, a.p[2] + (b.p[2] - a.p[2]) * t],
+    n: [a.n[0] + (b.n[0] - a.n[0]) * t, a.n[1] + (b.n[1] - a.n[1]) * t, a.n[2] + (b.n[2] - a.n[2]) * t],
+  })
+  /** The part of a polygon above (or below) a height. */
+  const clip = (polygon: Corner[], height: number, above: boolean): Corner[] => {
+    const result: Corner[] = []
+    polygon.forEach((a, index) => {
+      const b = polygon[(index + 1) % polygon.length]
+      const aIn = above ? a.p[1] >= height : a.p[1] < height
+      const bIn = above ? b.p[1] >= height : b.p[1] < height
+      if (aIn) result.push(a)
+      if (aIn !== bIn) result.push(lerp(a, b, (height - a.p[1]) / (b.p[1] - a.p[1])))
+    })
+    return result
+  }
+  const emit = (polygon: Corner[], tone: THREE.Color, painted: boolean) => {
+    for (let i = 1; i < polygon.length - 1; i++) {
+      for (const corner of [polygon[0], polygon[i], polygon[i + 1]]) {
+        out.position.push(...corner.p)
+        out.normal.push(...corner.n)
+        out.color.push(tone.r, tone.g, tone.b)
+        out.paint.push(painted ? 1 : 0)
+      }
+    }
+  }
+  const bands: [number, number, THREE.Color, boolean][] = [
+    [-Infinity, LIVERY.sill, tones.grime, false],
+    [LIVERY.sill, LIVERY.belt, tones.paint, true],
+    [LIVERY.belt, LIVERY.stripe, tones.cream, false],
+    [LIVERY.stripe, Infinity, tones.cream, false],
+  ]
+  for (let first = 0; first < position.count; first += 3) {
+    const corners: Corner[] = [0, 1, 2].map((i) => ({
+      p: [position.getX(first + i), position.getY(first + i), position.getZ(first + i)],
+      n: [normal.getX(first + i), normal.getY(first + i), normal.getZ(first + i)],
+    }))
+    const middleY = (corners[0].p[1] + corners[1].p[1] + corners[2].p[1]) / 3
+    const upward = (corners[0].n[1] + corners[1].n[1] + corners[2].n[1]) / 3
+    // The roof's top is a duller cream, weathered.
+    if (upward > 0.7 && middleY > 2.6) {
+      emit(corners, tones.roof, false)
+      continue
+    }
+    for (const [from, to, tone, painted] of bands) {
+      let piece = corners
+      if (from > -Infinity) piece = clip(piece, from, true)
+      if (to < Infinity && piece.length >= 3) piece = clip(piece, to, false)
+      if (piece.length >= 3) emit(piece, tone, painted)
+    }
+  }
+  const body = new THREE.BufferGeometry()
+  body.setAttribute('position', new THREE.Float32BufferAttribute(out.position, 3))
+  body.setAttribute('normal', new THREE.Float32BufferAttribute(out.normal, 3))
+  body.setAttribute('color', new THREE.Float32BufferAttribute(out.color, 3))
+  body.setAttribute('_paint', new THREE.Float32BufferAttribute(out.paint, 1))
+  return body
 }
 
 export function createBusGeometry(): THREE.BufferGeometry {

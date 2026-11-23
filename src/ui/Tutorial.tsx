@@ -111,6 +111,7 @@ function TutorialDirector() {
       useGameStore.setState({ offer: { mission, expiresAt: performance.now() + 10 * 60 * 1000 } })
     }
 
+    let wentOnline = false
     const check = () => {
       const state = useGameStore.getState()
       switch (step) {
@@ -121,7 +122,10 @@ function TutorialDirector() {
           break
         case 'accept':
           // The tutorial opens on an order: online without being asked, and the order there within a second or so (`searching`, below).
-          if (state.duty !== 'online' && !state.mission) state.goOnline()
+          // Once only: a rider who then goes offline themself stays offline, and is offered nothing
+          // (they were put back online every time this looked, and the order popped up at them off duty).
+          if (!wentOnline && state.duty !== 'online' && !state.mission) state.goOnline()
+          wentOnline = true
           if (state.mission) finish()
           break
         case 'pickup':

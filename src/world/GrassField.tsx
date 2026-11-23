@@ -2,13 +2,16 @@ import { Surface, type SurfaceMap } from './surfaceMap'
 import { useEffect, useMemo } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { GRASS_TEXTURES } from './assetUrls'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { PLAY_AREA, PLAY_AREA_DEPTH, PLAY_AREA_WIDTH } from './worldUtils'
 import { windUniforms } from './wind'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** The square of grass around the rider, in metres. It moves with them. */
 const FIELD_SIZE = 90

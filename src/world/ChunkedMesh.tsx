@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { useGameStore } from '../game/gameStore'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import type * as THREE from 'three'
 import { livePlayer, liveView } from '../game/livePlayer'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 type ChunkedMeshProps = {
   /** One geometry per map square. Each needs its bounding sphere computed. */

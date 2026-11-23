@@ -83,11 +83,33 @@ export function createEngineVoice(context: AudioContext, output: AudioNode, kind
   const raspLevel = context.createGain()
   rasp.connect(raspFilter).connect(raspLevel).connect(filter)
 
+  // Idle, as a sound of its own: the slow, uneven putter of an engine ticking over, each firing a
+  // soft low thump. It's there when the revs are down and gone once the engine is pulling, so
+  // sitting at a signal doesn't sound like riding slowly.
+  const idle = context.createOscillator()
+  idle.type = 'sine'
+  const idlePulse = context.createGain()
+  idlePulse.gain.value = 0
+  const idleBeat = context.createOscillator()
+  idleBeat.type = 'sawtooth'
+  const idleBeatDepth = context.createGain()
+  const idleLevel = context.createGain()
+  idleLevel.gain.value = 0
+  const idleTone = context.createBiquadFilter()
+  idleTone.type = 'lowpass'
+  idleTone.frequency.value = 260
+  idleBeat.connect(idleBeatDepth).connect(idlePulse.gain)
+  idle.connect(idlePulse).connect(idleTone).connect(idleLevel).connect(panner)
+
   const setKind = (next: EngineKind) => {
     profile = PROFILES[next]
     buzz.type = profile.wave
     body.type = profile.wave === 'triangle' ? 'sine' : 'square'
     raspLevel.gain.value = profile.rasp
+    // The thump is an octave over the firing rate, so small speakers can play it; it pulses at the firing rate.
+    idle.frequency.value = Math.max(70, profile.idleHz * 2)
+    idleBeat.frequency.value = Math.min(22, profile.idleHz / 2)
+    idleBeatDepth.gain.value = 0.9
   }
   setKind(kind)
 
@@ -95,22 +117,28 @@ export function createEngineVoice(context: AudioContext, output: AudioNode, kind
   buzz.start(now)
   body.start(now)
   rasp.start(now, Math.random())
+  idle.start(now)
+  idleBeat.start(now)
 
   return {
     update: (revs, throttle, volume, pan = 0) => {
       const time = context.currentTime
-      const hz = profile.idleHz + (profile.topHz - profile.idleHz) * revs
+      // Pitch is the revs; under load (the throttle open) it sits a touch higher, and drops as it's shut.
+      const hz = (profile.idleHz + (profile.topHz - profile.idleHz) * revs) * (0.97 + 0.06 * throttle)
       buzz.frequency.setTargetAtTime(hz, time, FOLLOW)
       body.frequency.setTargetAtTime(hz / 2, time, FOLLOW)
       const open = Math.min(1, revs * 0.5 + throttle * 0.6)
       filter.frequency.setTargetAtTime(profile.dullHz + (profile.brightHz - profile.dullHz) * open, time, FOLLOW)
       // Louder under throttle, as an engine working is louder than one coasting.
-      level.gain.setTargetAtTime(volume * profile.loudness * (0.55 + 0.45 * throttle), time, FOLLOW)
+      // And with the revs: quiet ticking over, full at speed. The idle's own voice takes over as the revs fall.
+      const ticking = Math.max(0, 1 - revs / 0.22)
+      level.gain.setTargetAtTime(volume * profile.loudness * (0.3 + 0.3 * revs + 0.4 * throttle) * (1 - 0.45 * ticking * (1 - throttle)), time, FOLLOW)
+      idleLevel.gain.setTargetAtTime(volume * profile.loudness * 0.55 * ticking * (1 - throttle * 0.7), time, 0.12)
       panner.pan.setTargetAtTime(pan, time, FOLLOW)
     },
     setKind,
     dispose: () => {
-      for (const source of [buzz, body, rasp]) source.stop()
+      for (const source of [buzz, body, rasp, idle, idleBeat]) source.stop()
       panner.disconnect()
     },
   }

@@ -1,12 +1,15 @@
 import { useEffect, useMemo } from 'react'
 import { KIT_URL } from './assetUrls'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky, liveView } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { KitPlacement } from './cityKitPlacement'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 
 /** The map is cut into squares this wide, and each piece gets one instanced mesh per square. */

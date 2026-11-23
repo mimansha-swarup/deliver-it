@@ -161,7 +161,10 @@ export const useFamily = create<Family>()(
         raiseAsk: () => {
           const state = get()
           const game = useGameStore.getState()
-          if (!state.introduced || state.ask || !game.started || game.photoMode) return
+          // Only on a shift. Its card is the order card's twin (a countdown, the same two keys), and off
+          // duty, where no order can come, it read as an order arriving anyway. It waits for the next
+          // delivery, as it does when the wallet is short.
+          if (!state.introduced || state.ask || !game.started || game.photoMode || game.duty !== 'online') return
           const next = ASKS[state.nextAsk % ASKS.length]
           // Never asked of a wallet that can't spare it, or of a rider who owes Ravi: it waits for a better day.
           if (game.credits < next.amount + ASK.spare || game.dues > 0) return
@@ -254,8 +257,10 @@ useGameStore.subscribe((state, previous) => {
   window.setTimeout(() => attempt(6), ASK.after)
 })
 // An order offer comes first: an ask that's up when one arrives is put by, and comes back after the next delivery.
+// Going off duty puts it by the same way.
 useGameStore.subscribe((state, previous) => {
-  if (state.offer && !previous.offer && useFamily.getState().ask) useFamily.setState({ ask: null, sinceAsk: ASK.every - 1 })
+  const put = (state.offer && !previous.offer) || (state.duty !== 'online' && previous.duty === 'online')
+  if (put && useFamily.getState().ask) useFamily.setState({ ask: null, sinceAsk: ASK.every - 1 })
 })
 // A save that already has deliveries behind it starts the story on the next one.
 useGameStore.subscribe((state, previous) => {

@@ -1,8 +1,11 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import type { ScooterState } from './ScooterController'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('lights and sky')
 
 /** Brightness at full night, in candela, as three.js measures lights. */
 export const HEADLIGHT_INTENSITY = 110

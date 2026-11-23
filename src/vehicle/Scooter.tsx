@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { useFrame, useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import {
   BufferGeometry,
@@ -38,6 +39,11 @@ import { HOLD_INPUT, scooterLevel, stepScooter, type ScooterState } from './Scoo
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { useDriveInput } from './useDriveInput'
 import { NitroFlame } from './NitroFlame'
+import { useLaunch } from '../game/launch'
+import { liveCrash, liveTime, stepSlowMotion } from '../game/slowMotion'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rider and vehicle')
 
 /** Longest a single frame may count for, so a paused tab can't cause a huge jump. */
 const MAX_FRAME_TIME = 0.05
@@ -398,6 +404,10 @@ export function Scooter({
   const ownInner = useRef<Group>(null)
   const parked = useRef<Group>(null)
   const restLift = useRef(0)
+  const rackBox = useRef<Group>(null)
+  const looseBox = useRef<Group>(null)
+  // The box's middle, in the scooter's own space: the loose box turns about it.
+  const boxCentre = useMemo(() => (boxBounds.isEmpty() ? new Vector3() : boxBounds.getCenter(new Vector3())), [boxBounds])
 
   useFrame((_, delta) => {
     const state = scooterState.current
@@ -406,10 +416,25 @@ export function Scooter({
     const { started, phase } = useGameStore.getState()
     if (started) {
       const handingOver = phase === 'collecting' || phase === 'handingOver'
-      const controls = handingOver ? HOLD_INPUT : input.current
+      // Held too while the loading screen is still up over the first moments of the ride (game/launch.ts).
+      const controls = handingOver || useLaunch.getState().covered ? HOLD_INPUT : input.current
       const level = scooterLevel(state)
       const solid = deckCollisions && level > UP_ON_DECK ? deckCollisions(level) : collisions
-      stepScooter(state, controls, solid, surface, Math.min(delta, MAX_FRAME_TIME), water.level)
+      // A crash plays slowly for a moment (game/slowMotion.ts): the vehicle, the rider and the box all step by the slowed time.
+      stepSlowMotion(delta)
+      stepScooter(state, controls, solid, surface, Math.min(delta, MAX_FRAME_TIME) * liveTime.scale, water.level)
+    }
+    liveCrash.dark = state.recoverDark
+    // The box: on its rack, or loose in the road after a crash, where the controller has thrown it.
+    const bag = state.bag
+    const bagLoose = bag.loose && ownScooter
+    if (rackBox.current) rackBox.current.visible = !bagLoose
+    if (looseBox.current) {
+      looseBox.current.visible = bagLoose
+      if (bagLoose) {
+        looseBox.current.position.set(bag.x, bag.y, bag.z)
+        looseBox.current.rotation.set(bag.tumble, bag.heading, bag.roll, 'YXZ')
+      }
     }
 
     if (!ref.current || !terrain.current || !lean.current || !body.current || !riderRoot.current) return
@@ -491,6 +516,15 @@ export function Scooter({
         </>
       )}
     </group>
+    {/* The delivery box knocked off its rack by a crash, tumbling in the road until the rider is back up. */}
+    {ownScooter && (
+      <group ref={looseBox} visible={false}>
+        <group position={[-boxCentre.x, -boxCentre.y, -boxCentre.z]}>
+          <mesh geometry={parts.box} material={materials.box} />
+          <BoxLogos bounds={boxBounds} />
+        </group>
+      </group>
+    )}
     <group ref={ref}>
       {/* Tilts with the ground under the wheels, about the point between the axles. */}
       <group ref={terrain}>
@@ -550,8 +584,10 @@ export function Scooter({
               {built.logoBox && <BoxLogos bounds={new THREE.Box3(new Vector3(...built.logoBox.min), new Vector3(...built.logoBox.max))} />}
               {ownScooter && (
                 <>
-                  <mesh geometry={parts.box} material={materials.box} />
-                  <BoxLogos bounds={boxBounds} />
+                  <group ref={rackBox}>
+                    <mesh geometry={parts.box} material={materials.box} />
+                    <BoxLogos bounds={boxBounds} />
+                  </group>
                   <NitroFlame scooter={scooterState} />
                 </>
               )}

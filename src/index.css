@@ -5250,6 +5250,16 @@ body,
   letter-spacing: 0.02em;
 }
 
+/* After a crash: the screen dips to dark while the scooter is stood up, and comes back (ui/CrashFade.tsx sets the opacity each frame). */
+.crash-fade {
+  position: fixed;
+  inset: 0;
+  background: #0b0c0e;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 39;
+}
+
 /* The society guard's card: the OTP read out, then the register signed. Bottom centre, above the prompts. */
 .guard-card {
   position: fixed;
@@ -5654,4 +5664,141 @@ body,
   color: #c9c6bc;
   font-size: 12px;
   line-height: 1.3;
+}
+
+
+/* ---- Polish 2: the delivery summary as a bottom sheet, and notifications one at a time ---- */
+
+/*
+ * The delivery summary sits along the bottom, between the minimap and the phone, so the rider and
+ * the customer at the door stay in view above it (it used to be a card over the middle of them).
+ * Two columns: who, when and the rating on the left; the money on the right, with the button under it.
+ */
+.hud-results {
+  top: auto;
+  bottom: var(--edge, 16px);
+  left: 50%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  column-gap: 28px;
+  align-content: start;
+  width: min(820px, calc(100vw - 660px));
+  padding: 14px 22px 16px;
+  transform: translateX(-50%);
+}
+.hud-results > * {
+  grid-column: 1;
+}
+.hud-results h1 {
+  font-size: 21px;
+}
+.hud-results dl {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  gap: 4px 16px;
+  margin: 2px 0 10px;
+  font-size: 14px;
+}
+.hud-results button {
+  grid-column: 2;
+  grid-row: 5;
+  align-self: end;
+  padding: 9px;
+}
+/* What's said at the door is shown above the sheet, not behind it. */
+.hud-results ~ .voice-subtitle {
+  bottom: calc(var(--edge, 16px) + 250px);
+}
+/* A window too narrow for two columns beside the minimap and the phone: one column, still at the bottom. */
+@media (max-width: 1180px) {
+  .hud-results {
+    display: block;
+    width: min(360px, calc(100vw - 32px));
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+  }
+  .hud-results dl {
+    margin: 10px 0;
+  }
+}
+
+/* One notification at a time (Phone.tsx's NOTE_TIMES): 3.5 s, or 5 s for an urgent or a long one. */
+.phone-float-note,
+.phone-float-note[data-kind='music'] {
+  animation-duration: 3.5s;
+}
+.phone-float-note[data-long='true'],
+.phone-float-note[data-kind='urgent'] {
+  animation-duration: 5s;
+}
+/* A long one shows two lines, so it can be read in its time. */
+.phone-float-note[data-long='true'] span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+/* The phone by keyboard: whatever the arrow keys have chosen is ringed in the brand's yellow. */
+.phone-raised :focus-visible {
+  outline: 2px solid #f6b32b;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/*
+ * A message from home (DutyUi.tsx's family card) is not an order, and doesn't look like one: a warm
+ * cream card with charcoal words and the brand's yellow, where an order is dark with green. The same
+ * place, the same two keys; told apart at a glance.
+ */
+.duty-offer[data-family] {
+  color: #2a2118;
+  background: #fff3dc;
+  border: 0;
+  border-left: 5px solid #f6b32b;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+}
+.duty-offer[data-family] .hud-detail {
+  color: #6a5a45;
+}
+.duty-offer[data-family] .duty-offer-kind {
+  color: #fff6e6;
+  background: #b0562b;
+}
+.duty-offer[data-family] .duty-offer-pay {
+  color: #a8431f;
+}
+.duty-offer[data-family] .duty-offer-ring-track {
+  stroke: rgb(42 33 24 / 14%);
+}
+.duty-offer[data-family] .duty-offer-ring-left {
+  stroke: #f6b32b;
+}
+.duty-offer[data-family][data-hurry='true'] .duty-offer-ring-left {
+  stroke: #c9432f;
+}
+.duty-offer[data-family] .duty-offer-ring text {
+  fill: #2a2118;
+}
+.duty-offer[data-family] .duty-accept {
+  color: #2a2118;
+  background: #f6b32b;
+}
+.duty-offer[data-family] .duty-accept:disabled {
+  opacity: 0.45;
+}
+.duty-offer[data-family] .duty-decline {
+  color: #2a2118;
+  background: rgb(42 33 24 / 10%);
+}
+.duty-offer[data-family] kbd {
+  color: #2a2118;
+  background: rgb(42 33 24 / 12%);
+  border-color: rgb(42 33 24 / 25%);
+}
+/* What home is asking for is shown in full, on two lines if it needs them. */
+.duty-offer[data-family] .duty-offer-top strong {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
 }

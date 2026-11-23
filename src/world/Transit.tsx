@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { splitIntoSquares } from './splitGeometry'
+import { timedFrame } from '../dev/frameTimes'
 import { useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { isDebug } from '../dev/spawn'
-import { livePlayer, liveSky } from '../game/livePlayer'
+import { livePlayer, liveSky, liveView } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { ROAD_TEXTURES } from './assetUrls'
@@ -19,6 +20,9 @@ import { box, colored, merge } from './simpleShapes'
 import { createPosterAtlas, POSTER_COLUMNS, POSTER_ROWS } from './posters'
 import { createBusGeometry } from '../traffic/bus'
 import { BUS_STAND, heightOnFlyover, onAnotherDeck, RIDE_UNDER, pointOnPath, STAIR_RUN, STATION, type BusStand, type Flyover, type Flyovers, type Metro, type MetroStation } from './transitPlacement'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Draws the metro planned in transitPlacement.ts: the tracks and overhead line on the viaduct's deck, the
@@ -789,6 +793,8 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
     const parts = [...flyovers.decks.flatMap(createDeckGeometry), ...flyovers.pillars.flatMap(createFlyoverPillar), ...flyovers.barriers.flatMap(createRampBarrier)]
     return parts.length ? merge(parts) : null
   }, [flyovers])
+  const structureSquares = useMemo(() => (structure ? splitIntoSquares(structure.clone()) : null), [structure])
+  const detailSquares = useMemo(() => (deckTop.details ? splitIntoSquares(deckTop.details.clone()) : null), [deckTop])
   const posters = useMemo(() => createPillarPosters(flyovers.pillars), [flyovers])
   const atlas = useMemo(() => createPosterAtlas(), [])
   const stall = useMemo(() => createTeaStallGeometry(), [])
@@ -798,9 +804,10 @@ function FlyoverScenery({ flyovers }: { flyovers: Flyovers }) {
   }, [structure, posters, atlas, stall])
   return (
     <>
-      {structure && <mesh geometry={structure} material={material} castShadow receiveShadow />}
+      {/* In map squares, so only what's near and in view is drawn (and shadowed): whole, the flyovers were a quarter of a million triangles from anywhere on the map. */}
+      {structureSquares && <Squares geometries={structureSquares} material={material} />}
       <mesh geometry={deckTop.surface} material={asphalt} receiveShadow />
-      {deckTop.details && <mesh geometry={deckTop.details} material={material} castShadow receiveShadow />}
+      {detailSquares && <Squares geometries={detailSquares} material={material} />}
       {deckTop.lights && <mesh geometry={deckTop.lights} material={deckLightMaterial} />}
       {posters && (
         <mesh geometry={posters}>
@@ -917,9 +924,40 @@ function BusStandScenery({ stand }: { stand: BusStand }) {
   )
 }
 
+/**
+ * A big structure cut into map squares (splitGeometry.ts), each drawn only within the draw
+ * distance and casting a shadow only within the sun's shadow range; three.js leaves out the ones
+ * behind the camera. Looked at again every half second or so.
+ */
+function Squares({ geometries, material }: { geometries: THREE.BufferGeometry[]; material: THREE.Material }) {
+  const group = useRef<THREE.Group>(null)
+  const frames = useRef(0)
+  useEffect(() => () => geometries.forEach((geometry) => geometry.dispose()), [geometries])
+  useFrame(() => {
+    if (!group.current || frames.current++ % 20 !== 0) return
+    const { shadowRange } = QUALITY_PRESETS[useGameStore.getState().quality]
+    for (const mesh of group.current.children as THREE.Mesh[]) {
+      const sphere = mesh.geometry.boundingSphere
+      if (!sphere) continue
+      const distance = Math.hypot(sphere.center.x - livePlayer.x, sphere.center.z - livePlayer.z) - sphere.radius
+      mesh.visible = distance < liveView.drawDistance
+      mesh.castShadow = distance < shadowRange
+    }
+  })
+  return (
+    <group ref={group}>
+      {geometries.map((geometry) => (
+        <mesh key={geometry.uuid} geometry={geometry} material={material} castShadow receiveShadow />
+      ))}
+    </group>
+  )
+}
+
 export function Transit({ metro, flyovers, busStand }: { metro: Metro; flyovers: Flyovers; busStand: BusStand | null }) {
   const track = useMemo(() => createTrackGeometry(metro), [metro])
   const stations = useMemo(() => (metro.stations.length ? merge(metro.stations.map(createStationGeometry)) : null), [metro])
+  const trackSquares = useMemo(() => (track ? splitIntoSquares(track.clone()) : null), [track])
+  const stationSquares = useMemo(() => (stations ? splitIntoSquares(stations.clone()) : null), [stations])
   const cart = useMemo(() => createCartGeometry(), [])
   const material = useConcrete({ roughness: 0.85, side: THREE.DoubleSide })
   useEffect(() => () => {
@@ -929,8 +967,8 @@ export function Transit({ metro, flyovers, busStand }: { metro: Metro; flyovers:
     <>
       <FlyoverScenery flyovers={flyovers} />
       {busStand && <BusStandScenery stand={busStand} />}
-      {track && <mesh geometry={track} material={material} castShadow receiveShadow />}
-      {stations && <mesh geometry={stations} material={material} castShadow receiveShadow />}
+      {trackSquares && <Squares geometries={trackSquares} material={material} />}
+      {stationSquares && <Squares geometries={stationSquares} material={material} />}
       {metro.stations.map((station) => (
         <StationBoards key={station.name} station={station} />
       ))}

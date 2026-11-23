@@ -1,9 +1,12 @@
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('lights and sky')
 
 /** How far the sun or moon sits from the point it lights around, in metres. */
 const LIGHT_DISTANCE = 340

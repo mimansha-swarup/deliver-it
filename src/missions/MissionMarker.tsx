@@ -1,11 +1,14 @@
 import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { DoubleSide, type Group, type Mesh, type MeshBasicMaterial } from 'three'
 import { livePlayer, liveRoute, useOnFoot } from '../game/livePlayer'
 import { errandLive } from '../game/doorsteps'
 import { useGameStore } from '../game/gameStore'
 import { MISSION_RULES } from '../game/missionConfig'
 import { getCurrentStop } from './missionLogic'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 const BEAM_HEIGHT = 70
 const BEAM_RADIUS = 2.2

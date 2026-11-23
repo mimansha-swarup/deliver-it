@@ -3,7 +3,7 @@ import { useGLTF, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { useCompressedTextures, withKTX2 } from './ktx2'
-import { TRAFFIC_MODELS_URL, SPORT_BIKE_MODEL_URL, FLEET_MODELS_URL, PEOPLE_MODELS_URL, TRIPO_MODELS_URL } from '../traffic/modelFiles'
+import { TRAFFIC_MODELS_URL, TWO_WHEELERS_URL, FLEET_MODELS_URL, PEOPLE_MODELS_URL, TRIPO_MODELS_URL } from '../traffic/modelFiles'
 import {
   CONCRETE_PHOTO,
   FOLIAGE_TEXTURES,
@@ -41,7 +41,7 @@ export function WarmAssets({ children }: { children: ReactNode }) {
   useCompressedTextures([PARK_PHOTO])
   const gl = useThree((state) => state.gl)
   // city-kit.glb's textures are KTX2, so its loader needs the KTX2 reader; every later use of it gets this load.
-  for (const { scene } of [useGLTF(TRAFFIC_MODELS_URL), useGLTF(SPORT_BIKE_MODEL_URL), useGLTF(PEOPLE_MODELS_URL), useGLTF(FLEET_MODELS_URL), useGLTF(TRIPO_MODELS_URL), useGLTF(KIT_URL, true, true, withKTX2(gl))]) toFloats(scene)
+  for (const { scene } of [useGLTF(TRAFFIC_MODELS_URL), useGLTF(TWO_WHEELERS_URL), useGLTF(PEOPLE_MODELS_URL), useGLTF(FLEET_MODELS_URL), useGLTF(TRIPO_MODELS_URL), useGLTF(KIT_URL, true, true, withKTX2(gl))]) toFloats(scene)
   return children
 }
 

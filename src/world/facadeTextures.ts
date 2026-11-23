@@ -21,6 +21,13 @@ type LookStyle = {
    * corner must stay plain wall.
    */
   paint: (context: CanvasRenderingContext2D) => void
+  /**
+   * More ways of painting the same bay, for variety from one building to the next: other frames,
+   * grilles, shutters and sunshades round the same opening (the glass stays where `glow` says, so
+   * the night's lit windows fit every one). Each building uses one, picked by its own number
+   * (Buildings.tsx); the first is `paint`. Left out: every building of this look is the same.
+   */
+  variants?: ((context: CanvasRenderingContext2D) => void)[]
   /** The part that lights up at night, then how much of it does, then its two colours. */
   glow: Rect
   litShare: number
@@ -86,6 +93,126 @@ function paintHouse(context: CanvasRenderingContext2D) {
   // A sill with a shadow under it.
   fill(context, '#c4c2bb', [30, 92, 68, 4])
   fill(context, 'rgb(0 0 0 / 30%)', [30, 96, 68, 2])
+}
+
+/** The sill, its shadow, and the grime run down from it, as every house window has. */
+function paintHouseSill(context: CanvasRenderingContext2D, sill = '#c4c2bb') {
+  const grime = context.createLinearGradient(0, 96, 0, 122)
+  grime.addColorStop(0, 'rgb(40 34 28 / 24%)')
+  grime.addColorStop(1, 'rgb(40 34 28 / 0%)')
+  context.fillStyle = grime
+  context.fillRect(32, 96, 64, 26)
+  fill(context, sill, [30, 92, 68, 4])
+  fill(context, 'rgb(0 0 0 / 30%)', [30, 96, 68, 2])
+}
+
+/** A wooden window: a brown frame with a mullion, a horizontal-bar grille, and a concrete sunshade (chajja) over it. */
+function paintHouseWooden(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  paintHouseSill(context, '#b9b2a4')
+  fill(context, '#5d4030', [33, 25, 62, 68])
+  paintGlass(context, [38, 30, 52, 58], '#667b8c', '#27323b')
+  fill(context, '#5d4030', [62, 30, 4, 58])
+  fill(context, 'rgb(0 0 0 / 32%)', [38, 30, 52, 4])
+  for (let y = 40; y < 86; y += 10) fill(context, IRON, [38, y, 52, 2])
+  // The sunshade: a pale slab over the window, and the shade it throws.
+  fill(context, '#d9d6cd', [26, 15, 76, 7])
+  fill(context, 'rgb(0 0 0 / 34%)', [26, 22, 76, 4])
+}
+
+/** A sliding aluminium window: a thin pale frame, two panes, a diamond grille, and a painted band round it. */
+function paintHouseSliding(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  paintHouseSill(context, '#d2d0c8')
+  // The painted surround, a shade darker than the wall whatever its colour.
+  fill(context, 'rgb(0 0 0 / 13%)', [28, 20, 72, 78])
+  fill(context, '#c9ccd0', [35, 27, 58, 64])
+  paintGlass(context, [38, 30, 52, 58], '#7f97a8', '#33414c')
+  fill(context, '#c9ccd0', [62, 30, 3, 58])
+  fill(context, 'rgb(0 0 0 / 28%)', [38, 30, 52, 3])
+  context.strokeStyle = IRON
+  context.lineWidth = 1.2
+  context.beginPath()
+  for (let x = 38 - 58; x < 90; x += 13) {
+    context.moveTo(Math.max(38, x), x < 38 ? 30 + (38 - x) : 30)
+    context.lineTo(Math.min(90, x + 58), x + 58 > 90 ? 88 - (x + 58 - 90) : 88)
+    context.moveTo(Math.min(90, x + 58), x + 58 > 90 ? 30 + (x + 58 - 90) : 30)
+    context.lineTo(Math.max(38, x), x < 38 ? 88 - (38 - x) : 88)
+  }
+  context.stroke()
+}
+
+/** A shuttered window: green louvred shutters folded back either side of a plain opening with upright bars. */
+function paintHouseShutters(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  paintHouseSill(context)
+  fill(context, '#e4e1d8', [34, 26, 60, 66])
+  paintGlass(context, [38, 30, 52, 58], '#5f7384', '#232d35')
+  fill(context, 'rgb(0 0 0 / 34%)', [38, 30, 52, 4])
+  for (let x = 48; x < 90; x += 11) fill(context, IRON, [x, 30, 2, 58])
+  for (const x of [20, 94]) {
+    fill(context, '#3f6650', [x, 27, 14, 64])
+    for (let y = 31; y < 89; y += 5) fill(context, 'rgb(0 0 0 / 26%)', [x + 1, y, 12, 2])
+  }
+}
+
+/** Flats with a deep band: the window under a continuous sunshade, with a pale spandrel panel below it. */
+function paintApartmentBanded(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  fill(context, 'rgb(255 255 255 / 16%)', [0, 96, 128, 22])
+  fill(context, '#dcd9d0', [0, 6, 128, 7])
+  fill(context, 'rgb(0 0 0 / 32%)', [0, 13, 128, 4])
+  fill(context, '#8a8d91', [20, 14, 88, 78])
+  paintGlass(context, [24, 18, 80, 70], '#7890a2', '#2e3b46')
+  for (const x of [50, 77]) fill(context, '#8a8d91', [x, 18, 3, 70])
+  fill(context, 'rgb(0 0 0 / 30%)', [24, 18, 80, 4])
+  for (let y = 30; y < 88; y += 11) fill(context, IRON, [24, y, 80, 1.6])
+  fill(context, '#c9c7c0', [16, 92, 96, 4])
+  fill(context, 'rgb(0 0 0 / 30%)', [16, 96, 96, 2])
+}
+
+/** Flats with dark-framed windows in a painted recess, and a box grille standing proud of each. */
+function paintApartmentBoxGrille(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  fill(context, 'rgb(0 0 0 / 12%)', [12, 8, 104, 90])
+  fill(context, '#3d3f43', [20, 14, 88, 78])
+  paintGlass(context, [24, 18, 80, 70], '#6b8194', '#26313a')
+  fill(context, '#3d3f43', [62, 18, 4, 70])
+  fill(context, 'rgb(0 0 0 / 30%)', [24, 18, 80, 4])
+  for (let x = 28; x < 104; x += 6) fill(context, '#2d2f32', [x, 18, 1.4, 70])
+  for (const y of [18, 52, 86]) fill(context, '#2d2f32', [24, y, 80, 2])
+  const grime = context.createLinearGradient(0, 96, 0, 122)
+  grime.addColorStop(0, 'rgb(40 34 28 / 24%)')
+  grime.addColorStop(1, 'rgb(40 34 28 / 0%)')
+  context.fillStyle = grime
+  context.fillRect(20, 96, 88, 26)
+  fill(context, '#bdbbb4', [16, 92, 96, 4])
+  fill(context, 'rgb(0 0 0 / 30%)', [16, 96, 96, 2])
+}
+
+/** Upstairs from a shop, plastered rather than tiled: two separate windows with sunshades. */
+function paintShopFloorsPair(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  fill(context, '#6b6660', [12, 28, 104, 62])
+  paintGlass(context, [16, 32, 96, 54], '#74899a', '#2b3741')
+  // The pier between the two windows is wall again.
+  fill(context, 'rgb(235 232 224)', [56, 26, 16, 66])
+  fill(context, '#6b6660', [54, 28, 2, 62])
+  fill(context, '#6b6660', [72, 28, 2, 62])
+  for (let x = 22; x < 110; x += 9) if (x < 54 || x > 74) fill(context, IRON, [x, 32, 1.6, 54])
+  fill(context, '#d6d3ca', [8, 18, 112, 7])
+  fill(context, 'rgb(0 0 0 / 32%)', [8, 25, 112, 4])
+  fill(context, 'rgb(0 0 0 / 28%)', [12, 90, 104, 3])
+}
+
+/** Upstairs from a shop behind dark glass: one long tinted window in a slim frame, as newer shop buildings have. */
+function paintShopFloorsGlazed(context: CanvasRenderingContext2D) {
+  paintFloorBand(context)
+  fill(context, '#2f3338', [8, 24, 112, 70])
+  paintGlass(context, [16, 32, 96, 54], '#8fa7b6', '#3c4c58')
+  for (const x of [40, 64, 88]) fill(context, '#2f3338', [x, 28, 2, 62])
+  fill(context, '#2f3338', [12, 58, 104, 2])
+  fill(context, 'rgb(0 0 0 / 28%)', [8, 94, 112, 3])
 }
 
 /**
@@ -187,6 +314,7 @@ export const FACADE_LOOKS: Record<FacadeLook, LookStyle> = {
     roughness: 0.9,
     bumpy: true,
     paint: paintHouse,
+    variants: [paintHouse, paintHouseWooden, paintHouseSliding, paintHouseShutters],
     glow: [38, 30, 52, 58],
     litShare: 0.45,
     glowColors: WARM_GLOW,
@@ -197,6 +325,7 @@ export const FACADE_LOOKS: Record<FacadeLook, LookStyle> = {
     roughness: 0.85,
     bumpy: true,
     paint: paintApartment,
+    variants: [paintApartment, paintApartmentBanded, paintApartmentBoxGrille],
     glow: [24, 18, 80, 70],
     litShare: 0.5,
     glowColors: WARM_GLOW,
@@ -217,6 +346,7 @@ export const FACADE_LOOKS: Record<FacadeLook, LookStyle> = {
     roughness: 0.6,
     bumpy: false,
     paint: paintShopFloors,
+    variants: [paintShopFloors, paintShopFloorsPair, paintShopFloorsGlazed],
     glow: [16, 32, 96, 54],
     litShare: 0.55,
     glowColors: COOL_GLOW,
@@ -290,16 +420,24 @@ function createPlasterCanvas(photo: CanvasImageSource, size: number): HTMLCanvas
  * own colour shows through, and every wall repeats this image.
  */
 function createFacadeTexture(plaster: HTMLCanvasElement, style: LookStyle): THREE.CanvasTexture {
+  // The variants are stacked up the image, the first at the bottom: the wall's shader reads the one
+  // each building asks for (Buildings.tsx's `addWindowVariants`).
+  const paints = style.variants ?? [style.paint]
   const canvas = document.createElement('canvas')
   canvas.width = plaster.width
-  canvas.height = plaster.height
+  canvas.height = plaster.height * paints.length
 
   const context = canvas.getContext('2d')
   if (context) {
-    context.drawImage(plaster, 0, 0)
-    /** All the paint functions work in a 128-unit square, so they don't depend on size. */
-    context.scale(canvas.width / 128, canvas.height / 128)
-    style.paint(context)
+    paints.forEach((paint, variant) => {
+      context.save()
+      context.translate(0, (paints.length - 1 - variant) * plaster.height)
+      context.drawImage(plaster, 0, 0)
+      /** All the paint functions work in a 128-unit square, so they don't depend on size. */
+      context.scale(plaster.width / 128, plaster.height / 128)
+      paint(context)
+      context.restore()
+    })
   }
 
   const texture = new THREE.CanvasTexture(canvas)

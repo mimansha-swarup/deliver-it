@@ -39,7 +39,7 @@ const PORT = 9334
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 mkdirSync(OUT, { recursive: true })
 const profileDir = mkdtempSync(join(tmpdir(), 'deliver-it-shots-'))
-const chrome = spawn(CHROME, [`--remote-debugging-port=${PORT}`, `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', ...(args.includes('--windowed') ? [] : ['--headless=new']), '--window-size=1440,900', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', 'about:blank'], { stdio: 'ignore' })
+const chrome = spawn(CHROME, [`--remote-debugging-port=${PORT}`, `--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', '--mute-audio', ...(args.includes('--windowed') ? [] : ['--headless=new']), '--window-size=1440,900', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', 'about:blank'], { stdio: 'ignore' })
 
 async function connect() {
   for (let attempt = 0; attempt < 50; attempt++) {

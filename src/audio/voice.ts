@@ -36,7 +36,9 @@ export function lineText(id: string): string {
 const lastPicked = new Map<string, string>()
 /** One of the lines whose id starts with `prefix` ("cust.coming"), not the one picked last time. */
 export function pickLine(prefix: string): VoiceLine {
-  const all = VOICE_LINES.filter(({ id }) => id.startsWith(`${prefix}.`))
+  // A line can be asked for by its family (`cust.thanks`: any of them) or by its own name (`cust.thanks.1`).
+  // The second used to match nothing: the recording played, and its words came up as an empty message.
+  const all = VOICE_LINES.filter(({ id }) => id === prefix || id.startsWith(`${prefix}.`))
   const fresh = all.length > 1 ? all.filter(({ id }) => id !== lastPicked.get(prefix)) : all
   const line = fresh[Math.floor(Math.random() * fresh.length)] ?? { id: prefix, character: '', line: '', notes: '' }
   lastPicked.set(prefix, line.id)

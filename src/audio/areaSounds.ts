@@ -16,15 +16,20 @@ import { getNoise, midiToHz } from './instruments'
  *   lake birds     by the water, by day: coots, a lapwing, a kingfisher's rattle
  *   events         what's happening on the road nearby (game/cityEvents.ts): a wedding band's drums and
  *                  pipe, the rattle of a breaker at a dug-up road, a cow's moo
+ *   homes          on a residential street: now and then a dog barking behind a gate, and at meal times
+ *                  (morning, midday, evening) a pressure cooker's whistle from a kitchen
  *   rain           on what's around: drumming on tin awnings along the shops, pattering through
  *                  leaves on the quiet streets, hissing on open tarmac on the main roads
  */
 
 export type AreaState = { x: number; z: number; night: number; rain: number; hours: number; speed: number; indoors: boolean }
 
-const VOLUME = { band: 0.3, breaker: 0.16, moo: 0.2, traffic: 0.2, honk: 0.1, music: 0.085, vendor: 0.13, bell: 0.15, birds: 0.1, tin: 0.16, leaves: 0.2, tarmac: 0.14 }
-const HONK_EVERY: [number, number] = [2.8, 7.5]
-const HONK_EVERY_RUSH: [number, number] = [0.9, 2.8]
+const VOLUME = { dog: 0.17, cooker: 0.1, band: 0.3, breaker: 0.16, moo: 0.2, traffic: 0.2, honk: 0.1, music: 0.085, vendor: 0.13, bell: 0.15, birds: 0.1, tin: 0.16, leaves: 0.2, tarmac: 0.14 }
+// Sparing, even at a signal: one every several seconds, a few more at rush hour (they were every 3 to 7 s, and under 3 s at rush).
+const HONK_EVERY: [number, number] = [6, 15]
+const HONK_EVERY_RUSH: [number, number] = [2.5, 6.5]
+/** On a residential street: a dog somewhere behind a gate, and a pressure cooker's whistle from a kitchen, every so often (seconds). */
+const HOME_SOUND_EVERY: [number, number] = [18, 50]
 const VENDOR_EVERY: [number, number] = [5, 12]
 const BELL_EVERY: [number, number] = [6, 14]
 const BIRD_EVERY: [number, number] = [1.2, 4.5]
@@ -129,6 +134,72 @@ export function createAreaSounds(context: AudioContext, output: AudioNode) {
     }
   }
 
+  /** A dog some way off: two to four rough barks, each a falling yelp through a throat's two bands, with a breath of noise. */
+  const dogBarks = (volume: number, pan: number) => {
+    const to = panned(pan)
+    // Behind a wall, down the street: the top is taken off.
+    const far = context.createBiquadFilter()
+    far.type = 'lowpass'
+    far.frequency.value = 1700
+    far.connect(to)
+    const pitch = 0.8 + Math.random() * 0.5
+    let at = context.currentTime + 0.05
+    const barks = 2 + Math.floor(Math.random() * 3)
+    for (let bark = 0; bark < barks; bark++) {
+      const throat = context.createBiquadFilter()
+      throat.type = 'bandpass'
+      throat.frequency.value = 780 * pitch
+      throat.Q.value = 2.2
+      throat.connect(far)
+      note(throat, at, 430 * pitch, 0.13, volume * 1.6, 'sawtooth', 210 * pitch)
+      tick(far, at, 0.09, volume * 0.5, 1200 * pitch)
+      at += 0.2 + Math.random() * 0.22 + (bark === 1 ? 0.25 : 0)
+    }
+  }
+
+  /** A pressure cooker's whistle from a kitchen window: steam hissing up to a breathy whistle for two seconds, cut off short. */
+  const cookerWhistle = (volume: number, pan: number) => {
+    const to = panned(pan)
+    const at = context.currentTime + 0.05
+    const length = 1.6 + Math.random() * 1.1
+    const steam = context.createBufferSource()
+    steam.buffer = getNoise(context)
+    steam.loop = true
+    const band = context.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.setValueAtTime(2600, at)
+    band.frequency.linearRampToValueAtTime(3500, at + 0.5)
+    band.Q.value = 7
+    const level = context.createGain()
+    level.gain.setValueAtTime(0, at)
+    level.gain.linearRampToValueAtTime(volume, at + 0.45)
+    level.gain.setValueAtTime(volume, at + length - 0.12)
+    level.gain.linearRampToValueAtTime(0, at + length)
+    steam.connect(band).connect(level).connect(to)
+    steam.start(at, Math.random() * 0.5)
+    steam.stop(at + length + 0.05)
+    // The whistle itself, thin, with the flutter of the weight on its vent.
+    const whistle = context.createOscillator()
+    whistle.type = 'sine'
+    whistle.frequency.setValueAtTime(2500, at)
+    whistle.frequency.linearRampToValueAtTime(3350, at + 0.5)
+    const flutter = context.createOscillator()
+    flutter.frequency.value = 23
+    const flutterDepth = context.createGain()
+    flutterDepth.gain.value = 60
+    flutter.connect(flutterDepth).connect(whistle.frequency)
+    const whistleLevel = context.createGain()
+    whistleLevel.gain.setValueAtTime(0, at)
+    whistleLevel.gain.linearRampToValueAtTime(volume * 0.35, at + 0.5)
+    whistleLevel.gain.setValueAtTime(volume * 0.35, at + length - 0.1)
+    whistleLevel.gain.linearRampToValueAtTime(0, at + length)
+    whistle.connect(whistleLevel).connect(to)
+    for (const source of [whistle, flutter]) {
+      source.start(at)
+      source.stop(at + length + 0.05)
+    }
+  }
+
   /** A seller's cry: a voice-like tone through two vowel bands, long and falling; or the ice-candy man's bell; or a rubber horn. */
   const vendorCall = (volume: number, pan: number) => {
     const to = panned(pan)
@@ -215,6 +286,7 @@ export function createAreaSounds(context: AudioContext, output: AudioNode) {
   let area: Area = { junction: 0, shops: 0, temple: 0, water: 0, vendor: 0, street: null }
   let sinceLook = LOOK_EVERY
   let untilHonk = 2
+  let untilHome = 12
   let untilVendor = 4
   let untilBell = 3
   let untilBird = 2
@@ -240,6 +312,18 @@ export function createAreaSounds(context: AudioContext, output: AudioNode) {
       const busy = (area.street === 'main' ? 1 : area.street === 'shop' ? 0.6 : area.street === 'residential' ? 0.22 : 0.12) * (1 - night * 0.65) * (0.75 + 0.25 * rushHour(hours))
       follow(traffic.level.gain, VOLUME.traffic * busy * outside, 0.9)
       follow(swellDepth.gain, VOLUME.traffic * busy * outside * 0.45, 0.9)
+
+      // Homes: on a residential street, a dog now and then, and a cooker's whistle at meal times.
+      untilHome -= dt
+      if (untilHome <= 0) {
+        untilHome = between(HOME_SOUND_EVERY) * (1 + night * 0.8)
+        if (area.street === 'residential' && !indoors) {
+          const mealTime = (hours >= 6.5 && hours < 9.5) || (hours >= 12 && hours < 13.5) || (hours >= 18.5 && hours < 21)
+          const pan = Math.random() * 1.6 - 0.8
+          if (mealTime && Math.random() < 0.5) cookerWhistle(VOLUME.cooker * (0.6 + Math.random() * 0.4), pan)
+          else dogBarks(VOLUME.dog * (0.5 + Math.random() * 0.5), pan)
+        }
+      }
 
       // Horns at the signal.
       untilHonk -= dt

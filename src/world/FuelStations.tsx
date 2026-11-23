@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { liveSky } from '../game/livePlayer'
@@ -23,6 +23,9 @@ import {
   type FuelStation,
   type TyreShop,
 } from './fuelStationData'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** The picture: each brand's canopy band as a row at the top, and its price sign below, side by side. */
 const BAND = { width: 1024, height: 128 }

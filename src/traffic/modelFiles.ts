@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { removeBadges } from './vehicleBadges'
 
 export const TRAFFIC_MODELS_URL = '/models/traffic.glb'
 /**
@@ -16,8 +17,11 @@ export const FLEET_MODELS_URL = '/models/fleet.glb'
 /** GaadiGo's motorbike and cargo three-wheeler, made with Tripo AI (art/tripo), cut up the same way. */
 export const TRIPO_MODELS_URL = '/models/tripo.glb'
 
-/** Kept apart from the rest, because its licence is different. See `models/CREDITS.txt`. */
-export const SPORT_BIKE_MODEL_URL = '/models/sportbike.glb'
+/**
+ * The traffic's two-wheelers (scripts/prepare_two_wheelers.mjs): `bike`, a commuter motorbike made
+ * from the Vega 150, and `moped`, a step-through scooter, each with its far version and a wheel.
+ */
+export const TWO_WHEELERS_URL = '/models/two-wheelers.glb'
 
 /** The paint on delivery bikes. Their box is white in the model itself. */
 export const DELIVERY_BIKE_COLOR = '#17181b'
@@ -30,6 +34,8 @@ export function getModel(scene: THREE.Group, name: string): THREE.BufferGeometry
     if (child instanceof THREE.Mesh) geometry = child.geometry
   })
   if (!geometry) throw new Error(`No model called ${name}`)
+  // No maker's badge on any of them (vehicleBadges.ts): taken off here, where every user of a model gets it from.
+  removeBadges(geometry, name)
   return geometry
 }
 

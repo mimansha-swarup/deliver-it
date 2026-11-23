@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { box, colored, merge } from '../world/simpleShapes'
 import { getLight, ZEBRA_DEPTH, type SignalLight, type SignalPost, type TrafficSignals } from './trafficSignals'
 import type { TrafficWorld } from './trafficLogic'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('traffic drawing (instances, wheels, lamps)')
 
 const POLE_COLOR = '#23262a'
 const HOUSING_COLOR = '#14161a'
@@ -204,8 +207,10 @@ export function TrafficLights({ world }: { world: TrafficWorld }) {
       </instancedMesh>
 
       {/* Basic materials ignore the sun, which is what makes a lamp look lit. */}
-      <instancedMesh ref={lamps} args={[undefined, undefined, posts.length * LAMPS_PER_POST]} frustumCulled={false}>
-        <sphereGeometry args={[LAMP_RADIUS, 8, 5]} />
+      {/* A lens is a flat disc in its housing: as a ball, the map's 3,600 lamps were 230,000 triangles a frame.
+          Kept whole (`keepAll`): the lamps are recoloured by their numbers, so their order mustn't change (world/NearInstances.tsx). */}
+      <instancedMesh ref={lamps} args={[undefined, undefined, posts.length * LAMPS_PER_POST]} frustumCulled={false} userData={{ keepAll: true }}>
+        <circleGeometry args={[LAMP_RADIUS, 10]} />
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { findColour, HELMETS } from '../game/garage'
@@ -17,6 +17,9 @@ import { tuning } from './tuning'
 import { BICYCLE_BRACKET, BICYCLE_CRANK } from './vehicleBodies'
 import { liveVehicle } from './vehicleCatalog'
 import { BRAND_DYE, BRAND_INK, createHelmetDecalTexture, createJacketPrintTexture } from './brandPrint'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rider and vehicle')
 
 /*
  * The rider, on the same character base as the people in the street: the man

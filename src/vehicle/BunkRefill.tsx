@@ -1,11 +1,14 @@
 import { useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { useGameStore } from '../game/gameStore'
 import { setPrompt } from '../game/prompts'
 import { energyOf, fillPrice, fuelLevel, UPKEEP, useUpkeep, fullPrice } from '../game/upkeep'
 import { bunkAt, chargerAt, FUEL_BRANDS, type FuelStation } from '../world/fuelStationData'
 import { getTravelSpeed, type ScooterState } from './ScooterController'
 import { liveVehicle } from './vehicleCatalog'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 /** Slower than this, in metres per second (about 9 km/h), counts as pulled in at the pumps. */
 const PULLED_IN_SPEED = 2.5

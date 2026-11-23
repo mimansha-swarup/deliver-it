@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
@@ -9,6 +9,9 @@ import { groundLift } from './groundLift'
 import { colored } from './simpleShapes'
 import { distanceToEdge, innerPoint, type Faith, type WorshipSite } from './worship'
 import type { GroundPoint } from './worldUtils'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Temples, mosques and churches, drawn whole (ART_DIRECTION.md: stylized, with

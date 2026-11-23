@@ -25,6 +25,7 @@ import { Phone } from './ui/Phone'
 import { TitleScreen } from './ui/TitleScreen'
 import { useResolution } from './game/resolution'
 import { StaticMatrices } from './world/StaticMatrices'
+import { NearInstances } from './world/NearInstances'
 import { AdaptiveResolution } from './world/AdaptiveResolution'
 import { DevStats } from './dev/DevStats'
 import { FpsOverlay } from './dev/FpsOverlay'
@@ -40,6 +41,7 @@ import { ParkHint } from './ui/ParkHint'
 import { Subtitle } from './ui/Subtitle'
 import { RoomCard } from './ui/RoomUi'
 import { RoomFade } from './ui/RoomFade'
+import { CrashFade } from './ui/CrashFade'
 import { GuardCard } from './ui/GuardCard'
 import { BreakdownCard } from './ui/BreakdownCard'
 import { PoliceCard } from './ui/PoliceCard'
@@ -81,7 +83,7 @@ function GameUi() {
     <>
       {!requested && <TitleScreen />}
       {started && <RidingUi />}
-      {requested && !curtainGone && <LoadingScreen onGone={() => { markLoad('loading screen gone'); setCurtainGone(true) }} />}
+      {requested && !curtainGone && <LoadingScreen onGone={() => { markLoad('loading screen gone'); useLaunch.setState({ covered: false }); setCurtainGone(true) }} />}
     </>
   )
 }
@@ -118,6 +120,7 @@ function RidingUi() {
       <PhotoModeUi />
       <Discovery />
       <RoomFade />
+      <CrashFade />
       <FpsOverlay />
       <HelpOverlay />
       <PauseMenu />
@@ -150,6 +153,7 @@ function App() {
           <ViewDistance />
           <AdaptiveResolution />
           <StaticMatrices />
+          <NearInstances />
           <DevStats />
           <PauseClock />
           <PostEffects />

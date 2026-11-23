@@ -94,7 +94,7 @@ import { findTyreShops, forecourtOutline, FUEL_STATIONS, isOnForecourt, placeFue
 import { IDLE_POSE } from '../traffic/gait'
 import { planPitches } from './pitches'
 import { SportsPitches } from './SportsPitches'
-import { createDeckLevels, DECK_STEP_UP, flyoverFootprints, planBusStand, planFlyoverDecks, planFlyovers, planMetro } from './transitPlacement'
+import { createDeckLevels, DECK_STEP_UP, flyoverFootprints, planBusStand, planFlyoverDecks, planFlyovers, planMetro, deckReport } from './transitPlacement'
 import { Transit } from './Transit'
 import { fillEmptyPlots } from './infillPlots'
 import { WarmAssets } from './WarmAssets'
@@ -117,6 +117,8 @@ const SPAWN_CLEAR = 12
 
 const SIGNAL_POLE_RADIUS = 0.1
 const MENU_BOARD_RADIUS = 0.35
+/** A shop front with nothing solid behind it gets its own wall: tested at these places across its width (shares of it) and depths behind its line (metres), and built this thick, in metres. */
+const SHOP_FRONT_WALL = { across: [-0.45, -0.25, 0, 0.25, 0.45], depths: [0.7, 1.5], thick: 1.6 }
 
 type RapierModule = Awaited<ReturnType<typeof loadRapier>>
 
@@ -392,6 +394,28 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
     const near = nearestRoadPiece(roadIndex, x, z, 20)
     return near && streetPresetOf(data.roads[near.piece.road])?.name === 'main' ? typeByChanceOnMainRoad(roll) : typeByChance(roll)
   })
+  // Every shop front is solid. Nearly all stand on their building's own wall; a few don't (a mapped
+  // shop set on a wall its building doesn't reach along, a front wider than what's behind it), and
+  // there a scooter went up the footpath and in among the painted shelves. Each front is tested
+  // across its width, just behind its line; one with a gap gets a wall of its own along the line,
+  // thick enough (`SHOP_FRONT_WALL.thick`) that the camera is kept out as it is by a building.
+  let frontsClosed = 0
+  for (const { x, z, rotation, width } of shopFronts) {
+    const outX = Math.sin(rotation)
+    const outZ = Math.cos(rotation)
+    let open = false
+    for (const across of SHOP_FRONT_WALL.across) {
+      for (const depth of SHOP_FRONT_WALL.depths) {
+        if (!isNearBuilding(collisions, x - outX * depth + outZ * across * width, z - outZ * depth - outX * across * width, 0.05)) open = true
+      }
+    }
+    if (!open) continue
+    frontsClosed++
+    const back = SHOP_FRONT_WALL.thick / 2 + 0.05
+    const half = width / 2
+    addWall(collisions, [x - outX * back - outZ * half, z - outZ * back + outX * half], [x - outX * back + outZ * half, z - outZ * back - outX * half], SHOP_FRONT_WALL.thick)
+  }
+  lap(`shop fronts closed: ${frontsClosed} of ${shopFronts.length} had a gap behind them`)
   // Menu boards on the pavement are solid too.
   for (const { menuBoard } of shopFronts) if (menuBoard) addPost(collisions, menuBoard[0], menuBoard[1], MENU_BOARD_RADIUS)
   const props = generateRoadsideProps(data.roads, collisions, shopFronts, (x, z) => isOnForecourt(fuel, x, z))
@@ -606,6 +630,8 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   const groundSurface = createSurface(data.roads, features, edges.heightAt)
   // The flyovers are ridden: a wheel no more than a step below a deck is on it (transitPlacement.ts).
   const decks = createDeckLevels(flyovers.decks)
+  lap(`flyover ends: ${deckReport.endsClosed} closed, ${deckReport.endsLeftOpen} left open where they join another deck`)
+  if (isDebug()) (window as unknown as { __deliverItDeckSolid?: unknown }).__deliverItDeckSolid = (x: number, z: number, height: number, radius: number) => isNearBuilding(decks.collisionsAt(height), x, z, radius)
   const surface: RideSurface = {
     wetAt: groundSurface.wetAt,
     heightAt(x, z, near = 0) {

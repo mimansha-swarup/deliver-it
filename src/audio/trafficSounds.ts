@@ -1,5 +1,5 @@
 import type { Vehicle, VehicleKind } from '../traffic/trafficLogic'
-import { playThud } from './ambience'
+import { playCrash, playThud } from './ambience'
 import { getAudio } from './audioEngine'
 import { createEngineVoice, type EngineKind, type EngineVoice } from './engines'
 import type { Listener } from './horns'
@@ -91,5 +91,7 @@ export function playImpact(x: number, z: number, strength: number, listener: Lis
   if (!audio) return
   const { distance, volume, pan } = placeSound(x, z, listener, 8)
   if (distance > 60) return
-  playThud(audio.context, audio.sfx, strength * volume, pan)
+  // A hard hit close by is a crash; anything less, or far off, a thud.
+  if (strength * volume > 0.55) playCrash(audio.context, audio.sfx, strength * volume * 0.8, pan)
+  else playThud(audio.context, audio.sfx, strength * volume, pan)
 }

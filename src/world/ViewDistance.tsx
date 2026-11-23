@@ -1,8 +1,11 @@
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { liveSky, liveView } from '../game/livePlayer'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** The title screen's aerial view sees the whole map. */
 const TITLE_VIEW = 1300

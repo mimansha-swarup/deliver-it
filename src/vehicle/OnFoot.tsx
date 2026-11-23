@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { borrow, driveOffer, followWanted } from '../game/borrow'
 import { useGameStore } from '../game/gameStore'
 import { isNearInterest, spotInReach } from '../game/interact'
@@ -11,6 +11,9 @@ import type { CollisionWorld } from '../world/collision'
 import { getOff, getOn, getTravelSpeed, isAfoot, isBesideVehicle, scooterLevel, type ScooterState } from './ScooterController'
 import { UP_ON_DECK } from '../world/transitPlacement'
 import { liveVehicle } from './vehicleCatalog'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rider and vehicle')
 
 /*
  * Getting off and on (F), and using things on foot (E). The walking itself is in the controller

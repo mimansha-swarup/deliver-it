@@ -1,8 +1,11 @@
 import { useMemo, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import { DoubleSide, type BufferAttribute, type Mesh } from 'three'
 import type { ScooterState } from './ScooterController'
 import { SCOOTER } from './vehicleConfig'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rain and particles')
 
 const MAX_SEGMENTS = 500
 const VERTICES_PER_SEGMENT = 6

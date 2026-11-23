@@ -68,10 +68,15 @@ type Launch = {
    * shader (shadow ones too), geometry and texture is on the GPU before riding (Prewarm in World.tsx).
    */
   warmed: boolean
+  /**
+   * The loading screen is still over the picture, though the ride has started behind it: it stays
+   * until the frame rate has settled (LoadingScreen.tsx). The rider's controls are held meanwhile.
+   */
+  covered: boolean
 }
 
 /** How far along getting from the title screen to riding is. Nothing here is saved. */
-export const useLaunch = create<Launch>(() => ({ requested: false, curtainDrawn: false, planned: false, built: [], nearWaiting: [], warmed: false }))
+export const useLaunch = create<Launch>(() => ({ requested: false, curtainDrawn: false, planned: false, built: [], nearWaiting: [], warmed: false, covered: true }))
 
 /** A streamed part says whether it's still building squares around the rider (see `nearWaiting`). */
 export function setNearWaiting(id: string, waiting: boolean) {

@@ -39,13 +39,12 @@ TypeScript. The city is built in the browser from OpenStreetMap and open buildin
 - `src/ui`: the title screen, menus, HUD and the rider's phone.
 - `art/logo`: the logo's source and exports.
 
-## Before any monetisation
+## Licences
 
-- **Replace the sports bike.** `public/models/yamaha.glb` ("Yamaha YZF 2021" by VTX) is
-  CC BY-NC-SA 4.0: non-commercial. Everything else in `public/models` is CC BY 4.0 or CC0. It
-  must be swapped for a model that allows commercial use before the game earns anything (ads,
-  sales, sponsorship). It's kept in a file of its own so that is one file to change.
-- The radio is all composed in code; there is no recorded music and no video station.
+- Every model in `public/models` allows commercial use: CC BY 4.0, CC0, or made with Tripo AI on a
+  commercial plan (`public/models/CREDITS.txt`). The non-commercial sports bike was replaced by the
+  Vega 150 in polish sprint 2 (`scripts/prepare_two_wheelers.mjs`).
+- The radio and every sound effect are composed in code; there is no recorded music and no video station.
 
 ## The brand
 

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { liveSky } from '../game/livePlayer'
 import type { ScooterState } from './ScooterController'
 import { SCOOTER } from './vehicleConfig'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('rain and particles')
 
 /** Droplets in the pool. A splash takes `PER_SPLASH`, and the oldest are reused. */
 const DROPLETS = 160

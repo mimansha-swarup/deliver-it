@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { PAVEMENT_TEXTURES, ROAD_TEXTURES } from './assetUrls'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
@@ -15,6 +15,9 @@ import { clipToPlayArea, pushStrip, pushTriangle } from './roadGeometry'
 import { usesNewGround } from './streetEdgeConfig'
 import { PAVEMENT_HEIGHT, PAVEMENT_WIDTH, ROAD_HEIGHT } from './surface'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 const JOINT_SIDES = 12
 const PLAIN_ROAD_COLOR = new THREE.Color('#66676b')

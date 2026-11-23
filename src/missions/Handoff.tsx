@@ -3,7 +3,7 @@ import { playPing } from '../audio/uiSounds'
 import { isDebug } from '../dev/spawn'
 import { sayLine } from '../audio/voiceCues'
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import type { MissionPhase, WaitingCustomer } from '../game/gameTypes'
@@ -23,6 +23,9 @@ import { createPrintTexture, SHIRT_COLOR } from '../vehicle/shirtPrint'
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
 import { box, merge } from '../world/simpleShapes'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('missions and markers')
 
 /** Seconds for each step of a handover. */
 const TIMES = {

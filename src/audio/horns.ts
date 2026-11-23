@@ -61,10 +61,24 @@ const HORNS: Record<HornVoice, Horn> = {
   },
 }
 
+/**
+ * Five horns' worth of character, one picked for each honk, so a street isn't one horn over and
+ * over: the plain twin-tone; a higher, thinner pair; a low, slow growl; a single shrill note; and a
+ * tired old horn whose pitch sags as it blows. `pitch` scales the tones, `spread` moves the second
+ * tone away from the first, `bright` scales the filter, `sag` is how far the pitch falls (a share).
+ */
+const CHARACTERS = [
+  { pitch: 1, spread: 1, bright: 1, sag: 0 },
+  { pitch: 1.18, spread: 1.04, bright: 1.25, sag: 0 },
+  { pitch: 0.8, spread: 0.97, bright: 0.75, sag: 0 },
+  { pitch: 1.32, spread: 0, bright: 1.4, sag: 0 },
+  { pitch: 0.93, spread: 1.02, bright: 0.85, sag: 0.09 },
+]
+
 /** Horns closer than this sound at full volume, in metres. */
 const NEAR = 6
 /** The most horns sounding at once, so a jam doesn't become noise. */
-const MAX_PLAYING = 5
+const MAX_PLAYING = 3
 const BEEP_GAP = 0.07
 
 let playing = 0
@@ -97,7 +111,8 @@ export function playHorn(voice: HornVoice, x: number, z: number, listener: Liste
 
   const filter = audio.createBiquadFilter()
   filter.type = 'lowpass'
-  filter.frequency.value = horn.brightness
+  const character = voice === 'scooter' ? CHARACTERS[0] : CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]
+  filter.frequency.value = horn.brightness * character.bright
   const panner = audio.createStereoPanner()
   panner.pan.value = right * 0.8
   const envelope = audio.createGain()
@@ -114,10 +129,14 @@ export function playHorn(voice: HornVoice, x: number, z: number, listener: Liste
     time += length + BEEP_GAP
   }
 
-  const oscillators = horn.tones.map((tone) => {
+  // A single-note horn plays only its first tone.
+  const tones = character.spread === 0 ? horn.tones.slice(0, 1) : horn.tones
+  const oscillators = tones.map((tone, index) => {
     const oscillator = audio.createOscillator()
     oscillator.type = horn.wave
-    oscillator.frequency.value = tone * pitch
+    const hz = tone * pitch * character.pitch * (index > 0 ? character.spread : 1)
+    oscillator.frequency.setValueAtTime(hz, start)
+    if (character.sag > 0) oscillator.frequency.linearRampToValueAtTime(hz * (1 - character.sag), time)
     oscillator.connect(filter)
     oscillator.start(start)
     oscillator.stop(time)

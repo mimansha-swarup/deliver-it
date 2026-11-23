@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { livePlayer, liveSky } from '../game/livePlayer'
@@ -7,6 +7,9 @@ import { QUALITY_PRESETS } from '../game/qualitySettings'
 import type { LakeLife as LakeLifePlan } from './lakePlacement'
 import { ShopPeople } from './ShopPeople'
 import { useHours } from './useHours'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * Agara Lake's life (lakePlacement.ts): the morning's joggers, walkers and dog walkers on the path, a

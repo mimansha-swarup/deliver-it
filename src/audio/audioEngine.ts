@@ -1,9 +1,13 @@
 /**
  * The one AudioContext the game uses, and its mixer.
  *
- *   horns ─► sfx bus ───┐
- *                        ├─► limiter ─► speakers
- *   radio ─► music bus ─┘
+ *   voices ─► voice bus ─┐
+ *   horns ─► sfx bus ────┤
+ *                        ├─► limiter ─► master ─► speakers
+ *   radio ─► music bus ──┤
+ *   menus ─► ui bus ─────┘
+ *
+ * Voices always sit on top: while one plays, the music and sfx buses are turned down (`duckMusicFor`).
  *
  * Each bus is a GainNode, so muting music or horns is just turning its gain
  * to 0, with nothing stopped or rebuilt. The limiter (a compressor) keeps a
@@ -21,8 +25,14 @@ export type AudioBuses = { context: AudioContext; sfx: GainNode; music: GainNode
  * RJ in it), then the street and the engine. Everything goes through `master`, the one volume over all.
  */
 const VOICE_VOLUME = 0.78
-/** While someone speaks on the phone the music drops to this share, and comes back after. */
-const MUSIC_UNDER_VOICE = 0.45
+/**
+ * While someone speaks, everything else steps back so the words are always on top: the music to
+ * this share of its level and the engine, horns and street to theirs. Both come back after.
+ */
+const MUSIC_UNDER_VOICE = 0.4
+const SFX_UNDER_VOICE = 0.5
+/** The audio clock's time until which someone is speaking: a volume change in that time keeps the others turned down. */
+let voiceUntil = 0
 
 let buses: AudioBuses | null = null
 let musicOn = true
@@ -89,7 +99,10 @@ export function getAudioEvenIfPaused(): AudioBuses | null {
 function fadeTo(gain: GainNode, value: number) {
   const now = gain.context.currentTime
   gain.gain.cancelScheduledValues(now)
-  gain.gain.setTargetAtTime(value, now, FADE / 3)
+  // Changed while someone is speaking (a slider, the pause menu): it stays under the voice until they've finished.
+  const under = buses && now < voiceUntil ? (gain === buses.music ? MUSIC_UNDER_VOICE : gain === buses.sfx ? SFX_UNDER_VOICE : 1) : 1
+  gain.gain.setTargetAtTime(value * under, now, FADE / 3)
+  if (under < 1) gain.gain.setTargetAtTime(value, voiceUntil, 0.3)
 }
 
 export function setMusicOn(on: boolean) {
@@ -134,11 +147,16 @@ export function setVoiceVolume(share: number) {
   if (buses) fadeTo(buses.voice, VOICE_VOLUME * voiceShare)
 }
 
-/** Someone speaks on the phone from `at` (the audio clock) for `seconds`: the music goes under them and comes back. */
+/**
+ * Someone speaks from `at` (the audio clock) for `seconds`: the music and the game's sounds go
+ * under them, quickly, and come back gently once they've finished. The menus' own sounds don't.
+ */
 export function duckMusicFor(at: number, seconds: number) {
   if (!buses) return
-  const { gain } = buses.music
-  const level = musicLevel()
-  gain.setTargetAtTime(level * MUSIC_UNDER_VOICE, at, 0.08)
-  gain.setTargetAtTime(level, at + seconds + 0.15, 0.25)
+  const end = at + seconds + 0.15
+  voiceUntil = Math.max(voiceUntil, end)
+  for (const [gain, level, under] of [[buses.music.gain, musicLevel(), MUSIC_UNDER_VOICE], [buses.sfx.gain, sfxLevel(), SFX_UNDER_VOICE]] as const) {
+    gain.setTargetAtTime(level * under, at, 0.08)
+    gain.setTargetAtTime(level, end, 0.3)
+  }
 }

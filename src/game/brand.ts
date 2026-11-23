@@ -15,7 +15,11 @@ export const SITE_URL = 'https://deliver-simulator.netlify.app'
 /** A file name's start for anything saved from the game (photos, the score card). */
 export const FILE_PREFIX = 'swalpa-fast'
 
-/** The maker's LinkedIn page, linked from Credits. Empty until given; with no address the link isn't shown. */
+/**
+ * PLACEHOLDER, TO FILL IN: the maker's LinkedIn page, in full (https://www.linkedin.com/in/...).
+ * Credits shows "Made by Mimansha Swarup in Bengaluru · LinkedIn" as soon as this has an address;
+ * while it's empty the link is left out, so nothing dead is ever shown to players.
+ */
 export const LINKEDIN_URL = ''
 
 /** The brand's three colours. */

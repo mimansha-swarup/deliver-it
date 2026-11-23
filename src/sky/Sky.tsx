@@ -3,7 +3,7 @@ import { ONLINE_CLOCK_SCALE } from '../game/duty'
 import { useTutorial } from '../game/tutorial'
 import { isDebug, requestedHour, requestedWeather } from '../dev/spawn'
 import { useEffect, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { isFirstVisit, useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
@@ -19,6 +19,9 @@ import {
   WEATHERS,
   type Rgb,
 } from './skyLogic'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('lights and sky')
 
 /** Pressing N jumps the clock forward this far, to see the sky change quickly. */
 const SKIP_HOURS = 3

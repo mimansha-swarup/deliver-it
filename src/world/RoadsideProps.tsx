@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useCompressedTextures } from './ktx2'
 import { FOLIAGE_TEXTURES } from './assetUrls'
 import { createPosterTexture, POSTER_COLUMNS, POSTER_CORNER_UV } from './lampPosters'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { useGameStore } from '../game/gameStore'
@@ -24,6 +24,9 @@ import {
 import { windUniforms } from './wind'
 import { groundLift } from './groundLift'
 import { seeThrough } from '../camera/seeThrough'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 const TRUNK_COLOR = '#6f5a43'
 const LAMP_COLOR = '#55585c'

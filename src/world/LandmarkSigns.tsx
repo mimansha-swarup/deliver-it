@@ -1,9 +1,12 @@
 import { useEffect, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { liveSky } from '../game/livePlayer'
 import { CHAIN_IDS, CHAINS, type Chain, type LandmarkSign } from './landmarks'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /** Each chain's sign is one row of this picture, in pixels. */
 const ROW_WIDTH = 1024

@@ -9,7 +9,7 @@ import { liveSky } from '../game/livePlayer'
 import { STATIONS } from '../audio/stations'
 import { playPing } from '../audio/uiSounds'
 import { RJ_NAME, useOnAir } from '../audio/rj'
-import { useUi } from './uiState'
+import { usePause, useUi } from './uiState'
 import { AppGlyph, PhoneApp, WeatherIcon } from './phoneApps'
 import { APPS, RAVI_THREAD, type AppId, type PhoneNav } from './phoneAppList'
 import { useAppNotes } from '../game/appNotes'
@@ -27,7 +27,14 @@ import { useAppNotes } from '../game/appNotes'
 /** How long a message peeks the phone up (or shows as a banner on it), in milliseconds. */
 const PEEK_MS = { normal: 3000, urgent: 6000, music: 2500, radio: 9000, app: 7000 }
 /** How many notifications float above the half-open phone at once. */
-const FLOATING_SHOWN = 3
+/**
+ * Notifications come up one at a time, in the order they arrived (an urgent one goes to the front):
+ * each stays `shown` milliseconds (longer if it's urgent, or long enough to need reading), then
+ * `gap` before the next. At most `waiting` wait their turn; older ones are only on the lock screen.
+ * On a window too narrow for them to sit beside the order card and the delivery summary
+ * (`narrow` pixels), they wait while either is up.
+ */
+const NOTE_TIMES = { shown: 3500, long: 5000, longFrom: 64, gap: 300, waiting: 4, narrow: 1180 }
 
 /** `app`: a notification from one of the phone's apps (game/appNotes.ts), which opens that app. */
 type Peek = { id: number; from: string; thread: string | null; text: string; kind: 'normal' | 'urgent' | 'music' | 'radio'; app?: AppId }
@@ -270,10 +277,40 @@ export function Phone() {
   // Each message as it arrives: floating above the phone, unread in its thread (unless that chat
   // is open), and on the lock screen.
   const [bounce, setBounce] = useState(0)
-  const [countMessage] = useState(() => (note: Peek) => {
+  const noteQueue = useRef<{ waiting: Peek[]; busy: boolean }>({ waiting: [], busy: false })
+  const [showNext] = useState(() => function next() {
+    const queue = noteQueue.current
+    if (queue.busy) return
+    // Not over the order card or the delivery summary, where there isn't room beside them.
+    const { offer: offered, lastReward } = useGameStore.getState()
+    if (queue.waiting.length > 0 && window.innerWidth < NOTE_TIMES.narrow && (offered || lastReward)) {
+      window.setTimeout(next, 500)
+      return
+    }
+    const note = queue.waiting.shift()
+    if (!note) return
+    queue.busy = true
     setBounce((count) => count + 1)
-    setFloating((list) => [...list, note].slice(-FLOATING_SHOWN))
-    window.setTimeout(() => setFloating((list) => list.filter((other) => other.id !== note.id)), note.app ? PEEK_MS.app : PEEK_MS[note.kind])
+    setFloating([note])
+    const stays = note.kind === 'urgent' || note.text.length > NOTE_TIMES.longFrom ? NOTE_TIMES.long : NOTE_TIMES.shown
+    window.setTimeout(() => {
+      setFloating([])
+      window.setTimeout(() => {
+        queue.busy = false
+        next()
+      }, NOTE_TIMES.gap)
+    }, stays)
+  })
+  const [countMessage] = useState(() => (note: Peek) => {
+    const queue = noteQueue.current
+    if (note.kind === 'urgent') queue.waiting.unshift(note)
+    else queue.waiting.push(note)
+    // Too many waiting: the oldest ordinary ones are let go (they're still on the lock screen and in their chats).
+    while (queue.waiting.length > NOTE_TIMES.waiting) {
+      const drop = queue.waiting.findIndex((other) => other.kind !== 'urgent')
+      queue.waiting.splice(drop < 0 ? 0 : drop, 1)
+    }
+    showNext()
     // An app's own notification waits on the lock screen too, and stays up a little longer to be read.
     if (note.app) setNotes((list) => [note, ...list].slice(0, 6))
     if (note.thread === null) return
@@ -364,6 +401,66 @@ export function Phone() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [])
 
+  // The phone by keyboard: with it up and unlocked, the arrow keys move between whatever can be
+  // pressed on its screen (the nearest thing that way), Enter presses it, and Esc goes back (above).
+  // The arrows are the phone's while it's up, so they don't also steer; W, A, S and D still ride.
+  useEffect(() => {
+    if (!raised || screen === 'lock') return
+    const handleKey = (event: KeyboardEvent) => {
+      const screenNode = document.querySelector<HTMLElement>('.phone-raised .phone-screen')
+      if (!screenNode || useUi.getState().mapOpen || usePause.getState().open) return
+      // Typing in a box (a search, a note) keeps its own keys.
+      const active = document.activeElement as HTMLElement | null
+      const typing = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement
+      const arrow = ({ ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] } as Record<string, [number, number]>)[event.code]
+      if (!arrow && event.code !== 'Enter') return
+      if (typing && (event.code === 'ArrowLeft' || event.code === 'ArrowRight' || event.code === 'Enter')) return
+      const items = [...screenNode.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter((item) => item.offsetParent !== null)
+      if (items.length === 0) return
+      const inside = active !== null && screenNode.contains(active)
+      if (event.code === 'Enter') {
+        // A focused button presses itself; with nothing chosen yet, Enter takes the first thing on the screen.
+        if (inside) return
+        event.preventDefault()
+        items[0].focus()
+        return
+      }
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (!inside) {
+        items[0].focus()
+        playPing('menuMove')
+        return
+      }
+      const from = active.getBoundingClientRect()
+      const fromX = from.left + from.width / 2
+      const fromY = from.top + from.height / 2
+      let best: HTMLElement | null = null
+      let bestScore = Infinity
+      for (const item of items) {
+        if (item === active) continue
+        const box = item.getBoundingClientRect()
+        const dx = box.left + box.width / 2 - fromX
+        const dy = box.top + box.height / 2 - fromY
+        const along = dx * arrow[0] + dy * arrow[1]
+        if (along < 4) continue
+        // Straight ahead counts for more than off to one side.
+        const score = along + Math.abs(dx * arrow[1] + dy * arrow[0]) * 2.5
+        if (score < bestScore) {
+          bestScore = score
+          best = item
+        }
+      }
+      if (best) {
+        best.focus()
+        best.scrollIntoView({ block: 'nearest' })
+        playPing('menuMove')
+      }
+    }
+    window.addEventListener('keydown', handleKey, { capture: true })
+    return () => window.removeEventListener('keydown', handleKey, { capture: true })
+  }, [raised, screen])
+
   const totalUnread = Object.values(unread).reduce((sum, count) => sum + count, 0)
   const phoneKey = useKeyName('phone')
   // An app's own notifications are a badge on its icon until it's opened (game/appNotes.ts).
@@ -447,7 +544,7 @@ export function Phone() {
         <ol className="phone-float" aria-live="polite">
           {floating.map((note) => (
             <li key={note.id}>
-              <button type="button" className="phone-float-note" data-kind={note.kind} onClick={() => openNote(note)}>
+              <button type="button" className="phone-float-note" data-kind={note.kind} data-long={note.kind === 'urgent' || note.text.length > NOTE_TIMES.longFrom} onClick={() => openNote(note)}>
                 <strong>{note.from}</strong>
                 <span>{note.text}</span>
               </button>

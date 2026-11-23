@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { timedFrame } from '../dev/frameTimes'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
@@ -9,6 +9,9 @@ import { ShopPeople } from './ShopPeople'
 import { box, colored, merge } from './simpleShapes'
 import { StiltParking } from './StiltParking'
 import { useHours } from './useHours'
+
+/** `useFrame`, timed under its step for `?debug=2` (dev/frameTimes.ts). */
+const useFrame = timedFrame('world upkeep (streaming, culling, signs)')
 
 /*
  * The Abhaya Anjaneya statue at Agara and the life at its temple's door (agaraPlacement.ts).
