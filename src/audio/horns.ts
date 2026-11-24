@@ -1,4 +1,4 @@
-import { livePlayer } from '../game/livePlayer'
+import { liveHorn, livePlayer } from '../game/livePlayer'
 import { liveVehicle } from '../vehicle/vehicleCatalog'
 import { getAudio } from './audioEngine'
 import type { VehicleKind } from '../traffic/trafficLogic'
@@ -59,6 +59,9 @@ const HORNS: Record<HornVoice, Horn> = {
     patterns: [[0.14, 0.14]],
     loudness: 0.55,
   },
+  tempo: { ...CAR, tones: [440, 554], brightness: 2200 },
+  // A bicycle bell: two quick high rings.
+  cycle: { tones: [1900, 2850], wave: 'sine', brightness: 6000, patterns: [[0.07, 0.07]], loudness: 0.35 },
 }
 
 /**
@@ -153,6 +156,7 @@ export function playHorn(voice: HornVoice, x: number, z: number, listener: Liste
 /** The rider's own horn, which sounds from right where they are. */
 /** The rider's horn: the vehicle's own (vehicleCatalog.ts). A bicycle has a bell. */
 export function honkPlayerHorn() {
+  liveHorn.at = performance.now()
   const horn = liveVehicle.spec.horn
   if (horn === 'bell') ringBell()
   else playHorn(horn, livePlayer.x, livePlayer.z, livePlayer)

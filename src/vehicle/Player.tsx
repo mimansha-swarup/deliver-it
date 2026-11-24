@@ -28,6 +28,7 @@ import { Unstuck } from './Unstuck'
 import { Headlight } from './Headlight'
 import { Scooter } from './Scooter'
 import { SkidMarks } from './SkidMarks'
+import { TalkSpots } from '../talk/TalkSpots'
 import { Splashes } from './Splashes'
 import { createScooterState } from './ScooterController'
 // TEMPORARY: J jumps to the Jagannath temples, in the dev server only.
@@ -90,6 +91,7 @@ export function Player({ stores, collisions, deckCollisions, graph, traffic, sur
       <Handoff scooter={scooterState} stores={stores} collisions={collisions} />
       <Errand scooter={scooterState} stores={stores} />
       <Eating scooter={scooterState} />
+      <TalkSpots scooter={scooterState} world={traffic} stores={stores} collisions={collisions} graph={graph} />
       <Rooms />
       {/* Built once riding has begun, so it doesn't hold up the loading screen. */}
       <AfterRideStarts>

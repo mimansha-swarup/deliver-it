@@ -1,3 +1,4 @@
+import { GUARD_KNOWS_AFTER, noteSocietyDelivery, societyDeliveries } from '../talk/talk'
 import { useEffect, useRef, type RefObject } from 'react'
 import { timedFrame } from '../dev/frameTimes'
 import { playPing } from '../audio/uiSounds'
@@ -305,6 +306,8 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
           const card = { otp: door.otp, flat: door.flat, society: society.name, time: useGameStore.getState().skyTime }
           liveRoom.frozen = true
           if (!asked) {
+            // From the third delivery to his building he knows the rider, and says so before asking (talk/talk.ts).
+            if (societyDeliveries() >= GUARD_KNOWS_AFTER) security('talk.guard.known')
             security('guard.otp', ` Flat ${door.flat}.`)
             useGuard.setState({ card: { step: 'otp', ...card } })
             window.setTimeout(() => {
@@ -319,6 +322,7 @@ export function Errand({ scooter, stores }: { scooter: RefObject<ScooterState>; 
             window.setTimeout(() => {
               stage.current = { ...stage.current, step: 'approach' }
               errandLive.cleared = true
+              noteSocietyDelivery()
               discover('society')
               security('guard.go', ` Floor ${door.floor}.`)
               useGuard.setState({ card: null })

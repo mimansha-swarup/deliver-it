@@ -30,6 +30,11 @@ export type Lane = {
    * as `shift`), less a margin. A vehicle there keeps its own left side to the right of it.
    */
   parked?: { from: number; to: number; edge: number }[]
+  /**
+   * On a wide road traffic runs in files, side by side: where each file's line is, sideways from
+   * the lane's own line (left is positive, as `shift`). Unset: one file, on the lane's line.
+   */
+  files?: number[]
   /** Inside a junction, between two of its crossings (junctions.ts): no traffic appears on it. */
   inJunction?: boolean
   /** Closed for now (a procession): no traffic is put on it, and none turns onto it. */
@@ -47,6 +52,32 @@ type LaneRules = {
   obeyOneWay?: boolean
   /** Space needed around the path, so nothing walks or drives through a wall. */
   clearance: number
+  /** Work out the files traffic runs in on wide roads (`Lane.files`). */
+  files?: boolean
+}
+
+/** Two files of traffic are this far apart, in metres, and a file's line keeps this far from the road's edge and from its middle. */
+const FILE_GAP = 3.2
+const FILE_EDGE = 1.15
+
+/**
+ * The files on a road `roadWidth` wide, for a lane running `offset` to the left of its middle. A
+ * one-way road (each half of a dual carriageway) is all this direction's: the lane's own line,
+ * and one or two more to its right. A two-way road has half each: two files only on a wide one.
+ */
+function filesFor(roadWidth: number, offset: number, oneWay: boolean): number[] | undefined {
+  if (oneWay) {
+    // From the lane's line to the far (right-hand) edge.
+    const room = roadWidth / 2 + offset - FILE_EDGE
+    const more = Math.min(2, Math.floor(room / FILE_GAP))
+    if (more < 1) return undefined
+    return Array.from({ length: more + 1 }, (_, file) => -file * FILE_GAP)
+  }
+  // Its own half: from the middle of the road to the kerb.
+  const spread = (roadWidth / 2 - 2 * FILE_EDGE) / 2
+  if (spread * 2 < FILE_GAP - 0.4) return undefined
+  const middle = roadWidth / 4 - offset
+  return [middle + spread, middle - spread]
 }
 
 const EDGE_MARGIN = 3
@@ -59,7 +90,7 @@ const EDGE_MARGIN = 3
 export function createLanes(
   graph: RoadGraph,
   collisions: CollisionWorld,
-  { minRoadWidth, sideOffset, clearance, obeyOneWay = false }: LaneRules,
+  { minRoadWidth, sideOffset, clearance, obeyOneWay = false, files = false }: LaneRules,
 ): Lane[] {
   const lanes: Lane[] = []
   const lanesFrom: number[][] = graph.xs.map(() => [])
@@ -103,6 +134,7 @@ export function createLanes(
         next: [],
         startNode: from,
         endNode: to,
+        files: files ? filesFor(roadWidth, offset, oneWay === 1) : undefined,
       })
     }
   })

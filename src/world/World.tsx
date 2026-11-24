@@ -42,12 +42,14 @@ import { POLICE, policePosts } from '../game/police'
 import { spotPlaces } from '../game/discovery'
 import { fixedInterests } from '../game/interact'
 import { planSociety } from './society'
+import { talkPlaces } from '../talk/talk'
 import { SocietyGate } from './SocietyGate'
 import { EvChargers } from './EvChargers'
 import { CityEvents } from './CityEvents'
 import { chargerSpot } from './fuelStationData'
 import { Temples } from './Temples'
 import { ShopPeople } from './ShopPeople'
+import { StrayDogs } from './StrayDogs'
 import { planShopPeople } from './shopPeoplePlacement'
 import { planAgara } from './agaraPlacement'
 import { planLakeLife } from './lakePlacement'
@@ -679,14 +681,38 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // People on the bus stand's island.
   for (const [i, { x, z, heading }] of (busStand?.people ?? []).entries())
     shopPeople.standing.push({ x, z, heading, body: (i % 2) as 0 | 1, tint: (i * 0.41) % 1, skin: 0.72 + ((i * 0.13) % 0.33), idle: i % 3 === 0 ? IDLE_POSE.phone : IDLE_POSE.weight, phase: i * 1.7 })
-  // People waiting at the bus stops: one to three in front of each shelter, facing the road.
+  // People waiting at the bus stops: two to five in front of each shelter, facing the road. They get
+  // on when a bus pulls up, and others come along to wait in their place (ShopPeople.tsx).
   cityLandmarks.stops.forEach((stop, i) => {
-    const waiting = 1 + ((i * 7) % 3)
+    const waiting = 2 + ((i * 7) % 4)
     const alongX = Math.cos(stop.rotation)
     const alongZ = -Math.sin(stop.rotation)
     for (let k = 0; k < waiting; k++) {
-      const across = (k - (waiting - 1) / 2) * 1.1 + ((i % 5) - 2) * 0.2
-      shopPeople.standing.push({ x: stop.x + alongX * across + Math.sin(stop.rotation) * 0.15, z: stop.z + alongZ * across + Math.cos(stop.rotation) * 0.15, heading: stop.rotation + ((k % 3) - 1) * 0.3, body: ((i + k) % 2) as 0 | 1, tint: ((i * 0.37 + k * 0.29) % 1), skin: 0.72 + ((i + k) * 0.11) % 0.33, idle: (i + k) % 3 === 0 ? IDLE_POSE.phone : IDLE_POSE.weight, phase: i * 2.3 + k })
+      const across = (k - (waiting - 1) / 2) * 0.95 + ((i % 5) - 2) * 0.2
+      const out = 0.15 + (k % 2) * 0.55
+      shopPeople.standing.push({ x: stop.x + alongX * across + Math.sin(stop.rotation) * out, z: stop.z + alongZ * across + Math.cos(stop.rotation) * out, heading: stop.rotation + ((k % 3) - 1) * 0.3, body: ((i + k) % 2) as 0 | 1, tint: ((i * 0.37 + k * 0.29) % 1), skin: 0.72 + ((i + k) * 0.11) % 0.33, idle: (i + k) % 3 === 0 ? IDLE_POSE.phone : (i + k) % 3 === 1 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 2.3 + k * 1.1, stop: { x: stop.x, z: stop.z, alongX, alongZ } })
+    }
+  })
+  talkPlaces.stops = cityLandmarks.stops
+  // At every vendor's cart: the vendor beside it, facing the road, and at most of them a customer or two on the footpath in front.
+  life.carts.forEach((cart, i) => {
+    const alongX = Math.cos(cart.rotation)
+    const alongZ = -Math.sin(cart.rotation)
+    // Which side of the cart the road is on.
+    const roadSide = surfaceMap.at(cart.x + alongZ * 3.4, cart.z - alongX * 3.4) === Surface.Road ? 1 : surfaceMap.at(cart.x - alongZ * 3.4, cart.z + alongX * 3.4) === Surface.Road ? -1 : 0
+    if (roadSide === 0) return
+    const toRoadX = alongZ * roadSide
+    const toRoadZ = -alongX * roadSide
+    const facingRoad = Math.atan2(toRoadX, toRoadZ)
+    const end = i % 2 ? 1 : -1
+    const free = (x: number, z: number) => !isNearBuilding(collisions, x, z, 0.3) && surfaceMap.at(x, z) !== Surface.Road
+    const vendor = { x: cart.x + alongX * end * 1.2 - toRoadX * 0.15, z: cart.z + alongZ * end * 1.2 - toRoadZ * 0.15 }
+    if (free(vendor.x, vendor.z)) shopPeople.standing.push({ ...vendor, heading: facingRoad - end * 0.5, body: 0, tint: (i * 0.43 + 0.1) % 1, skin: 0.7 + ((i * 0.19) % 0.3), idle: i % 2 ? IDLE_POSE.weight : IDLE_POSE.still, phase: i * 1.9 })
+    const customers = (i * 5) % 3
+    for (let k = 0; k < customers; k++) {
+      const x = cart.x + toRoadX * 1.15 + alongX * (k - (customers - 1) / 2) * 0.8
+      const z = cart.z + toRoadZ * 1.15 + alongZ * (k - (customers - 1) / 2) * 0.8
+      if (free(x, z)) shopPeople.standing.push({ x, z, heading: facingRoad + Math.PI + (k - 0.5) * 0.4, body: ((i + k) % 2) as 0 | 1, tint: (i * 0.31 + k * 0.47) % 1, skin: 0.72 + (((i + k) * 0.13) % 0.33), idle: k % 2 ? IDLE_POSE.chat : IDLE_POSE.weight, phase: i * 0.9 + k * 2.1 })
     }
   })
   // The petrol bunks' attendants, at the car filling up at each (fuelStationData.ts).
@@ -896,7 +922,7 @@ export function World() {
         <Part name="cityLandmarks"><CityLandmarks landmarks={cityLandmarks} /></Part>
         <Part name="cables"><Cables props={props} collisions={collisions} /></Part>
         <Part name="shops"><ShopFronts shopFronts={shopFronts} /></Part>
-        <Part name="shopPeople"><ShopPeople people={shopPeople} /></Part>
+        <Part name="shopPeople"><ShopPeople people={shopPeople} traffic={traffic} /><StrayDogs traffic={traffic} /></Part>
         <Part name="landmarks"><LandmarkSigns signs={landmarks} /></Part>
         <Part name="fuel"><FuelStations stations={fuel} tyreShops={tyreShops} /><EvChargers stations={fuel} /></Part>
         <Part name="pitches"><SportsPitches pitches={surfaceMap.pitches} /></Part>

@@ -11,6 +11,9 @@ import { createSkyState, getSkyLook } from '../sky/skyLogic'
 /** `steer`: the bars, -1 to 1. `onFoot`: the rider is off the vehicle and walking; then x, z and heading are the rider's own, and `vehicleX`/`vehicleZ` are where the vehicle stands. */
 export const livePlayer = { x: 0, z: 0, heading: 0, bumps: 0, gentle: 0, height: 0, steer: 0, onFoot: false, awayFromOwn: false, indoors: false, vehicleX: 0, vehicleZ: 0, vehicleHeading: 0 }
 
+/** When the player last sounded the horn, as `performance.now()`: people in the road hear it (traffic/Traffic.tsx). */
+export const liveHorn = { at: 0 }
+
 /** The sky as it looks right now, worked out each frame by the Sky component. */
 export const liveSky = {
   look: getSkyLook(createSkyState()),

@@ -35,6 +35,8 @@ export type ShopPerson = {
   idle: number
   /** Where they are in their own idle movements, so no two move in step. */
   phase: number
+  /** Waiting at a bus stop: where the stop is and which way its shelter runs. They get on when a bus pulls up (ShopPeople.tsx). */
+  stop?: { x: number; z: number; alongX: number; alongZ: number }
 }
 
 /** Someone walking to and fro between two points on the footpath. */

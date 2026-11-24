@@ -65,6 +65,11 @@ type QualityPreset = {
   grassTufts: number
   vehicles: number
   /**
+   * How many of them, the nearest, drive properly at once: full steering, junction manners and
+   * physics. The rest are on rails (trafficLogic.ts' `RAIL`), which costs next to nothing.
+   */
+  nearVehicles: number
+  /**
    * Vehicles further than this from the rider are drawn with their far versions, under 1,000
    * triangles (Traffic.tsx), in metres. Far enough that a far version is never close to the camera
    * (3.8 m behind the rider): at 20 m an auto's far version read as low detail on a laptop.
@@ -101,9 +106,10 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     farTreeReach: 50,
     treeThin: { from: 40, keep: 0.45 },
     grassTufts: 0,
-    vehicles: 10,
+    vehicles: 22,
+    nearVehicles: 8,
     vehicleDetailDistance: 32,
-    pedestrians: 6,
+    pedestrians: 12,
     carLights: 0,
   },
   medium: {
@@ -130,9 +136,10 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     farTreeReach: 90,
     treeThin: { from: 50, keep: 0.7 },
     grassTufts: 1400,
-    vehicles: 28,
+    vehicles: 52,
+    nearVehicles: 14,
     vehicleDetailDistance: 40,
-    pedestrians: 22,
+    pedestrians: 36,
     carLights: 2,
   },
   high: {
@@ -160,9 +167,10 @@ export const QUALITY_PRESETS: Record<Quality, QualityPreset> = {
     farTreeReach: 110,
     treeThin: null,
     grassTufts: 3200,
-    vehicles: 40,
+    vehicles: 80,
+    nearVehicles: 20,
     vehicleDetailDistance: 50,
-    pedestrians: 36,
+    pedestrians: 48,
     carLights: 4,
   },
 }

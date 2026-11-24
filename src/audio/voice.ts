@@ -2,6 +2,7 @@ import { duckMusicFor, getAudio, type AudioBuses } from './audioEngine'
 import { useSettings } from '../game/settings'
 import { showSubtitle } from './subtitle'
 import script from './voiceScript.json'
+import talk from '../talk/characters.json'
 
 /*
  * Voices, from recordings.
@@ -26,7 +27,8 @@ export type VoiceLine = { id: string; character: string; line: string; notes: st
 
 /** Who a line is said by, as the subtitle names them. */
 const SPEAKERS: Record<string, string> = { 'RJ Manju': 'RJ Manju · radio', 'Ravi (dispatch)': 'Ravi', Customer: 'Customer', 'Security guard': 'Security guard', 'Dark store staff': 'Dark store' }
-export const VOICE_LINES = script as VoiceLine[]
+/** The script's lines, and those of the people the rider talks to on the street (talk/characters.json). */
+export const VOICE_LINES = [...(script as VoiceLine[]), ...(talk.lines as VoiceLine[])]
 const BY_ID = new Map(VOICE_LINES.map((line) => [line.id, line]))
 
 /** A line's words, for the screen. */
@@ -46,7 +48,8 @@ export function pickLine(prefix: string): VoiceLine {
   return line
 }
 
-export type Treatment = 'radio' | 'phone'
+/** `street`: someone standing in front of the rider, heard as they are, with nothing in between. */
+export type Treatment = 'radio' | 'phone' | 'street'
 
 const VOICE_FOLDER = `${import.meta.env.BASE_URL}voice/`
 let manifest: Promise<Set<string>> | null = null
@@ -161,13 +164,13 @@ export async function speak(id: string, treatment: Treatment, voice?: string): P
   const source = buses.context.createBufferSource()
   source.buffer = buffer
   source.playbackRate.value = 1 + (Math.random() * 2 - 1) * VARIATION
-  source.connect(chainFor(buses, treatment))
+  source.connect(treatment === 'street' ? buses.voice : chainFor(buses, treatment))
   const ended = new Promise<void>((resolve) => {
     source.onended = () => resolve()
   })
   // Its turn: now, or when whoever is speaking has finished.
   let at = buses.context.currentTime
-  if (treatment === 'phone') {
+  if (treatment !== 'radio') {
     at = Math.max(at, phoneFreeAt)
     if (at - buses.context.currentTime > TURNS.patience) return null
     phoneFreeAt = at + buffer.duration / source.playbackRate.value + TURNS.breath
