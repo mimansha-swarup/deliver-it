@@ -12021,3 +12021,29 @@ Checked on the production build by script: of 300 orders planned, the scooter go
 three-wheeler 76 of four and 70 of five; the van 63 and 54. One batch of five (2,661 m, 692 s
 allowed, hops of 129 to 375 m as the crow flies) was accepted in the three-wheeler and handed over
 door by door through the store to its one reward. Not ridden by hand.
+
+## 2026-11-24: Entry 278, talks that end: no going round, and no card left behind
+
+Two complaints about talking to the fellow rider: it could go round and round saying nothing, and
+the card stayed up after the rider had moved on.
+
+- **Nobody says the same line twice in one talk.** The talk keeps what it has heard; `pickLine`
+  (audio/voice.ts) takes an unheard line of the family while one is left.
+- **A choice that would only bring back what's been said isn't offered** (`spent`, talk.ts): when
+  the node it leads to says lines of one family and all of them have been heard. "Ha! Innenu?" and
+  "One more?" go after the third, and the talk runs to its end. It holds for every character, with
+  no change to their data.
+- **A talk left behind closes** (`keepTalkNear`): 3.5 m from where it began, ridden or walked. The
+  auto anna's argument opens with the rider still on the scooter, which the card didn't stop.
+- **The fellow rider has something to say** (characters.json, five new lines, in VOICE_SCRIPT.csv
+  as not recorded):
+  - With an order on he sends the rider off ("Order ide alva, guru? ... Hogu, customer
+    kaaytidare!"); with a race on, the same, in two words.
+  - "How are the roads just now?" is answered from the game: the surge and the Agara jam at rush
+    hour, what is blocked and where when something is, or that the roads are clear. It's kept as
+    the chai anna's tip is, and comes back in the chat when the next order is accepted.
+  - Every node has a way out; the greeting had none but Esc.
+
+Checked by script on the production build: gossip three times then no "Innenu?"; tips three
+times then no "One more?"; the greeting with an order on; a card open, the rider moved 6 m, the
+card gone within the second.

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { showSubtitle } from '../audio/subtitle'
-import { pickLine, readingTime, speak, type VoiceLine } from '../audio/voice'
+import { linesOf, pickLine, readingTime, speak, type VoiceLine } from '../audio/voice'
 import { cityEvents, type CityEventKind } from '../game/cityEvents'
 import { useGameStore } from '../game/gameStore'
 import { liveSky } from '../game/livePlayer'
@@ -177,6 +177,27 @@ export function earn(label: string, amount: number) {
 }
 
 let closing = 0
+/** The lines said in this talk so far: nobody says the same thing twice in one talk. */
+const heard = new Set<string>()
+/** Where the rider was when the talk began (set by whoever knows: `keepTalkNear`). */
+let begunAt: { x: number; z: number } | null = null
+/** A talk ends when the rider is this far from where it began, in metres: ridden off, or walked away. */
+const LEAVE = 3.5
+
+/** Whether a node has nothing new left to say in this talk: it only ever says lines of one family, and all of them have been heard. */
+function spent(character: Character, id: string | undefined): boolean {
+  const node = id ? character.nodes[id] : undefined
+  if (!node || node.pick || !node.say) return false
+  const lines = linesOf(node.say)
+  return lines.length > 0 && lines.every((line) => heard.has(line.id))
+}
+
+/** Call a few times a second with where the rider is: a talk left behind closes itself. */
+export function keepTalkNear(x: number, z: number) {
+  if (!useTalk.getState().card) return
+  if (!begunAt) begunAt = { x, z }
+  else if (Math.hypot(x - begunAt.x, z - begunAt.z) > LEAVE) closeTalk()
+}
 
 function show(character: Character, id: string) {
   const node = character.nodes[id]
@@ -187,8 +208,10 @@ function show(character: Character, id: string) {
   }
   run(node.do)
   const said = node.pick?.find((option) => holds(option.if, character)) ?? node
-  const line: VoiceLine = said.say ? pickLine(said.say) : { id: '', character: character.name, line: '', notes: '' }
-  const choices = node.choices.filter((choice) => holds(choice.if, character))
+  const line: VoiceLine = said.say ? pickLine(said.say, heard) : { id: '', character: character.name, line: '', notes: '' }
+  if (line.id) heard.add(line.id)
+  // An answer that would only bring back what's been said already isn't offered: no going round in circles.
+  const choices = node.choices.filter((choice) => holds(choice.if, character) && !spent(character, choice.go))
   useTalk.setState({ card: { character, text: fill(`${said.before ?? ''}${line.line}${said.after ?? ''}`), english: line.english ?? '', choices } })
   if (line.id) void speak(line.id, 'street')
   // Nothing to answer: the last word is theirs, and the card goes when it's been read.
@@ -200,6 +223,8 @@ function show(character: Character, id: string) {
 export function openTalk(character: Character) {
   if (useTalk.getState().card) return
   liveRoom.frozen = true
+  heard.clear()
+  begunAt = null
   const first = character.start.find((option) => holds(option.if, character)) ?? character.start[character.start.length - 1]
   memory.visits[character.id] = (memory.visits[character.id] ?? 0) + 1
   keepMemory()

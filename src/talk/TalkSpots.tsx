@@ -15,7 +15,7 @@ import { getTravelSpeed, isAfoot, type ScooterState } from '../vehicle/ScooterCo
 import { isNearBuilding, type CollisionWorld } from '../world/collision'
 import type { DarkStore } from '../world/darkStore'
 import type { RoadGraph } from '../world/roadGraph'
-import { bark, characterAt, closeTalk, earn, openTalk, talkLive, talkPlaces, useTalk, useTalkGoal, watchTalk, type Character, type Plan } from './talk'
+import { bark, characterAt, closeTalk, earn, keepTalkNear, openTalk, talkLive, talkPlaces, useTalk, useTalkGoal, watchTalk, type Character, type Plan } from './talk'
 
 type Stop = (typeof talkPlaces.stops)[number]
 
@@ -240,6 +240,8 @@ export function TalkSpots({ scooter, world, stores, collisions, graph }: { scoot
     sinceAuto.current += delta
     if (since.current < CHECK_EVERY) return
     since.current = 0
+    // A talk the rider has ridden or walked away from is over.
+    keepTalkNear(me.x, me.z)
 
     // ---- The aunty's lift: there, and nearly stopped, she gets down, tips, and stands at the stop.
     const lift = talkLive.lift
