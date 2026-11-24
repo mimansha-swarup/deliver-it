@@ -1421,6 +1421,9 @@ export function Traffic({
           shopWalkersDrawn: lifeCounts.shopWalkers,
           peopleToTalkToDrawn: lifeCounts.talkersDrawn,
           strayDogs: lifeCounts.dogs,
+          atBusStops: lifeCounts.atStops,
+          walkingToABus: lifeCounts.boarding,
+          gotOnABus: lifeCounts.boarded,
         }
       }
     }

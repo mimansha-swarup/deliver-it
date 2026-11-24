@@ -11937,7 +11937,7 @@ Who is out, by distance from the rider (High, the two pairs' range; main in brac
 Walkers within 60 m are stepped every frame, the rest ten times a second. Also drawn: on 27th Main
 44 people standing at shops, carts and stops and 11 pacing the shop fronts, at Agara 14 and 5; one
 person to talk to in sight at each; five dogs. The mix measured 60 to 63% two-wheelers, 15 to 16%
-autos, 15 to 16% cars, 5% buses at Agara (none run on 27th Main) and 5% tempos and bicycles.
+autos, 15 to 16% cars, 5% buses at Agara (none ran on 27th Main then: entry 276) and 5% tempos and bicycles.
 
 Checked by script on the production build: every talk opened and answered (the chai's ₹10 and the
 free one, the tip kept for the next order, the time trial started, the aunty's lift ended with her
@@ -11953,3 +11953,45 @@ Not done, or not as asked:
   what's across its nose; the junction's proper rules are for those driving properly.
 - The time trial, the lift and the auto anna's argument were not played through by hand.
 - Medium wasn't measured.
+
+## 2026-11-24: Entry 276, buses that reach their stops, the street's reactions seen, and ORR's divider
+
+Entry 275 left the bus boarding and the street's reactions unseen in play. Played now, on the
+production build, with a script that rides at people and waits at stops:
+
+**Buses and their stops.** Nobody could board, for three reasons, all fixed:
+- **A stop under a flyover belonged to the lane up on the deck**, the nearest in plan: the bus
+  "stopped" overhead. `setBusStops` (trafficLogic.ts) now leaves deck lanes out.
+- **A stop could belong to a lane across the road or over a divider.** It now takes only a lane
+  that has the shelter on its left, the bus's kerb and door side.
+- **Most shelters stood on streets with no buses**: 27th Main's, all of them. A road with a bus
+  stop on it now has buses whatever its street preset says (`busRoads`, World.tsx). 41 of the
+  city's 46 shelters have a bus lane at their kerb (16 before, several of them wrong), nearly all
+  3 to 6 m away.
+- Someone walking to a bus that leaves before they reach it walks back to the shelter, where
+  they used to vanish in the road.
+- Seen: at a stop on 27th Main, three people got on a bus; on Sarjapur Road, one of two reached
+  the door in the nine seconds. `__deliverItCounts()` now says how many are at stops, walking to
+  a bus, and have got on one.
+
+**Reactions, seen on screen.** Ridden past someone crossing at 9 m/s, 1.6 m off: "Yen avasara
+nimge? Jana idare illi!". Stood 5 m short of someone crossing: "Thanks, anna!", hand up for 2.1 s.
+Ridden along the footpath at 3 m/s behind a walker: they stepped 1.8 m back, "Idu road alla,
+guru!". "Delivery anna!" was seen in entry 275.
+
+**The Outer Ring Road's divider.** By Agara lake the map draws ORR's two carriageways 9 to 10.7 m
+apart, middle to middle, and each is 10.5 m wide: their asphalt met with no gap for kerbs, so it
+was one bare slab six lanes wide. Where two one-way carriageways of a main road run touching (or
+overlapping by up to 2 m) the other way from each other, a painted divider 0.6 m wide now runs
+along the seam (`DIVIDER`, streetEdgeGeometry.ts), stopping 9 m short of junctions as medians do.
+It's part of the kerbs' own mesh (no draw call more, Low included) and solid like a median. Three
+minutes watched beside it: the twenty vehicles driving properly all moving, none stuck.
+
+**Cost.** High, 6 pm, stood still, this against the branch as it was, two pairs back to back:
+27th Main 109.3 against 105.6 FPS, work 8.69 against 8.82 ms a frame; Agara 114.6 against 104.2,
+8.29 against 9.23 ms. Level, within what one run differs from the next.
+
+Still not done: the aunty on the pillion (the delivery box is where she would sit), a pushcart in
+traffic, cows that move, Medium measured, the new lines recorded. A rider parked in the kerb lane
+by a junction still holds the traffic behind them until it knots: stood there five minutes, 68 of
+80 vehicles were standing. Stood at the spawn point, none were.

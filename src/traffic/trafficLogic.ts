@@ -1688,8 +1688,8 @@ const BUS_STOP = { dwell: 9, lookAhead: 70, reach: 15 }
 const busStopKey = (lane: number, along: number) => lane * 100000 + Math.round(along)
 
 /**
- * Gives each lane buses run on the stops beside it: a stop belongs to the bus lane nearest it
- * (the kerb lane on its side), where along that lane it is. Shelters are at OSM's stops
+ * Gives each lane buses run on the stops beside it: a stop belongs to the nearest bus lane on the
+ * ground that has it on its left (the kerb lane on its side), where along that lane it is. Shelters are at OSM's stops
  * (landmarkPlacement.ts), so buses stop where the city's do.
  */
 export function setBusStops(world: TrafficWorld, stops: { x: number; z: number }[]) {
@@ -1699,10 +1699,15 @@ export function setBusStops(world: TrafficWorld, stops: { x: number; z: number }
     let bestDistance: number = BUS_STOP.reach
     let bestAlong = 0
     world.roadLanes.forEach((lane, index) => {
-      if (!lane.buses || lane.length < 1) return
+      // Not a lane up on a flyover that happens to pass over the shelter: nobody boards a bus up there.
+      if (!lane.buses || lane.length < 1 || lane.deck) return
       const along = (x - lane.startX) * lane.forwardX + (z - lane.startZ) * lane.forwardZ
       if (along < 0 || along > lane.length) return
-      const distance = Math.hypot(x - (lane.startX + lane.forwardX * along), z - (lane.startZ + lane.forwardZ * along))
+      const offX = x - (lane.startX + lane.forwardX * along)
+      const offZ = z - (lane.startZ + lane.forwardZ * along)
+      // The shelter is at the bus's kerb side, its left: never across the road, or over a divider, from its door.
+      if (offX * lane.forwardZ - offZ * lane.forwardX <= 0) return
+      const distance = Math.hypot(offX, offZ)
       if (distance < bestDistance) {
         best = index
         bestDistance = distance

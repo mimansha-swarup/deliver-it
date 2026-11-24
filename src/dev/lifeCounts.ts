@@ -12,4 +12,8 @@ export const lifeCounts = {
   talkersDrawn: 0,
   /** Stray dogs trotting about now. */
   dogs: 0,
+  /** People at bus stops waiting just now, walking to a bus's door just now, and how many have got on one since the game began. */
+  atStops: 0,
+  boarding: 0,
+  boarded: 0,
 }

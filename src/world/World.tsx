@@ -8,7 +8,7 @@ import { worldPlanner } from './planAhead'
 import { Sky } from '../sky/Sky'
 import { createCrashPhysics } from '../physics/crashPhysics'
 import { loadRapier } from '../physics/rapier'
-import { createTrafficWorld, setBusStops } from '../traffic/trafficLogic'
+import { createTrafficWorld, setBusStops, trafficDebug } from '../traffic/trafficLogic'
 import { createTrafficSignals } from '../traffic/trafficSignals'
 import { Player } from '../vehicle/Player'
 import { Boundary } from './Boundary'
@@ -574,9 +574,17 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
   // Water collects under the Agara flyover by the junction in heavy rain.
   const features = placeRoadFeatures(graph, agara.spawn ? [{ x: agara.spawn.x, z: agara.spawn.z, reach: 170 }] : [])
   // Main roads are busier and have buses; quiet streets have less (streetPresets.ts).
+  // A road with a bus stop on it has buses, whatever kind of street it is: nobody waits at a shelter no bus comes to.
+  const busRoads = new Set<number>()
+  for (const stop of cityLandmarks.stops) {
+    const near = nearestRoadPiece(roadIndex, stop.x, stop.z, 14)
+    if (near) busRoads.add(near.piece.road)
+  }
   const streetAt = (x: number, z: number) => {
     const near = nearestRoadPiece(roadIndex, x, z, 4)
-    return near ? streetPresetOf(data.roads[near.piece.road]) : null
+    if (!near) return null
+    const preset = streetPresetOf(data.roads[near.piece.road])
+    return preset && busRoads.has(near.piece.road) && !preset.buses ? { ...preset, buses: true } : preset
   }
   const traffic = createTrafficWorld(graph, collisions, props.parkedScooters, physics, features.breakersOnLink, Math.random, streetAt, flyovers.decks)
   // Buses pull up at the shelters, which are at OSM's bus stops (landmarkPlacement.ts).
@@ -600,7 +608,7 @@ function* buildWorld(data: MapData, holder: RapierHolder) {
       worldSurface.report.agara = { ...(worldSurface.report.agara ?? {}), policeMetresFromJunction: Math.round(nearest.distance) }
     }
   }
-  if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic, __deliverItBorrow: borrow })
+  if (isDebug()) Object.assign(window, { __deliverItTrafficWorld: traffic, __deliverItTrafficDebug: trafficDebug, __deliverItBorrow: borrow })
   lap('road features and traffic')
   yield STEP
   // After the lanes, so parked cars don't count as blocking them: traffic eases out around them instead.

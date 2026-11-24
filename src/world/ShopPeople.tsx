@@ -148,8 +148,11 @@ function stepWaiter(waiter: Waiter, buses: { x: number; z: number; heading: numb
     const bus = buses.find((one) => one.id === waiter.bus)
     // The front door, on the kerb side (the left).
     const there = bus && walkTo(bus.x + Math.cos(bus.heading) * (bus.radius + 0.25) + Math.sin(bus.heading) * bus.halfLength * BOARD.door, bus.z - Math.sin(bus.heading) * (bus.radius + 0.25) + Math.cos(bus.heading) * bus.halfLength * BOARD.door)
-    if (!bus || there) {
-      // On, or it left without them (they're gone either way: nobody is left standing in the road).
+    if (!bus && !there) {
+      // It left without them: back to the shelter, for the next one.
+      waiter.mode = 'come'
+    } else if (there) {
+      lifeCounts.boarded++
       drawn.hidden = true
       waiter.mode = 'gone'
       waiter.timer = BOARD.comes[0] + ((person.phase * 3.7) % 1) * (BOARD.comes[1] - BOARD.comes[0])
@@ -212,7 +215,13 @@ export function ShopPeople({ people, traffic }: { people: ShopLife; traffic?: Tr
         bus.id = index * 1000 + ((vehicle.servedStop ?? 0) % 997) + 1
       }
       buses.current.length = count
-      for (const waiter of waiting.current) stepWaiter(waiter, buses.current, step)
+      let boarding = 0
+      for (const waiter of waiting.current) {
+        stepWaiter(waiter, buses.current, step)
+        if (waiter.mode === 'board') boarding++
+      }
+      lifeCounts.boarding = boarding
+      lifeCounts.atStops = waiting.current.length
     }
     if (!hasMoved(seen.current, reach)) return
     seen.current = { x: livePlayer.x, z: livePlayer.z, reach }
