@@ -1,4 +1,5 @@
 import { duckMusicFor, getAudio, type AudioBuses } from './audioEngine'
+import { useSettings } from '../game/settings'
 import { showSubtitle } from './subtitle'
 import script from './voiceScript.json'
 
@@ -150,6 +151,8 @@ let phoneFreeAt = 0
 export async function speak(id: string, treatment: Treatment, voice?: string): Promise<Playing | null> {
   const buses = getAudio()
   if (!buses) return null
+  // Voices muted in Settings: nobody speaks (and the music isn't turned down for them). The RJ is the radio's, and goes with the music.
+  if (treatment !== 'radio' && useSettings.getState().voicesOn === false) return null
   const have = await recordings()
   const name = voice && have.has(`${id}.${voice}`) ? `${id}.${voice}` : have.has(id) ? id : [...have].find((clip) => clip.startsWith(`${id}.`)) ?? null
   if (!name) return null

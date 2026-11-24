@@ -43,6 +43,7 @@ const TEXT = {
   sound: ['Sound', 'ಧ್ವನಿ'],
   masterVolume: ['Master', 'ಒಟ್ಟು ಧ್ವನಿ'],
   voiceVolume: ['Voices', 'ಮಾತು'],
+  voicesOn: ['Voices (Ravi, Manju, customers)', 'ಮಾತು (ರವಿ, ಮಂಜು, ಗ್ರಾಹಕರು)'],
   soundVolume: ['Sound effects', 'ಧ್ವನಿ ಪರಿಣಾಮಗಳು'],
   musicVolume: ['Music', 'ಸಂಗೀತ'],
   camera: ['Camera', 'ಕ್ಯಾಮೆರಾ'],

@@ -271,6 +271,7 @@ export function SettingsPanel({ onBack, inGame = false, onTutorial }: { onBack: 
       </Group>
       <Group title={t('sound')}>
         <Slider label={t('masterVolume')} value={settings.masterVolume ?? 1} min={0} max={1} step={0.05} show={percent(settings.masterVolume ?? 1)} onChange={(masterVolume) => settings.set({ masterVolume })} />
+        <Switch label={t('voicesOn')} checked={settings.voicesOn ?? true} onChange={(voicesOn) => settings.set({ voicesOn })} />
         <Slider label={t('voiceVolume')} value={settings.voiceVolume ?? 1} min={0} max={1} step={0.05} show={percent(settings.voiceVolume ?? 1)} onChange={(voiceVolume) => settings.set({ voiceVolume })} />
         <Slider label={t('soundVolume')} value={settings.sfxVolume} min={0} max={1} step={0.05} show={percent(settings.sfxVolume)} onChange={(sfxVolume) => settings.set({ sfxVolume })} />
         <Slider label={t('musicVolume')} value={settings.musicVolume} min={0} max={1} step={0.05} show={percent(settings.musicVolume)} onChange={(musicVolume) => settings.set({ musicVolume })} />
