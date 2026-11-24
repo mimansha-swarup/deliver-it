@@ -1,11 +1,16 @@
 import type { LineFeature } from './mapData'
-import { getRoadWidth } from './roadData'
+import { getRoadWidth, isOneWay } from './roadData'
 import { isInsidePlayArea, lonLatToWorld } from './worldUtils'
 
 /** Long straight roads get extra points this far apart, in metres. */
 const NODE_SPACING = 10
 
-type Link = { to: number; length: number; roadWidth: number }
+/**
+ * `oneWay`: on a one-way road, 1 for the link that goes the road's way and -1 for the one against
+ * it. Both are kept: a rider can go the wrong way (and people walk both ways), traffic doesn't
+ * (traffic/lanes.ts), and routes avoid it where they can (`createRouteField`).
+ */
+type Link = { to: number; length: number; roadWidth: number; oneWay?: 1 | -1 }
 
 /** The road network as a graph: points on roads, joined where you can ride between them. */
 export type RoadGraph = {
@@ -44,15 +49,16 @@ export function createRoadGraph(roads: LineFeature[]): RoadGraph {
     return node
   }
 
-  const connect = (a: number, b: number, roadWidth: number) => {
+  const connect = (a: number, b: number, roadWidth: number, oneWay: boolean) => {
     const length = Math.hypot(graph.xs[a] - graph.xs[b], graph.zs[a] - graph.zs[b])
-    graph.links[a].push({ to: b, length, roadWidth })
-    graph.links[b].push({ to: a, length, roadWidth })
+    graph.links[a].push(oneWay ? { to: b, length, roadWidth, oneWay: 1 } : { to: b, length, roadWidth })
+    graph.links[b].push(oneWay ? { to: a, length, roadWidth, oneWay: -1 } : { to: a, length, roadWidth })
   }
 
   for (const road of roads) {
     const name = road.properties.name ?? ''
     const roadWidth = getRoadWidth(road)
+    const oneWay = isOneWay(road)
     const points = road.geometry.coordinates
 
     for (let i = 0; i < points.length - 1; i++) {
@@ -68,10 +74,10 @@ export function createRoadGraph(roads: LineFeature[]): RoadGraph {
       for (let part = 1; part < parts; part++) {
         const along = part / parts
         const node = addNode(startX + (endX - startX) * along, startZ + (endZ - startZ) * along, name)
-        connect(previous, node, roadWidth)
+        connect(previous, node, roadWidth, oneWay)
         previous = node
       }
-      connect(previous, end, roadWidth)
+      connect(previous, end, roadWidth, oneWay)
     }
   }
 
@@ -160,6 +166,13 @@ export function findNearestNode(graph: RoadGraph, x: number, z: number): number 
  */
 export const roadClosures = { version: 0, closed: new Set<number>() }
 const CLOSED_COSTS = 4000
+/**
+ * A metre ridden against a one-way street counts as this many when a route is chosen: routes go
+ * round by the right carriageway, but a door on a one-way stretch can still be reached, the last
+ * few metres the wrong way if that's far shorter, as a rider would. The distance reported is still
+ * the real one.
+ */
+const WRONG_WAY_COSTS = 8
 const linkKey = (from: number, to: number) => from * 1_000_000 + to
 
 /** Who has closed what: the festival, a city event. Each sets and lifts its own; the closed set is all of them together. */
@@ -175,10 +188,13 @@ export function setClosedLinks(pairs: [number, number][], owner = 'festival') {
 export function createRouteField(graph: RoadGraph, destination: number): RouteField {
   const count = graph.xs.length
   const distance = new Float64Array(count).fill(Infinity)
+  // What the search compares: the distance, with closed and wrong-way stretches counted as longer than they are.
+  const cost = new Float64Array(count).fill(Infinity)
   const nextNode = new Int32Array(count).fill(-1)
   const done = new Uint8Array(count)
   const queue = new MinHeap()
   distance[destination] = 0
+  cost[destination] = 0
   queue.push(destination, 0)
 
   while (queue.size > 0) {
@@ -186,10 +202,14 @@ export function createRouteField(graph: RoadGraph, destination: number): RouteFi
     if (done[current]) continue
     done[current] = 1
 
-    for (const { to, length } of graph.links[current]) {
-      const throughCurrent = distance[current] + length + (roadClosures.closed.size > 0 && roadClosures.closed.has(linkKey(current, to)) ? CLOSED_COSTS : 0)
-      if (throughCurrent < distance[to]) {
-        distance[to] = throughCurrent
+    for (const { to, length, oneWay } of graph.links[current]) {
+      // The search runs out from the destination, so this link is ridden from `to` to `current`:
+      // against the street if the link the other way (this one) goes with it.
+      const throughCurrent =
+        cost[current] + length * (oneWay === 1 ? WRONG_WAY_COSTS : 1) + (roadClosures.closed.size > 0 && roadClosures.closed.has(linkKey(current, to)) ? CLOSED_COSTS : 0)
+      if (throughCurrent < cost[to]) {
+        cost[to] = throughCurrent
+        distance[to] = distance[current] + length
         nextNode[to] = current
         // The old entry for `to` stays in the heap, and is skipped when it comes out as done.
         queue.push(to, throughCurrent)

@@ -19,6 +19,15 @@ const ROAD_WIDTHS: Record<string, number> = {
   track: 3,
 }
 
+/**
+ * Whether a road is one way, along the order its points are mapped in: tagged so, or a roundabout
+ * (which is one way by what it is). HSR has about 380 such stretches: each half of its dual
+ * carriageways, the service roads beside the Outer Ring Road, and a few residential streets.
+ */
+export function isOneWay({ properties }: LineFeature): boolean {
+  return properties.oneway === 'yes' || properties.junction === 'roundabout'
+}
+
 export function getRoadWidth({ properties }: LineFeature): number {
   const lanes = Number(properties.lanes)
   if (lanes > 0) return lanes * LANE_WIDTH

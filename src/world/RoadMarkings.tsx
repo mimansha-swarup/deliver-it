@@ -4,13 +4,20 @@ import { ChunkedMesh } from './ChunkedMesh'
 import { createFlatGeometries, positionsFor, type ChunkedPositions } from './chunks'
 import type { LineFeature } from './mapData'
 import { PointGrid } from './props'
-import { clipToPlayArea, pushStrip } from './roadGeometry'
+import { getRoadWidth, isOneWay } from './roadData'
+import { clipToPlayArea, pushStrip, pushTriangle } from './roadGeometry'
 import { lonLatToWorld, type GroundPoint } from './worldUtils'
 
 const DASH_LENGTH = 2
 const GAP_LENGTH = 3.5
 const DASH_WIDTH = 0.14
 const MARKING_HEIGHT = 0.06
+
+/**
+ * One-way streets have arrows painted along them, as Bengaluru's do: one in each half of the road,
+ * every `every` metres, pointing the way the traffic goes. `shaft` and `head` are lengths, in metres.
+ */
+const ARROW = { every: 42, first: 12, shaft: 1.7, shaftWidth: 0.22, head: 1.1, headWidth: 0.75 }
 
 /** Markings stop this far from a junction, in metres. */
 const JUNCTION_CLEARANCE = 6
@@ -48,6 +55,11 @@ function createMarkingGeometries(roads: LineFeature[]): THREE.BufferGeometry[] {
       const [x, , z] = lonLatToWorld(position)
       return [x, z]
     })
+    const oneWay = isOneWay(road)
+    const quarter = getRoadWidth(road) / 4
+    // How far along the whole road the next arrow goes, carried from one piece of it to the next.
+    let nextArrow = ARROW.first
+    let travelled = 0
 
     for (let i = 0; i < points.length - 1; i++) {
       const clipped = clipToPlayArea(points[i], points[i + 1])
@@ -57,6 +69,25 @@ function createMarkingGeometries(roads: LineFeature[]): THREE.BufferGeometry[] {
       const length = Math.hypot(end[0] - start[0], end[1] - start[1])
       const directionX = (end[0] - start[0]) / length
       const directionZ = (end[1] - start[1]) / length
+
+      if (oneWay) {
+        for (; nextArrow + ARROW.shaft + ARROW.head <= travelled + length; nextArrow += ARROW.every) {
+          const along = nextArrow - travelled
+          if (along < 0) continue
+          // One in each half; a narrow road gets one, beside the dashes.
+          for (const side of quarter >= 1.5 ? [-1, 1] : [1]) {
+            const tail: GroundPoint = [start[0] + directionX * along + directionZ * quarter * side, start[1] + directionZ * along - directionX * quarter * side]
+            const neck: GroundPoint = [tail[0] + directionX * ARROW.shaft, tail[1] + directionZ * ARROW.shaft]
+            const tip: GroundPoint = [neck[0] + directionX * ARROW.head, neck[1] + directionZ * ARROW.head]
+            if (isNearJunction(tail) || isNearJunction(tip)) continue
+            const positions = positionsFor(chunks, tail)
+            pushStrip(positions, MARKING_HEIGHT, tail, neck, ARROW.shaftWidth)
+            const half = ARROW.headWidth / 2
+            pushTriangle(positions, MARKING_HEIGHT, [neck[0] + directionZ * half, neck[1] - directionX * half], [neck[0] - directionZ * half, neck[1] + directionX * half], tip)
+          }
+        }
+        travelled += length
+      }
 
       for (let along = 0; along + DASH_LENGTH <= length; along += DASH_LENGTH + GAP_LENGTH) {
         const dashStart: GroundPoint = [

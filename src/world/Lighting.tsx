@@ -66,6 +66,15 @@ function followRider(sun: THREE.DirectionalLight, shadowSize: number, shadowRang
   sun.position.copy(focus).addScaledVector(sunForward, -LIGHT_DISTANCE)
 }
 
+/**
+ * The shadow map is drawn again only when something in it could have changed: every frame while the
+ * rider moves (their own shadow goes with them), when the sun steps, and otherwise `stillHz` times a
+ * second, which keeps the shadows of passing traffic and people within a frame of them. Standing at
+ * a door or a signal, that's half the shadow passes of a 60 a second picture.
+ */
+const SHADOW_UPDATES = { movedMetres: 0.01, stillHz: 30 }
+const shadowDrawn = { x: NaN, z: NaN, height: NaN, sun: new THREE.Vector3(), at: 0, light: '' }
+
 /** Under a clear sky the shadow filter shrinks by up to this share of the preset's softness. */
 const CLEAR_SHADOW_CRISPNESS = 0.6
 
@@ -74,7 +83,7 @@ export function Lighting() {
   const sun = useRef<THREE.DirectionalLight>(null)
   const fill = useRef<THREE.HemisphereLight>(null)
 
-  useFrame(() => {
+  useFrame(({ gl, clock }) => {
     const { look } = liveSky
     if (fill.current) {
       fill.current.intensity = look.ambientIntensity
@@ -88,6 +97,23 @@ export function Lighting() {
       sun.current.shadow.intensity = look.shadowStrength
       // Crisper edges under a clear sky: a smaller filter radius (the presets' softness is the most).
       sun.current.shadow.radius = shadowSoftness * (1 - CLEAR_SHADOW_CRISPNESS * look.shadowSharpness)
+      // Whether this frame draws the shadow map again (see `SHADOW_UPDATES`). Anything else that needs
+      // one (the warm-up behind the loading screen, a new light) asks for it itself.
+      const now = clock.elapsedTime
+      // Drawn when asked, here, not by three.js on every frame. A new light (another quality's) starts with a map of its own.
+      gl.shadowMap.autoUpdate = false
+      const light = `${shadowSize} ${shadowRange}`
+      const moved =
+        !(Math.hypot(livePlayer.x - shadowDrawn.x, livePlayer.z - shadowDrawn.z) <= SHADOW_UPDATES.movedMetres) || Math.abs(livePlayer.height - shadowDrawn.height) > SHADOW_UPDATES.movedMetres
+      if (moved || light !== shadowDrawn.light || !shadowDrawn.sun.equals(shownDirection) || now - shadowDrawn.at >= 1 / SHADOW_UPDATES.stillHz - 0.004 || now < shadowDrawn.at) {
+        gl.shadowMap.needsUpdate = true
+        shadowDrawn.x = livePlayer.x
+        shadowDrawn.z = livePlayer.z
+        shadowDrawn.height = livePlayer.height
+        shadowDrawn.sun.copy(shownDirection)
+        shadowDrawn.at = now
+        shadowDrawn.light = light
+      }
     }
   })
 

@@ -3,6 +3,7 @@ import { useResolution } from '../game/resolution'
 import { debugAsked } from './spawn'
 import { counts, endFrame, ownFrames, report, timed, timing } from './frameTimes'
 import { useGameStore } from '../game/gameStore'
+import { livePacing, usePower } from '../game/framePacing'
 
 /*
  * Only with `?debug=1` in the address (not just for being the dev server): frames per second and the worst frames, over the game, above the
@@ -25,6 +26,19 @@ import { useGameStore } from '../game/gameStore'
  * accounts for; and, each second, how many times React committed (the page: HUD, phone and menus; and
  * the 3D scene's tree) and how many times the game's store was written to.
  */
+
+/** The power mode, as the overlay words it: the player's setting, or what has taken its place. */
+const POWER: Record<string, string> = {
+  unlimited: 'Unlimited',
+  smooth: 'Smooth',
+  saver: 'Battery saver',
+  battery: 'Battery saver (on battery)',
+  heat: 'Battery saver (heating)',
+  menu: 'resting (menu)',
+  idle: 'resting (standing idle)',
+  loading: 'loading (no cap)',
+  hidden: 'hidden',
+}
 
 /** What react-three-fiber keeps of the callbacks it runs each frame, as far as this needs it. */
 type Subscriber = { ref: { current: ((...args: unknown[]) => void) & { timedBy?: string } }; priority: number }
@@ -90,7 +104,14 @@ export function FpsOverlay() {
     const offStore = timing.on ? useGameStore.subscribe(() => void counts.storeWrites++) : () => {}
     let countedAt = performance.now()
     let perSecond = { page: 0, scene: 0, store: 0 }
+    // Frames the game drew, not the screen's refreshes: it draws on only some of them (game/framePacing.ts).
+    let drawn = livePacing.frames
     let id = requestAnimationFrame(function tick(now) {
+      if (livePacing.frames === drawn) {
+        id = requestAnimationFrame(tick)
+        return
+      }
+      drawn = livePacing.frames
       const ms = now - last
       if (timing.on) endFrame(now)
       last = now
@@ -127,16 +148,16 @@ export function FpsOverlay() {
           )
         }
         while (works.length && works[0].at < now - 1000) works.shift()
-        const work = works.length ? works.reduce((sum, frame) => sum + frame.ms, 0) / works.length : 0
+        // Over the frames drawn, not the screen's refreshes: most refreshes draw nothing when the rate is capped.
+        const work = second.length ? works.reduce((sum, frame) => sum + frame.ms, 0) / second.length : 0
         const usual = second.length ? second.reduce((sum, frame) => sum + frame.ms, 0) / second.length : 0
-        // The quickest tenth of the last ten seconds' frames: the screen's own rate, give or take.
-        const quick = frames.map((frame) => frame.ms).sort((a, b) => a - b)[Math.floor(frames.length * 0.1)] ?? 0
         text.current.textContent =
           `${second.length} FPS  worst ${worstSecond.toFixed(1)} ms (10 s: ${worstWindow.toFixed(1)})\n` +
           `>20 ms in 10 s: ${slow}` +
           `  ${counted.calls} calls  ${Math.round(counted.triangles / 1000)}k tris` +
           `  ${ratio}×\n` +
-          `work ${work.toFixed(1)} ms a frame (${usual > 0 ? Math.round((work / usual) * 100) : 0}% of it)  screen ~${quick > 0 ? Math.round(1000 / quick) : 0} Hz` +
+          `work ${work.toFixed(1)} ms a frame (${usual > 0 ? Math.round((work / usual) * 100) : 0}% of it)  screen ~${Math.round(livePacing.screenHz)} Hz\n` +
+          `cap ${livePacing.cap || 'none'}  power: ${POWER[livePacing.why]}${livePacing.resting && livePacing.why !== 'hidden' ? `, then ${POWER[usePower.getState().auto ?? livePacing.mode]}` : ''}` +
           (timing.on ? breakdown(work) : '')
         text.current.dataset.slow = worstSecond > 33 ? 'bad' : worstSecond > 20 ? 'warn' : 'ok'
       }

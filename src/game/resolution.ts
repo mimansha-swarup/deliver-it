@@ -1,11 +1,25 @@
 import { create } from 'zustand'
 import { useGameStore } from './gameStore'
+import { isMobileDevice } from './mobileDevice'
 import { QUALITY_PRESETS, type Quality } from './qualitySettings'
+import { useSettings } from './settings'
+
+/**
+ * The most any quality draws at unless the player asks for more: one pixel for each of the screen's
+ * points. Above that every step is half as many pixels again to shade, which is heat, for a
+ * sharpness that's hard to see while riding. "Sharper picture" in Settings allows `SHARP`.
+ */
+const COOL_SCALE = 1
+const SHARP_SCALE = 1.25
+/** A phone's screen has three pixels to a point and a small battery: never more than this there. */
+const PHONE_SCALE = 1.5
 
 /** The resolutions a quality may draw at: its preset's range, or a fixed 0.75× on Low if chosen. */
 export function ratioRange(quality: Quality): [number, number] {
   if (quality === 'low' && useGameStore.getState().lowScale) return [LOW_SCALE, LOW_SCALE]
-  return QUALITY_PRESETS[quality].pixelRatio
+  const [lowest, most] = QUALITY_PRESETS[quality].pixelRatio
+  const highest = Math.min(most, useSettings.getState().sharpPicture === true ? SHARP_SCALE : COOL_SCALE, isMobileDevice ? PHONE_SCALE : Infinity)
+  return [Math.min(lowest, highest), highest]
 }
 
 /** Low's optional fixed render scale. */
@@ -13,8 +27,9 @@ export const LOW_SCALE = 0.75
 
 /** The resolution each quality starts at on this screen: the screen's own, within the preset's range. */
 export function startingRatio(quality: Quality): number {
-  const [lowest, highest] = ratioRange(quality)
-  return Math.min(Math.max(window.devicePixelRatio || 1, lowest), highest)
+  const [, highest] = ratioRange(quality)
+  // Never above the screen's own pixels (a zoomed-out page has fewer than one to a point): they'd only be thrown away.
+  return Math.min(Math.max(window.devicePixelRatio || 1, 0.5), highest)
 }
 
 /**

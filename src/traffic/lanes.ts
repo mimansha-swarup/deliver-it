@@ -43,6 +43,8 @@ type LaneRules = {
   minRoadWidth: number
   /** How far left of the road's centre the path runs, for a given road width. */
   sideOffset: (roadWidth: number) => number
+  /** Traffic keeps to a one-way street's direction: no path against it. People on the footpath walk both ways. */
+  obeyOneWay?: boolean
   /** Space needed around the path, so nothing walks or drives through a wall. */
   clearance: number
 }
@@ -57,7 +59,7 @@ const EDGE_MARGIN = 3
 export function createLanes(
   graph: RoadGraph,
   collisions: CollisionWorld,
-  { minRoadWidth, sideOffset, clearance }: LaneRules,
+  { minRoadWidth, sideOffset, clearance, obeyOneWay = false }: LaneRules,
 ): Lane[] {
   const lanes: Lane[] = []
   const lanesFrom: number[][] = graph.xs.map(() => [])
@@ -68,8 +70,9 @@ export function createLanes(
     isInsideBounds(x, z, EDGE_MARGIN) && !isNearBuilding(collisions, x, z, clearance)
 
   graph.links.forEach((links, from) => {
-    for (const { to, length, roadWidth } of links) {
+    for (const { to, length, roadWidth, oneWay } of links) {
       if (roadWidth < minRoadWidth || length === 0) continue
+      if (obeyOneWay && oneWay === -1) continue
 
       const forwardX = (graph.xs[to] - graph.xs[from]) / length
       const forwardZ = (graph.zs[to] - graph.zs[from]) / length
