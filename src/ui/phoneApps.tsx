@@ -168,7 +168,7 @@ function OrderItem({ mission, raised }: { mission: Mission; raised: boolean }) {
   )
 }
 
-const KIND_LABELS: Record<OrderKind, string> = { standard: '', rush: 'Rush', double: 'Double drop' }
+const KIND_LABELS: Record<OrderKind, string> = { standard: '', rush: 'Rush', double: 'Double drop', batch: 'Batch run' }
 
 /** Your level, and how far through it you are. */
 function LevelBar() {

@@ -29,7 +29,8 @@ export type MissionPlanner = {
   getRouteField: (node: number) => RouteField
   /** Plans an order from wherever the rider is. Their `level` decides what kinds of order can come up. */
   /** `period` is the time of day: it sets how often orders are rushes or double drops, and what's ordered. */
-  planMission: (fromX: number, fromZ: number, level: number, period?: DayPeriod) => Mission
+  /** `carries`: how many parcels the rider's vehicle takes at once (a batch run needs four or more). */
+  planMission: (fromX: number, fromZ: number, level: number, period?: DayPeriod, carries?: number) => Mission
 }
 
 /** How far back from the road's edge a customer stands, in metres, best first. */
@@ -52,7 +53,7 @@ function rollTier(level: number, random: () => number): DeliveryTier {
   return allowed[0]
 }
 
-/** Rush orders and double drops come up now and then, once the rider's level allows them. */
+/** Rush orders and double drops come up now and then, once the rider's level allows them. (A batch run is the vehicle's doing: `planMission`.) */
 function rollKind(level: number, random: () => number, period?: DayPeriod): OrderKind {
   const roll = random()
   const doubleChance = period?.doubleChance ?? MISSION_RULES.doubleChance
@@ -229,19 +230,20 @@ export function createMissionPlanner(
     return stop
   }
 
-  /** A second customer for a double drop: a short ride on from the first, and not on top of them. */
-  const findSecondDrop = (first: number): number | null => {
+  /** The next customer on a double drop or a batch run: a short ride on from the last, and not one already on the trip. */
+  const findNextDrop = (first: number, taken: number[] = []): number | null => {
     const fromFirst = getRouteField(first)
     const options = stopNodes.filter(
       (node) =>
         node !== first &&
+        !taken.includes(node) &&
         fromFirst.distance[node] >= MISSION_RULES.secondDropMin &&
         fromFirst.distance[node] <= MISSION_RULES.secondDropMax,
     )
     return options.length > 0 ? pickRandom(options, random) : null
   }
 
-  const planMission = (fromX: number, fromZ: number, level: number, period?: DayPeriod): Mission => {
+  const planMission = (fromX: number, fromZ: number, level: number, period?: DayPeriod, carries = 0): Mission => {
     const start = findNearestNode(graph, fromX, fromZ)
     const store = nearestStore(stores, fromX, fromZ)
     const fromStore = getRouteField(store.node)
@@ -271,24 +273,40 @@ export function createMissionPlanner(
 
     const tier = gatedTier ?? rolled
     let kind = rollKind(level, random, period)
-    const second = kind === 'double' ? findSecondDrop(customer) : null
-    if (kind === 'double' && second === null) kind = 'standard'
+    // A vehicle that carries enough is often sent out with a batch: four or five customers, one after another.
+    const [fewest, most] = MISSION_RULES.batchDrops
+    if (carries >= MISSION_RULES.batchCarries && random() < MISSION_RULES.batchChance) kind = 'batch'
+    const wantedDrops = kind === 'batch' ? Math.min(carries, fewest + Math.floor(random() * (most - fewest + 1))) : kind === 'double' ? 2 : 1
     const story = createOrderStory(random, period?.id)
-    let secondStory = createOrderStory(random, period?.id)
-    if (secondStory.customer === story.customer) secondStory = createOrderStory(random, period?.id)
     const firstDoor = findDoor(customer, story)
-    const secondDoor = second === null ? null : findDoor(second, secondStory)
-    const nextDrops: Drop[] =
-      second === null || !secondDoor
-        ? []
-        : [{ customer: customerStop(second, secondStory, secondDoor.door), waiting: secondDoor.waiting, door: secondDoor.door, story: secondStory }]
-    lastCustomer = second ?? customer
-
+    const nextDrops: Drop[] = []
+    const stops = [customer]
+    const names = [story.customer]
     let routeLength = fromStore.distance[start] + fromStore.distance[customer]
-    if (second !== null) routeLength += getRouteField(customer).distance[second]
+    let doorSeconds = firstDoor.extraSeconds
+    while (stops.length < wantedDrops) {
+      const last = stops[stops.length - 1]
+      const next = findNextDrop(last, stops)
+      if (next === null) break
+      // Someone else each time, and nothing only another vehicle could carry: the offer speaks for the first order alone.
+      let nextStory = createOrderStory(random, period?.id)
+      for (let tries = 0; tries < 6 && (names.includes(nextStory.customer) || nextStory.needs); tries++) nextStory = createOrderStory(random, period?.id)
+      const nextDoor = findDoor(next, nextStory)
+      if (!nextDoor) break
+      nextDrops.push({ customer: customerStop(next, nextStory, nextDoor.door), waiting: nextDoor.waiting, door: nextDoor.door, story: nextStory })
+      routeLength += getRouteField(last).distance[next]
+      doorSeconds += nextDoor.extraSeconds
+      stops.push(next)
+      names.push(nextStory.customer)
+    }
+    // Too few customers near enough: it's what it came to (two is a double drop, one an order like any other).
+    if (kind === 'batch' && stops.length < fewest) kind = stops.length === 2 ? 'double' : stops.length === 1 ? 'standard' : 'batch'
+    if (kind === 'double' && stops.length === 1) kind = 'standard'
+    lastCustomer = stops[stops.length - 1]
+
     // The ride, plus the walking at each end: into the dark store and out, and to each door.
     // (Those allowances were set when a walk was 2.8 m/s; it's a real walk now, 1.9, so they're longer by as much.)
-    const walking = (MISSION_RULES.pickupWalkSeconds + firstDoor.extraSeconds + (secondDoor?.extraSeconds ?? 0)) * WALK_ALLOWANCE
+    const walking = (MISSION_RULES.pickupWalkSeconds + doorSeconds) * WALK_ALLOWANCE
     const normalTime = Math.max(
       MISSION_RULES.minOnTimeSeconds,
       Math.ceil(routeLength / MISSION_RULES.onTimeRouteSpeed),

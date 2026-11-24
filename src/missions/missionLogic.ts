@@ -59,6 +59,7 @@ export function calculateReward(
 
   return {
     kind,
+    drops: dropCount,
     baseCredits,
     distanceCredits: tier.extraCredits,
     onTimeCredits: onTime ? rules.onTimeCredits + (rush ? rules.rushExtraCredits : 0) : 0,

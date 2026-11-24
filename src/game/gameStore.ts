@@ -565,7 +565,7 @@ export const useGameStore = create<GameState>()(
           if (state.phase === 'toPickup') return { phase: 'collecting' }
           if (state.phase !== 'toCustomer' || !state.mission) return state
 
-          // On a double drop, the first customer is just a stop on the way. The pay comes at the last.
+          // On a double drop or a batch run, each customer but the last is a stop on the way. The pay comes at the last.
           if (state.mission.nextDrops.length > 0) return { phase: 'handingOver' }
 
           // The clock stops on arrival, so the handover can't cost the rider a bonus.
@@ -593,7 +593,7 @@ export const useGameStore = create<GameState>()(
         set((state) => {
           if (state.phase === 'collecting') return { phase: 'toCustomer' }
 
-          // A double drop moves on to its next customer.
+          // A double drop or a batch run moves on to its next customer.
           const [next, ...rest] = state.mission?.nextDrops ?? []
           if (state.phase === 'handingOver' && state.mission && next) {
             return {
@@ -766,7 +766,7 @@ export const useGameStore = create<GameState>()(
       if (state.duty !== 'online' || state.mission || state.offer || !state.planner || state.offlineAfterOrder || state.explore) return state
       // The tutorial makes its own first offer (ui/Tutorial.tsx), a second or so in: dispatch's doesn't get in ahead of it.
       if (useTutorial.getState().step === 'accept') return state
-      const mission = state.planner.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp), dayPeriod(liveSky.hours))
+      const mission = state.planner.planMission(livePlayer.x, livePlayer.z, levelFromXp(state.xp), dayPeriod(liveSky.hours), (VEHICLES[state.vehicleId] ?? VEHICLES.scooter).capacity)
       return { offer: { mission, expiresAt: performance.now() + OFFER_SECONDS * 1000 } }
     }),
 

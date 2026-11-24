@@ -11995,3 +11995,29 @@ Still not done: the aunty on the pillion (the delivery box is where she would si
 traffic, cows that move, Medium measured, the new lines recorded. A rider parked in the kerb lane
 by a junction still holds the traffic behind them until it knots: stood there five minutes, 68 of
 80 vehicles were standing. Stood at the spawn point, none were.
+
+## 2026-11-24: Entry 277, batch runs for vehicles that carry four or more
+
+Asked for: in the Bhaara E-Cargo and anything bigger, four or five deliveries at once. (VISION.md
+lists "the van and bulk orders" under Later; built now because it was asked for, and it is the
+double drop's own machinery with more customers.)
+
+- **A batch run** (`OrderKind` 'batch'): in a vehicle whose `capacity` is 4 or more (the cargo
+  three-wheeler 8, the car 10, the van 20; the scooter, bicycle, e-scooter and motorbike carry 1 or
+  2 and never get one), 45% of offers are four or five customers on the one trip
+  (`MISSION_RULES.batchCarries`, `batchChance`, `batchDrops`). Each customer is 120 to 500 m by
+  road on from the last, as a double drop's second is, never the same road point or the same name
+  twice, and none after the first is an order only another vehicle could carry.
+- **The planner** takes how many parcels the vehicle carries (`planMission`'s `carries`,
+  from the vehicle in use when dispatch makes the offer). With too few customers near enough the
+  order is what it came to: a double drop, or an order like any other.
+- **Pay and time** need nothing new: the base reward and XP are already per customer (five drops,
+  ₹250 base), the clock allows the whole route and the walk to every door, and the pay comes at
+  the last door.
+- **Words**: the offer says "Batch of 5", the phone "Batch run", the result "All 5 orders
+  delivered" and "Delivery reward × 5" (`Reward.drops`).
+
+Checked on the production build by script: of 300 orders planned, the scooter got no batch; the
+three-wheeler 76 of four and 70 of five; the van 63 and 54. One batch of five (2,661 m, 692 s
+allowed, hops of 129 to 375 m as the crow flies) was accepted in the three-wheeler and handed over
+door by door through the store to its one reward. Not ridden by hand.
