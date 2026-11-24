@@ -850,43 +850,57 @@ function withPersonData(body: THREE.BufferGeometry, count: number): THREE.Buffer
 }
 
 /**
- * Everyone in a crowd, each in their own place in the list: where they stand, and how they're
- * walking. A walker far from the player (`far`) is written only when they've been stepped, ten
- * times a second; one waiting off the map is shrunk to nothing, once.
+ * Everyone in a crowd who can be seen, written one after another, and only that many drawn: someone
+ * hidden (a bike's rider still on the bike, a walker waiting off the map) costs nothing, where a
+ * copy shrunk to nothing still cost the GPU every corner of a person. Each is written again only
+ * when something about them has changed: a walker far from the player (`far`) when they've been
+ * stepped, ten times a second; someone standing as they stood last frame, not at all. When who can
+ * be seen changes, everyone moves up or down the list, and all are written.
+ * `stamps`: what was last written of each, and in its last place, who could be seen.
  */
 function writePeople(instances: THREE.InstancedMesh, geometry: THREE.BufferGeometry, items: Pedestrian[], ground: number, stamps: Float64Array) {
   const pose = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
   const wave = geometry.getAttribute('aWave') as THREE.InstancedBufferAttribute
-  let changed = false
+  // Who can be seen, as one number.
+  let seen = 0
   for (let index = 0; index < items.length; index++) {
     const item = items[index]
-    const away = Math.abs(item.x) > NOWHERE
-    if (away || item.far) {
-      const stamp = away ? -1 : (item.farStamp ?? 0)
-      if (stamps[index] === stamp) continue
-      stamps[index] = stamp
-    } else {
-      // Someone standing just as they stood last frame (most people at shops and stops) is left as written:
-      // everything that's written of them, as one number, which changes if any of it does.
-      const state = item.x * 1.37 + item.z * 2.11 + item.heading * 3.7 + item.stride * 0.731 + (item.walking ?? 1) * 5.3 + (item.wave ?? 0) * 7.9 + item.down * 11.3 + item.lift * 13.1 + (item.idle ?? 0) * 17 + (item.hidden ? 1e7 : 0) + (item.rotation ? item.rotation[0] * 19 + item.rotation[3] * 23 : 0) + 1e6
-      if (stamps[index] === state) continue
-      stamps[index] = state
-    }
+    if (!item.hidden && Math.abs(item.x) < NOWHERE) seen += (index + 1) * (index + 7)
+  }
+  const all = stamps[items.length] !== seen
+  stamps[items.length] = seen
+  let changed = all
+  let place = 0
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]
+    if (item.hidden || Math.abs(item.x) >= NOWHERE) continue
+    const at = place++
+    // Everything that's written of them, as one number, which changes if any of it does; for a far walker, the step they were last moved in.
+    const state = item.far
+      ? (item.farStamp ?? 0)
+      : item.x * 1.37 + item.z * 2.11 + item.heading * 3.7 + item.stride * 0.731 + (item.walking ?? 1) * 5.3 + (item.wave ?? 0) * 7.9 + item.down * 11.3 + item.lift * 13.1 + (item.idle ?? 0) * 17 + (item.rotation ? item.rotation[0] * 19 + item.rotation[3] * 23 : 0) + 1e6
+    if (!all && stamps[index] === state) continue
+    stamps[index] = state
     changed = true
     transform.position.set(item.x, (item.deck ? ground : Math.max(ground, groundLift.at(item.x, item.z))) + item.lift, item.z)
     if (item.rotation) transform.quaternion.set(...item.rotation)
     else transform.rotation.set(0, item.heading, 0)
-    transform.scale.setScalar(item.hidden || away ? 0 : 1)
+    transform.scale.setScalar(1)
     transform.updateMatrix()
-    instances.setMatrixAt(index, transform.matrix)
-    pose.setXYZW(index, item.stride, item.skin, item.down, item.walking ?? 1)
-    wave.setXY(index, item.wave ?? 0, item.idle ?? 0)
+    instances.setMatrixAt(at, transform.matrix)
+    pose.setXYZW(at, item.stride, item.skin, item.down, item.walking ?? 1)
+    wave.setXY(at, item.wave ?? 0, item.idle ?? 0)
+    if (all && instances.instanceColor) instances.setColorAt(at, nearColor.set(peoplePalette.current[Math.floor(item.tint * peoplePalette.current.length * 0.999)]))
   }
+  instances.count = place
   if (!changed) return
   instances.instanceMatrix.needsUpdate = true
   pose.needsUpdate = true
   wave.needsUpdate = true
+  if (all && instances.instanceColor) instances.instanceColor.needsUpdate = true
 }
+/** The colours of the crowd being written (set by `People` before it writes): a person's colour moves with them as they move up or down the list. */
+const peoplePalette: { current: string[] } = { current: [] }
 
 /**
  * People in a room (world/Rooms.tsx) stand under the city, where the sun and the sky's light don't
@@ -1003,11 +1017,12 @@ export function People({
   useEffect(() => () => geometry.dispose(), [geometry])
 
   /** For each far walker, the step last written (`Pedestrian.farStamp`): they're written again only when stepped. */
-  const stamps = useMemo(() => new Float64Array(items.length).fill(-2), [items.length])
+  const stamps = useMemo(() => new Float64Array(items.length + 1).fill(-2), [items.length])
 
   usePeopleFrame(({ clock }) => {
     if (!mesh.current) return
     peopleClock.uTime.value = clock.elapsedTime % 1000
+    peoplePalette.current = palette
     writePeople(mesh.current, geometry, items, ground, stamps)
   })
 

@@ -11839,3 +11839,117 @@ names an address now (without the variable, posthog-js uses its own default). Th
 code has that address in it too, so the built JavaScript would have failed the scan next;
 `netlify.toml` (new) lists `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in `SECRETS_SCAN_OMIT_KEYS`.
 Both are public values: every `VITE_` variable is built into the page.
+
+## 2026-11-24: Entry 275, traffic that bunches, life beside the road, and people to talk to
+
+The city looked full and its roads empty. Now, at the same cost a frame or less:
+
+**Traffic.**
+- **The mix** is Bengaluru's: of every twenty vehicles, twelve two-wheelers, three autos, three cars, a
+  bus and one other (`kindAt`, trafficLogic.ts). The others are new: a tempo (the mini truck from
+  fleet.glb) and someone on a bicycle, each one shape. Pushcarts stay at the kerb with their vendors:
+  none is pushed along in traffic.
+- **Near and far** (`RAIL`). At most the quality's `nearVehicles` (20 on High, 14 on Medium, 8 on Low)
+  drive properly, with steering, junction manners and physics: the nearest, within about 120 m.
+  Everything else is on rails (`stepRail`): it follows its lane, the lights and what's in front of
+  it, pulls up at bus stops, ten times a second, with no physics, and is drawn as its far stand-in,
+  written only when it's stepped and carried on between steps by its speed in the shader (`aRail`).
+  Vehicles in play: 80 on High (40 before), 52 on Medium (28), 22 on Low (10).
+- **Bunches, not even spacing.** New traffic comes in bunches of up to five (`BUNCH`), mostly heading
+  towards the player, and a side lane gets far less than its street's share. On a wide road traffic
+  runs in two or three files side by side (`Lane.files`): one file a carriageway is why Outer Ring
+  Road looked empty. Two-wheelers on rails filter up the side of standing traffic to the front, as
+  the ones driving properly already did.
+- **The time of day** (traffic/density.ts): thick from 9 to 11 and from 6 to 9, thin late at night;
+  people on the footpaths likewise.
+- Putting traffic back on the road is done a few vehicles each tenth of a second, not tried for every
+  spare vehicle every frame; the wheels' and the people's per-frame lists are no longer made new each frame.
+
+**Beside the road.**
+- Two to five people wait at each bus stop (one to three before); when a bus pulls up some walk to
+  its door and are gone with it, and others come along the footpath to wait (ShopPeople.tsx).
+- Every vendor's cart has its vendor and often a customer or two; the vegetable cart is a fruit cart.
+- Stray dogs trot the footpaths, stop to sniff, and bolt from the horn (StrayDogs.tsx: one draw
+  call; five on High and Medium, two on Low). The cows are the ones already standing about.
+- Walkers: 48 on High (36), 36 on Medium (22), 12 on Low (6), nearer the player than before. Past
+  60 m they only walk along, stepped and drawn ten times a second.
+- The horn stops someone crossing the road where they are, for a couple of seconds.
+
+**Talking** (src/talk). On foot, E near someone opens a card: their line as said, what it means, and
+two or three answers (1, 2, 3 or a click; Esc walks away). Everything is in one file,
+`src/talk/characters.json`: the people, their lines and choices, conditions and effects; its header
+says how to add more without code. Five to start with: the chai anna outside every chai stall (a
+cutting chai for ₹10, free when broke, and what's jammed, said again when the next order is
+accepted); the society's guard (he knows the rider from the third delivery he signs in, and says so
+at the OTP check too); two fellow riders outside each dark store (gossip, tips, a time trial to a
+bus stop for a chai's worth); an aunty at one bus stop in four who has lost her way (a lift to the
+stop she names, for a small tip); and the driver of an auto the rider runs into, who pulls in, gets
+out and has his say. 48 lines are added to VOICE_SCRIPT.csv, none recorded yet: until they are,
+the words are on the card and in the subtitle.
+
+**Reactions** (people/reactions.ts): a shout when someone crossing is cut close, a wave and thanks
+when the rider stops for them, "Delivery anna!" called out once in a minute or two, and people step
+back from a scooter on the footpath and say whose footpath it is. Each kind rests between times.
+
+**Hidden people cost nothing now.** Measuring this found that every person in a crowd's list went to
+the GPU each frame, the hidden ones shrunk to nothing: each bike carries a rider to be thrown off,
+hidden until then, so 48 bikes meant 216,000 triangles of nobody (67,000 on main, with 15 bikes).
+`writePeople` (Traffic.tsx) now writes only who can be seen, one after another, and only when
+something about them has changed: someone standing as they stood last frame isn't written at all.
+
+**Measured** with `?debug=2` at 6 pm, standing on 27th Main and at the Agara junction
+(scripts/traffic_bench.mjs: 30 s to settle, 12 s measured, the picture held at 1×, frames uncapped,
+main's build and this one run turn about). On this laptop on battery in Low Power Mode, in use at
+the time: runs of one build differ by 10% and more, so only runs made back to back are compared.
+
+| High, mean of two pairs | FPS | work a frame | traffic AI | physics | traffic drawing | people | those four | draw calls | triangles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 27th Main, main | 90.7 | 10.54 ms | 1.02 | 0.11 | 0.40 | 0.27 | 1.79 ms | 519 | 2.41 M |
+| 27th Main, now | 101.3 | 9.39 ms | 0.59 | 0.12 | 0.37 | 0.12 | 1.19 ms | 518 | 2.33 M |
+| Agara junction, main | 95.5 | 9.96 ms | 1.06 | 0.09 | 0.39 | 0.21 | 1.76 ms | 414 | 1.33 M |
+| Agara junction, now | 115.9 | 8.28 ms | 0.65 | 0.13 | 0.40 | 0.13 | 1.31 ms | 415 | 1.40 M |
+
+| Low, one pair | FPS | work a frame | those four |
+| --- | --- | --- | --- |
+| 27th Main, main | 199.3 | 4.66 ms | 0.52 ms |
+| 27th Main, now | 198.8 | 4.68 ms | 0.50 ms |
+| Agara junction, main | 208.1 | 4.63 ms | 0.44 ms |
+| Agara junction, now | 213.4 | 4.37 ms | 0.51 ms |
+
+High is faster than main and does less each frame at both places. Low is level with main, within
+what one pair can show: its traffic steps at Agara are 0.07 ms more, its whole frame 0.26 ms less.
+Physics is a little up everywhere (more vehicles close enough to be solid). A third High pair and a
+second Low pair lost their main run to a hung browser and aren't counted.
+
+Who is out, by distance from the rider (High, the two pairs' range; main in brackets):
+
+| | 0 to 60 m | 60 to 120 m | 120 to 240 m |
+| --- | --- | --- | --- |
+| 27th Main: vehicles driving properly | 4 to 12 | 8 to 16 | 0 |
+| 27th Main: vehicles on rails | 0 | 9 to 22 | 34 to 47 |
+| 27th Main: all vehicles (main) | 4 to 12 (5 to 8) | 25 to 30 (6 to 11) | 34 to 47 (16 to 24) |
+| 27th Main: walkers (main) | 4 to 6 (1) | 33 to 35 (11 to 13) | 7 (22 to 24) |
+| Agara: vehicles driving properly | 17 to 21 | 0 to 3 | 0 |
+| Agara: vehicles on rails | 0 | 10 to 16 | 43 to 49 |
+| Agara: all vehicles (main) | 17 to 21 (4 to 7) | 13 to 16 (15 to 17) | 43 to 49 (18 to 19) |
+| Agara: walkers (main) | 21 to 24 (1) | 20 to 21 (9 to 10) | 2 to 3 (25 to 26) |
+
+Walkers within 60 m are stepped every frame, the rest ten times a second. Also drawn: on 27th Main
+44 people standing at shops, carts and stops and 11 pacing the shop fronts, at Agara 14 and 5; one
+person to talk to in sight at each; five dogs. The mix measured 60 to 63% two-wheelers, 15 to 16%
+autos, 15 to 16% cars, 5% buses at Agara (none run on 27th Main) and 5% tempos and bicycles.
+
+Checked by script on the production build: every talk opened and answered (the chai's ₹10 and the
+free one, the tip kept for the next order, the time trial started, the aunty's lift ended with her
+tip), E and 1 to 3 and Esc by real key presses beside a fellow rider, and a minute's ride through
+the evening traffic with no two vehicles overlapping and none stuck.
+
+Not done, or not as asked:
+- No pushcart moves in traffic: the "other" 5% is tempos and bicycles. The carts stand, with their vendors.
+- The aunty isn't drawn on the pillion: she's off the footpath while she rides, and at the stop after.
+- Cows only stand where they stood (story props, and the bull of the city events); dogs are what moves.
+- None of the 48 new lines is recorded: nothing is heard for them yet.
+- A vehicle on rails gives way at a junction without lights only by waiting up to three seconds for
+  what's across its nose; the junction's proper rules are for those driving properly.
+- The time trial, the lift and the auto anna's argument were not played through by hand.
+- Medium wasn't measured.
