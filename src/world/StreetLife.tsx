@@ -433,7 +433,7 @@ function cartBody(paint: string): THREE.BufferGeometry[] {
   return parts
 }
 
-/** Tender coconuts, vegetables, flowers: in the order `cartKind` numbers them. */
+/** Tender coconuts, fruit, flowers: in the order `cartKind` numbers them. */
 function createCartGeometries(): THREE.BufferGeometry[] {
   const TOP = 0.9
 
@@ -458,7 +458,7 @@ function createCartGeometries(): THREE.BufferGeometry[] {
     ...umbrella('#e8b923', '#2f7d4f', [0, 2.55, 0]),
   ])
 
-  // Vegetables: a heap of each, side by side.
+  // Fruit: a heap of each, side by side: apples, oranges, bananas, guavas and sweet limes.
   const heapAt = (x: number, z: number, size: number): number[][] => [
     [x, TOP + 0.08, z, size],
     [x + size * 0.9, TOP + 0.07, z + size * 0.5, size * 0.8],
@@ -470,9 +470,9 @@ function createCartGeometries(): THREE.BufferGeometry[] {
     ...cartBody('#2f6fa3'),
     ...heap(heapAt(-0.55, 0.18, 0.15), ['#d83a2a']),
     ...heap(heapAt(0, 0.2, 0.14), ['#e9862a']),
-    ...heap(heapAt(0.55, 0.18, 0.15), ['#5a2d6e']),
+    ...heap(heapAt(0.55, 0.18, 0.15), ['#e2c23c', '#d4b232']),
     ...heap(heapAt(-0.4, -0.25, 0.15), ['#4d9440', '#6aa84a']),
-    ...heap(heapAt(0.3, -0.25, 0.14), ['#d9c9a0', '#c98a9a']),
+    ...heap(heapAt(0.3, -0.25, 0.14), ['#c9cf6a', '#b8c25a']),
     ...umbrella('#d83a2a', '#f4f1ea', [0, 2.55, 0]),
   ])
 

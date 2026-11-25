@@ -21,6 +21,9 @@ const ENGINE_FOR: Record<VehicleKind, EngineKind> = {
   bike: 'bike',
   // Low and slow, like the biggest of the engines here.
   bus: 'suv',
+  tempo: 'auto',
+  // A bicycle has no engine; the quietest stands in, and it's slow enough to be near silent.
+  cycle: 'bike',
 }
 
 /** Where a sound is, for the ears: how loud for its distance, and how far left or right. */
@@ -58,7 +61,7 @@ export function updateTrafficSounds(vehicles: Vehicle[], listener: Listener, dt:
       let bestDistance = HEARING
       for (const vehicle of vehicles) {
         // One the player has taken makes no traffic sound: empty it's switched off, driven it's the player's own engine.
-        if (vehicle.lane === -1 || vehicle.body || vehicle.fallen || vehicle.taken === 'empty' || vehicle.taken === 'driven' || heard.includes(vehicle)) continue
+        if (vehicle.lane === -1 || vehicle.kind === 'cycle' || vehicle.body || vehicle.fallen || vehicle.taken === 'empty' || vehicle.taken === 'driven' || heard.includes(vehicle)) continue
         const distance = Math.hypot(vehicle.x - listener.x, vehicle.z - listener.z)
         if (distance < bestDistance) {
           best = vehicle

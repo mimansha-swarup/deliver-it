@@ -44,7 +44,7 @@ export const borrow = {
 /** For the screen: the borrowed vehicle's name, or null on the rider's own. */
 export const useBorrow = create<{ name: string | null }>(() => ({ name: null }))
 
-const CLASS_OF: Record<VehicleKind, BorrowClass> = { bike: 'twoWheeler', auto: 'auto', sedan: 'car', hatchback: 'car', suv: 'car', mpv: 'van', bus: 'bus' }
+const CLASS_OF: Record<VehicleKind, BorrowClass> = { bike: 'twoWheeler', auto: 'auto', sedan: 'car', hatchback: 'car', suv: 'car', mpv: 'van', bus: 'bus', tempo: 'van', cycle: 'twoWheeler' }
 
 /** How near a vehicle's side the rider must be to wave it down, and to get into one standing, in metres. */
 export const HAIL_REACH = 6

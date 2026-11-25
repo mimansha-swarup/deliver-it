@@ -13,7 +13,7 @@ export type StreetLife = {
   signs: StreetSign[]
 }
 
-/** How many kinds of cart there are: tender coconuts, vegetables, flowers. */
+/** How many kinds of cart there are: tender coconuts, fruit, flowers. */
 export const CART_KINDS = 3
 export function cartKind({ variation }: Prop): number {
   return Math.floor(variation * CART_KINDS * 0.999)

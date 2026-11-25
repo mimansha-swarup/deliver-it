@@ -47,6 +47,9 @@ const LAYOUTS: Record<VehicleKind, Layout> = {
   auto: { round: true, tail: { x: 0.45, y: 0.58, size: [0.09, 0.09] }, head: { x: 0, y: 0.9, size: [0.15, 0.15] }, indicator: { rear: [0.45, 0.72], front: [0.34, 0.8], size: 0.07 } },
   bike: { round: true, tail: { x: 0, y: 0.8, size: [0.08, 0.08] }, head: { x: 0, y: 0.92, size: [0.13, 0.13] }, indicator: { rear: [0.13, 0.76], front: [0.17, 0.9], size: 0.05 } },
   bus: { round: false, tail: { x: 1.05, y: 0.86, size: [0.16, 0.16] }, head: { x: 0.98, y: 0.81, size: [0.3, 0.18] }, indicator: { rear: [0.84, 0.81], front: [1.19, 0.81], size: 0.11 } },
+  tempo: { round: false, tail: { x: 0.66, y: 0.72, size: [0.14, 0.12] }, head: { x: 0.6, y: 0.78, size: [0.22, 0.12] }, indicator: { rear: [0.8, 0.72], front: [0.78, 0.78], size: 0.07 } },
+  // A bicycle: a small red reflector under the saddle and a dynamo lamp, no indicators to speak of.
+  cycle: { round: true, tail: { x: 0, y: 0.62, size: [0.035, 0.035] }, head: { x: 0, y: 0.8, size: [0.04, 0.04] }, indicator: { rear: [0.03, 0.6], front: [0.03, 0.78], size: 0.012 } },
 }
 
 /**

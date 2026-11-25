@@ -2,6 +2,7 @@ import { duckMusicFor, getAudio, type AudioBuses } from './audioEngine'
 import { useSettings } from '../game/settings'
 import { showSubtitle } from './subtitle'
 import script from './voiceScript.json'
+import talk from '../talk/characters.json'
 
 /*
  * Voices, from recordings.
@@ -26,7 +27,8 @@ export type VoiceLine = { id: string; character: string; line: string; notes: st
 
 /** Who a line is said by, as the subtitle names them. */
 const SPEAKERS: Record<string, string> = { 'RJ Manju': 'RJ Manju · radio', 'Ravi (dispatch)': 'Ravi', Customer: 'Customer', 'Security guard': 'Security guard', 'Dark store staff': 'Dark store' }
-export const VOICE_LINES = script as VoiceLine[]
+/** The script's lines, and those of the people the rider talks to on the street (talk/characters.json). */
+export const VOICE_LINES = [...(script as VoiceLine[]), ...(talk.lines as VoiceLine[])]
 const BY_ID = new Map(VOICE_LINES.map((line) => [line.id, line]))
 
 /** A line's words, for the screen. */
@@ -35,18 +37,25 @@ export function lineText(id: string): string {
 }
 
 const lastPicked = new Map<string, string>()
-/** One of the lines whose id starts with `prefix` ("cust.coming"), not the one picked last time. */
-export function pickLine(prefix: string): VoiceLine {
+/** Every line of a family ("cust.coming"), or the one line of that very name. */
+export function linesOf(prefix: string): VoiceLine[] {
+  return VOICE_LINES.filter(({ id }) => id === prefix || id.startsWith(`${prefix}.`))
+}
+
+/** One of the lines whose id starts with `prefix` ("cust.coming"), not the one picked last time, and none of `heard` while another is left. */
+export function pickLine(prefix: string, heard?: Set<string>): VoiceLine {
   // A line can be asked for by its family (`cust.thanks`: any of them) or by its own name (`cust.thanks.1`).
   // The second used to match nothing: the recording played, and its words came up as an empty message.
   const all = VOICE_LINES.filter(({ id }) => id === prefix || id.startsWith(`${prefix}.`))
-  const fresh = all.length > 1 ? all.filter(({ id }) => id !== lastPicked.get(prefix)) : all
+  const unheard = heard ? all.filter(({ id }) => !heard.has(id)) : []
+  const fresh = unheard.length > 0 ? unheard : all.length > 1 ? all.filter(({ id }) => id !== lastPicked.get(prefix)) : all
   const line = fresh[Math.floor(Math.random() * fresh.length)] ?? { id: prefix, character: '', line: '', notes: '' }
   lastPicked.set(prefix, line.id)
   return line
 }
 
-export type Treatment = 'radio' | 'phone'
+/** `street`: someone standing in front of the rider, heard as they are, with nothing in between. */
+export type Treatment = 'radio' | 'phone' | 'street'
 
 const VOICE_FOLDER = `${import.meta.env.BASE_URL}voice/`
 let manifest: Promise<Set<string>> | null = null
@@ -86,10 +95,10 @@ function driveCurve(drive: number): Float32Array<ArrayBuffer> {
 const chains = new Map<Treatment, GainNode>()
 /**
  * What a voice is heard through, built once each and shared:
- * - `radio`: no rumble (a high-pass at 160 Hz), presence lifted at 2.8 kHz, nothing above 7.5 kHz,
- *   squeezed hard by a compressor as broadcast voices are, a touch of drive. On the music bus, so
+ * - `radio`: no rumble (a high-pass at 160 Hz), presence lifted a little at 2.8 kHz, nothing above 6.5 kHz,
+ *   squeezed by a compressor as broadcast voices are, a trace of drive. On the music bus, so
  *   the radio's own volume and "Music off" govern it.
- * - `phone`: 320 Hz to 3.3 kHz and nothing else, more drive, squeezed. On the effects bus.
+ * - `phone`: 320 Hz to 3.6 kHz and nothing else, a little drive, squeezed. On the effects bus.
  */
 function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): GainNode {
   const made = chains.get(treatment)
@@ -104,23 +113,24 @@ function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): 
   presence.type = 'peaking'
   presence.frequency.value = radio ? 2800 : 1800
   presence.Q.value = 0.9
-  presence.gain.value = radio ? 2 : 6
+  presence.gain.value = radio ? 1 : 3
   const high = context.createBiquadFilter()
   high.type = 'lowpass'
-  high.frequency.value = radio ? 7500 : 3300
+  high.frequency.value = radio ? 6500 : 3600
   high.Q.value = 0.7
   const drive = context.createWaveShaper()
-  drive.curve = driveCurve(radio ? 0.04 : 0.3)
+  drive.curve = driveCurve(radio ? 0.02 : 0.12)
   drive.oversample = '2x'
   const squeeze = context.createDynamicsCompressor()
   squeeze.threshold.value = radio ? -26 : -22
-  squeeze.ratio.value = radio ? 7 : 5
+  squeeze.ratio.value = radio ? 4 : 3.5
   squeeze.attack.value = 0.004
   squeeze.release.value = 0.14
   const level = context.createGain()
   // The RJ is part of the radio: on the music's bus, over its ducked song, and silent when music is off.
   // A phone voice has the voices' own bus (and volume), above the music and the street.
-  level.gain.value = radio ? 2.2 : 1
+  // Both were louder and sharper (2.2 and 1, with twice the presence and drive): they cut through everything, and grated.
+  level.gain.value = radio ? 1.5 : 0.8
   input.connect(low).connect(presence).connect(high).connect(drive).connect(squeeze).connect(level).connect(radio ? music : voice)
   chains.set(treatment, input)
   return input
@@ -161,13 +171,13 @@ export async function speak(id: string, treatment: Treatment, voice?: string): P
   const source = buses.context.createBufferSource()
   source.buffer = buffer
   source.playbackRate.value = 1 + (Math.random() * 2 - 1) * VARIATION
-  source.connect(chainFor(buses, treatment))
+  source.connect(treatment === 'street' ? buses.voice : chainFor(buses, treatment))
   const ended = new Promise<void>((resolve) => {
     source.onended = () => resolve()
   })
   // Its turn: now, or when whoever is speaking has finished.
   let at = buses.context.currentTime
-  if (treatment === 'phone') {
+  if (treatment !== 'radio') {
     at = Math.max(at, phoneFreeAt)
     if (at - buses.context.currentTime > TURNS.patience) return null
     phoneFreeAt = at + buffer.duration / source.playbackRate.value + TURNS.breath

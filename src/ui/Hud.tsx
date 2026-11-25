@@ -182,7 +182,7 @@ function DeliveryComplete() {
   const goingOffline = useGameStore((state) => state.offlineAfterOrder)
 
   if (!reward) return null
-  const title = reward.kind === 'double' ? 'Both orders delivered' : 'Order delivered'
+  const title = reward.drops > 2 ? `All ${reward.drops} orders delivered` : reward.drops === 2 ? 'Both orders delivered' : 'Order delivered'
 
   return (
     <section className="hud-card hud-results">
@@ -191,7 +191,7 @@ function DeliveryComplete() {
       <CustomerRating reward={reward} />
       <LevelUp />
       <dl>
-        <dt>{reward.kind === 'double' ? 'Delivery reward × 2' : 'Delivery reward'}</dt>
+        <dt>{reward.drops > 1 ? `Delivery reward × ${reward.drops}` : 'Delivery reward'}</dt>
         <dd>+₹{reward.baseCredits}</dd>
         {reward.distanceCredits > 0 && (
           <>

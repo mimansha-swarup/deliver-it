@@ -27,7 +27,7 @@ type View = 'menu' | 'settings' | 'controls' | 'feedback'
 /** Whether something else is up that Esc belongs to. Read as the key goes down, before those things close. */
 function escIsTaken(): boolean {
   const game = useGameStore.getState()
-  return game.photoMode || useUi.getState().mapOpen || document.querySelector('.phone-raised, .help-overlay, .score-card-view, [data-listening="true"]') !== null
+  return game.photoMode || useUi.getState().mapOpen || document.querySelector('.phone-raised, .help-overlay, .score-card-view, .talk-card, [data-listening="true"]') !== null
 }
 
 export function PauseMenu() {

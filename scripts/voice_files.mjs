@@ -4,7 +4,8 @@
  *
  *     node scripts/voice_files.mjs
  *
- * - VOICE_SCRIPT.csv (id, character, line, emotion/notes), from src/audio/voiceScript.json: what
+ * - VOICE_SCRIPT.csv (id, character, line, emotion/notes), from src/audio/voiceScript.json and the
+ *   `lines` of src/talk/characters.json (the people talked to on the street, and what's called out): what
  *   to record, for real voices or a licensed voice service. A last column says whether each line's
  *   recording is in public/voice yet.
  * - public/voice/manifest.json: the recordings that exist (every .ogg in public/voice), which the
@@ -20,7 +21,8 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const root = new URL('..', import.meta.url).pathname
-const lines = JSON.parse(readFileSync(`${root}src/audio/voiceScript.json`, 'utf8'))
+// The script, and the lines of the people the rider talks to on the street (src/talk/characters.json).
+const lines = [...JSON.parse(readFileSync(`${root}src/audio/voiceScript.json`, 'utf8')), ...JSON.parse(readFileSync(`${root}src/talk/characters.json`, 'utf8')).lines]
 const clips = readdirSync(`${root}public/voice`).filter((file) => file.endsWith('.ogg')).map((file) => file.slice(0, -4)).sort()
 writeFileSync(`${root}public/voice/manifest.json`, `${JSON.stringify({ clips }, null, 1)}\n`)
 

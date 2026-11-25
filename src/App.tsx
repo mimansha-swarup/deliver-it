@@ -45,6 +45,7 @@ import { RoomCard } from './ui/RoomUi'
 import { RoomFade } from './ui/RoomFade'
 import { CrashFade } from './ui/CrashFade'
 import { GuardCard } from './ui/GuardCard'
+import { TalkCard } from './ui/TalkCard'
 import { BreakdownCard } from './ui/BreakdownCard'
 import { PoliceCard } from './ui/PoliceCard'
 import { Tutorial } from './ui/Tutorial'
@@ -108,6 +109,7 @@ function RidingUi() {
       <Subtitle />
       <RoomCard />
       <GuardCard />
+      <TalkCard />
       <BreakdownCard />
       <PoliceCard />
       <Tutorial />

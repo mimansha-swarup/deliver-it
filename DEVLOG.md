@@ -11839,3 +11839,235 @@ names an address now (without the variable, posthog-js uses its own default). Th
 code has that address in it too, so the built JavaScript would have failed the scan next;
 `netlify.toml` (new) lists `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in `SECRETS_SCAN_OMIT_KEYS`.
 Both are public values: every `VITE_` variable is built into the page.
+
+## 2026-11-24: Entry 275, traffic that bunches, life beside the road, and people to talk to
+
+The city looked full and its roads empty. Now, at the same cost a frame or less:
+
+**Traffic.**
+- **The mix** is Bengaluru's: of every twenty vehicles, twelve two-wheelers, three autos, three cars, a
+  bus and one other (`kindAt`, trafficLogic.ts). The others are new: a tempo (the mini truck from
+  fleet.glb) and someone on a bicycle, each one shape. Pushcarts stay at the kerb with their vendors:
+  none is pushed along in traffic.
+- **Near and far** (`RAIL`). At most the quality's `nearVehicles` (20 on High, 14 on Medium, 8 on Low)
+  drive properly, with steering, junction manners and physics: the nearest, within about 120 m.
+  Everything else is on rails (`stepRail`): it follows its lane, the lights and what's in front of
+  it, pulls up at bus stops, ten times a second, with no physics, and is drawn as its far stand-in,
+  written only when it's stepped and carried on between steps by its speed in the shader (`aRail`).
+  Vehicles in play: 80 on High (40 before), 52 on Medium (28), 22 on Low (10).
+- **Bunches, not even spacing.** New traffic comes in bunches of up to five (`BUNCH`), mostly heading
+  towards the player, and a side lane gets far less than its street's share. On a wide road traffic
+  runs in two or three files side by side (`Lane.files`): one file a carriageway is why Outer Ring
+  Road looked empty. Two-wheelers on rails filter up the side of standing traffic to the front, as
+  the ones driving properly already did.
+- **The time of day** (traffic/density.ts): thick from 9 to 11 and from 6 to 9, thin late at night;
+  people on the footpaths likewise.
+- Putting traffic back on the road is done a few vehicles each tenth of a second, not tried for every
+  spare vehicle every frame; the wheels' and the people's per-frame lists are no longer made new each frame.
+
+**Beside the road.**
+- Two to five people wait at each bus stop (one to three before); when a bus pulls up some walk to
+  its door and are gone with it, and others come along the footpath to wait (ShopPeople.tsx).
+- Every vendor's cart has its vendor and often a customer or two; the vegetable cart is a fruit cart.
+- Stray dogs trot the footpaths, stop to sniff, and bolt from the horn (StrayDogs.tsx: one draw
+  call; five on High and Medium, two on Low). The cows are the ones already standing about.
+- Walkers: 48 on High (36), 36 on Medium (22), 12 on Low (6), nearer the player than before. Past
+  60 m they only walk along, stepped and drawn ten times a second.
+- The horn stops someone crossing the road where they are, for a couple of seconds.
+
+**Talking** (src/talk). On foot, E near someone opens a card: their line as said, what it means, and
+two or three answers (1, 2, 3 or a click; Esc walks away). Everything is in one file,
+`src/talk/characters.json`: the people, their lines and choices, conditions and effects; its header
+says how to add more without code. Five to start with: the chai anna outside every chai stall (a
+cutting chai for ₹10, free when broke, and what's jammed, said again when the next order is
+accepted); the society's guard (he knows the rider from the third delivery he signs in, and says so
+at the OTP check too); two fellow riders outside each dark store (gossip, tips, a time trial to a
+bus stop for a chai's worth); an aunty at one bus stop in four who has lost her way (a lift to the
+stop she names, for a small tip); and the driver of an auto the rider runs into, who pulls in, gets
+out and has his say. 48 lines are added to VOICE_SCRIPT.csv, none recorded yet: until they are,
+the words are on the card and in the subtitle.
+
+**Reactions** (people/reactions.ts): a shout when someone crossing is cut close, a wave and thanks
+when the rider stops for them, "Delivery anna!" called out once in a minute or two, and people step
+back from a scooter on the footpath and say whose footpath it is. Each kind rests between times.
+
+**Hidden people cost nothing now.** Measuring this found that every person in a crowd's list went to
+the GPU each frame, the hidden ones shrunk to nothing: each bike carries a rider to be thrown off,
+hidden until then, so 48 bikes meant 216,000 triangles of nobody (67,000 on main, with 15 bikes).
+`writePeople` (Traffic.tsx) now writes only who can be seen, one after another, and only when
+something about them has changed: someone standing as they stood last frame isn't written at all.
+
+**Measured** with `?debug=2` at 6 pm, standing on 27th Main and at the Agara junction
+(scripts/traffic_bench.mjs: 30 s to settle, 12 s measured, the picture held at 1×, frames uncapped,
+main's build and this one run turn about). On this laptop on battery in Low Power Mode, in use at
+the time: runs of one build differ by 10% and more, so only runs made back to back are compared.
+
+| High, mean of two pairs | FPS | work a frame | traffic AI | physics | traffic drawing | people | those four | draw calls | triangles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 27th Main, main | 90.7 | 10.54 ms | 1.02 | 0.11 | 0.40 | 0.27 | 1.79 ms | 519 | 2.41 M |
+| 27th Main, now | 101.3 | 9.39 ms | 0.59 | 0.12 | 0.37 | 0.12 | 1.19 ms | 518 | 2.33 M |
+| Agara junction, main | 95.5 | 9.96 ms | 1.06 | 0.09 | 0.39 | 0.21 | 1.76 ms | 414 | 1.33 M |
+| Agara junction, now | 115.9 | 8.28 ms | 0.65 | 0.13 | 0.40 | 0.13 | 1.31 ms | 415 | 1.40 M |
+
+| Low, one pair | FPS | work a frame | those four |
+| --- | --- | --- | --- |
+| 27th Main, main | 199.3 | 4.66 ms | 0.52 ms |
+| 27th Main, now | 198.8 | 4.68 ms | 0.50 ms |
+| Agara junction, main | 208.1 | 4.63 ms | 0.44 ms |
+| Agara junction, now | 213.4 | 4.37 ms | 0.51 ms |
+
+High is faster than main and does less each frame at both places. Low is level with main, within
+what one pair can show: its traffic steps at Agara are 0.07 ms more, its whole frame 0.26 ms less.
+Physics is a little up everywhere (more vehicles close enough to be solid). A third High pair and a
+second Low pair lost their main run to a hung browser and aren't counted.
+
+Who is out, by distance from the rider (High, the two pairs' range; main in brackets):
+
+| | 0 to 60 m | 60 to 120 m | 120 to 240 m |
+| --- | --- | --- | --- |
+| 27th Main: vehicles driving properly | 4 to 12 | 8 to 16 | 0 |
+| 27th Main: vehicles on rails | 0 | 9 to 22 | 34 to 47 |
+| 27th Main: all vehicles (main) | 4 to 12 (5 to 8) | 25 to 30 (6 to 11) | 34 to 47 (16 to 24) |
+| 27th Main: walkers (main) | 4 to 6 (1) | 33 to 35 (11 to 13) | 7 (22 to 24) |
+| Agara: vehicles driving properly | 17 to 21 | 0 to 3 | 0 |
+| Agara: vehicles on rails | 0 | 10 to 16 | 43 to 49 |
+| Agara: all vehicles (main) | 17 to 21 (4 to 7) | 13 to 16 (15 to 17) | 43 to 49 (18 to 19) |
+| Agara: walkers (main) | 21 to 24 (1) | 20 to 21 (9 to 10) | 2 to 3 (25 to 26) |
+
+Walkers within 60 m are stepped every frame, the rest ten times a second. Also drawn: on 27th Main
+44 people standing at shops, carts and stops and 11 pacing the shop fronts, at Agara 14 and 5; one
+person to talk to in sight at each; five dogs. The mix measured 60 to 63% two-wheelers, 15 to 16%
+autos, 15 to 16% cars, 5% buses at Agara (none ran on 27th Main then: entry 276) and 5% tempos and bicycles.
+
+Checked by script on the production build: every talk opened and answered (the chai's ₹10 and the
+free one, the tip kept for the next order, the time trial started, the aunty's lift ended with her
+tip), E and 1 to 3 and Esc by real key presses beside a fellow rider, and a minute's ride through
+the evening traffic with no two vehicles overlapping and none stuck.
+
+Not done, or not as asked:
+- No pushcart moves in traffic: the "other" 5% is tempos and bicycles. The carts stand, with their vendors.
+- The aunty isn't drawn on the pillion: she's off the footpath while she rides, and at the stop after.
+- Cows only stand where they stood (story props, and the bull of the city events); dogs are what moves.
+- None of the 48 new lines is recorded: nothing is heard for them yet.
+- A vehicle on rails gives way at a junction without lights only by waiting up to three seconds for
+  what's across its nose; the junction's proper rules are for those driving properly.
+- The time trial, the lift and the auto anna's argument were not played through by hand.
+- Medium wasn't measured.
+
+## 2026-11-24: Entry 276, buses that reach their stops, the street's reactions seen, and ORR's divider
+
+Entry 275 left the bus boarding and the street's reactions unseen in play. Played now, on the
+production build, with a script that rides at people and waits at stops:
+
+**Buses and their stops.** Nobody could board, for three reasons, all fixed:
+- **A stop under a flyover belonged to the lane up on the deck**, the nearest in plan: the bus
+  "stopped" overhead. `setBusStops` (trafficLogic.ts) now leaves deck lanes out.
+- **A stop could belong to a lane across the road or over a divider.** It now takes only a lane
+  that has the shelter on its left, the bus's kerb and door side.
+- **Most shelters stood on streets with no buses**: 27th Main's, all of them. A road with a bus
+  stop on it now has buses whatever its street preset says (`busRoads`, World.tsx). 41 of the
+  city's 46 shelters have a bus lane at their kerb (16 before, several of them wrong), nearly all
+  3 to 6 m away.
+- Someone walking to a bus that leaves before they reach it walks back to the shelter, where
+  they used to vanish in the road.
+- Seen: at a stop on 27th Main, three people got on a bus; on Sarjapur Road, one of two reached
+  the door in the nine seconds. `__deliverItCounts()` now says how many are at stops, walking to
+  a bus, and have got on one.
+
+**Reactions, seen on screen.** Ridden past someone crossing at 9 m/s, 1.6 m off: "Yen avasara
+nimge? Jana idare illi!". Stood 5 m short of someone crossing: "Thanks, anna!", hand up for 2.1 s.
+Ridden along the footpath at 3 m/s behind a walker: they stepped 1.8 m back, "Idu road alla,
+guru!". "Delivery anna!" was seen in entry 275.
+
+**The Outer Ring Road's divider.** By Agara lake the map draws ORR's two carriageways 9 to 10.7 m
+apart, middle to middle, and each is 10.5 m wide: their asphalt met with no gap for kerbs, so it
+was one bare slab six lanes wide. Where two one-way carriageways of a main road run touching (or
+overlapping by up to 2 m) the other way from each other, a painted divider 0.6 m wide now runs
+along the seam (`DIVIDER`, streetEdgeGeometry.ts), stopping 9 m short of junctions as medians do.
+It's part of the kerbs' own mesh (no draw call more, Low included) and solid like a median. Three
+minutes watched beside it: the twenty vehicles driving properly all moving, none stuck.
+
+**Cost.** High, 6 pm, stood still, this against the branch as it was, two pairs back to back:
+27th Main 109.3 against 105.6 FPS, work 8.69 against 8.82 ms a frame; Agara 114.6 against 104.2,
+8.29 against 9.23 ms. Level, within what one run differs from the next.
+
+Still not done: the aunty on the pillion (the delivery box is where she would sit), a pushcart in
+traffic, cows that move, Medium measured, the new lines recorded. A rider parked in the kerb lane
+by a junction still holds the traffic behind them until it knots: stood there five minutes, 68 of
+80 vehicles were standing. Stood at the spawn point, none were.
+
+## 2026-11-24: Entry 277, batch runs for vehicles that carry four or more
+
+Asked for: in the Bhaara E-Cargo and anything bigger, four or five deliveries at once. (VISION.md
+lists "the van and bulk orders" under Later; built now because it was asked for, and it is the
+double drop's own machinery with more customers.)
+
+- **A batch run** (`OrderKind` 'batch'): in a vehicle whose `capacity` is 4 or more (the cargo
+  three-wheeler 8, the car 10, the van 20; the scooter, bicycle, e-scooter and motorbike carry 1 or
+  2 and never get one), 45% of offers are four or five customers on the one trip
+  (`MISSION_RULES.batchCarries`, `batchChance`, `batchDrops`). Each customer is 120 to 500 m by
+  road on from the last, as a double drop's second is, never the same road point or the same name
+  twice, and none after the first is an order only another vehicle could carry.
+- **The planner** takes how many parcels the vehicle carries (`planMission`'s `carries`,
+  from the vehicle in use when dispatch makes the offer). With too few customers near enough the
+  order is what it came to: a double drop, or an order like any other.
+- **Pay and time** need nothing new: the base reward and XP are already per customer (five drops,
+  ₹250 base), the clock allows the whole route and the walk to every door, and the pay comes at
+  the last door.
+- **Words**: the offer says "Batch of 5", the phone "Batch run", the result "All 5 orders
+  delivered" and "Delivery reward × 5" (`Reward.drops`).
+
+Checked on the production build by script: of 300 orders planned, the scooter got no batch; the
+three-wheeler 76 of four and 70 of five; the van 63 and 54. One batch of five (2,661 m, 692 s
+allowed, hops of 129 to 375 m as the crow flies) was accepted in the three-wheeler and handed over
+door by door through the store to its one reward. Not ridden by hand.
+
+## 2026-11-24: Entry 278, talks that end: no going round, and no card left behind
+
+Two complaints about talking to the fellow rider: it could go round and round saying nothing, and
+the card stayed up after the rider had moved on.
+
+- **Nobody says the same line twice in one talk.** The talk keeps what it has heard; `pickLine`
+  (audio/voice.ts) takes an unheard line of the family while one is left.
+- **A choice that would only bring back what's been said isn't offered** (`spent`, talk.ts): when
+  the node it leads to says lines of one family and all of them have been heard. "Ha! Innenu?" and
+  "One more?" go after the third, and the talk runs to its end. It holds for every character, with
+  no change to their data.
+- **A talk left behind closes** (`keepTalkNear`): 3.5 m from where it began, ridden or walked. The
+  auto anna's argument opens with the rider still on the scooter, which the card didn't stop.
+- **The fellow rider has something to say** (characters.json, five new lines, in VOICE_SCRIPT.csv
+  as not recorded):
+  - With an order on he sends the rider off ("Order ide alva, guru? ... Hogu, customer
+    kaaytidare!"); with a race on, the same, in two words.
+  - "How are the roads just now?" is answered from the game: the surge and the Agara jam at rush
+    hour, what is blocked and where when something is, or that the roads are clear. It's kept as
+    the chai anna's tip is, and comes back in the chat when the next order is accepted.
+  - Every node has a way out; the greeting had none but Esc.
+
+Checked by script on the production build: gossip three times then no "Innenu?"; tips three
+times then no "One more?"; the greeting with an order on; a card open, the rider moved 6 m, the
+card gone within the second.
+
+## 2026-11-25: Entry 279, Ravi and Manju, less of them and easier on the ear
+
+Their voices grated: the voice itself, how often, how loud and sharp, and what they said. And the
+lines were to be mostly English, with a Kannada word here and there. All four:
+
+- **The lines** (voiceScript.json, all 44 of theirs, same ids): plain English, one Kannada word in
+  six of them (swalpa, sakkath, maga, chinna, kaapi, ajji), shorter, and no "Hello hello hello",
+  "Uff", "guru" at every turn or sales voice. The notes for whoever records them now ask for calm.
+- **How often.** Ravi no longer speaks at a new order, at a pickup or after a delivery that was
+  merely fine (`RAVI_QUIET`, voiceCues.ts: the offer has its own card and chime, the counter has
+  just spoken). A crash and a five-star delivery are each said once in ten minutes, a complaint
+  once in five. Going online, offline and a breakdown are always said. Manju's breaks come every
+  five to eight minutes (two to three before), the first after two or three (under a minute
+  before), and a traffic update is two lines, three in the rain: its sign-off is gone.
+- **How loud and sharp** (voice.ts): the phone's presence lift 6 to 3 dB, its drive 0.3 to 0.12,
+  its level 1 to 0.8; the radio's level 2.2 to 1.5, presence 2 to 1 dB, drive halved; both
+  squeezed less.
+- **The voices** (scripts/voice_generate.mjs, Sarvam's Bulbul v3): Manju was `kavya` at pace 1.08,
+  the highest of a dozen voices tried (about 267 Hz on one line); she is `simran` (about 190 Hz) at
+  0.98. Ravi was `rahul` (125 Hz); he is `vijay` (111 Hz) at 0.95. Both a shade lower in pitch and
+  at temperature 0.4, which is steadier. Chosen by measured pitch, not by ear: nobody has listened
+  yet. One line in each of the other voices tried is in clips/voice-test (not in git), and
+  `MANJU=<speaker>` or `RAVI=<speaker>` before the script records with another.

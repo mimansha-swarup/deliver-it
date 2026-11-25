@@ -75,9 +75,10 @@ export type DoorPlan = {
 
 /**
  * A standard order; a rush order, with a tighter timer and a bigger on-time
- * bonus; or a double drop, with two customers on the one trip.
+ * bonus; a double drop, with two customers on the one trip; or a batch run, four or five
+ * customers on the one trip, for a vehicle that carries that many.
  */
-export type OrderKind = 'standard' | 'rush' | 'double'
+export type OrderKind = 'standard' | 'rush' | 'double' | 'batch'
 
 /** A customer to deliver to, the person waiting there, and what they ordered. */
 export type Drop = { customer: MissionStop; waiting: WaitingCustomer; story: OrderStory; door: DoorPlan }
@@ -93,7 +94,7 @@ export type Mission = {
   door: DoorPlan
   /** Who the order is for and what's in it. */
   story: OrderStory
-  /** Customers still to come after this one, on a double drop. */
+  /** Customers still to come after this one, on a double drop or a batch run. */
   nextDrops: Drop[]
   /** How many customers the order has in all. Each pays the base reward. */
   dropCount: number
@@ -105,6 +106,8 @@ export type Mission = {
 
 export type Reward = {
   kind: OrderKind
+  /** How many customers the order had. */
+  drops: number
   baseCredits: number
   distanceCredits: number
   onTimeCredits: number

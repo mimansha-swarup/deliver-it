@@ -419,6 +419,12 @@ const KERB_ROOM = 0.6
 /** On a main road, a gap this wide or more to the next carriageway gets kerbs that meet as a median. */
 const MEDIAN_KERB_GAP = 0.4
 const MIN_KERB_RUN = 1.2
+/**
+ * The divider between two carriageways whose asphalt touches: `width` metres wide, in runs of at
+ * least `minRun` metres, and only where they overlap by no more than `overlap` metres (deeper than
+ * that the map has them as one road, and a divider would stand in a lane).
+ */
+const DIVIDER = { width: 0.6, minRun: 4, overlap: 2 }
 
 type Input = {
   roads: LineFeature[]
@@ -475,7 +481,7 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
 
   // ---- Medians: a raised, painted strip down the middle of a wide two-way main road, broken at junctions ----
   const medians: { start: GroundPoint; end: GroundPoint; width: number }[] = []
-  const medianStrips = new Map<RoadPiece, { a: Vec; b: Vec; side: Vec; half: number; rise: number; stripe: [number, number] }>()
+  const medianStrips = new Map<RoadPiece, { a: Vec; b: Vec; side: Vec; half: number; rise: number; stripe: [number, number] }[]>()
   /** How far short of a junction a median stops, so traffic can turn across. */
   const MEDIAN_GAP = 9
   for (const piece of newPieces) {
@@ -495,7 +501,53 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
     const b = add(piece.start, dir, to)
     const stripe: [number, number] = [stripeOrigin(piece.start) + from, stripeOrigin(piece.start) + to]
     medians.push({ start: a, end: b, width: median.width })
-    medianStrips.set(piece, { a, b, side, half, rise: median.rise, stripe })
+    medianStrips.set(piece, [{ a, b, side, half, rise: median.rise, stripe }])
+  }
+  // ---- Dividers: where the two carriageways of a main road run touching (the map draws them so close
+  // that their asphalt meets, with no gap for kerbs to stand in), a narrow painted divider along the
+  // seam, broken at junctions like a median. One of the pair draws it: the road that comes first.
+  for (const piece of newPieces) {
+    const road = roads[piece.road]
+    const median = presetFor(road).median
+    if (!median || road.properties.oneway !== 'yes') continue
+    const along = sub(piece.end, piece.start)
+    const pieceLength = length(along)
+    if (pieceLength < DIVIDER.minRun) continue
+    const dir: Vec = [along[0] / pieceLength, along[1] / pieceLength]
+    const half = piece.width / 2
+    const gapAt = (at: Vec) => (joints.get(`${at[0].toFixed(2)},${at[1].toFixed(2)}`)?.junction ? MEDIAN_GAP : 0.4)
+    for (const out of [left(dir), right(dir)]) {
+      // How far out from this road's edge the seam with the other carriageway is (negative: they overlap), or null with none here.
+      const seamAt = (s: number): number | null => {
+        const edge = add(add(piece.start, dir, s), out, half)
+        let seam: number | null = null
+        for (const other of nearestOtherPieces(index, edge[0], edge[1], MEDIAN_KERB_GAP, piece)) {
+          const otherRoad = roads[other.road]
+          if (other.road <= piece.road || otherRoad.properties.oneway !== 'yes' || !presetFor(otherRoad).median) continue
+          const otherAlong = sub(other.end, other.start)
+          const otherLength = length(otherAlong)
+          // The other way: coming towards this one's traffic.
+          if (otherLength < 0.3 || (otherAlong[0] * dir[0] + otherAlong[1] * dir[1]) / otherLength > -0.7) continue
+          const gap = distanceToPiece(edge[0], edge[1], other) - other.width / 2
+          if (gap < -DIVIDER.overlap) continue
+          if (seam === null || gap / 2 < seam) seam = gap / 2
+        }
+        return seam
+      }
+      for (const [runFrom, runTo] of findRuns((s) => seamAt(s) !== null, pieceLength)) {
+        const from = Math.max(runFrom + 0.05, gapAt(piece.start))
+        const to = Math.min(runTo - 0.05, pieceLength - gapAt(piece.end))
+        if (to - from < DIVIDER.minRun) continue
+        const a = add(add(add(piece.start, dir, from), out, half), out, seamAt(from) ?? 0)
+        const b = add(add(add(piece.start, dir, to), out, half), out, seamAt(to) ?? 0)
+        if (cornerIndex.zoneAt(a) || cornerIndex.zoneAt(b)) continue
+        const stripe: [number, number] = [stripeOrigin(piece.start) + from, stripeOrigin(piece.start) + to]
+        medians.push({ start: a, end: b, width: DIVIDER.width })
+        const strips = medianStrips.get(piece) ?? []
+        strips.push({ a, b, side: left(dir), half: DIVIDER.width / 2, rise: median.rise, stripe })
+        medianStrips.set(piece, strips)
+      }
+    }
   }
   // ---- Forecourts: paving from the footpath to the shops, where they stand back from it ----
   // Shops are grouped by the road piece and side they face, and neighbours along it join up.
@@ -787,12 +839,11 @@ export function buildStreetEdges({ roads, pieces, index, gates, trees, keepLow, 
 
     // ---- Medians: their two painted halves ----
     for (const piece of square.pieces) {
-      const strip = medianStrips.get(piece)
-      if (!strip) continue
-      const { a, b, side, half, rise, stripe } = strip
-      // Two halves, each a kerb facing its own side of the road, meeting along the middle.
-      pushKerbBlock(kerbs.at(a), add(a, side, half), add(b, side, half), [-side[0], -side[1]], rise, half, PAINTED_BASE, [true, true], stripe)
-      pushKerbBlock(kerbs.at(a), add(a, side, -half), add(b, side, -half), side, rise, half, PAINTED_BASE, [true, true], stripe)
+      for (const { a, b, side, half, rise, stripe } of medianStrips.get(piece) ?? []) {
+        // Two halves, each a kerb facing its own side of the road, meeting along the middle.
+        pushKerbBlock(kerbs.at(a), add(a, side, half), add(b, side, half), [-side[0], -side[1]], rise, half, PAINTED_BASE, [true, true], stripe)
+        pushKerbBlock(kerbs.at(a), add(a, side, -half), add(b, side, -half), side, rise, half, PAINTED_BASE, [true, true], stripe)
+      }
     }
     for (const f of square.forecourts) {
       const arrays = footpaths.at(forecourtPoint(f, (f.from + f.to) / 2, f.near))

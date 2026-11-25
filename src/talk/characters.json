@@ -1,0 +1,228 @@
+{
+  "about": [
+    "Everyone the rider can talk to on foot (E), and everything the street calls out. Adding a person or a line needs no code:",
+    "lines: every spoken line. id, character, line (Kannada-English, as said), english (what it means, for the screen), notes (for whoever records it). Ids ending .1, .2 are variants: a node that says 'talk.rider.gossip' gets one of them, never the same twice running. They are added to the voice script (scripts/voice_files.mjs writes VOICE_SCRIPT.csv, which says each is not yet recorded).",
+    "characters: id, name (shown on the card), prompt (after the E key), where (who stands there: chaiStall, societyGate, darkStore, busStop or bumpedAuto), look (body: man, teen, uncle, guy, office or saree; tint 0 to 1 picks the clothes' colour), start (the first node whose 'if' holds) and nodes.",
+    "A node: say (a line id or its family), or pick (a list of say/after, each with an if: the first that holds is said), after (words only on the screen, after the line), do (effects on arriving) and choices. Nobody says the same line twice in one talk, and a choice whose node has only lines already heard isn't offered, so a node may lead back to itself ('One more?') without going round for ever. The talk also ends if the rider moves a few metres off. A choice: text (the rider's words), if, do, go (the next node; left out, the talk ends).",
+    "if: comparisons joined by &, of credits, visits (talks with this person so far), deliveries (to the guard's building), hour, rush (0 or 1), jam (0 or 1: something is blocking a road), order (0 or 1: an order is on), riding (0 or 1: giving someone a lift) and trial (0 or 1: a time trial is on). Example: 'credits>=10 & order=0'.",
+    "do: spend:<rupees>:<label>, earn:<rupees>:<label>, fresh:<deliveries> (rested: the next deliveries tip more), jamTip (what is blocked, again when the next order is accepted), planTrial then timeTrial (works out, then starts, a race to a place nearby), planLift then lift (works out where they want to go, then takes them there), release (the auto drives on).",
+    "Words in braces are filled in on the screen only: {name} the rider's name, {place} where they want to go or the race ends, {seconds}, {reward}, {deliveries}, {jam} what is blocked and where."
+  ],
+  "lines": [
+    { "id": "talk.chai.hello.1", "character": "Chai stall anna", "line": "Banni banni, Deliver It anna! Chai beka?", "english": "Come, come, Deliver It brother! Want a chai?", "notes": "Chai stall owner, 40s, cheerful, loud over the stove. Calling a regular over." },
+    { "id": "talk.chai.hello.2", "character": "Chai stall anna", "line": "Yen samachara, guru? Bisi chai ready ide.", "english": "What's the news, boss? Hot chai is ready.", "notes": "Chai stall owner, 40s, cheerful. Easy, familiar." },
+    { "id": "talk.chai.tea.1", "character": "Chai stall anna", "line": "Tagoli, bisi bisi cutting chai. Swalpa rest maadi, aamele hogi.", "english": "Here, a hot cutting chai. Rest a little, then go.", "notes": "Chai stall owner. Handing over the glass; kindly." },
+    { "id": "talk.chai.tea.2", "character": "Chai stall anna", "line": "Special chai, shunti haakidini. Kudidre full charge!", "english": "Special chai, with ginger in it. Drink it and you're fully charged!", "notes": "Chai stall owner. Proud of his chai; a grin on 'full charge'." },
+    { "id": "talk.chai.free.1", "character": "Chai stall anna", "line": "Duddu illva? Parvagilla, guru. Ivattu nanna kade inda. Naale kodi.", "english": "No money? No problem, boss. Today it's on me. Pay tomorrow.", "notes": "Chai stall owner. Warm, waving the money away. Not pitying." },
+    { "id": "talk.chai.jam.rush.1", "character": "Chai stall anna", "line": "Outer Ring Road full jam, guru. Agara signal hatra hogbedi. Olagina cross-galalli hogi.", "english": "Outer Ring Road is fully jammed, boss. Don't go near the Agara signal. Take the inner cross roads.", "notes": "Chai stall owner. Leaning in, sharing what every customer has told him." },
+    { "id": "talk.chai.jam.event.1", "character": "Chai stall anna", "line": "Customers heltidru: alli road block aagide. Bere daari nodi.", "english": "Customers were saying: the road is blocked over there. Find another way.", "notes": "Chai stall owner. Matter of fact, pointing down the road." },
+    { "id": "talk.chai.jam.clear.1", "character": "Chai stall anna", "line": "Ivattu road-u free ide. Aaramagi hogi, maga.", "english": "The roads are free today. Go easy, son.", "notes": "Chai stall owner. Relaxed." },
+    { "id": "talk.chai.bye.1", "character": "Chai stall anna", "line": "Sari, jopana hogi. Matte banni!", "english": "All right, go carefully. Come again!", "notes": "Chai stall owner. Calling after a regular." },
+
+    { "id": "talk.guard.hello.1", "character": "Security guard", "line": "Namaskara. Delivery idya? Illa andre gate hatra gaadi nillisbedi.", "english": "Hello. Is there a delivery? If not, don't park by the gate.", "notes": "Apartment security guard at a gate, 50s, polite and routine. Doesn't know this rider yet." },
+    { "id": "talk.guard.known.1", "character": "Security guard", "line": "Oho, namma Deliver It huduga! Banni banni. Ivattu yaav flat-ge?", "english": "Oho, our Deliver It boy! Come, come. Which flat today?", "notes": "The same guard, now a friend: he has seen this rider three times. Pleased to see him. The rider's name is shown on screen before the line." },
+    { "id": "talk.guard.count.1", "character": "Security guard", "line": "Register nodtini... haan, illi ide. Ishtu sala bandiddira.", "english": "Let me look in the register... yes, here it is. You've come this many times.", "notes": "Security guard. Running a finger down the visitors' register. The number is shown on screen." },
+    { "id": "talk.guard.water.1", "character": "Security guard", "line": "Tagoli, neeru kudiri. Bisilu jaasti ide ivattu.", "english": "Here, have some water. The sun is strong today.", "notes": "Security guard. Kindly, handing over a steel tumbler." },
+    { "id": "talk.guard.bye.1", "character": "Security guard", "line": "Sari, jopana hogi.", "english": "All right, go carefully.", "notes": "Security guard. A nod." },
+
+    { "id": "talk.rider.hello.1", "character": "Fellow rider", "line": "Yen guru, order sikta? Naanu ardha ghante inda wait maadtidini.", "english": "What, boss, got an order? I've been waiting half an hour.", "notes": "Delivery rider, 20s, leaning on his bike outside the dark store. Tired but friendly." },
+    { "id": "talk.rider.hello.2", "character": "Fellow rider", "line": "Banni, banni. Ivattu orders kammi, time jaasti.", "english": "Come, come. Few orders today, plenty of time.", "notes": "Delivery rider, 20s. Dry humour." },
+    { "id": "talk.rider.busy.1", "character": "Fellow rider", "line": "Order ide alva, guru? Illi yaake nintidiya? Hogu, customer kaaytidare!", "english": "You've got an order, boss, haven't you? Why are you standing here? Go, the customer is waiting!", "notes": "Delivery rider, 20s. Shooing a friend along, laughing." },
+    { "id": "talk.rider.racing.1", "character": "Fellow rider", "line": "Race nadeetide, guru! Maathu aamele. Odu, odu!", "english": "The race is on, boss! Talk later. Go, go!", "notes": "Delivery rider. Shouting, pointing down the road." },
+    { "id": "talk.rider.surge.1", "character": "Fellow rider", "line": "Iga surge nadeetide, guru. Online-alle iru: prathi order-ge extra duddu. Aadre Agara signal full jam.", "english": "Surge is on now, boss. Stay online: extra money on every order. But the Agara signal is fully jammed.", "notes": "Delivery rider. Keen: this is the hour the money is made." },
+    { "id": "talk.rider.block.1", "character": "Fellow rider", "line": "Group-alli message bantu: alli road block aagide. Aa kade hogbeda.", "english": "A message came on the group: the road is blocked over there. Don't go that way.", "notes": "Delivery rider. Reading it off his phone." },
+    { "id": "talk.rider.clear.1", "character": "Fellow rider", "line": "Ivattu road-u khaali, guru. Yaav daari aadru sari.", "english": "The roads are empty today, boss. Any way will do.", "notes": "Delivery rider. Relaxed, a shrug." },
+    { "id": "talk.rider.gossip.1", "character": "Fellow rider", "line": "Gottha? Sector 2 aunty ₹50 tip kottru. Bari ondu packet haalu-ge!", "english": "You know? An aunty in Sector 2 gave a ₹50 tip. For just one packet of milk!", "notes": "Delivery rider. Delighted, can't believe it." },
+    { "id": "talk.rider.gossip.2", "character": "Fellow rider", "line": "Ravi sir ivattu full tension. Surge time-alli yaaru offline hogbaardu anthe.", "english": "Ravi sir is very tense today. Nobody is to go offline at surge time, he says.", "notes": "Delivery rider. Lowered voice, amused." },
+    { "id": "talk.rider.gossip.3", "character": "Fellow rider", "line": "Ninne ondu cake order. Speed breaker mele full smash. One star, guru.", "english": "A cake order yesterday. Completely smashed on a speed breaker. One star, boss.", "notes": "Delivery rider. Rueful, laughing at himself." },
+    { "id": "talk.rider.tip.1", "character": "Fellow rider", "line": "One-way nodkond hogu. Illa andre full suttu barbeku.", "english": "Watch the one-ways. Otherwise you go the whole way round.", "notes": "Delivery rider. Practical advice to a newer rider." },
+    { "id": "talk.rider.tip.2", "character": "Fellow rider", "line": "Society gate-alli OTP ready itko. Guard sir-ge kaayisbeda.", "english": "Keep the OTP ready at the society gate. Don't keep the guard waiting.", "notes": "Delivery rider. Practical." },
+    { "id": "talk.rider.tip.3", "character": "Fellow rider", "line": "Cake, ice cream idre speed breaker-alli slow. Customer rating adralle ide.", "english": "With cake or ice cream, slow down at speed breakers. The customer's rating rides on it.", "notes": "Delivery rider. Speaks from experience." },
+    { "id": "talk.rider.dare.1", "character": "Fellow rider", "line": "Race beka? Illinda alli varegu, time olage. Geddre chai nanna kade inda!", "english": "Want a race? From here to there, inside the time. Win, and the chai is on me!", "notes": "Delivery rider. Grinning, a dare. The place and the time are shown on screen." },
+    { "id": "talk.rider.go.1", "character": "Fellow rider", "line": "Ready? Hogu, hogu, hogu!", "english": "Ready? Go, go, go!", "notes": "Delivery rider. Shouting him off." },
+    { "id": "talk.rider.win.1", "character": "Fellow rider", "line": "Super, guru! Sakkath riding. Tagoli, chai kudi.", "english": "Super, boss! Great riding. Here, have a chai.", "notes": "Delivery rider, on the phone afterwards. Impressed." },
+    { "id": "talk.rider.lose.1", "character": "Fellow rider", "line": "Aiyo, swalpa late. Next time, maga.", "english": "Ah, a little late. Next time, son.", "notes": "Delivery rider, on the phone afterwards. Friendly, no gloating." },
+    { "id": "talk.rider.bye.1", "character": "Fellow rider", "line": "Sari guru, sigona. Jopana.", "english": "All right, boss, see you. Go carefully.", "notes": "Delivery rider. Casual." },
+
+    { "id": "talk.aunty.ask.1", "character": "Aunty", "line": "Excuse me, thamma... ee jaaga yelli barutte? Naanu daari tappi hogidini.", "english": "Excuse me, young man... where is this place? I've lost my way.", "notes": "A woman in her 50s in a saree, a little flustered, polite. The place's name is shown on screen." },
+    { "id": "talk.aunty.lift.1", "character": "Aunty", "line": "Tumba thanks, thamma. Nidhaanavaagi hogi, aaytha?", "english": "Thank you so much, young man. Ride slowly, all right?", "notes": "Aunty. Relieved; firm on 'ride slowly'." },
+    { "id": "talk.aunty.told.1", "character": "Aunty", "line": "Sari sari, artha aaytu. Thanks kanappa.", "english": "Right, right, I've understood. Thank you, dear.", "notes": "Aunty. Repeating the directions to herself." },
+    { "id": "talk.aunty.busy.1", "character": "Aunty", "line": "Parvagilla, kelsa nodi. Hogi banni.", "english": "Never mind, see to your work. Off you go.", "notes": "Aunty. Understanding, not put out." },
+    { "id": "talk.aunty.drop.1", "character": "Aunty", "line": "Illi saaku, thamma. Devaru olledu maadli! Idu itko, chai-ge.", "english": "Here will do, young man. God bless you! Keep this, for a chai.", "notes": "Aunty, getting down. Warm; presses a note into his hand." },
+
+    { "id": "talk.auto.bump.1", "character": "Auto anna", "line": "Yen guru! Kannu kaansalva? Nanna auto-ge touch maadidya!", "english": "What, boss! Can't you see? You've touched my auto!", "notes": "Auto driver, 40s, out of his auto in a flash. Loud and theatrical, never threatening: this is street comedy." },
+    { "id": "talk.auto.argue.1", "character": "Auto anna", "line": "Nodi, nodi! Scratch aagide. Yaaru kodtare idakke?", "english": "Look, look! There's a scratch. Who's going to pay for this?", "notes": "Auto driver. Pointing at a scratch that may be ten years old." },
+    { "id": "talk.auto.argue.2", "character": "Auto anna", "line": "Naana? Naanu indicator haakidde! Meter illa, aadre indicator ide!", "english": "Me? I had my indicator on! No meter, but the indicator works!", "notes": "Auto driver. Outraged innocence; the joke is on himself." },
+    { "id": "talk.auto.calm.1", "character": "Auto anna", "line": "Hmm. Sari, bidu. Next time nodkond odsu, maga.", "english": "Hmm. All right, leave it. Ride with your eyes open next time, son.", "notes": "Auto driver. Deflating; he never wanted a fight." },
+    { "id": "talk.auto.paid.1", "character": "Auto anna", "line": "Aa, sari. Nee olle huduga. Hogi baa.", "english": "Ah, fine. You're a good boy. Off you go.", "notes": "Auto driver. Pocketing the note, all smiles." },
+    { "id": "talk.auto.police.1", "character": "Auto anna", "line": "Police-a? ...Beda, beda. Hogu, hogu. Time waste.", "english": "The police? ...No, no. Go, go. Waste of time.", "notes": "Auto driver. A beat of alarm, then a hasty retreat." },
+
+    { "id": "bark.cutoff.1", "character": "Passer-by", "line": "Yenri! Nodkond hogi!", "english": "Hey! Watch where you're going!", "notes": "Someone crossing the road, cut close by a scooter. Startled, indignant." },
+    { "id": "bark.cutoff.2", "character": "Passer-by", "line": "Aiyo! Swalpa nidhaana, guru!", "english": "Aiyo! A little slower, boss!", "notes": "Someone crossing the road. Startled." },
+    { "id": "bark.cutoff.3", "character": "Passer-by", "line": "Yen avasara nimge? Jana idare illi!", "english": "What's your hurry? There are people here!", "notes": "Someone crossing the road. Scolding, an elder's tone." },
+    { "id": "bark.thanks.1", "character": "Passer-by", "line": "Thanks, anna!", "english": "Thanks, brother!", "notes": "Someone the rider stopped for, crossing with a hand raised. Pleased." },
+    { "id": "bark.thanks.2", "character": "Passer-by", "line": "Olledu, thamma. Hogi banni.", "english": "Bless you, young man. Go on.", "notes": "An older person the rider stopped for. Warm." },
+    { "id": "bark.anna.1", "character": "Passer-by", "line": "Delivery anna!", "english": "Delivery brother!", "notes": "Called across the street to a passing delivery rider. Friendly, sing-song." },
+    { "id": "bark.anna.2", "character": "Passer-by", "line": "Oye, Deliver It! Nanna order yelli?", "english": "Oye, Deliver It! Where's my order?", "notes": "A joker on the footpath, calling after a delivery rider. Teasing." },
+    { "id": "bark.anna.3", "character": "Passer-by", "line": "Delivery anna, swalpa fast!", "english": "Delivery brother, a little fast!", "notes": "Called after a passing rider, laughing: what every customer says." },
+    { "id": "bark.footpath.1", "character": "Passer-by", "line": "Footpath-u gaadi-ge alla!", "english": "The footpath isn't for vehicles!", "notes": "Someone stepping back from a scooter on the footpath. Cross." },
+    { "id": "bark.footpath.2", "character": "Passer-by", "line": "Idu road alla, guru!", "english": "This isn't the road, boss!", "notes": "Someone stepping back from a scooter on the footpath. Exasperated." }
+  ],
+  "characters": [
+    {
+      "id": "chai-anna",
+      "name": "Chai stall anna",
+      "prompt": "Talk to chai anna",
+      "where": "chaiStall",
+      "look": { "body": "uncle", "tint": 0.05 },
+      "start": [{ "go": "hello" }],
+      "nodes": {
+        "hello": {
+          "say": "talk.chai.hello",
+          "choices": [
+            { "text": "Ondu cutting chai kodi, anna. (₹10)", "if": "credits>=10", "do": ["spend:10:Cutting chai", "fresh:1"], "go": "tea" },
+            { "text": "Chai beku, anna... but I'm broke today.", "if": "credits<10", "do": ["fresh:1"], "go": "free" },
+            { "text": "Traffic hegide, anna?", "go": "jam" },
+            { "text": "Later, anna. Order ide." }
+          ]
+        },
+        "tea": {
+          "say": "talk.chai.tea",
+          "after": " (Rested: your next delivery tips a little more.)",
+          "choices": [{ "text": "Traffic hegide, anna?", "go": "jam" }, { "text": "Thanks, anna. Barteeni." }]
+        },
+        "free": {
+          "say": "talk.chai.free",
+          "after": " (Rested: your next delivery tips a little more.)",
+          "choices": [{ "text": "Traffic hegide, anna?", "go": "jam" }, { "text": "Tumba thanks, anna. Naale kodtini." }]
+        },
+        "jam": {
+          "pick": [{ "if": "rush=1", "say": "talk.chai.jam.rush" }, { "if": "jam=1", "say": "talk.chai.jam.event", "after": " ({jam})" }, { "say": "talk.chai.jam.clear" }],
+          "do": ["jamTip"],
+          "choices": [{ "text": "Thanks, anna. I'll remember that for the next order.", "go": "bye" }]
+        },
+        "bye": { "say": "talk.chai.bye", "choices": [] }
+      }
+    },
+    {
+      "id": "society-guard",
+      "name": "Security guard",
+      "prompt": "Talk to the guard",
+      "where": "societyGate",
+      "look": { "body": "man", "tint": 0 },
+      "start": [{ "if": "deliveries>=3", "go": "known" }, { "go": "hello" }],
+      "nodes": {
+        "hello": {
+          "say": "talk.guard.hello",
+          "choices": [
+            { "text": "No delivery now, sir. Just saying namaskara.", "go": "bye" },
+            { "text": "How many times have I come here?", "go": "count" }
+          ]
+        },
+        "known": {
+          "say": "talk.guard.known",
+          "before": "{name}! ",
+          "choices": [
+            { "text": "No flat today, anna. Hegiddira?", "go": "water" },
+            { "text": "How many times have I come here?", "go": "count" },
+            { "text": "Barteeni, anna." }
+          ]
+        },
+        "count": { "say": "talk.guard.count", "after": " ({deliveries} deliveries to this building.)", "choices": [{ "text": "Thanks, sir.", "go": "bye" }] },
+        "water": { "say": "talk.guard.water", "choices": [{ "text": "Thanks, anna. Barteeni." }] },
+        "bye": { "say": "talk.guard.bye", "choices": [] }
+      }
+    },
+    {
+      "id": "fellow-rider",
+      "name": "Fellow rider",
+      "prompt": "Talk to the rider",
+      "where": "darkStore",
+      "look": { "body": "guy", "tint": 0.74 },
+      "start": [{ "if": "trial=1", "go": "racing" }, { "if": "order=1", "go": "busy" }, { "go": "hello" }],
+      "nodes": {
+        "hello": {
+          "say": "talk.rider.hello",
+          "choices": [
+            { "text": "How are the roads just now, guru?", "go": "roads" },
+            { "text": "Bored? Race me somewhere.", "if": "order=0 & trial=0 & riding=0", "go": "dare" },
+            { "text": "Yen samachara? Any gossip?", "go": "gossip" },
+            { "text": "Sari, sigona." }
+          ]
+        },
+        "busy": {
+          "say": "talk.rider.busy",
+          "choices": [{ "text": "One minute. How are the roads just now?", "go": "roads" }, { "text": "Hogtini, guru." }]
+        },
+        "racing": { "say": "talk.rider.racing", "choices": [] },
+        "roads": {
+          "pick": [
+            { "if": "rush=1", "say": "talk.rider.surge" },
+            { "if": "jam=1", "say": "talk.rider.block", "after": " ({jam})" },
+            { "say": "talk.rider.clear" }
+          ],
+          "do": ["jamTip"],
+          "choices": [{ "text": "Anything else I should know?", "go": "tip" }, { "text": "Thanks, guru. Sigona.", "go": "bye" }]
+        },
+        "gossip": { "say": "talk.rider.gossip", "choices": [{ "text": "Ha! Innenu?", "go": "gossip" }, { "text": "How are the roads just now, guru?", "go": "roads" }, { "text": "Sari, sigona." }] },
+        "tip": { "say": "talk.rider.tip", "choices": [{ "text": "One more?", "go": "tip" }, { "text": "Thanks, guru. Sigona.", "go": "bye" }] },
+        "dare": {
+          "say": "talk.rider.dare",
+          "do": ["planTrial"],
+          "after": " (To {place}, in {seconds} seconds, for ₹{reward}.)",
+          "choices": [{ "text": "Done. Count me down.", "do": ["timeTrial"], "go": "go" }, { "text": "Not now, guru." }]
+        },
+        "go": { "say": "talk.rider.go", "choices": [] },
+        "bye": { "say": "talk.rider.bye", "choices": [] }
+      }
+    },
+    {
+      "id": "lost-aunty",
+      "name": "Aunty",
+      "prompt": "Talk to aunty",
+      "where": "busStop",
+      "look": { "body": "saree", "tint": 0.31 },
+      "start": [{ "go": "ask" }],
+      "nodes": {
+        "ask": {
+          "say": "talk.aunty.ask",
+          "do": ["planLift"],
+          "after": " ({place})",
+          "choices": [
+            { "text": "Hop on, aunty. I'll drop you there.", "if": "order=0 & riding=0 & trial=0", "do": ["lift"], "go": "lift" },
+            { "text": "Straight down this road, aunty, then ask at the signal.", "go": "told" },
+            { "text": "Sorry aunty, I have an order to deliver.", "go": "busy" }
+          ]
+        },
+        "lift": { "say": "talk.aunty.lift", "choices": [] },
+        "told": { "say": "talk.aunty.told", "choices": [] },
+        "busy": { "say": "talk.aunty.busy", "choices": [] }
+      }
+    },
+    {
+      "id": "auto-anna",
+      "name": "Auto anna",
+      "prompt": "Talk to the auto anna",
+      "where": "bumpedAuto",
+      "look": { "body": "man", "tint": 0.88 },
+      "start": [{ "go": "argue" }],
+      "nodes": {
+        "argue": {
+          "say": "talk.auto.argue",
+          "choices": [
+            { "text": "Sorry, anna. My mistake.", "go": "calm" },
+            { "text": "Take ₹50 for the scratch, anna.", "if": "credits>=50", "do": ["spend:50:Auto anna, for a scratch"], "go": "paid" },
+            { "text": "You braked all of a sudden!", "go": "again" }
+          ]
+        },
+        "again": {
+          "say": "talk.auto.argue.2",
+          "choices": [{ "text": "Okay, okay. Sorry, anna.", "go": "calm" }, { "text": "Fine. Let's ask the traffic police.", "go": "police" }]
+        },
+        "calm": { "say": "talk.auto.calm", "do": ["release"], "choices": [] },
+        "paid": { "say": "talk.auto.paid", "do": ["release"], "choices": [] },
+        "police": { "say": "talk.auto.police", "do": ["release"], "choices": [] }
+      }
+    }
+  ]
+}

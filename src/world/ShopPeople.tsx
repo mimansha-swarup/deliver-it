@@ -4,7 +4,8 @@ import { useGLTF } from '@react-three/drei'
 import { STRIDE_PER_METRE } from '../traffic/gait'
 import { getModel, TRAFFIC_MODELS_URL, EXTRA_PEOPLE, PEOPLE_MODELS_URL } from '../traffic/modelFiles'
 import { People } from '../traffic/Traffic'
-import type { Pedestrian } from '../traffic/trafficLogic'
+import type { Pedestrian, TrafficWorld } from '../traffic/trafficLogic'
+import { lifeCounts } from '../dev/lifeCounts'
 import { livePlayer } from '../game/livePlayer'
 import { useGameStore } from '../game/gameStore'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
@@ -109,7 +110,71 @@ function stepWalker(walker: Walking, delta: number) {
   person.heading += turn * Math.min(1, delta * TURN)
 }
 
-export function ShopPeople({ people }: { people: ShopLife }) {
+/**
+ * Getting on the bus. When one pulls up at a stop (it waits there nine seconds: trafficLogic.ts'
+ * `BUS_STOP`), some of the people waiting walk to its door and are gone with it; a while after,
+ * someone else comes along the footpath and stands in their place. `share` of those waiting get on
+ * each bus; a bus counts as at the stop within `reach` metres of it; the next person comes after
+ * between `comes` seconds (lowest to highest), from `from` metres along the footpath.
+ */
+const BOARD = { share: 0.6, reach: 16, pace: 1.5, comes: [18, 45], from: 7, door: 0.7 }
+type Waiter = { person: ShopPerson; drawn: Pedestrian; mode: 'wait' | 'board' | 'gone' | 'come'; timer: number; bus: number }
+
+/** One step of someone at a bus stop. `buses`: those standing at a stop now. */
+function stepWaiter(waiter: Waiter, buses: { x: number; z: number; heading: number; radius: number; halfLength: number; id: number }[], delta: number) {
+  const { person, drawn } = waiter
+  const stop = person.stop
+  if (!stop) return
+  const walkTo = (x: number, z: number): boolean => {
+    const toX = x - drawn.x
+    const toZ = z - drawn.z
+    const away = Math.hypot(toX, toZ)
+    if (away < 0.25) return true
+    const step = Math.min(away, BOARD.pace * delta)
+    drawn.x += (toX / away) * step
+    drawn.z += (toZ / away) * step
+    drawn.heading = Math.atan2(toX, toZ)
+    drawn.stride += step * STRIDE_PER_METRE
+    drawn.walking = 1
+    return false
+  }
+  if (waiter.mode === 'wait') {
+    const bus = buses.find((one) => Math.hypot(one.x - stop.x, one.z - stop.z) < BOARD.reach)
+    if (!bus || bus.id === waiter.bus) return
+    // Each makes up their mind once about each bus: it's theirs, or it isn't.
+    waiter.bus = bus.id
+    if (((person.phase * 7.3 + bus.id * 0.61) % 1) < BOARD.share) waiter.mode = 'board'
+  } else if (waiter.mode === 'board') {
+    const bus = buses.find((one) => one.id === waiter.bus)
+    // The front door, on the kerb side (the left).
+    const there = bus && walkTo(bus.x + Math.cos(bus.heading) * (bus.radius + 0.25) + Math.sin(bus.heading) * bus.halfLength * BOARD.door, bus.z - Math.sin(bus.heading) * (bus.radius + 0.25) + Math.cos(bus.heading) * bus.halfLength * BOARD.door)
+    if (!bus && !there) {
+      // It left without them: back to the shelter, for the next one.
+      waiter.mode = 'come'
+    } else if (there) {
+      lifeCounts.boarded++
+      drawn.hidden = true
+      waiter.mode = 'gone'
+      waiter.timer = BOARD.comes[0] + ((person.phase * 3.7) % 1) * (BOARD.comes[1] - BOARD.comes[0])
+    }
+  } else if (waiter.mode === 'gone') {
+    waiter.timer -= delta
+    if (waiter.timer > 0) return
+    // Someone new, coming along the footpath from past the end of the shelter.
+    const side = person.phase % 2 < 1 ? 1 : -1
+    drawn.x = person.x + stop.alongX * side * BOARD.from
+    drawn.z = person.z + stop.alongZ * side * BOARD.from
+    drawn.tint = (drawn.tint + 0.37) % 1
+    drawn.hidden = false
+    waiter.mode = 'come'
+  } else if (walkTo(person.x, person.z)) {
+    drawn.heading = person.heading
+    drawn.walking = 0
+    waiter.mode = 'wait'
+  }
+}
+
+export function ShopPeople({ people, traffic }: { people: ShopLife; traffic?: TrafficWorld }) {
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const { scene: extraPeople } = useGLTF(PEOPLE_MODELS_URL)
   // The plans say one of two bodies; each stands for three here, picked by the person's own tint, so
@@ -126,10 +191,38 @@ export function ShopPeople({ people }: { people: ShopLife }) {
   const [near, setNear] = useState<{ body: number; drawn: Pedestrian }[]>([])
   /** The walkers near the rider: only they are moved. Far away, nobody sees where they are. */
   const moving = useRef<Walking[]>([])
+  /** Those waiting at bus stops near the rider, and the buses standing at stops just now (kept, and refilled). */
+  const [waiters] = useState(() => new Map<ShopPerson, Waiter>())
+  const waiting = useRef<Waiter[]>([])
+  const buses = useRef<{ x: number; z: number; heading: number; radius: number; halfLength: number; id: number }[]>([])
 
   useFrame((_, delta) => {
     const step = Math.min(delta, 0.1)
     for (const walker of moving.current) stepWalker(walker, step)
+    // Buses standing at stops, and the people there who get on them.
+    if (traffic && waiting.current.length > 0) {
+      let count = 0
+      for (let index = 0; index < traffic.vehicles.length; index++) {
+        const vehicle = traffic.vehicles[index]
+        if (vehicle.kind !== 'bus' || vehicle.lane === -1 || !((vehicle.busDwell ?? 0) > 0)) continue
+        const bus = (buses.current[count++] ??= { x: 0, z: 0, heading: 0, radius: 0, halfLength: 0, id: 0 })
+        bus.x = vehicle.x
+        bus.z = vehicle.z
+        bus.heading = vehicle.heading
+        bus.radius = vehicle.radius
+        bus.halfLength = vehicle.halfLength
+        // Which bus, and which of its stops: a new number each time it pulls up somewhere.
+        bus.id = index * 1000 + ((vehicle.servedStop ?? 0) % 997) + 1
+      }
+      buses.current.length = count
+      let boarding = 0
+      for (const waiter of waiting.current) {
+        stepWaiter(waiter, buses.current, step)
+        if (waiter.mode === 'board') boarding++
+      }
+      lifeCounts.boarding = boarding
+      lifeCounts.atStops = waiting.current.length
+    }
     if (!hasMoved(seen.current, reach)) return
     seen.current = { x: livePlayer.x, z: livePlayer.z, reach }
     const isNear = (x: number, z: number, extra = 0) => Math.hypot(x - livePlayer.x, z - livePlayer.z) < reach + extra
@@ -137,8 +230,17 @@ export function ShopPeople({ people }: { people: ShopLife }) {
     const shown = low ? walkers.filter((_walker, i) => i % 2 === 0) : walkers
     // A walker may be anywhere on their stretch by the next pick, so they count from its middle.
     moving.current = shown.filter(({ plan, length }) => isNear((plan.from[0] + plan.to[0]) / 2, (plan.from[1] + plan.to[1]) / 2, length / 2))
+    const nearStanding = standing.filter(({ person }) => isNear(person.x, person.z))
+    waiting.current = nearStanding.flatMap(({ person, drawn }) => {
+      if (!person.stop) return []
+      let waiter = waiters.get(person)
+      if (!waiter) waiters.set(person, (waiter = { person, drawn, mode: 'wait', timer: 0, bus: 0 }))
+      return [waiter]
+    })
+    lifeCounts.shopPeople = nearStanding.length
+    lifeCounts.shopWalkers = moving.current.length
     setNear([
-      ...standing.filter(({ person }) => isNear(person.x, person.z)).map(({ person, drawn }) => ({ body: bodyOf(person.body, person.tint), drawn })),
+      ...nearStanding.map(({ person, drawn }) => ({ body: bodyOf(person.body, person.tint), drawn })),
       ...moving.current.map(({ plan, person }) => ({ body: bodyOf(plan.body, plan.tint), drawn: person })),
     ])
   })

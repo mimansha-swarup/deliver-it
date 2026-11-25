@@ -27,6 +27,15 @@ The frame benchmark runs against the built game:
 `node --experimental-websocket scripts/bench.mjs --streets shop-street`, with `npm run preview`
 on port 4173 and no other game tab open.
 
+Traffic and street life have their own: `node --experimental-websocket scripts/drive.mjs
+scripts/traffic_bench.mjs 1500x900 --windowed` stands at 6 pm on 27th Main and at the Agara
+junction with `?debug=2`, and reports frames a second, each traffic and people step's time, and
+how many vehicles and people are out in each band of distance (its header has the options).
+
+People the rider can talk to on foot, their lines and their choices are all in
+`src/talk/characters.json`; its first lines say how to add more. `node scripts/voice_files.mjs`
+then adds the new lines to `VOICE_SCRIPT.csv` for recording.
+
 ## How it's made
 
 React, three.js through @react-three/fiber, Rapier for physics, zustand for state, Vite and

@@ -17,8 +17,10 @@ import { JunctionWatch } from './JunctionWatch'
 import * as THREE from 'three'
 import { useGameStore } from '../game/gameStore'
 import { PAVEMENT_HEIGHT, ROAD_HEIGHT } from '../world/surface'
-import { livePlayer, liveSky } from '../game/livePlayer'
-import { dayPeriod } from '../game/duty'
+import { liveHorn, livePlayer, liveSky } from '../game/livePlayer'
+import { stepReactions } from '../people/reactions'
+import { lifeCounts } from '../dev/lifeCounts'
+import { peopleShare, trafficShare } from './density'
 import { QUALITY_PRESETS } from '../game/qualitySettings'
 import { STEERING_Z } from '../vehicle/Rider'
 import { isDebug } from '../dev/spawn'
@@ -35,6 +37,7 @@ import {
   takeImpacts,
   LOOSE_DRAW_DISTANCE,
   easeDensity,
+  hearHorn,
   stepTraffic,
   type Pedestrian,
   type TrafficWorld,
@@ -46,6 +49,7 @@ import {
   createParkedCarGeometry,
   createParkedScooterGeometry,
   createRidingScooterGeometry,
+  createFleetTrafficGeometry,
 } from './vehicleShapes'
 import { addWindowGlass, CAR_COLORS, PARKED_COLORS, tintPaintOnly } from './vehiclePaint'
 import { groundLift } from '../world/groundLift'
@@ -87,6 +91,12 @@ const BIKE_LEAN = { share: 0.85, most: 0.46, response: 5, stoppedBelow: 0.5, foo
 function updateBikeLean(items: Moving[], dt: number) {
   if (dt <= 0) return
   for (const item of items) {
+    // On rails, far off: upright, and nothing to work out.
+    if (item.rail) {
+      item.lean = 0
+      item.leanFrom = item.heading
+      continue
+    }
     const last = item.leanFrom ?? item.heading
     const turned = Math.atan2(Math.sin(item.heading - last), Math.cos(item.heading - last))
     item.leanFrom = item.heading
@@ -109,6 +119,12 @@ const AUTO_COLORS = ['#ffffff']
 const BIKE_COLORS = ['#1c3fd1', '#b3201e', '#1a1b1e', '#e8e8e8', '#2e7d4f']
 /** Made-up city bus liveries, a little faded: green, red, blue and ochre. No real operator's colours and name together. */
 const BUS_COLORS = ['#3f7a4a', '#a8352c', '#2f5a8f', '#b98a2c']
+/** Tempos: the whites, creams and faded blues of small goods carriers. */
+const TEMPO_COLORS = ['#e6e2d6', '#d9d2bd', '#6f8fae', '#e6e2d6', '#b9b4a6']
+/** A bicycle and its rider's shirt take the same colour: everyday ones, nothing bright. */
+const CYCLE_COLORS = ['#3b4a6b', '#6b6f75', '#8a3b34', '#c9c3b4', '#3f6a55', '#7a6a4f']
+/** Someone on a bicycle: upright on the saddle, hands on the bars, feet on the pedals, no helmet. */
+const CYCLE_SEAT: Seat = { hip: new THREE.Vector3(0, 0.99, -0.3), lean: 0.24, hands: new THREE.Vector3(0.2, 1.0, 0.4), feet: new THREE.Vector3(0.1, 0.3, 0.0) }
 /** Parked scooters are detailed, and smaller than a few pixels past this, in metres. */
 const PARKED_DRAW_DISTANCE = 90
 /** Parked scooters nearer than this get the detailed model; the rest, out to PARKED_DRAW_DISTANCE, the far one. */
@@ -183,6 +199,13 @@ type Moving = {
   braking?: boolean
   indicator?: -1 | 0 | 1
   hazard?: boolean
+  /** On rails (trafficLogic.ts' `RAIL`): drawn as its far stand-in, written only when it's stepped, and carried on between steps by `railSpeed`. */
+  rail?: boolean
+  railSpeed?: number
+  railStamp?: number
+  /** A walker far from the player, stepped ten times a second: written again only when `farStamp` changes. */
+  far?: boolean
+  farStamp?: number
 }
 
 /** Indicators flash this many times a second, and are lit for this share of each flash. */
@@ -208,6 +231,8 @@ function writeTransforms(
     const inRange =
       near &&
       !item.hidden &&
+      !item.rail &&
+      Math.abs(item.x) < NOWHERE &&
       !(isSeatedRider && item.riderOff)
     // On a raised footpath, walk on top of it.
     // Up on a flyover, its lift is the deck's height: no footpath below lifts it.
@@ -276,7 +301,8 @@ function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: num
   const color = nearColor
   let drawn = 0
   for (const item of items) {
-    if (item.hidden || (isSeatedRider && item.riderOff)) continue
+    // One on rails is drawn by the rails' own copies (`writeRails`).
+    if (item.hidden || item.rail || (isSeatedRider && item.riderOff)) continue
     const near = from > 0 ? !isDetailed(item, from) : reach === Infinity || isDetailed(item, reach)
     if (!near || Math.abs(item.x) > NOWHERE) continue
     // On a raised footpath, on top of it. Up on a flyover, its lift is the deck's height: no footpath below lifts it.
@@ -301,6 +327,38 @@ function writePacked(instances: THREE.InstancedMesh, items: Moving[], reach: num
   if (instances.instanceColor) instances.instanceColor.needsUpdate = true
   if (signal) signal.needsUpdate = true
   if (foot) foot.needsUpdate = true
+}
+
+/** The traffic's own time, in seconds (the world's `railClock`): vehicles on rails are carried on from their last step by it, in the shader. */
+const railClock = { value: 0 }
+
+/**
+ * The vehicles on rails, each in its own place in the list (a copy that isn't on rails is shrunk to
+ * nothing): only the ones stepped since they were last written are written again, a few each
+ * frame. `written` remembers each copy's last step. With each goes its speed and the time of that
+ * step (`aRail`), and the shader moves it on along its length until the next.
+ */
+function writeRails(instances: THREE.InstancedMesh, items: Moving[], written: Float32Array, rail: THREE.InstancedBufferAttribute, signal: THREE.InstancedBufferAttribute | null) {
+  let changed = false
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]
+    const shown = item.rail === true && !item.hidden && Math.abs(item.x) < NOWHERE
+    const stamp = shown ? (item.railStamp ?? 0) : -1
+    if (written[index] === stamp) continue
+    written[index] = stamp
+    changed = true
+    transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
+    transform.rotation.set(0, item.heading, 0)
+    transform.scale.setScalar(shown ? 1 : 0)
+    transform.updateMatrix()
+    instances.setMatrixAt(index, transform.matrix)
+    rail.setXY(index, shown ? (item.railSpeed ?? 0) : 0, stamp)
+    if (signal) signal.setXYZ(index, item.braking ? 1 : 0, 0, 0)
+  }
+  if (!changed) return
+  instances.instanceMatrix.needsUpdate = true
+  rail.needsUpdate = true
+  if (signal) signal.needsUpdate = true
 }
 
 function updateReflection(material: THREE.MeshStandardMaterial) {
@@ -340,6 +398,7 @@ function MovingInstances({
   from = 0,
   cloth = false,
   lamps = false,
+  rails = false,
 }: {
   items: Moving[]
   geometry: THREE.BufferGeometry
@@ -360,6 +419,8 @@ function MovingInstances({
   cloth?: boolean
   /** A vehicle whose shape has its lamps marked (vehicleLamps.ts' `withLamps`): they glow, each copy's by what it's doing. */
   lamps?: boolean
+  /** The copies for vehicles on rails (`writeRails`): the shape must be this use's alone, as it carries their attributes. */
+  rails?: boolean
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
   const material = useRef<THREE.MeshStandardMaterial>(null)
@@ -383,8 +444,22 @@ function MovingInstances({
     return attribute
   }, [seatedRider, items.length, geometry])
 
+  // On rails: each copy's speed and when it was last stepped (`aRail`), and what was last written of each.
+  const rail = useMemo(() => {
+    if (!rails || items.length === 0) return null
+    const attribute = new THREE.InstancedBufferAttribute(new Float32Array(items.length * 2), 2)
+    attribute.setUsage(THREE.DynamicDrawUsage)
+    geometry.setAttribute('aRail', attribute)
+    return { attribute, written: new Float32Array(items.length).fill(-2) }
+  }, [rails, items.length, geometry])
+
   useFrame(({ clock }) => {
     if (!mesh.current) return
+    if (rail) {
+      writeRails(mesh.current, items, rail.written, rail.attribute, signal)
+      if (material.current) updateReflection(material.current)
+      return
+    }
     if (nearestOnly && reach !== undefined) {
       const near = candidates.current
       if (near.frames-- <= 0 || near.items === null) {
@@ -416,7 +491,7 @@ function MovingInstances({
         // caught a different bit of sky in every dent, which read as speckled paint.
         roughness={cloth ? 0.85 : baked ? 0.5 : 0.45}
         metalness={cloth ? 0 : baked ? 0.15 : 0.1}
-        onBeforeCompile={lamps ? LAMPS_SEEN_THROUGH : foot ? RIDER_SEEN_THROUGH : baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
+        onBeforeCompile={rails ? RAILS_SEEN_THROUGH : lamps ? LAMPS_SEEN_THROUGH : foot ? RIDER_SEEN_THROUGH : baked || cloth ? PAINT_SEEN_THROUGH : SEEN_THROUGH}
       />
     </instancedMesh>
   )
@@ -471,7 +546,7 @@ function CarHeadlights({ items, count }: { items: Vehicle[]; count: number }) {
         let best: Vehicle | null = null
         let bestDistance = CAR_LIGHT_REACH
         for (const item of items) {
-          if (item.lane === -1 || item.body || item.fallen || picked.includes(item)) continue
+          if (item.lane === -1 || item.rail || item.body || item.fallen || picked.includes(item)) continue
           const distance = Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z)
           if (distance < bestDistance) {
             best = item
@@ -774,16 +849,58 @@ function withPersonData(body: THREE.BufferGeometry, count: number): THREE.Buffer
   return geometry
 }
 
-function writeStrides(geometry: THREE.BufferGeometry, people: Pedestrian[]) {
-  const attribute = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
+/**
+ * Everyone in a crowd who can be seen, written one after another, and only that many drawn: someone
+ * hidden (a bike's rider still on the bike, a walker waiting off the map) costs nothing, where a
+ * copy shrunk to nothing still cost the GPU every corner of a person. Each is written again only
+ * when something about them has changed: a walker far from the player (`far`) when they've been
+ * stepped, ten times a second; someone standing as they stood last frame, not at all. When who can
+ * be seen changes, everyone moves up or down the list, and all are written.
+ * `stamps`: what was last written of each, and in its last place, who could be seen.
+ */
+function writePeople(instances: THREE.InstancedMesh, geometry: THREE.BufferGeometry, items: Pedestrian[], ground: number, stamps: Float64Array) {
+  const pose = geometry.getAttribute('aPerson') as THREE.InstancedBufferAttribute
   const wave = geometry.getAttribute('aWave') as THREE.InstancedBufferAttribute
-  people.forEach(({ stride, skin, down, walking = 1, wave: waving = 0, idle = 0 }, index) => {
-    attribute.setXYZW(index, stride, skin, down, walking)
-    wave.setXY(index, waving, idle)
-  })
-  attribute.needsUpdate = true
+  // Who can be seen, as one number.
+  let seen = 0
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]
+    if (!item.hidden && Math.abs(item.x) < NOWHERE) seen += (index + 1) * (index + 7)
+  }
+  const all = stamps[items.length] !== seen
+  stamps[items.length] = seen
+  let changed = all
+  let place = 0
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]
+    if (item.hidden || Math.abs(item.x) >= NOWHERE) continue
+    const at = place++
+    // Everything that's written of them, as one number, which changes if any of it does; for a far walker, the step they were last moved in.
+    const state = item.far
+      ? (item.farStamp ?? 0)
+      : item.x * 1.37 + item.z * 2.11 + item.heading * 3.7 + item.stride * 0.731 + (item.walking ?? 1) * 5.3 + (item.wave ?? 0) * 7.9 + item.down * 11.3 + item.lift * 13.1 + (item.idle ?? 0) * 17 + (item.rotation ? item.rotation[0] * 19 + item.rotation[3] * 23 : 0) + 1e6
+    if (!all && stamps[index] === state) continue
+    stamps[index] = state
+    changed = true
+    transform.position.set(item.x, (item.deck ? ground : Math.max(ground, groundLift.at(item.x, item.z))) + item.lift, item.z)
+    if (item.rotation) transform.quaternion.set(...item.rotation)
+    else transform.rotation.set(0, item.heading, 0)
+    transform.scale.setScalar(1)
+    transform.updateMatrix()
+    instances.setMatrixAt(at, transform.matrix)
+    pose.setXYZW(at, item.stride, item.skin, item.down, item.walking ?? 1)
+    wave.setXY(at, item.wave ?? 0, item.idle ?? 0)
+    if (all && instances.instanceColor) instances.setColorAt(at, nearColor.set(peoplePalette.current[Math.floor(item.tint * peoplePalette.current.length * 0.999)]))
+  }
+  instances.count = place
+  if (!changed) return
+  instances.instanceMatrix.needsUpdate = true
+  pose.needsUpdate = true
   wave.needsUpdate = true
+  if (all && instances.instanceColor) instances.instanceColor.needsUpdate = true
 }
+/** The colours of the crowd being written (set by `People` before it writes): a person's colour moves with them as they move up or down the list. */
+const peoplePalette: { current: string[] } = { current: [] }
 
 /**
  * People in a room (world/Rooms.tsx) stand under the city, where the sun and the sky's light don't
@@ -808,6 +925,16 @@ const LAMPS_SEEN_THROUGH = seeThrough((shader) => {
   tintPaintOnly(shader)
   addLampGlow(shader)
   addWindowGlass(shader)
+})
+/** A far stand-in on rails: as any with lamps, and moved on along its length by its speed since its last step (at most a quarter of a second's worth, if a step is late). */
+const RAILS_SEEN_THROUGH = seeThrough((shader) => {
+  tintPaintOnly(shader)
+  addLampGlow(shader)
+  addWindowGlass(shader)
+  shader.uniforms.uRailClock = railClock
+  shader.vertexShader = shader.vertexShader
+    .replace('void main() {', 'attribute vec2 aRail;\nuniform float uRailClock;\nvoid main() {')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed.z += aRail.x * clamp(uRailClock - aRail.y, 0.0, 0.25);')
 })
 const SEEN_THROUGH = seeThrough()
 
@@ -889,11 +1016,14 @@ export function People({
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
+  /** For each far walker, the step last written (`Pedestrian.farStamp`): they're written again only when stepped. */
+  const stamps = useMemo(() => new Float64Array(items.length + 1).fill(-2), [items.length])
+
   usePeopleFrame(({ clock }) => {
     if (!mesh.current) return
     peopleClock.uTime.value = clock.elapsedTime % 1000
-    writeTransforms(mesh.current, items, Infinity, false, ground)
-    writeStrides(geometry, items)
+    peoplePalette.current = palette
+    writePeople(mesh.current, geometry, items, ground, stamps)
   })
 
   return (
@@ -926,6 +1056,7 @@ const wheelSpin = new THREE.Matrix4()
 const wheelSteer = new THREE.Matrix4()
 const wheelFlip = new THREE.Matrix4().makeRotationY(Math.PI)
 const wheelSize = new THREE.Matrix4()
+const wheelMatrix = new THREE.Matrix4()
 
 /** Works out how far a vehicle moved, so its wheels roll that far and steer into the bend. */
 function updateWheelState(state: WheelState, item: Moving, wheels: WheelSet, delta: number) {
@@ -958,8 +1089,10 @@ function VehicleWheels({ items, wheels, reach = Infinity }: { items: Moving[]; w
   useFrame((_, delta) => {
     if (!mesh.current) return
     const step = Math.min(delta, MAX_STEP)
-
-    items.forEach((item, itemIndex) => {
+    // Only the wheels of vehicles drawn with their detailed model, one after another, and only that many are drawn.
+    let drawn = 0
+    for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      const item = items[itemIndex]
       const state = (states.current[itemIndex] ??= {
         x: item.x,
         z: item.z,
@@ -967,18 +1100,24 @@ function VehicleWheels({ items, wheels, reach = Infinity }: { items: Moving[]; w
         roll: 0,
         steer: 0,
       })
+      // Past `reach`, or on rails, the vehicle is a stand-in with wheels of its own.
+      if (item.rail || Math.abs(item.x) > NOWHERE || !(reach === Infinity || isDetailed(item, reach))) {
+        state.x = item.x
+        state.z = item.z
+        state.heading = item.heading
+        continue
+      }
       // A tumbling vehicle's wheels stop being driven, and simply go with it.
       if (!item.rotation) updateWheelState(state, item, wheels, step)
 
       transform.position.set(item.x, ROAD_HEIGHT + item.lift, item.z)
       if (item.rotation) transform.quaternion.set(...item.rotation)
       else transform.rotation.set(0, item.heading, item.lean ? -item.lean : 0)
-      // Past `reach` the vehicle is a stand-in with wheels of its own, so these shrink to nothing.
-      transform.scale.setScalar(reach === Infinity || isDetailed(item, reach) ? 1 : 0)
+      transform.scale.setScalar(1)
       transform.updateMatrix()
       wheelBody.copy(transform.matrix)
 
-      wheels.positions.forEach(([x, y, z], wheelIndex) => {
+      for (const [x, y, z] of wheels.positions) {
         const isLeft = x < 0
         wheelPlace.makeTranslation(x, y, z)
         wheelSteer.makeRotationY(z > 0 ? state.steer : 0)
@@ -986,12 +1125,13 @@ function VehicleWheels({ items, wheels, reach = Infinity }: { items: Moving[]; w
         wheelSpin.makeRotationX(isLeft ? -state.roll : state.roll)
         wheelSize.makeScale(wheels.scale, wheels.scale, wheels.scale)
 
-        const matrix = wheelBody.clone().multiply(wheelPlace).multiply(wheelSteer)
-        if (isLeft) matrix.multiply(wheelFlip)
-        matrix.multiply(wheelSpin).multiply(wheelSize)
-        mesh.current?.setMatrixAt(itemIndex * wheels.positions.length + wheelIndex, matrix)
-      })
-    })
+        wheelMatrix.copy(wheelBody).multiply(wheelPlace).multiply(wheelSteer)
+        if (isLeft) wheelMatrix.multiply(wheelFlip)
+        wheelMatrix.multiply(wheelSpin).multiply(wheelSize)
+        mesh.current.setMatrixAt(drawn++, wheelMatrix)
+      }
+    }
+    mesh.current.count = drawn
     mesh.current.instanceMatrix.needsUpdate = true
   })
 
@@ -1038,7 +1178,12 @@ const VEHICLES: { kind: VehicleKind; palette: string[] }[] = [
   { kind: 'auto', palette: AUTO_COLORS },
   { kind: 'bike', palette: BIKE_COLORS },
   { kind: 'bus', palette: BUS_COLORS },
+  { kind: 'tempo', palette: TEMPO_COLORS },
+  { kind: 'cycle', palette: CYCLE_COLORS },
 ]
+
+/** The bands of distance from the player the debug count sorts traffic and people into, in metres. */
+const BANDS: [number, number][] = [[0, 60], [60, 120], [120, 240], [240, Infinity]]
 
 /** Number plates are small, so past this they aren't drawn, in metres. */
 const PLATE_REACH = 70
@@ -1052,6 +1197,9 @@ const PLATES: Record<VehicleKind, PlateFit & { commercial: boolean }> = {
   auto: { width: 0.32, height: 0.11, at: 0.42, front: true, back: true, commercial: true },
   bike: { width: 0.2, height: 0.12, at: 0.68, front: false, back: true, commercial: false },
   bus: { width: 0.52, height: 0.13, at: 0.5, front: true, back: true, commercial: true },
+  tempo: { width: 0.46, height: 0.12, at: 0.55, front: true, back: true, commercial: true },
+  // A bicycle carries none.
+  cycle: { width: 0.1, height: 0.05, at: 0.5, front: false, back: false, commercial: false },
 }
 
 /** Which of the three two-wheeler shapes a bike is: the motorbike, the moped or the scooter. Fixed for each bike. */
@@ -1095,7 +1243,7 @@ export function Traffic({
   scooter: RefObject<ScooterState>
   world: TrafficWorld
 }) {
-  const { vehicles, pedestrians, shadowSize, carLights, vehicleDetailDistance: detail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
+  const { vehicles, nearVehicles, pedestrians, shadowSize, carLights, vehicleDetailDistance: detail } = useGameStore((state) => QUALITY_PRESETS[state.quality])
 
   const { scene } = useGLTF(TRAFFIC_MODELS_URL)
   const { scene: twoWheelers } = useGLTF(TWO_WHEELERS_URL)
@@ -1122,8 +1270,11 @@ export function Traffic({
       auto: withLamps(getModel(scene, 'auto'), 'auto'),
       bike: withLamps(getModel(twoWheelers, 'bike'), 'bike'),
       bus: withLamps(busShape, 'bus'),
+      // The other one in twenty: a tempo (the rider's own mini truck, from fleet.glb) and someone on a bicycle, each one shape.
+      tempo: withLamps(createFleetTrafficGeometry(fleet, 'minitruck'), 'tempo'),
+      cycle: withLamps(createFleetTrafficGeometry(fleet, 'cycle', [createSeatedRiderGeometry(createRiderModel(getModel(scene, 'man'), COMMUTER_LOOK), COMMUTER_LOOK, CYCLE_SEAT, null)]), 'cycle'),
     }),
-    [scene, twoWheelers, busShape],
+    [scene, twoWheelers, busShape, fleet],
   )
   useEffect(() => () => Object.values(shapes).forEach((geometry) => geometry.dispose()), [shapes])
   const wheels = useMemo(
@@ -1178,12 +1329,15 @@ export function Traffic({
       Object.fromEntries(
         VEHICLES.map(({ kind }) => [
           kind,
-          farWithLamps(kind === 'bus' ? createProxyGeometry(shapes.bus) : kind === 'bike' ? createFarBikeGeometry(twoWheelers, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
+          farWithLamps(kind === 'bus' || kind === 'tempo' || kind === 'cycle' ? createProxyGeometry(shapes[kind]) : kind === 'bike' ? createFarBikeGeometry(twoWheelers, 'bike') : createParkedCarGeometry(scene, kind, true), kind),
         ]),
       ) as Record<VehicleKind, THREE.BufferGeometry>,
     [shapes, scene, twoWheelers],
   )
   useEffect(() => () => Object.values(proxies).forEach((geometry) => geometry.dispose()), [proxies])
+  // The same stand-ins again for the vehicles on rails: copies, as each carries its own copies' attributes.
+  const railProxies = useMemo(() => Object.fromEntries(VEHICLES.map(({ kind }) => [kind, proxies[kind].clone()])) as Record<VehicleKind, THREE.BufferGeometry>, [proxies])
+  useEffect(() => () => Object.values(railProxies).forEach((geometry) => geometry.dispose()), [railProxies])
   const plateAtlas = useMemo(() => createPlateAtlas(), [])
   const plates = useMemo(
     () => Object.fromEntries(VEHICLES.map(({ kind }) => [kind, createPlateGeometry(shapes[kind], PLATES[kind])])) as Record<VehicleKind, THREE.BufferGeometry>,
@@ -1214,6 +1368,7 @@ export function Traffic({
     }
   }, [world, vehicles])
   const inPlay = useMemo(() => world.vehicles.slice(0, vehicles), [world, vehicles])
+  const heardHorn = useRef(0)
   const bikesInPlay = useMemo(() => inPlay.filter((vehicle) => vehicle.kind === 'bike'), [inPlay])
   const people = useMemo(() => world.pedestrians.slice(0, pedestrians), [world, pedestrians])
   // Bike riders who can be thrown off. They're hidden while they're on the bike.
@@ -1229,17 +1384,53 @@ export function Traffic({
   useFrame((_, delta) => {
     const rider = scooter.current
     // Busier at the rush hours, quiet at night (duty.ts).
-    easeDensity(world, dayPeriod(liveSky.hours).traffic, delta)
+    easeDensity(world, trafficShare(liveSky.hours), delta)
     // Traffic's lamps come up with the dark (vehicleLamps.ts).
     lampUniforms.uLampNight.value = liveSky.look.night
     // Slowed with the rider's own vehicle for the moment after a crash (game/slowMotion.ts).
-    timed('traffic AI', () => stepTraffic(world, rider, vehicles, pedestrians, Math.min(delta, MAX_STEP) * liveTime.scale))
+    const walkers = Math.round(pedestrians * peopleShare(liveSky.hours))
+    timed('traffic AI', () => stepTraffic(world, rider, vehicles, walkers, Math.min(delta, MAX_STEP) * liveTime.scale, nearVehicles))
+    railClock.value = world.railClock
+    // The player's horn is heard by people in the road; and what people make of the riding is said (people/reactions.ts).
+    if (liveHorn.at !== heardHorn.current) {
+      heardHorn.current = liveHorn.at
+      hearHorn(world)
+    }
+    stepReactions(world, rider, walkers, Math.min(delta, MAX_STEP))
     updateBikeLean(bikesInPlay, Math.min(delta, MAX_STEP) * liveTime.scale)
     // Debug: the traffic, for checking from the console that no two vehicles overlap.
-    if (isDebug()) (window as unknown as { __deliverItTraffic?: unknown }).__deliverItTraffic = { vehicles: inPlay, people }
+    if (isDebug()) {
+      const debug = window as unknown as { __deliverItTraffic?: unknown; __deliverItCounts?: unknown }
+      debug.__deliverItTraffic = { vehicles: inPlay, people }
+      // Who is out, by how far from the player: for the benchmark's report (scripts/traffic_bench.mjs).
+      debug.__deliverItCounts ??= () => {
+        const band = <T extends { x: number; z: number }>(items: T[], test: (item: T) => boolean) =>
+          BANDS.map(([from, to]) => items.filter((item) => test(item) && Math.abs(item.x) < NOWHERE && Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) >= from && Math.hypot(item.x - livePlayer.x, item.z - livePlayer.z) < to).length)
+        const out = inPlay.filter((vehicle) => vehicle.lane !== -1)
+        const share = (kinds: VehicleKind[]) => Math.round((out.filter((vehicle) => kinds.includes(vehicle.kind)).length / Math.max(1, out.length)) * 100)
+        return {
+          bands: BANDS.map(([from, to]) => `${from}-${to === Infinity ? '' : to} m`),
+          vehiclesDrivingProperly: band(out, (vehicle) => !vehicle.rail),
+          vehiclesOnRails: band(out, (vehicle) => vehicle.rail === true),
+          vehicles: band(out, () => true),
+          mixPercent: { twoWheelers: share(['bike']), autos: share(['auto']), cars: share(['sedan', 'hatchback', 'suv', 'mpv']), buses: share(['bus']), other: share(['tempo', 'cycle']) },
+          walkersSteppedEveryFrame: band(world.pedestrians, (person) => person.lane !== -1 && !person.far),
+          walkersSteppedTenTimesASecond: band(world.pedestrians, (person) => person.lane !== -1 && person.far === true),
+          walkers: band(world.pedestrians, (person) => person.lane !== -1),
+          standingAndShopPeopleDrawn: lifeCounts.shopPeople,
+          shopWalkersDrawn: lifeCounts.shopWalkers,
+          peopleToTalkToDrawn: lifeCounts.talkersDrawn,
+          strayDogs: lifeCounts.dogs,
+          atBusStops: lifeCounts.atStops,
+          walkingToABus: lifeCounts.boarding,
+          gotOnABus: lifeCounts.boarded,
+        }
+      }
+    }
     takeHonks(world, ({ kind, x, z }) => playHorn(kind, x, z, rider))
     takeImpacts(world, ({ x, z, strength }) => playImpact(x, z, strength, rider))
-    timed('audio updates', () => updateTrafficSounds(inPlay, rider, Math.min(delta, MAX_STEP)))
+    // Only what drives properly is near enough to be heard.
+    timed('audio updates', () => updateTrafficSounds(world.lists.full, rider, Math.min(delta, MAX_STEP)))
   })
 
   return (
@@ -1264,6 +1455,7 @@ export function Traffic({
                 <MovingInstances key={who} items={byRider[who]} geometry={geometry} palette={JACKET_COLORS} castShadow={shadowSize > 0} reflection={reflection} seatedRider cloth reach={detail} />
               ))}
               <MovingInstances items={items} geometry={proxies.bike} palette={palette} castShadow={false} baked lamps reflection={reflection} from={detail} />
+              <MovingInstances items={items} geometry={railProxies.bike} palette={palette} castShadow={false} baked lamps rails reflection={reflection} />
               {/* The motorbike's and the moped's wheels are separate, and spin. The scooter carries its own. */}
               <VehicleWheels items={byShape[0]} wheels={wheels.bike} reach={detail} />
               <VehicleWheels items={byShape[1]} wheels={wheels.moped} reach={detail} />
@@ -1284,8 +1476,9 @@ export function Traffic({
               reach={near}
             />
             <MovingInstances items={items} geometry={proxies[kind]} palette={palette} castShadow={false} baked lamps reflection={reflection} from={near} />
-            {/* The bus's wheels are part of its shape. */}
-            {kind !== 'bus' && <VehicleWheels items={items} wheels={wheels[kind]} reach={detail} />}
+            <MovingInstances items={items} geometry={railProxies[kind]} palette={palette} castShadow={false} baked lamps rails reflection={reflection} />
+            {/* The bus's wheels, the tempo's and the bicycle's are part of their shapes. */}
+            {kind in wheels && <VehicleWheels items={items} wheels={wheels[kind as keyof typeof wheels]} reach={detail} />}
             <NumberPlates items={items} geometry={plates[kind]} commercial={PLATES[kind].commercial} atlas={plateAtlas} reach={Math.min(detail, PLATE_REACH)} />
           </group>
         )

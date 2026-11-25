@@ -2,306 +2,273 @@
  {
   "id": "manju.hello.1",
   "character": "RJ Manju",
-  "line": "Namaskara Bengaluru! Manju here... traffic update, quick one.",
-  "notes": "Radio RJ, warm and quick, smiling. Bright opener; small breath before 'traffic update'.",
-  "english": "Hello, Bengaluru! Manju here... traffic update, quick one."
+  "line": "Good to have you, Bengaluru. This is Manju, with a quick look at the roads.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting."
  },
  {
   "id": "manju.hello.2",
   "character": "RJ Manju",
-  "line": "Hello hello hello. RJ Manju. Ond nimisha, traffic nodona.",
-  "notes": "Radio RJ, warm and quick, smiling. Playful triple hello, then casual.",
-  "english": "Hello hello hello. RJ Manju. One minute, let's look at the traffic."
+  "line": "Manju here. One minute on the traffic, then back to the music.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting."
  },
  {
   "id": "manju.hello.3",
   "character": "RJ Manju",
-  "line": "Aaand we're back. Manju here. Roads hegide? Let's see.",
-  "notes": "Radio RJ, warm and quick, smiling. Stretch 'Aaand'; 'Roads hegide?' as a real question.",
-  "english": "And we're back. Manju here. How are the roads? Let's see."
+  "line": "And we're back. Manju with you. Here is how the roads look.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting."
  },
  {
   "id": "manju.rush.1",
   "character": "RJ Manju",
-  "line": "Uff. Peak hour, guru. Outer Ring Road... full jam. Bumper to bumper.",
-  "notes": "Radio RJ, warm and quick, smiling. Tired sigh on 'Uff'. Pause after 'Outer Ring Road'.",
-  "english": "Uff. Peak hour, my friend. Outer Ring Road... full jam. Bumper to bumper."
+  "line": "It's peak hour. Outer Ring Road is slow near Agara, so give yourself a little extra time.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Sympathetic, not dramatic."
  },
  {
   "id": "manju.rush.2",
   "character": "RJ Manju",
-  "line": "Office time. Everybody is on the road, nobody is moving. Adjust maadi.",
-  "notes": "Radio RJ, warm and quick, smiling. Dry, amused.",
-  "english": "Office time. Everybody is on the road, nobody is moving. Please adjust."
+  "line": "Office time. Most roads are crowded, so swalpa patience, please.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Dry, kind.",
+  "english": "Office time. Most roads are crowded, so a little patience, please."
  },
  {
   "id": "manju.rush.3",
   "character": "RJ Manju",
-  "line": "Signal alli full line ide. Patience, patience. Horn beda, please.",
-  "notes": "Radio RJ, warm and quick, smiling. Gentle scolding on 'Horn beda'.",
-  "english": "There's a long line at the signal. Patience, patience. No honking, please."
+  "line": "Long queues at the signals just now. Take it easy, and go easy on the horn.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Gentle."
  },
  {
   "id": "manju.free.1",
   "character": "RJ Manju",
-  "line": "Roads are free right now. Sakkath time to ride.",
-  "notes": "Radio RJ, warm and quick, smiling. Upbeat.",
-  "english": "Roads are free right now. A great time to ride."
+  "line": "The roads are clear right now. A good time to ride.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Light."
  },
  {
   "id": "manju.free.2",
   "character": "RJ Manju",
-  "line": "No jam, no tension. Arre, is this even Bengaluru?",
-  "notes": "Radio RJ, warm and quick, smiling. Mock surprise on the question."
+  "line": "No jams to report. Enjoy it while it lasts.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. A small smile."
  },
  {
   "id": "manju.free.3",
   "character": "RJ Manju",
-  "line": "Traffic is okay-okay. Swalpa slow near the signals, ashte.",
-  "notes": "Radio RJ, warm and quick, smiling. Shrugging, matter of fact.",
-  "english": "Traffic is okay. A little slow near the signals, that's all."
+  "line": "Traffic is moving well, just a little slow near the signals.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Matter of fact."
  },
  {
   "id": "manju.night.1",
   "character": "RJ Manju",
-  "line": "Late aagide. Roads are khaali... only the street dogs are on duty.",
-  "notes": "Radio RJ, warm and quick, smiling. Softer, late-night voice; smile on the dogs.",
-  "english": "It's late. Roads are empty... only the street dogs are on duty."
+  "line": "It's late, and the roads are quiet. Only the street dogs are on duty.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Softer, late-night voice."
  },
  {
   "id": "manju.night.2",
   "character": "RJ Manju",
-  "line": "Empty roads, but signal jump maadbedi. Police mama is still awake.",
-  "notes": "Radio RJ, warm and quick, smiling. Low, teasing warning.",
-  "english": "Empty roads, but don't jump the signal. The policeman is still awake."
+  "line": "Empty roads tonight, but the signals still count. Ride safe.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Low, friendly."
  },
  {
   "id": "manju.rain.1",
   "character": "RJ Manju",
-  "line": "Male bartha ide! Roads are slippery, brake slowly, okay?",
-  "notes": "Radio RJ, warm and quick, smiling. Excited on 'Male bartha ide', then caring.",
-  "english": "It's raining! Roads are slippery, brake slowly, okay?"
+  "line": "It's raining, so the roads are slippery. Brake early and gently.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Caring."
  },
  {
   "id": "manju.rain.2",
   "character": "RJ Manju",
-  "line": "Rain, guru. Potholes are swimming pools now. Nodkondu hogi.",
-  "notes": "Radio RJ, warm and quick, smiling. Wry.",
-  "english": "Rain, my friend. Potholes are swimming pools now. Watch where you're going."
+  "line": "Rain again. Watch out for puddles hiding potholes.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Wry, soft."
  },
  {
   "id": "manju.event.bus.1",
   "character": "RJ Manju",
-  "line": "One bus has broken down, one lane is blocked. Swalpa adjust maadi.",
-  "notes": "Radio RJ, warm and quick, smiling. News voice, then friendly. No road name: the screen shows it.",
-  "english": "One bus has broken down, one lane is blocked. Please adjust a little."
+  "line": "A bus has broken down and one lane is blocked. Expect a short delay there.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. News voice, calm. No road name: the screen shows it."
  },
  {
   "id": "manju.event.dig.1",
   "character": "RJ Manju",
-  "line": "Road dug up again... pipe work, as usual. Bere route thogoli.",
-  "notes": "Radio RJ, warm and quick, smiling. Weary 'as usual'.",
-  "english": "Road dug up again... pipe work, as usual. Take another route."
+  "line": "The road is dug up for pipe work. Better to take another route.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Calm."
  },
  {
   "id": "manju.event.wedding.1",
   "character": "RJ Manju",
-  "line": "Wedding procession on the road, band and all. Slow hogi... and wish the couple!",
-  "notes": "Radio RJ, warm and quick, smiling. Happy; respectful about the wedding.",
-  "english": "Wedding procession on the road, band and all. Go slowly... and wish the couple!"
+  "line": "There's a wedding procession on the road. Go slowly, and wish the couple well.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Happy, respectful."
  },
  {
   "id": "manju.event.cow.1",
   "character": "RJ Manju",
-  "line": "One bull is standing in the middle of the road. Full relaxed. Horn maadbedi, just go around.",
-  "notes": "Radio RJ, warm and quick, smiling. Fond, unhurried.",
-  "english": "One bull is standing in the middle of the road. Fully relaxed. Don't honk, just go around."
+  "line": "A bull is standing in the middle of the road, completely relaxed. Just go around him.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Fond, unhurried."
  },
  {
   "id": "manju.bye.1",
   "character": "RJ Manju",
-  "line": "Helmet haakoli, signal follow maadi. Back to the music.",
-  "notes": "Radio RJ, warm and quick, smiling. Sign-off, falling tone.",
-  "english": "Wear your helmet, follow the signals. Back to the music."
+  "line": "Wear your helmet, and ride safe. Back to the music.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Sign-off, falling tone."
  },
  {
   "id": "manju.bye.2",
   "character": "RJ Manju",
-  "line": "Ashte from me. Ride safe, Bengaluru.",
-  "notes": "Radio RJ, warm and quick, smiling. Warm.",
-  "english": "That's all from me. Ride safe, Bengaluru."
+  "line": "That's all from me. Ride safe, Bengaluru.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Warm."
  },
  {
   "id": "manju.bye.3",
   "character": "RJ Manju",
-  "line": "Okay, bye bye. More music, less horn.",
-  "notes": "Radio RJ, warm and quick, smiling. Light, quick."
+  "line": "Okay, more music now. See you in a bit.",
+  "notes": "Radio RJ, late 20s: calm, warm, unhurried, a small smile. Not a sales voice, never shouting. Light."
  },
  {
   "id": "manju.ad.gaadigo",
   "character": "RJ Manju",
-  "line": "Vehicle beka? GaadiGo! Scooter, cycle, even a van... on rent, by the hour. GaadiGo: neevu ride maadi, tension namge.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. ",
-  "english": "Need a vehicle? GaadiGo! Scooter, cycle, even a van... on rent, by the hour. GaadiGo: you ride, the tension is ours."
+  "line": "Need a vehicle? GaadiGo rents scooters, cycles and vans by the hour. GaadiGo: you ride, we handle the rest.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up."
  },
  {
   "id": "manju.ad.minchu",
   "character": "RJ Manju",
-  "line": "Minchu E-One. Electric scooter. Goes like lightning, drinks nothing. Minchu: current alli future.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. ",
-  "english": "Minchu E-One. Electric scooter. Goes like lightning, drinks nothing. Minchu: the future is electric."
+  "line": "Minchu E-One, the electric scooter. Quick, quiet, and it drinks nothing. Minchu: the future is electric.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up."
  },
  {
   "id": "manju.ad.swarna",
   "character": "RJ Manju",
-  "line": "Swarna Mahal Jewellers. This wedding season, making charges... fifty percent off. Namma mane, namma chinna.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. Rich, slower.",
-  "english": "Swarna Mahal Jewellers. This wedding season, making charges... fifty percent off. Our home, our gold."
+  "line": "Swarna Mahal Jewellers. This wedding season, fifty percent off making charges. Swarna Mahal: our home, our chinna.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up. A little slower.",
+  "english": "Swarna Mahal Jewellers. This wedding season, fifty percent off making charges. Swarna Mahal: our home, our gold."
  },
  {
   "id": "manju.ad.crispy",
   "character": "RJ Manju",
-  "line": "Hungry at midnight? Crispy Coop, open till two. Ondu bite, full delight.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. ",
-  "english": "Hungry at midnight? Crispy Coop, open till two. One bite, full delight."
+  "line": "Hungry at midnight? Crispy Coop is open till two. One bite, full delight.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up."
  },
  {
   "id": "manju.ad.filter",
   "character": "RJ Manju",
-  "line": "Filter House coffee. Slow decoction, steel tumbler, bisi bisi. Kaapi first, everything next.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. Cosy.",
-  "english": "Filter House coffee. Slow decoction, steel tumbler, piping hot. Coffee first, everything next."
+  "line": "Filter House coffee. Slow decoction, a steel tumbler, served hot. Kaapi first, everything else next.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up. Cosy.",
+  "english": "Filter House coffee. Slow decoction, a steel tumbler, served hot. Coffee first, everything else next."
  },
  {
   "id": "manju.ad.sampige",
   "character": "RJ Manju",
-  "line": "Sampige Residency. Two and three BHK. Five minutes from everywhere... according to our brochure.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. Deadpan on the last part."
+  "line": "Sampige Residency. Two and three BHK homes. Five minutes from everywhere... according to the brochure.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up. Deadpan on the last part."
  },
  {
   "id": "manju.ad.stride",
   "character": "RJ Manju",
-  "line": "Stride Shoe Company. Buy two pairs, third pair for ajji, free. Hejje hejje comfort.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. ",
-  "english": "Stride Shoe Company. Buy two pairs, third pair for grandma, free. Comfort in every step."
+  "line": "Stride Shoe Company. Buy two pairs, and the third pair for ajji is free. Comfort in every step.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up.",
+  "english": "Stride Shoe Company. Buy two pairs, and the third pair for grandma is free. Comfort in every step."
  },
  {
   "id": "manju.ad.deliverit",
   "character": "RJ Manju",
-  "line": "Riders beku! Join Deliver It. Weekly payout, flexible hours, yellow jacket. Bega, jopana, on time.",
-  "notes": "Radio ad read by the RJ: faster, sales voice, slogan slower. Every brand is made up. ",
-  "english": "Riders wanted! Join Deliver It. Weekly payout, flexible hours, yellow jacket. Fast, careful, on time."
+  "line": "Riders wanted. Join Deliver It: weekly payout, flexible hours, and a yellow jacket. Fast, careful, on time.",
+  "notes": "Radio ad read by the RJ, in her own easy voice. Every brand is made up."
  },
  {
   "id": "ravi.online.1",
   "character": "Ravi (dispatch)",
-  "line": "Haan maga, you're online. Orders coming.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Relaxed.",
-  "english": "Yes, buddy, you're online. Orders coming."
+  "line": "You're online. Orders will start coming in.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Relaxed."
  },
  {
   "id": "ravi.online.2",
   "character": "Ravi (dispatch)",
-  "line": "Good, good. Online aagidya. Jopana, okay?",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. ",
-  "english": "Good, good. You're online. Be careful, okay?"
+  "line": "Good, you're online. Ride safe, okay?",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting."
  },
  {
   "id": "ravi.offer.1",
   "character": "Ravi (dispatch)",
-  "line": "Ey, one order bandide. Nodu.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Quick, mid-task.",
-  "english": "Hey, an order has come in. Take a look."
+  "line": "There's a new order for you. Have a look.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Quick, mid-task."
  },
  {
   "id": "ravi.offer.2",
   "character": "Ravi (dispatch)",
-  "line": "New order, maga. Take it or leave it, your wish.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. ",
-  "english": "New order, buddy. Take it or leave it, your wish."
+  "line": "New order. Take it or leave it, your call.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting."
  },
  {
   "id": "ravi.offer.3",
   "character": "Ravi (dispatch)",
-  "line": "Order ide. Hattira, near only.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. ",
-  "english": "There's an order. It's close by."
+  "line": "One order, and it's close by.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting."
  },
  {
   "id": "ravi.picked.1",
   "character": "Ravi (dispatch)",
-  "line": "Picked up? Sari. Hogu, hogu.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Hurrying him along.",
-  "english": "Picked up? Okay. Go, go."
+  "line": "Picked up? Good. Off you go.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting."
  },
  {
   "id": "ravi.picked.2",
   "character": "Ravi (dispatch)",
-  "line": "Bag sikta? Bega hogu... but jopana.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Pause before 'but jopana'.",
-  "english": "Got the bag? Go quickly... but carefully."
+  "line": "Got the bag? Go quickly, but carefully.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting."
  },
  {
   "id": "ravi.good.1",
   "character": "Ravi (dispatch)",
-  "line": "Five star! Sakkath, maga.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Proud.",
-  "english": "Five stars! Superb, buddy."
+  "line": "Five stars. Sakkath work, maga.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Quietly proud.",
+  "english": "Five stars. Superb work, buddy."
  },
  {
   "id": "ravi.good.2",
   "character": "Ravi (dispatch)",
-  "line": "Olle kelsa. Customer is happy.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. ",
-  "english": "Good work. Customer is happy."
+  "line": "Nice work. The customer is happy.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting."
  },
  {
   "id": "ravi.ok.1",
   "character": "Ravi (dispatch)",
-  "line": "Done. Okay okay. Next one.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Neutral."
+  "line": "Done. On to the next one.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Neutral."
  },
  {
   "id": "ravi.rough.1",
   "character": "Ravi (dispatch)",
-  "line": "Ayyo. Customer complained, guru. Swalpa careful.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Disappointed, not angry.",
-  "english": "Oh no. The customer complained, my friend. Be a little careful."
+  "line": "The customer wasn't happy with that one. A little more care next time.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Disappointed, not angry."
  },
  {
   "id": "ravi.crash.1",
   "character": "Ravi (dispatch)",
-  "line": "Ey! Yen aaythu? You okay?",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Worried.",
-  "english": "Hey! What happened? You okay?"
+  "line": "What happened? Are you okay?",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Worried, low."
  },
  {
   "id": "ravi.crash.2",
   "character": "Ravi (dispatch)",
-  "line": "Ayyo, jopana maga! Order nodu, is it fine?",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. ",
-  "english": "Oh no, careful, buddy! Check the order, is it fine?"
+  "line": "Careful, maga. Check the order, is it fine?",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Concerned.",
+  "english": "Careful, buddy. Check the order, is it fine?"
  },
  {
   "id": "ravi.breakdown.1",
   "character": "Ravi (dispatch)",
-  "line": "Gaadi kettoytha? Call the mechanic... or take a GaadiGo.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Practical.",
-  "english": "Has the vehicle broken down? Call the mechanic... or take a GaadiGo."
+  "line": "Vehicle trouble? Call the mechanic, or take a GaadiGo.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Practical."
  },
  {
   "id": "ravi.offline.1",
   "character": "Ravi (dispatch)",
-  "line": "Sari, rest maadu. Naale sigona.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. Kind.",
-  "english": "Okay, get some rest. See you tomorrow."
+  "line": "Okay, get some rest. See you tomorrow.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting. Kind."
  },
  {
   "id": "ravi.offline.2",
   "character": "Ravi (dispatch)",
-  "line": "Okay maga, offline. Oota maadu.",
-  "notes": "On the phone, friendly dispatcher, late 30s, Bengaluru Kannada-English. ",
-  "english": "Okay buddy, offline. Go and eat."
+  "line": "Okay maga, you're offline. Go and eat something.",
+  "notes": "On the phone: dispatcher, late 30s, Bengaluru. Low, easy, kind. Never shouting.",
+  "english": "Okay buddy, you're offline. Go and eat something."
  },
  {
   "id": "cust.coming.1",

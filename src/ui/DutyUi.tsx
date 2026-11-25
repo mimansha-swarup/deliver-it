@@ -134,7 +134,7 @@ function OfferCard() {
   const period = dayPeriod(liveSky.hours)
   const base = Math.round(MISSION_RULES.baseCredits * mission.dropCount * CARGO[mission.story.cargo].payShare) + mission.tier.extraCredits
   const pay = base + Math.round(base * period.payShare)
-  const kind = mission.kind === 'rush' ? 'Rush' : mission.kind === 'double' ? 'Double' : null
+  const kind = mission.kind === 'rush' ? 'Rush' : mission.kind === 'double' ? 'Double' : mission.kind === 'batch' ? `Batch of ${mission.dropCount}` : null
   // An order only some vehicles carry: the rider's must, or one is rented for it (GaadiGo, game/fleet.ts).
   const needs = mission.story.needs
   const fits = !needs || carries(needs)

@@ -101,6 +101,8 @@ export function FpsOverlay() {
       })
     // `?debug=2`: the library's callbacks timed, and the store's writes counted.
     const timer = timing.on ? window.setInterval(timeLibraryFrames, 1000) : 0
+    // For scripts (scripts/traffic_bench.mjs): every step's average and worst, not just the five shown.
+    if (timing.on) (window as unknown as { __deliverItSteps?: typeof report }).__deliverItSteps = report
     const offStore = timing.on ? useGameStore.subscribe(() => void counts.storeWrites++) : () => {}
     let countedAt = performance.now()
     let perSecond = { page: 0, scene: 0, store: 0 }

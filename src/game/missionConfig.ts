@@ -30,6 +30,14 @@ export const MISSION_RULES = {
   /** A double drop's second customer is this far from the first by road, in metres. */
   secondDropMin: 120,
   secondDropMax: 500,
+  /**
+   * A batch run: in a vehicle that carries `batchCarries` parcels or more (the cargo three-wheeler,
+   * the car, the van), this often the order is four or five customers on the one trip, each a
+   * short ride on from the last as a double drop's second is.
+   */
+  batchCarries: 4,
+  batchChance: 0.45,
+  batchDrops: [4, 5],
   /** Extra rupees for a delivery with no crashes. Crashing never costs anything else. */
   cleanRideCredits: 10,
   /**

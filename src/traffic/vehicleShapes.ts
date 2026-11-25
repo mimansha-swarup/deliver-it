@@ -246,3 +246,44 @@ export function createFarBikeGeometry(scene: THREE.Group, name: string): THREE.B
   return merge([bike.index ? bike.toNonIndexed() : bike, ...rider])
 }
 
+
+/** A shape's corners with only what the traffic's paint needs (place, facing, colour and which parts are paint), each as plain numbers, so shapes from different files join. */
+function bare(source: THREE.BufferGeometry, at: [number, number, number] = [0, 0, 0], turned = false): THREE.BufferGeometry {
+  const flat = source.index ? source.toNonIndexed() : source
+  const position = flat.getAttribute('position')
+  const normal = flat.getAttribute('normal')
+  const color = flat.getAttribute('color')
+  const paint = flat.getAttribute('_paint')
+  const count = position.count
+  const out = { position: new Float32Array(count * 3), normal: new Float32Array(count * 3), color: new Float32Array(count * 3), _paint: new Float32Array(count) }
+  const flip = turned ? -1 : 1
+  for (let i = 0; i < count; i++) {
+    out.position.set([position.getX(i) * flip + at[0], position.getY(i) + at[1], position.getZ(i) * flip + at[2]], i * 3)
+    if (normal) out.normal.set([normal.getX(i) * flip, normal.getY(i), normal.getZ(i) * flip], i * 3)
+    if (color) out.color.set([color.getX(i), color.getY(i), color.getZ(i)], i * 3)
+    else out.color.set([1, 1, 1], i * 3)
+    out._paint[i] = paint ? paint.getX(i) : 0
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(out.position, 3))
+  geometry.setAttribute('normal', new THREE.BufferAttribute(out.normal, 3))
+  geometry.setAttribute('color', new THREE.BufferAttribute(out.color, 3))
+  geometry.setAttribute('_paint', new THREE.BufferAttribute(out._paint, 1))
+  if (flat !== source) flat.dispose()
+  return geometry
+}
+
+/**
+ * One of the rider's own vehicles (fleet.glb: `minitruck`, `cycle`) as a single shape for traffic:
+ * its body, what turns with the bars, and its wheels where its axles are. The wheels don't turn:
+ * there are only a few of these on the road, and it saves a draw call each. `extra`: shapes to
+ * join on (the cyclist).
+ */
+export function createFleetTrafficGeometry(fleet: THREE.Group, name: string, extra: THREE.BufferGeometry[] = []): THREE.BufferGeometry {
+  const wheels = ((fleet.getObjectByName(name)?.userData as { wheels?: { at: [number, number, number] }[] } | undefined)?.wheels ?? []).map(({ at }, index) => bare(getModel(fleet, `${name}-wheel-${index}`), at))
+  const parts = [bare(getModel(fleet, name)), ...wheels, ...extra.map((shape) => bare(shape))]
+  if (fleet.getObjectByName(`${name}-front`)) parts.push(bare(getModel(fleet, `${name}-front`)))
+  const merged = merge(parts)
+  merged.computeBoundingSphere()
+  return merged
+}

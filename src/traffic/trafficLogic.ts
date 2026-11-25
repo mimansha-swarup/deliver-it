@@ -17,20 +17,21 @@ import { createLanes, type Lane } from './lanes'
 import { createTrafficSignals, findStopAhead, getLight, type TrafficSignals } from './trafficSignals'
 
 export const TRAFFIC_RULES = {
-  maxVehicles: 40,
-  maxPedestrians: 36,
+  /** The most vehicles and walkers there can be: the quality setting says how many are in play (qualitySettings.ts). */
+  maxVehicles: 84,
+  maxPedestrians: 48,
 
   /**
    * New vehicles appear in this ring around the rider, in metres. It's kept close,
    * so the traffic is packed around you rather than spread over the whole map.
    */
-  vehicleSpawnMin: 90,
-  vehicleSpawnMax: 180,
-  vehicleRemoveAt: 220,
+  vehicleSpawnMin: 110,
+  vehicleSpawnMax: 200,
+  vehicleRemoveAt: 240,
   /** New pedestrians appear in this ring around the rider, in metres. */
-  pedestrianSpawnMin: 70,
-  pedestrianSpawnMax: 180,
-  pedestrianRemoveAt: 210,
+  pedestrianSpawnMin: 50,
+  pedestrianSpawnMax: 115,
+  pedestrianRemoveAt: 135,
 
   walkSpeed: 1.3,
   acceleration: 3,
@@ -250,29 +251,26 @@ type Mover = {
   tint: number
 }
 
-export type VehicleKind = 'sedan' | 'hatchback' | 'suv' | 'mpv' | 'auto' | 'bike' | 'bus'
+export type VehicleKind = 'sedan' | 'hatchback' | 'suv' | 'mpv' | 'auto' | 'bike' | 'bus' | 'tempo' | 'cycle'
 
-/** The mix of traffic, repeated: Bengaluru has a lot of two-wheelers. */
-const VEHICLE_MIX: VehicleKind[] = [
-  'sedan',
-  'bike',
-  'auto',
-  'bike',
-  // Buses only take lanes on main roads (`Lane.buses`), so elsewhere these wait. One is in the first
-  // twelve, as Low has only twelve vehicles.
-  'bus',
-  'hatchback',
-  'bike',
-  'suv',
-  'auto',
-  'bike',
-  'mpv',
-  'bike',
-  'bus',
-  'auto',
-  'bike',
-  'hatchback',
-]
+/**
+ * The mix of traffic, as Bengaluru's is: of every twenty vehicles, twelve two-wheelers (60%), three
+ * autos (15%), three cars (15%), a bus (5%) and one other (5%): a tempo or a bicycle. The round
+ * repeats, so any number of vehicles in play (the quality's) keeps close to it; which car, and
+ * which other, changes from round to round. Buses only take lanes on main roads (`Lane.buses`).
+ */
+const MIX_ROUND = ['bike', 'auto', 'bike', 'car', 'bike', 'bike', 'bus', 'bike', 'auto', 'bike', 'car', 'bike', 'bike', 'other', 'bike', 'auto', 'bike', 'car', 'bike', 'bike'] as const
+const MIX_CARS: VehicleKind[] = ['sedan', 'hatchback', 'suv', 'mpv']
+const MIX_OTHERS: VehicleKind[] = ['tempo', 'cycle']
+
+/** The kind of the vehicle at a place in the pool. */
+export function kindAt(index: number): VehicleKind {
+  const slot = MIX_ROUND[index % MIX_ROUND.length]
+  const round = Math.floor(index / MIX_ROUND.length)
+  if (slot === 'car') return MIX_CARS[(round * 3 + Math.floor((index % MIX_ROUND.length) / 7)) % MIX_CARS.length]
+  if (slot === 'other') return MIX_OTHERS[round % MIX_OTHERS.length]
+  return slot
+}
 
 /**
  * How a kind of thing reacts to being knocked, for each m/s of knock. Real
@@ -318,6 +316,8 @@ export const THROW_STYLES: Record<VehicleKind, ThrowStyle> = {
   auto: AUTO_THROW,
   bike: TWO_WHEELER_THROW,
   bus: BUS_THROW,
+  tempo: CAR_THROW,
+  cycle: TWO_WHEELER_THROW,
 }
 
 /**
@@ -371,6 +371,20 @@ const VEHICLE_SHAPES: Record<
     halfLength: 5.6,
     radius: 1.3,
     crash: { halfSize: [1.25, 1.5, 5.5], centre: 1.5, mass: 11000, surface: CAR_SURFACE },
+  },
+  // A small goods carrier with a covered back (the mini truck in fleet.glb), slower than a car.
+  tempo: {
+    speed: 6.5,
+    halfLength: 1.75,
+    radius: 0.9,
+    crash: { halfSize: [0.88, 1.1, 1.72], centre: 1.1, mass: 1400, surface: CAR_SURFACE },
+  },
+  // Someone on a bicycle, keeping left, at a bicycle's pace.
+  cycle: {
+    speed: 4,
+    halfLength: 0.85,
+    radius: 0.35,
+    crash: { halfSize: [0.2, 0.6, 0.8], centre: 0.6, mass: 95, surface: TWO_WHEELER_SURFACE },
   },
 }
 
@@ -490,6 +504,26 @@ export type Vehicle = Mover & {
   /** What its lamps show (Traffic.tsx): the side it's indicating (1 left, -1 right, 0 neither), and whether it's on the brakes. */
   indicator?: -1 | 0 | 1
   braking?: boolean
+  /**
+   * On rails (`stepRail`): too far from the player to need driving properly, it follows its lane,
+   * the lights and whatever is in front of it, ten times a second, with no physics. `railSpeed` is
+   * how fast it's being drawn along, for the picture to carry it on between steps, and `railStamp`
+   * when it was last stepped, on the world's `railClock`.
+   */
+  rail?: boolean
+  railSpeed?: number
+  railStamp?: number
+  /**
+   * On a wide road traffic runs in files side by side (`Lane.files`): which file this one keeps to
+   * (a number, taken round the lane's files; a bus always keeps the first, by the kerb's stops),
+   * and how far sideways from the lane's line that has it just now, in metres, eased as roads widen and narrow.
+   */
+  file: number
+  fileShift: number
+  /** Not put back on the road before this, on the world's `railClock`: it found no place last time. */
+  retryAt?: number
+  /** Drawn with its detailed model (vehicleLod.ts keeps this). */
+  detailed?: boolean
 }
 
 /** A driver who has got out for the player: walking to the footpath, then standing there. */
@@ -531,10 +565,19 @@ export type Pedestrian = Mover & {
    * Crossing the road (`stepCrossing`): waiting at the kerb, or on the way over, to a place on the
    * footpath opposite; how long they've waited; and the light that holds the traffic, at a zebra.
    */
-  cross?: { stage: 'wait' | 'go'; toX: number; toZ: number; lane: number; along: number; waited: number; light: { junction: number; group: number } | null } | null
+  cross?: { stage: 'wait' | 'go'; toX: number; toZ: number; lane: number; along: number; waited: number; light: { junction: number; group: number } | null; reacted?: boolean } | null
   /** Seconds until they next think of crossing, and the lane on which they last passed a zebra and chose. */
   crossIn?: number
   zebraSeen?: number
+  /** Far from the player: stepped ten times a second, and drawn again only then (`FAR_PEOPLE`). `farStamp`: when, on the world's `railClock`. */
+  far?: boolean
+  farStamp?: number
+  /** Seconds they stand where they are, startled: the player's horn while they were crossing. */
+  startled?: number
+  /** Seconds they keep a hand up in thanks: the player stopped to let them cross. */
+  thanks?: number
+  /** What they've just done about the player, for the street's reactions (people/reactions.ts) to take up: set here, cleared there. */
+  did?: 'cutOff' | 'letPass' | 'steppedBack' | null
 }
 
 /** Something standing loose on the ground, which anything can knock about. */
@@ -587,6 +630,26 @@ export type TrafficWorld = {
   obstacles: Map<string, RoadObstacle>
   /** Seconds until the next hold-up may start (`startHalts`). */
   haltIn: number
+  /**
+   * The near and far of it (`RAIL`). `railClock`: seconds of traffic time. `modeIn`: seconds until
+   * who drives properly and who is on rails is next worked out. `lists`: the vehicles in play sorted
+   * into kept lists, refilled each step and never made new: all of them, those driving properly on
+   * the ground, and everything close enough to matter to those (on the ground, and up on a flyover).
+   * `order` and `away`: the vehicles nearest first, and how far each is, for choosing.
+   */
+  railClock: number
+  modeIn: number
+  lists: { active: Vehicle[]; full: Vehicle[]; fullGround: Vehicle[]; nearGround: Vehicle[]; nearUp: Vehicle[]; near: Vehicle[] }
+  order: Int16Array
+  away: Float32Array
+  /** How many vehicles drive properly, and how many are on rails, just now; and the same for people (near: stepped every frame). */
+  counts: { full: number; rail: number; walkersNear: number; walkersFar: number }
+  /** The last vehicle put on the road, and how many more are to come close behind it (`BUNCH`). */
+  bunch: { lane: number; along: number; halfLength: number; left: number }
+  /** The player sounded the horn `honked` seconds ago (Infinity: not lately): people crossing stop for it. */
+  honked: number
+  /** The auto the player last ran into, until whoever deals with it (the auto anna's argument) takes it up and clears it. */
+  bumpedAuto: Vehicle | null
   /** For each footpath lane, the one along the other side of the same stretch of road (-1 if there's none). */
   walkAcross: Int32Array
   /** The zebra crossings at the lights, by the footpath lane that passes each: where along it, and the light of the road it crosses. */
@@ -619,11 +682,13 @@ function findLaneInRing(
   max: number,
   random: () => number,
   isFree: (lane: Lane) => boolean = () => true,
+  attempts = 60,
 ): number {
   // Only lanes starting in grid squares that reach the ring are tried. Picking from
   // every lane in HSR, most would be kilometres away.
   const grid = getLaneGrid(lanes)
-  const nearby: number[] = []
+  const nearby = nearbyLanes
+  nearby.length = 0
   for (let cellX = Math.floor((x - max) / LANE_CELL); cellX <= Math.floor((x + max) / LANE_CELL); cellX++) {
     for (let cellZ = Math.floor((z - max) / LANE_CELL); cellZ <= Math.floor((z + max) / LANE_CELL); cellZ++) {
       const cell = grid.get(laneCellKey(cellX, cellZ))
@@ -632,13 +697,16 @@ function findLaneInRing(
   }
   if (nearby.length === 0) return -1
 
-  for (let attempt = 0; attempt < 60; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const index = nearby[Math.floor(random() * nearby.length)]
     const distance = Math.hypot(lanes[index].startX - x, lanes[index].startZ - z)
     if (distance >= min && distance <= max && isFree(lanes[index])) return index
   }
   return -1
 }
+
+/** Kept between searches, so looking for a lane makes nothing new. */
+const nearbyLanes: number[] = []
 
 /** The busiest street's traffic weight: a lane is picked in proportion to its own weight against this. */
 const MAX_LANE_WEIGHT = 10
@@ -707,6 +775,7 @@ export function createTrafficWorld(
     sideOffset: (roadWidth) => Math.max(1.4, roadWidth / 4),
     clearance: 1.1,
     obeyOneWay: true,
+    files: true,
   })
   for (const lane of roadLanes) {
     const street = streetAt((lane.startX + lane.endX) / 2, (lane.startZ + lane.endZ) / 2)
@@ -757,9 +826,9 @@ export function createTrafficWorld(
   }
 
   const vehicles: Vehicle[] = Array.from({ length: TRAFFIC_RULES.maxVehicles }, (_, index) => {
-    const kind = VEHICLE_MIX[index % VEHICLE_MIX.length]
+    const kind = kindAt(index)
     const { speed, halfLength, radius, crash } = VEHICLE_SHAPES[kind]
-    const nimble = kind === 'bike' || kind === 'auto'
+    const nimble = kind === 'bike' || kind === 'auto' || kind === 'cycle'
     const rebelShare = kind === 'bike' ? TRAFFIC_RULES.bikeRebels : kind === 'auto' ? TRAFFIC_RULES.autoRebels : 0
     return {
       kind,
@@ -793,6 +862,9 @@ export function createTrafficWorld(
       rising: 0,
       thrownRider: kind === 'bike' ? createThrownRider(random) : null,
       riderOff: false,
+      rail: true,
+      file: Math.floor(random() * 6),
+      fileShift: 0,
     }
   })
 
@@ -838,6 +910,15 @@ export function createTrafficWorld(
     junctions: createJunctions(roadLanes),
     obstacles: new Map(),
     haltIn: 8,
+    railClock: 0,
+    modeIn: 0,
+    lists: { active: [], full: [], fullGround: [], nearGround: [], nearUp: [], near: [] },
+    order: new Int16Array(TRAFFIC_RULES.maxVehicles),
+    away: new Float32Array(TRAFFIC_RULES.maxVehicles),
+    counts: { full: 0, rail: 0, walkersNear: 0, walkersFar: 0 },
+    bunch: { lane: -1, along: 0, halfLength: 0, left: 0 },
+    honked: Infinity,
+    bumpedAuto: null,
     walkAcross,
     zebras,
     breakers: roadLanes.map((lane) => (lane.startNode < 0 ? [] : breakersOnLink(lane.startNode, lane.endNode))),
@@ -1189,6 +1270,8 @@ const CROSSING_ROOM = 1.4
  * cow), or traffic crossing in front.
  */
 type Blocked = 'rider' | 'queue' | 'standing' | 'crossing' | null
+/** Nothing further from a vehicle than this, along either axis, is looked at when it looks ahead, in metres. */
+const GAP_REACH = TRAFFIC_RULES.lookAhead + 7
 
 /**
  * The space between this vehicle's front bumper and the back of whatever is in
@@ -1273,18 +1356,28 @@ function findGapAhead(
     else if (body.lying) check(body.x, body.z, DOWNED_HALF_LENGTH, DOWNED_RADIUS, 'rider')
     else check(body.x, body.z, PERSON_RADIUS, PERSON_RADIUS + (body.crossing ? CROSSING_ROOM : 0), 'rider')
   }
-  const ownPlace = others.indexOf(vehicle)
   const inLane = sideways === 0 && Math.abs(vehicle.shift) < 0.3
-  others.forEach((other, place) => {
-    if (other === vehicle || other.lane === -1 || other === vehicle.barging) return
+  // Its own place in the list comes up on the way through it: those after it are the ones it gives way to at a crossing.
+  let passedSelf = false
+  for (let place = 0; place < others.length; place++) {
+    const other = others[place]
+    if (other === vehicle) {
+      passedSelf = true
+      continue
+    }
+    if (other.lane === -1 || other === vehicle.barging) continue
+    // Nothing further off than it looks (`lookAhead`, plus the longest vehicle) can be in its way: most of the list goes here.
+    const apartX = other.x - vehicle.x
+    const apartZ = other.z - vehicle.z
+    if (apartX > GAP_REACH || apartX < -GAP_REACH || apartZ > GAP_REACH || apartZ < -GAP_REACH) continue
     // One standing empty for the player is gone round like the rider's own parked vehicle, not queued behind.
     // Keeping to its lane, that is: a two-wheeler out in the other side of the road still looks for everything.
     const oncoming = inLane && other.speed > 0.2 && Math.sin(other.heading) * lane.forwardX + Math.cos(other.heading) * lane.forwardZ < ONCOMING
     checking = other
     check(other.x, other.z, other.halfLength, other.radius, other.taken === 'empty' ? 'rider' : other.halt ? 'standing' : 'queue', oncoming)
     checking = null
-    if (place > ownPlace) checkCrossing(other)
-  })
+    if (passedSelf) checkCrossing(other)
+  }
   return { gap, blockedBy, blocker }
 }
 
@@ -1533,6 +1626,20 @@ const WALKER_HONK_GAP = 9
 const aheadIsRider = (ahead: { gap: number; blockedBy: string | null }) => ahead.blockedBy === 'rider' && ahead.gap < TRAFFIC_RULES.squeezeLookAt
 const aheadIsStanding = (ahead: { gap: number; blockedBy: string | null }) => ahead.blockedBy === 'standing' && ahead.gap < TRAFFIC_RULES.squeezeLookAt + TRAFFIC_RULES.standingGap
 
+/** Where a vehicle's file runs on a lane, sideways from the lane's line. */
+function fileOffset(vehicle: Vehicle, lane: Lane): number {
+  const files = lane.files
+  if (!files) return 0
+  return files[vehicle.kind === 'bus' ? 0 : vehicle.file % files.length]
+}
+
+/** Moves a vehicle over to its file, as a driver changes lanes: at `FILE_SPEED` m/s sideways. */
+const FILE_SPEED = 1.5
+function easeFile(vehicle: Vehicle, lane: Lane, dt: number) {
+  const change = fileOffset(vehicle, lane) - vehicle.fileShift
+  vehicle.fileShift += Math.sign(change) * Math.min(Math.abs(change), FILE_SPEED * dt)
+}
+
 function easeShift(vehicle: Vehicle, dt: number) {
   const change = vehicle.shiftTarget - vehicle.shift
   vehicle.shift += Math.sign(change) * Math.min(Math.abs(change), TRAFFIC_RULES.squeezeSpeed * dt)
@@ -1581,8 +1688,8 @@ const BUS_STOP = { dwell: 9, lookAhead: 70, reach: 15 }
 const busStopKey = (lane: number, along: number) => lane * 100000 + Math.round(along)
 
 /**
- * Gives each lane buses run on the stops beside it: a stop belongs to the bus lane nearest it
- * (the kerb lane on its side), where along that lane it is. Shelters are at OSM's stops
+ * Gives each lane buses run on the stops beside it: a stop belongs to the nearest bus lane on the
+ * ground that has it on its left (the kerb lane on its side), where along that lane it is. Shelters are at OSM's stops
  * (landmarkPlacement.ts), so buses stop where the city's do.
  */
 export function setBusStops(world: TrafficWorld, stops: { x: number; z: number }[]) {
@@ -1592,10 +1699,15 @@ export function setBusStops(world: TrafficWorld, stops: { x: number; z: number }
     let bestDistance: number = BUS_STOP.reach
     let bestAlong = 0
     world.roadLanes.forEach((lane, index) => {
-      if (!lane.buses || lane.length < 1) return
+      // Not a lane up on a flyover that happens to pass over the shelter: nobody boards a bus up there.
+      if (!lane.buses || lane.length < 1 || lane.deck) return
       const along = (x - lane.startX) * lane.forwardX + (z - lane.startZ) * lane.forwardZ
       if (along < 0 || along > lane.length) return
-      const distance = Math.hypot(x - (lane.startX + lane.forwardX * along), z - (lane.startZ + lane.forwardZ * along))
+      const offX = x - (lane.startX + lane.forwardX * along)
+      const offZ = z - (lane.startZ + lane.forwardZ * along)
+      // The shelter is at the bus's kerb side, its left: never across the road, or over a divider, from its door.
+      if (offX * lane.forwardZ - offZ * lane.forwardX <= 0) return
+      const distance = Math.hypot(offX, offZ)
       if (distance < bestDistance) {
         best = index
         bestDistance = distance
@@ -1652,8 +1764,10 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
 
   const lane = roadLanes[vehicle.lane]
 
+  // On a wide road it keeps to its own file.
+  easeFile(vehicle, lane, dt)
   // Out around anything parked at the kerb; two-wheelers and autos squeeze about as well, no further left.
-  const limit = parkedLimit(vehicle, lane)
+  const limit = parkedLimit(vehicle, lane) - vehicle.fileShift
   // Up on a deck, nobody lying in the road below is in the way.
   const downed = (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC ? [] : world.downed
   // With the rider on foot, cars and buses too ease out around them and their parked vehicle, as around anyone in the road.
@@ -1695,7 +1809,7 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   if (vehicle.speed < 0.2 && vehicle.nimble && ((vehicle.shift < -0.4 && noseToNose) || tooClose)) {
     // A two-wheeler or an auto is paddled sideways, the only time anything moves that way: back
     // towards its own lane from in front of something coming, or out round what's standing in front.
-    const wanted = noseToNose ? 0 : vehicle.shiftTarget
+    const wanted = (noseToNose ? 0 : vehicle.shiftTarget) + vehicle.fileShift
     const lateral = (vehicle.x - lane.startX) * lane.forwardZ - (vehicle.z - lane.startZ) * lane.forwardX
     const step = Math.max(-rules.paddleSpeed * dt, Math.min(rules.paddleSpeed * dt, wanted - lateral))
     if (Math.abs(step) > 0.0005 && tryMove(lane.forwardZ * step, -lane.forwardX * step) && noseToNose) {
@@ -1800,7 +1914,7 @@ function stepVehicle(world: TrafficWorld, vehicle: Vehicle, active: Vehicle[], r
   const aim = Math.max(rules.aimMin, Math.min(rules.aimMax, vehicle.speed * rules.aimTime))
   const turnRate = vehicle.speed / (radius * rules.steeringSlack)
   // `shift` moves its line sideways: positive left, negative right. It steers over to it.
-  steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift, turnRate, radius, dt, random)
+  steerAlong(vehicle, roadLanes, vehicle.speed * dt, aim, vehicle.shift + vehicle.fileShift, turnRate, radius, dt, random)
   // Up and over a breaker. The body rises with the hump under its middle. On a flyover, it's at the deck's height.
   vehicle.deck = deckHeightOn(roadLanes[vehicle.lane], vehicle.along, world.decks)
   vehicle.lift = breakerLift(world, vehicle) + vehicle.deck
@@ -1947,6 +2061,8 @@ function hitRider(world: TrafficWorld, vehicle: Vehicle, rider: ScooterState, dt
 
   // Hit hard enough, it stops being a car on rails and becomes a real object.
   soundImpact(world, vehicle.x, vehicle.z, Math.hypot(hit.otherX, hit.otherZ) * 2)
+  // An auto the player has run into: its driver will have something to say (talk/TalkSpots.tsx).
+  if (vehicle.kind === 'auto' && !vehicle.taken && !vehicle.halt) world.bumpedAuto = vehicle
   world.physics.hidePusher(vehicle.pusher as NonNullable<Tumbler['body']>)
   world.physics.addBody(vehicle, vehicle.crash, false)
   const { velocity, spin } = throwFor(
@@ -2095,6 +2211,15 @@ function updatePushers(world: TrafficWorld, vehicles: Vehicle[], rider: ScooterS
 type Coming = { x: number; z: number; dirX: number; dirZ: number; speed: number; halfLength: number; radius: number }
 const coming: Coming[] = []
 
+/**
+ * How people take the player (people/reactions.ts gives them their words). The horn stops someone
+ * crossing within `hornReach` metres for `startled` seconds. Passed within `cutOffWithin` metres at
+ * more than `cutOffSpeed` m/s while crossing, they shout; stopped for within `letPassWithin`, they
+ * wave for `thanks` seconds. A rider up on the footpath (within `footpath` metres of its line) is
+ * seen from `footpathRange` metres at any speed, and stepped back from by `footpathStep` metres.
+ */
+const REACT = { hornReach: 28, startled: 2.2, cutOffWithin: 2.4, cutOffSpeed: 4.5, letPassWithin: 9, thanks: 2.2, footpath: 1.1, footpathRange: 8, footpathStep: 1.3 }
+
 /** Everything on the road near a person, as they see it: the traffic, and the rider. */
 function listComing(person: Pedestrian, vehicles: Vehicle[], rider: ScooterState): Coming[] {
   let count = 0
@@ -2198,6 +2323,30 @@ function stepCrossing(world: TrafficWorld, person: Pedestrian, vehicles: Vehicle
   // On the way over. Anything still coming fast at the strip of road just ahead of them, they let pass.
   let wait = false
   let near = false
+  // The player's horn stops them where they are for a moment; cut close at speed, they shout; waited for, they wave their thanks.
+  const riding = rider.rider.phase === 'on'
+  const riderAway = Math.hypot(rider.x - person.x, rider.z - person.z)
+  const riderSpeed = riding ? Math.hypot(rider.velocityX, rider.velocityZ) : 0
+  if (world.honked < 0.25 && riding && riderAway < REACT.hornReach && !(person.startled && person.startled > 0)) person.startled = REACT.startled
+  if (person.startled && person.startled > 0) {
+    person.startled -= dt
+    wait = true
+  }
+  if (riding && !cross.reacted) {
+    if (riderAway < REACT.cutOffWithin && riderSpeed > REACT.cutOffSpeed) {
+      cross.reacted = true
+      person.did = 'cutOff'
+    } else if (riderAway < REACT.letPassWithin && riderSpeed < 0.8) {
+      // Only when they're crossing in front of the rider, not behind.
+      const inFront = (person.x - rider.x) * Math.sin(rider.heading) + (person.z - rider.z) * Math.cos(rider.heading)
+      if (inFront > 1) {
+        cross.reacted = true
+        person.did = 'letPass'
+        person.thanks = REACT.thanks
+      }
+    }
+  }
+  if (person.thanks && person.thanks > 0) person.thanks -= dt
   for (const thing of traffic) {
     if (Math.hypot(thing.x - person.x, thing.z - person.z) < 30 && thing.speed > 1) near = true
     if (thing.speed < 1.5) continue
@@ -2207,7 +2356,7 @@ function stepCrossing(world: TrafficWorld, person: Pedestrian, vehicles: Vehicle
     if (nose > -thing.halfLength * 2 && nose / thing.speed < 1.3) wait = true
   }
   person.walking = approach(person.walking ?? 1, wait ? 0 : 1, dt * 5)
-  person.wave = approach(person.wave ?? 0, near ? 1 : 0, dt * 3)
+  person.wave = approach(person.wave ?? 0, near || (person.thanks ?? 0) > 0 ? 1 : 0, dt * 3)
   if (!wait) {
     const step = Math.min(width, pace * dt)
     person.x += dirX * step
@@ -2281,6 +2430,30 @@ function thinkOfCrossing(world: TrafficWorld, person: Pedestrian, dt: number) {
   person.cross = { stage: 'wait', toX, toZ, lane: opposite, along, waited: 0, light }
 }
 
+/** Someone far from the player: along their footpath, and nothing else (`FAR_PEOPLE`). */
+function stepFarPedestrian(world: TrafficWorld, person: Pedestrian, dt: number) {
+  const { walkLanes, random } = world
+  if (!advance(person, walkLanes, person.speed * dt, random)) {
+    person.lane = -1
+    return
+  }
+  const lane = walkLanes[person.lane]
+  const toX = lane.startX + lane.forwardX * person.along
+  const toZ = lane.startZ + lane.forwardZ * person.along
+  const share = 1 - Math.exp(-dt * 6)
+  const moveX = (toX - person.x) * share
+  const moveZ = (toZ - person.z) * share
+  person.x += moveX
+  person.z += moveZ
+  const moved = Math.hypot(moveX, moveZ)
+  if (moved > 0.01) person.heading += angleBetween(person.heading, Math.atan2(moveX, moveZ)) * Math.min(1, dt * 8)
+  person.stride += moved * STRIDE_PER_METRE
+  person.dodgeX = 0
+  person.dodgeZ = 0
+  person.walking = 1
+  person.wave = 0
+}
+
 function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterState, vehicles: Vehicle[], dt: number) {
   const { walkLanes, random } = world
   const rules = TRAFFIC_RULES
@@ -2305,11 +2478,28 @@ function stepPedestrian(world: TrafficWorld, person: Pedestrian, rider: ScooterS
   const fromRiderZ = pathZ - rider.z
   const riderDistance = Math.hypot(fromRiderX, fromRiderZ)
   const slowRider = getTravelSpeed(rider) < rules.dodgeMaxRiderSpeed
-  const dodging = slowRider && riderDistance < rules.dodgeRange && riderDistance > 0
+  // A rider up on the footpath is another matter: they're seen coming from further off, and stepped well back from.
+  let onFootpath = false
+  if (rider.rider.phase === 'on' && riderDistance < REACT.footpathRange && getTravelSpeed(rider) > 1) {
+    const riderAlong = (rider.x - lane.startX) * lane.forwardX + (rider.z - lane.startZ) * lane.forwardZ
+    const riderAside = (rider.x - lane.startX) * lane.forwardZ - (rider.z - lane.startZ) * lane.forwardX
+    onFootpath = riderAlong > 0 && riderAlong < lane.length && Math.abs(riderAside) < REACT.footpath
+  }
+  const dodging = riderDistance > 0 && (onFootpath || (slowRider && riderDistance < rules.dodgeRange))
   if (dodging) {
     const blend = 1 - Math.exp(-rules.dodgeResponse * dt)
-    person.dodgeX += ((fromRiderX / riderDistance) * rules.dodgeDistance - person.dodgeX) * blend
-    person.dodgeZ += ((fromRiderZ / riderDistance) * rules.dodgeDistance - person.dodgeZ) * blend
+    let awayX = fromRiderX / riderDistance
+    let awayZ = fromRiderZ / riderDistance
+    let reach = rules.dodgeDistance
+    if (onFootpath) {
+      // Back from the kerb, towards the walls: the footpath runs to the left of the road's traffic, so away from the road is the lane's left.
+      awayX = lane.forwardZ
+      awayZ = -lane.forwardX
+      reach = REACT.footpathStep
+      if (Math.hypot(person.dodgeX, person.dodgeZ) < 0.3) person.did = 'steppedBack'
+    }
+    person.dodgeX += (awayX * reach - person.dodgeX) * blend
+    person.dodgeZ += (awayZ * reach - person.dodgeZ) * blend
   } else {
     // Back to their path at a walk, so someone who was thrown doesn't slide back.
     const offset = Math.hypot(person.dodgeX, person.dodgeZ)
@@ -2428,15 +2618,17 @@ const PERSON_SIDESTEP = 4
  * other as people on a footpath do. Only if they still end up touching are they
  * pushed apart, which is rare.
  */
-function separatePeople(people: Pedestrian[], dt: number) {
-  for (let first = 0; first < people.length; first++) {
+function separatePeople(people: Pedestrian[], count: number, dt: number) {
+  for (let first = 0; first < count; first++) {
     const a = people[first]
-    if (a.lane === -1 || a.body || a.fallen) continue
-    for (let second = first + 1; second < people.length; second++) {
+    // Only those near the player: far off, nobody sees two people walk through each other.
+    if (a.lane === -1 || a.body || a.fallen || a.far) continue
+    for (let second = first + 1; second < count; second++) {
       const b = people[second]
-      if (b.lane === -1 || b.body || b.fallen) continue
+      if (b.lane === -1 || b.body || b.fallen || b.far) continue
       const awayX = b.x - a.x
       const awayZ = b.z - a.z
+      if (awayX > PERSON_NOTICE || awayX < -PERSON_NOTICE || awayZ > PERSON_NOTICE || awayZ < -PERSON_NOTICE) continue
       const distance = Math.hypot(awayX, awayZ)
       if (distance >= PERSON_NOTICE || distance === 0) continue
       const backX = awayX / distance
@@ -2596,8 +2788,10 @@ function listDowned(world: TrafficWorld, rider: ScooterState, vehicles: Vehicle[
     count++
     return entry
   }
-  for (const person of world.pedestrians.slice(0, pedestrianCount)) {
-    if (person.lane !== -1) add(person.x, person.z, !!(person.body || person.fallen), person.cross?.stage === 'go')
+  for (let i = 0; i < pedestrianCount; i++) {
+    const person = world.pedestrians[i]
+    // Those far from the player are far from everything that drives properly.
+    if (person.lane !== -1 && !person.far) add(person.x, person.z, !!(person.body || person.fallen), person.cross?.stage === 'go')
   }
   // And what stands in the road that isn't traffic: a cow, a bus broken down.
   for (const obstacle of world.obstacles.values()) {
@@ -2685,6 +2879,26 @@ export function setJam(world: TrafficWorld, jam: TrafficWorld['jam']) {
 
 export function easeDensity(world: TrafficWorld, target: number, dt: number) {
   world.density += (target - world.density) * Math.min(1, dt * 0.2)
+}
+
+/** Makes a vehicle pull in to the kerb and wait `seconds` (its driver has got out to argue), and lets it go again. */
+export function holdVehicle(vehicle: Vehicle, seconds: number) {
+  vehicle.halt = { kind: 'dropOff', left: seconds }
+}
+export function releaseVehicle(vehicle: Vehicle) {
+  if (vehicle.halt) vehicle.halt.left = 0
+}
+
+/** The auto the player has just run into, if any, handed over once (whoever asks deals with it). */
+export function takeBumpedAuto(world: TrafficWorld): Vehicle | null {
+  const auto = world.bumpedAuto
+  world.bumpedAuto = null
+  return auto
+}
+
+/** The player's horn: people crossing the road stop where they are for it (`stepCrossing`). */
+export function hearHorn(world: TrafficWorld) {
+  world.honked = 0
 }
 
 /** Above this, the rider is up on a flyover (transitPlacement.ts' UP_ON_DECK). */
@@ -2784,6 +2998,8 @@ export function standInForParked(world: TrafficWorld, pose: { x: number; z: numb
   pick.lift = 0
   pick.deck = 0
   pick.shift = 0
+  pick.fileShift = 0
+  pick.rail = false
   pick.shiftTarget = 0
   pick.rotation = null
   pick.taken = 'empty'
@@ -2907,13 +3123,216 @@ function stepDrivers(world: TrafficWorld, rider: ScooterState, dt: number) {
 }
 
 /**
- * Traffic and people more than `from` metres from the player are worked out `1 / every` times a
- * second, not every frame: at that distance a car is a dozen pixels in the haze, and stepping it
- * three times less often can't be seen. Each step covers the time since the last, up to `most`
- * (the longest step the driving is steady at). Nothing is kept further than 220 m away at all
- * (`vehicleRemoveAt`, `pedestrianRemoveAt`), so there's nothing beyond that to freeze.
+ * The near and the far.
+ *
+ * Near the player, at most `cap` vehicles (the quality's: twenty on High) drive properly: they
+ * steer, squeeze through gaps, give way at junctions, honk, and are solid things in the physics
+ * world. They're the nearest, out to `fullWithin` metres (and a vehicle already driving properly
+ * stays so until `fullUntil`, so one at the edge doesn't flip to and fro); anything nearer than
+ * `always` drives properly whatever the cap, as does anything knocked over, taken by the player or
+ * stopped for a reason of its own.
+ *
+ * Everything else is on rails (`stepRail`): it keeps to its lane, stops for red lights and for
+ * what's in front of it, pulls up at bus stops, and that's all, `1 / every` times a second. Its
+ * place eases towards its place on the lane, which also rounds its corners. It's drawn as its far
+ * stand-in, carried on between steps by its speed (Traffic.tsx), so it doesn't move in jerks.
+ *
+ * Who is which is worked out `1 / every` times a second, and new traffic is put on the road then
+ * too, at most `spawns` vehicles a time.
  */
-const FAR_SIM = { from: 150, every: 0.05, most: 0.05 }
+/**
+ * Traffic comes in bunches, on the busy roads. `chance`: how often a vehicle put on the road
+ * brings up to `most` more close behind it (a gap of about `gap` metres, `gapNimble` for
+ * two-wheelers and autos). `sideLanes`: a lane gets its street's share of the traffic to this
+ * power, so a side lane (a tenth of a main road's weight) gets a twentieth, not a tenth.
+ * `awayShare`: how much of the traffic heading away from the player is put out at all.
+ */
+const BUNCH = { chance: 0.6, most: 4, gap: 5, gapNimble: 2.2, sideLanes: 1.3, awayShare: 0.3 }
+
+export const RAIL = { fullWithin: 120, fullUntil: 135, always: 40, every: 0.1, most: 0.25, look: 28, spawns: 3, patience: 3, stuck: 40 }
+/** Where a two-wheeler on rails goes to filter past standing traffic: between the lanes, or along the kerb. Sideways from its lane, in metres (left is positive). */
+const RAIL_LINES = [-1.5, 0.9]
+/** People further than `from` metres from the player are stepped `1 / every` times a second, and only walk along: no crossing, no stepping aside. */
+const FAR_PEOPLE = { from: 60, every: 0.1, most: 0.25 }
+
+/** A vehicle driving properly more than `from` metres off (along either axis) is stepped every other frame, for at most `most` seconds at once. */
+const FAR_FULL = { from: 75, most: 0.05 }
+
+const needsDriving = (vehicle: Vehicle) => !!(vehicle.body || vehicle.fallen || vehicle.taken || vehicle.riderOff || vehicle.halt)
+
+/** A vehicle comes off its rails to be driven properly: whatever it remembered of junctions and queues is forgotten. */
+function driveProperly(vehicle: Vehicle) {
+  vehicle.rail = false
+  vehicle.owed = 0
+  vehicle.waiting = 0
+  vehicle.pinned = 0
+  vehicle.crossing = null
+  vehicle.claim = false
+  vehicle.atLine = false
+  vehicle.heldFor = 0
+  vehicle.knot = 0
+  vehicle.backedOff = 0
+  vehicle.holdOff = 0
+  vehicle.setOffIn = undefined
+  vehicle.barging = null
+  vehicle.blocker = null
+  vehicle.heldBy = null
+  vehicle.stalled = false
+  vehicle.reversing = false
+  vehicle.shiftTarget = vehicle.shift
+}
+
+function putOnRails(world: TrafficWorld, vehicle: Vehicle) {
+  vehicle.rail = true
+  vehicle.owed = 0
+  vehicle.waiting = 0
+  vehicle.crossing = null
+  vehicle.claim = false
+  vehicle.barging = null
+  vehicle.blocker = null
+  vehicle.heldBy = null
+  vehicle.indicator = 0
+  vehicle.hazard = false
+  vehicle.railSpeed = vehicle.speed
+  vehicle.railStamp = world.railClock
+  if (vehicle.pusher) world.physics.hidePusher(vehicle.pusher)
+}
+
+/** Chooses who drives properly: the nearest `cap`, and whoever must (see `RAIL`). */
+function chooseModes(world: TrafficWorld, active: Vehicle[], at: { x: number; z: number }, cap: number) {
+  const { order, away } = world
+  const count = active.length
+  for (let i = 0; i < count; i++) {
+    const vehicle = active[i]
+    away[i] = vehicle.lane === -1 ? Infinity : Math.hypot(vehicle.x - at.x, vehicle.z - at.z)
+    order[i] = i
+  }
+  // Nearest first. The order hardly changes between one tenth of a second and the next, so this is quick.
+  for (let i = 1; i < count; i++) {
+    const index = order[i]
+    let j = i - 1
+    while (j >= 0 && away[order[j]] > away[index]) {
+      order[j + 1] = order[j]
+      j--
+    }
+    order[j + 1] = index
+  }
+  let full = 0
+  let rail = 0
+  for (let k = 0; k < count; k++) {
+    const vehicle = active[order[k]]
+    if (vehicle.lane === -1) {
+      vehicle.rail = true
+      continue
+    }
+    const distance = away[order[k]]
+    const proper = needsDriving(vehicle) || distance < RAIL.always || (full < cap && distance < (vehicle.rail ? RAIL.fullWithin : RAIL.fullUntil))
+    if (proper) {
+      full++
+      if (vehicle.rail) driveProperly(vehicle)
+    } else {
+      rail++
+      if (!vehicle.rail) putOnRails(world, vehicle)
+    }
+  }
+  world.counts.full = full
+  world.counts.rail = rail
+}
+
+/** One step of a vehicle on rails (see `RAIL`). `others`: every vehicle in play. */
+function stepRail(world: TrafficWorld, vehicle: Vehicle, others: Vehicle[], at: { x: number; z: number }, dt: number) {
+  const rules = TRAFFIC_RULES
+  const { roadLanes, random } = world
+  let lane = roadLanes[vehicle.lane]
+  const up = (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC
+  const noseX = Math.sin(vehicle.heading)
+  const noseZ = Math.cos(vehicle.heading)
+  // A little in front of its nose: anything standing there that isn't in its own queue is crossing its path.
+  const aheadX = vehicle.x + noseX * (vehicle.halfLength + 1.6)
+  const aheadZ = vehicle.z + noseZ * (vehicle.halfLength + 1.6)
+  const filters = vehicle.kind === 'bike' || vehicle.kind === 'cycle'
+  const line = RAIL_LINES[vehicle.tint < 0.6 ? 0 : 1]
+  const own = vehicle.shift + vehicle.fileShift
+  const patient = vehicle.waiting < RAIL.patience
+  let gap: number = RAIL.look
+  let queue = false
+  for (let i = 0; i < others.length; i++) {
+    const other = others[i]
+    if (other === vehicle || other.lane === -1) continue
+    const offsetX = other.x - vehicle.x
+    const offsetZ = other.z - vehicle.z
+    if (offsetX > 45 || offsetX < -45 || offsetZ > 45 || offsetZ < -45) continue
+    let ahead = Infinity
+    if (other.lane === vehicle.lane) {
+      if (other.along > vehicle.along || (other.along === vehicle.along && other.tint > vehicle.tint)) ahead = other.along - vehicle.along
+    } else if (other.lane === vehicle.nextLane) ahead = lane.length - vehicle.along + other.along
+    if (ahead !== Infinity) {
+      // In another file, beside it: not in its way.
+      if (Math.abs(other.shift + other.fileShift - own) > vehicle.radius + other.radius + 0.2) continue
+      ahead -= other.halfLength + vehicle.halfLength
+      if (filters && other.speed < 2 && ahead < 14) {
+        // Standing traffic: a two-wheeler goes up the side of it, and queues only behind another on the same line.
+        queue = true
+        if (!other.nimble || Math.abs(other.shift + other.fileShift - vehicle.fileShift - line) > 0.6) continue
+      }
+      if (ahead < gap) gap = ahead
+    } else if (patient && ((other.deck ?? 0) > UP_ON_DECK_TRAFFIC) === up) {
+      // Across its nose (a junction with no lights): it waits, a few seconds at most. Not for what's coming the other way, on its own side.
+      const facing = noseX * Math.sin(other.heading) + noseZ * Math.cos(other.heading)
+      if (facing > -0.5 && facing < 0.9 && Math.hypot(other.x - aheadX, other.z - aheadZ) < vehicle.radius + other.radius + 0.5) gap = 0
+    }
+  }
+  vehicle.shiftTarget = filters && queue ? line : 0
+  easeShift(vehicle, dt)
+
+  const toStop = vehicle.rebel ? Infinity : findStopAhead(roadLanes, vehicle.lane, vehicle.along, vehicle.halfLength, vehicle.speed, world.signals, world.signalClock)
+  const held = Math.sqrt(2 * rules.signalBraking * toStop)
+  const turn = nextTurn(vehicle, roadLanes, random)
+  const bendSpeed = turn.angle < 0.3 ? Infinity : rules.cornerSpeed * Math.max(0.6, (Math.PI / 2 / turn.angle) ** 0.7)
+  const forBend = Math.sqrt(bendSpeed * bendSpeed + 2 * rules.cornerBraking * turn.distance)
+  const forStop = vehicle.kind === 'bus' ? busStopSpeed(world, vehicle, dt) : Infinity
+  const keep = vehicle.nimble ? rules.nimbleGap : rules.carGap
+  const target = Math.min(vehicle.cruiseSpeed, Math.max(0, gap - keep), held, forBend, forStop)
+  vehicle.braking = target < vehicle.speed - 0.05 || (vehicle.speed < 0.2 && target < 0.2)
+  const change = target - vehicle.speed
+  vehicle.speed += Math.sign(change) * Math.min(Math.abs(change), (change < 0 ? rules.braking : rules.acceleration) * dt)
+  // Held by what's in front (not a light, not a stop): counted, so a wait at a junction ends, and a knot out of sight is cleared away.
+  const standing = vehicle.speed < 0.3 && gap - keep < 0.3
+  vehicle.waiting = standing ? vehicle.waiting + dt : gap > 3 ? 0 : vehicle.waiting
+  if (vehicle.waiting > RAIL.stuck && Math.hypot(vehicle.x - at.x, vehicle.z - at.z) > 70) {
+    vehicle.lane = -1
+    return
+  }
+
+  if (!advance(vehicle, roadLanes, vehicle.speed * dt, random)) {
+    vehicle.lane = -1
+    return
+  }
+  lane = roadLanes[vehicle.lane]
+  if (lane.closed) {
+    vehicle.lane = -1
+    return
+  }
+  // Towards its place on the lane, most of the way each step: it trails the corner a little, which rounds it.
+  easeFile(vehicle, lane, dt)
+  const sideways = vehicle.shift + vehicle.fileShift
+  const toX = lane.startX + lane.forwardX * vehicle.along + lane.forwardZ * sideways
+  const toZ = lane.startZ + lane.forwardZ * vehicle.along - lane.forwardX * sideways
+  const share = 1 - Math.exp(-dt * 7)
+  const moveX = (toX - vehicle.x) * share
+  const moveZ = (toZ - vehicle.z) * share
+  const moved = Math.hypot(moveX, moveZ)
+  vehicle.x += moveX
+  vehicle.z += moveZ
+  if (moved > 0.03) {
+    const turnTo = angleBetween(vehicle.heading, Math.atan2(moveX, moveZ))
+    vehicle.heading += turnTo * Math.min(1, dt * 9)
+  }
+  vehicle.railSpeed = moved / dt
+  vehicle.railStamp = world.railClock
+  vehicle.deck = deckHeightOn(lane, vehicle.along, world.decks)
+  vehicle.lift = vehicle.deck
+}
 
 export function stepTraffic(
   world: TrafficWorld,
@@ -2921,6 +3340,8 @@ export function stepTraffic(
   vehicleCount: number,
   pedestrianCount: number,
   dt: number,
+  /** How many vehicles may drive properly at once (see `RAIL`). */
+  fullCap = 20,
 ) {
   const { roadLanes, walkLanes, random } = world
   const rules = TRAFFIC_RULES
@@ -2932,22 +3353,66 @@ export function stepTraffic(
   const riderUp = riderUpOnDeck(rider)
   const far = farRider(rider)
   const contact = riderUp ? far : rider
-  const activeVehicles = world.vehicles.slice(0, vehicleCount)
+  const lists = world.lists
+  const activeVehicles = lists.active
+  if (activeVehicles.length !== Math.min(vehicleCount, world.vehicles.length)) {
+    activeVehicles.length = 0
+    for (let i = 0; i < vehicleCount && i < world.vehicles.length; i++) activeVehicles.push(world.vehicles[i])
+    // Those no longer in play (a lower quality) leave the road.
+    for (let i = activeVehicles.length; i < world.vehicles.length; i++) {
+      const spare = world.vehicles[i]
+      if (spare.lane === -1 || spare.taken) continue
+      if (spare.body) world.physics.removeBody(spare)
+      if (spare.pusher) world.physics.hidePusher(spare.pusher)
+      spare.lane = -1
+      spare.x = 1e6
+      spare.z = 1e6
+    }
+  }
+  world.railClock += dt
+  world.honked += dt
+  // Ten times a second: who drives properly and who is on rails, and new traffic onto the road.
+  world.modeIn -= dt
+  const tick = world.modeIn <= 0
+  if (tick) {
+    world.modeIn = RAIL.every
+    chooseModes(world, activeVehicles, at, fullCap)
+  }
+  let spawnsLeft = tick ? RAIL.spawns : 0
   // Traffic up on the flyovers and on the ground never meet: each deals only with its own level,
   // and with the rider only on the same level.
   const isUp = (vehicle: Vehicle) => vehicle.lane !== -1 && (vehicle.deck ?? 0) > UP_ON_DECK_TRAFFIC
-  const upVehicles = activeVehicles.filter(isUp)
-  const groundVehicles = upVehicles.length > 0 ? activeVehicles.filter((vehicle) => !isUp(vehicle)) : activeVehicles
-  world.anyEmpty = activeVehicles.some((vehicle) => vehicle.taken === 'empty')
+  // The vehicles driving properly, and everything near enough to matter to them, on each level.
+  const fullVehicles = lists.full
+  const fullGround = lists.fullGround
+  const groundVehicles = lists.nearGround
+  const upVehicles = lists.nearUp
+  const nearVehicles = lists.near
+  fullVehicles.length = fullGround.length = groundVehicles.length = upVehicles.length = nearVehicles.length = 0
+  const nearReach = RAIL.fullUntil + 35
+  for (let i = 0; i < activeVehicles.length; i++) {
+    const vehicle = activeVehicles[i]
+    if (vehicle.lane === -1) continue
+    const up = isUp(vehicle)
+    if (!vehicle.rail) {
+      fullVehicles.push(vehicle)
+      if (!up) fullGround.push(vehicle)
+    } else if (Math.abs(vehicle.x - at.x) > nearReach || Math.abs(vehicle.z - at.z) > nearReach) continue
+    nearVehicles.push(vehicle)
+    if (up) upVehicles.push(vehicle)
+    else groundVehicles.push(vehicle)
+  }
+  world.anyEmpty = fullVehicles.some((vehicle) => vehicle.taken === 'empty')
   world.signalClock += dt
-  listDowned(world, contact, activeVehicles, pedestrianCount)
+  listDowned(world, contact, fullVehicles, pedestrianCount)
 
-  startHalts(world, groundVehicles, at, dt)
+  startHalts(world, fullGround, at, dt)
   // Who may drive into each junction this step. Only on the ground: nothing crosses up on a deck.
-  planJunctions(world.junctions, roadLanes, groundVehicles, world.signals, world.signalClock, (vehicle, steps) => laneAhead(vehicle, roadLanes, steps, random), dt)
+  planJunctions(world.junctions, roadLanes, fullGround, world.signals, world.signalClock, (vehicle, steps) => laneAhead(vehicle, roadLanes, steps, random), dt)
 
   const outNow = Math.round(vehicleCount * world.density)
-  for (const [index, vehicle] of activeVehicles.entries()) {
+  for (let index = 0; index < activeVehicles.length; index++) {
+    const vehicle = activeVehicles[index]
     // Empty or driven by the player, it isn't traffic: it stands, or goes where they drive it.
     if (vehicle.taken && vehicle.taken !== 'hailed' && vehicle.lane !== -1) {
       stepTaken(vehicle, rider, at)
@@ -2955,6 +3420,10 @@ export function stepTraffic(
     }
     const tooFar = Math.hypot(vehicle.x - at.x, vehicle.z - at.z) > rules.vehicleRemoveAt
     if (vehicle.lane === -1 || tooFar) {
+      // Already off the road, it waits for its turn to be put back on: a few each tenth of a second.
+      // One that found no place (a bus where no buses run) waits a moment before trying again, so it doesn't take every turn.
+      if (vehicle.lane === -1 && vehicle.rail && Math.abs(vehicle.x) > 1e5 && (spawnsLeft <= 0 || index >= outNow || world.railClock < (vehicle.retryAt ?? 0))) continue
+      vehicle.rail = true
       vehicle.taken = undefined
       vehicle.abandoned = false
       if (vehicle.body) world.physics.removeBody(vehicle)
@@ -2971,23 +3440,37 @@ export function stepTraffic(
       // In a jam, lanes near its heart take traffic whatever their street's weight: it bunches there.
       const jam = world.jam
       const inJam = (lane: Lane) => jam !== null && Math.hypot(lane.startX - jam.x, lane.startZ - jam.z) < jam.reach * 0.6 && random() < jam.amount
+      // Side lanes get far less than their share (`SIDE_LANES`), and most of what appears is heading
+      // towards the player, not away: traffic that comes past, not traffic that was never seen.
+      const towards = (lane: Lane) => lane.forwardX * (at.x - lane.startX) + lane.forwardZ * (at.z - lane.startZ) > 0 || random() < BUNCH.awayShare
       const isFree = (lane: Lane) =>
         (vehicle.kind !== 'bus' || lane.buses === true) &&
         !lane.closed &&
         !lane.inJunction &&
-        (inJam(lane) || random() * MAX_LANE_WEIGHT < (lane.weight ?? 1)) &&
+        (inJam(lane) || random() < ((lane.weight ?? 1) / MAX_LANE_WEIGHT) ** BUNCH.sideLanes) &&
+        towards(lane) &&
         activeVehicles.every(
           (other) =>
             other.lane === -1 ||
             Math.hypot(other.x - lane.startX, other.z - lane.startZ) >= Math.max(rules.spawnGap, other.halfLength + vehicle.halfLength + 2),
         )
       // Quieter times of day keep some vehicles in: off the road, far away, until it's busy again.
-      if (index >= outNow) {
+      if (index >= outNow || spawnsLeft <= 0) {
         vehicle.x = 1e6
         vehicle.z = 1e6
         continue
       }
-      const lane = findLaneInRing(
+      spawnsLeft--
+      // In bunches, as traffic comes: the next few appear close behind the last one put out, on its lane.
+      const bunch = world.bunch
+      let lane = -1
+      let bunchAlong = -1
+      if (bunch.left > 0 && bunch.lane >= 0 && !roadLanes[bunch.lane].closed && (vehicle.kind !== 'bus' || roadLanes[bunch.lane].buses === true)) {
+        bunch.left--
+        bunchAlong = bunch.along - vehicle.halfLength - bunch.halfLength - (vehicle.nimble ? BUNCH.gapNimble : BUNCH.gap) * (0.6 + random())
+        if (bunchAlong > 0.5) lane = bunch.lane
+      }
+      if (lane === -1) lane = findLaneInRing(
         roadLanes,
         at.x,
         at.z,
@@ -2995,9 +3478,31 @@ export function stepTraffic(
         rules.vehicleSpawnMax,
         random,
         isFree,
+        150,
       )
-      if (lane === -1) continue
+      if (lane === -1) {
+        vehicle.x = 1e6
+        vehicle.z = 1e6
+        vehicle.retryAt = world.railClock + 1 + random() * 2
+        spawnsLeft++
+        continue
+      }
       placeOnLane(vehicle, roadLanes, lane, random)
+      if (bunchAlong > 0.5) {
+        vehicle.along = bunchAlong
+        vehicle.x = roadLanes[lane].startX + roadLanes[lane].forwardX * bunchAlong
+        vehicle.z = roadLanes[lane].startZ + roadLanes[lane].forwardZ * bunchAlong
+      } else bunch.left = random() < BUNCH.chance ? 1 + Math.floor(random() * BUNCH.most) : 0
+      bunch.lane = lane
+      bunch.along = vehicle.along
+      bunch.halfLength = vehicle.halfLength
+      vehicle.file = Math.floor(random() * 6)
+      vehicle.fileShift = fileOffset(vehicle, roadLanes[lane])
+      vehicle.x += roadLanes[lane].forwardZ * vehicle.fileShift
+      vehicle.z -= roadLanes[lane].forwardX * vehicle.fileShift
+      vehicle.railSpeed = vehicle.cruiseSpeed
+      vehicle.railStamp = world.railClock
+      vehicle.detailed = undefined
       vehicle.deck = deckHeightOn(roadLanes[lane], vehicle.along, world.decks)
       vehicle.lift = vehicle.deck
       vehicle.speed = vehicle.cruiseSpeed
@@ -3041,12 +3546,21 @@ export function stepTraffic(
       continue
     }
 
-    // Far from the player, a vehicle is stepped less often (`FAR_SIM`), with the time it's owed.
+    // On rails: stepped ten times a second, each in its own turn so they don't all fall in one frame.
+    if (vehicle.rail) {
+      vehicle.owed = (vehicle.owed ?? vehicle.tint * RAIL.every) + dt
+      if (vehicle.owed < RAIL.every) continue
+      const owed = Math.min(vehicle.owed, RAIL.most)
+      vehicle.owed = 0
+      stepRail(world, vehicle, activeVehicles, at, owed)
+      continue
+    }
+    // Driving properly but well off (`FAR_FULL`), it's stepped every other frame, with both frames' time.
     let stepDt = dt
-    if (!vehicle.taken && Math.hypot(vehicle.x - at.x, vehicle.z - at.z) > FAR_SIM.from) {
+    if (!vehicle.taken && !vehicle.halt && (Math.abs(vehicle.x - at.x) > FAR_FULL.from || Math.abs(vehicle.z - at.z) > FAR_FULL.from)) {
       vehicle.owed = (vehicle.owed ?? 0) + dt
-      if (vehicle.owed < FAR_SIM.every) continue
-      stepDt = Math.min(vehicle.owed, FAR_SIM.most)
+      if (vehicle.owed < dt * 1.5) continue
+      stepDt = Math.min(vehicle.owed, FAR_FULL.most)
     }
     vehicle.owed = 0
 
@@ -3153,7 +3667,8 @@ export function stepTraffic(
       continue
     }
     hitRider(world, vehicle, contact, stepDt)
-    for (const person of world.pedestrians.slice(0, pedestrianCount)) {
+    for (let i = 0; i < pedestrianCount; i++) {
+      const person = world.pedestrians[i]
       if (person.lane === -1 || person.body || person.fallen) continue
       if (Math.abs(person.x - vehicle.x) > 4 || Math.abs(person.z - vehicle.z) > 4) continue
       hitPersonWithVehicle(world, vehicle, person)
@@ -3162,13 +3677,26 @@ export function stepTraffic(
 
   stepDrivers(world, rider, dt)
   updateLoose(world, contact, dt)
-  updatePushers(world, activeVehicles, contact)
+  updatePushers(world, fullVehicles, contact)
   // The city's walls are in the physics world only round the rider; this adds them as the rider goes.
   world.physics.wallsNear(rider.x, rider.z)
   timed('physics (Rapier)', () => world.physics.step(dt))
-  blockThrownRider(world, contact, activeVehicles)
+  blockThrownRider(world, contact, fullVehicles)
 
-  for (const person of world.pedestrians.slice(0, pedestrianCount)) {
+  let walkersNear = 0
+  let walkersFar = 0
+  let walkerSpawns = RAIL.spawns
+  for (let index = 0; index < world.pedestrians.length; index++) {
+    const person = world.pedestrians[index]
+    // Fewer are out at quiet hours: the rest wait, off the map, and come back as it gets busy.
+    if (index >= pedestrianCount) {
+      if (person.lane !== -1 && !person.body && !person.fallen) {
+        person.lane = -1
+        person.x = 1e6
+        person.z = 1e6
+      }
+      if (person.lane === -1) continue
+    }
     const tooFar = Math.hypot(person.x - at.x, person.z - at.z) > rules.pedestrianRemoveAt
     if (person.lane === -1 || tooFar) {
       if (person.body) world.physics.removeBody(person)
@@ -3177,7 +3705,15 @@ export function stepTraffic(
       person.down = 0
       person.lift = 0
       person.lane = -1
-      const lane = findLaneInRing(walkLanes, at.x, at.z, rules.pedestrianSpawnMin, rules.pedestrianSpawnMax, random)
+      // Put back on a footpath a few at a time, as the traffic is.
+      if (!tick || walkerSpawns <= 0) {
+        person.x = 1e6
+        person.z = 1e6
+        continue
+      }
+      walkerSpawns--
+      // Mostly walking towards the player, as the traffic is put out: people who come past.
+      const lane = findLaneInRing(walkLanes, at.x, at.z, rules.pedestrianSpawnMin, rules.pedestrianSpawnMax, random, (walk) => walk.forwardX * (at.x - walk.startX) + walk.forwardZ * (at.z - walk.startZ) > 0 || random() < BUNCH.awayShare)
       if (lane === -1) continue
       placeOnLane(person, walkLanes, lane, random)
       person.dodgeX = 0
@@ -3195,18 +3731,26 @@ export function stepTraffic(
       stepKnockedPedestrian(world, person, dt)
       continue
     }
-    // Far from the player, people are stepped less often too.
-    let personDt = dt
-    if (Math.hypot(person.x - at.x, person.z - at.z) > FAR_SIM.from) {
-      person.owed = (person.owed ?? 0) + dt
-      if (person.owed < FAR_SIM.every) continue
-      personDt = Math.min(person.owed, FAR_SIM.most)
+    // Far from the player, people only walk along, ten times a second (`FAR_PEOPLE`); someone crossing finishes crossing properly.
+    const farOff = Math.hypot(person.x - at.x, person.z - at.z) > FAR_PEOPLE.from + (person.far ? 0 : 6)
+    person.far = farOff && !person.cross
+    if (person.far) {
+      walkersFar++
+      person.owed = (person.owed ?? person.tint * FAR_PEOPLE.every) + dt
+      if (person.owed < FAR_PEOPLE.every) continue
+      const owed = Math.min(person.owed, FAR_PEOPLE.most)
+      person.owed = 0
+      person.farStamp = world.railClock
+      stepFarPedestrian(world, person, owed)
+      continue
     }
-    person.owed = 0
-    stepPedestrian(world, person, contact, activeVehicles, personDt)
+    walkersNear++
+    stepPedestrian(world, person, contact, nearVehicles, dt)
     hitPedestrian(world, person, contact)
   }
-  separatePeople(world.pedestrians.slice(0, pedestrianCount), dt)
+  world.counts.walkersNear = walkersNear
+  world.counts.walkersFar = walkersFar
+  separatePeople(world.pedestrians, pedestrianCount, dt)
 }
 
 /** Records a hit to be heard. A knock of 10 m/s or more is as loud as it gets. */
