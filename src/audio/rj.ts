@@ -35,7 +35,7 @@ const segment = (prefix: string, more = ''): Segment => {
   return { id: line.id, text: line.line + more }
 }
 
-/** A traffic update: hello, what's on the roads (an event first, else the hour's traffic), the rain, goodbye. Four short lines at most. */
+/** A traffic update: hello, what's on the roads (an event first, else the hour's traffic), and the rain if it's raining. Two short lines, three in the rain: it had a sign-off as well, and ran long. */
 function trafficUpdate({ hours, rain, night, events }: RoadReport): Segment[] {
   const lines = [segment('manju.hello')]
   const event = events[0]
@@ -44,7 +44,6 @@ function trafficUpdate({ hours, rain, night, events }: RoadReport): Segment[] {
   else if (night) lines.push(segment('manju.night'))
   else lines.push(segment('manju.free'))
   if (rain > 0.3) lines.push(segment('manju.rain'))
-  lines.push(segment('manju.bye'))
   return lines
 }
 

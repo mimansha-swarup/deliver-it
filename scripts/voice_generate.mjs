@@ -40,8 +40,9 @@ function readKey() {
  * twice: `.a` a woman, `.b` a man.
  */
 const VOICES = {
-  'RJ Manju': [{ speaker: 'kavya', pace: 1.08 }],
-  'Ravi (dispatch)': [{ speaker: 'rahul', pace: 1.0 }],
+  // Calmer than they were (kavya at 1.08, the highest voice of a dozen tried at about 267 Hz, and rahul): lower voices (about 190 and 111 Hz), slower, and steadier (a lower temperature is less excitable). MANJU=<speaker> or RAVI=<speaker> tries another.
+  'RJ Manju': [{ speaker: process.env.MANJU ?? 'simran', pace: 0.98, pitch: -0.05, temperature: 0.4 }],
+  'Ravi (dispatch)': [{ speaker: process.env.RAVI ?? 'vijay', pace: 0.95, pitch: -0.05, temperature: 0.4 }],
   Customer: [{ suffix: '.a', speaker: 'priya', pace: 1.0 }, { suffix: '.b', speaker: 'amit', pace: 1.0 }],
   'Security guard': [{ speaker: 'ratan', pace: 0.95 }],
   'Dark store staff': [{ speaker: 'neha', pace: 1.05 }],
@@ -52,7 +53,7 @@ async function speak(key, text, language, voice) {
   const reply = await fetch('https://api.sarvam.ai/text-to-speech', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'api-subscription-key': key },
-    body: JSON.stringify({ text, language_code: language, model: MODEL, speaker: voice.speaker, pace: voice.pace, speech_sample_rate: 24000, output_audio_codec: 'wav' }),
+    body: JSON.stringify({ text, language_code: language, model: MODEL, speaker: voice.speaker, pace: voice.pace, ...(voice.pitch !== undefined ? { pitch: voice.pitch } : {}), ...(voice.temperature !== undefined ? { temperature: voice.temperature } : {}), speech_sample_rate: 24000, output_audio_codec: 'wav' }),
   })
   if (!reply.ok) throw new Error(`Sarvam said ${reply.status}: ${(await reply.text()).slice(0, 300)}`)
   const { audios } = await reply.json()

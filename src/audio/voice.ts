@@ -95,10 +95,10 @@ function driveCurve(drive: number): Float32Array<ArrayBuffer> {
 const chains = new Map<Treatment, GainNode>()
 /**
  * What a voice is heard through, built once each and shared:
- * - `radio`: no rumble (a high-pass at 160 Hz), presence lifted at 2.8 kHz, nothing above 7.5 kHz,
- *   squeezed hard by a compressor as broadcast voices are, a touch of drive. On the music bus, so
+ * - `radio`: no rumble (a high-pass at 160 Hz), presence lifted a little at 2.8 kHz, nothing above 6.5 kHz,
+ *   squeezed by a compressor as broadcast voices are, a trace of drive. On the music bus, so
  *   the radio's own volume and "Music off" govern it.
- * - `phone`: 320 Hz to 3.3 kHz and nothing else, more drive, squeezed. On the effects bus.
+ * - `phone`: 320 Hz to 3.6 kHz and nothing else, a little drive, squeezed. On the effects bus.
  */
 function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): GainNode {
   const made = chains.get(treatment)
@@ -113,23 +113,24 @@ function chainFor({ context, music, voice }: AudioBuses, treatment: Treatment): 
   presence.type = 'peaking'
   presence.frequency.value = radio ? 2800 : 1800
   presence.Q.value = 0.9
-  presence.gain.value = radio ? 2 : 6
+  presence.gain.value = radio ? 1 : 3
   const high = context.createBiquadFilter()
   high.type = 'lowpass'
-  high.frequency.value = radio ? 7500 : 3300
+  high.frequency.value = radio ? 6500 : 3600
   high.Q.value = 0.7
   const drive = context.createWaveShaper()
-  drive.curve = driveCurve(radio ? 0.04 : 0.3)
+  drive.curve = driveCurve(radio ? 0.02 : 0.12)
   drive.oversample = '2x'
   const squeeze = context.createDynamicsCompressor()
   squeeze.threshold.value = radio ? -26 : -22
-  squeeze.ratio.value = radio ? 7 : 5
+  squeeze.ratio.value = radio ? 4 : 3.5
   squeeze.attack.value = 0.004
   squeeze.release.value = 0.14
   const level = context.createGain()
   // The RJ is part of the radio: on the music's bus, over its ducked song, and silent when music is off.
   // A phone voice has the voices' own bus (and volume), above the music and the street.
-  level.gain.value = radio ? 2.2 : 1
+  // Both were louder and sharper (2.2 and 1, with twice the presence and drive): they cut through everything, and grated.
+  level.gain.value = radio ? 1.5 : 0.8
   input.connect(low).connect(presence).connect(high).connect(drive).connect(squeeze).connect(level).connect(radio ? music : voice)
   chains.set(treatment, input)
   return input

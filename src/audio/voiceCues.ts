@@ -33,11 +33,15 @@ let raviLast = -Infinity
 /**
  * Nor does he say the same kind of thing every time it happens. Each of these moments has its own
  * rest, in seconds: he speaks the first time, then not again for that moment until the rest is up.
- * (He used to speak at every offer, every pickup and every crash; with the counter's own voice at
- * the pickup that was two voices each time, and a crash-heavy ride was mostly Ravi.) Going online
- * and offline, a breakdown, and a delivery that went very well or badly are always said.
+ * (A crash-heavy ride was mostly Ravi.) Going online and offline and a breakdown are always said.
  */
-const RAVI_REST: Record<string, number> = { offer: 240, picked: 300, crash: 180, ok: 600, good: 150 }
+const RAVI_REST: Record<string, number> = { crash: 600, good: 600, rough: 300 }
+/**
+ * And some moments he lets pass: a new order (the offer's own card and chime say it), a pickup (the
+ * counter has just spoken) and a delivery that was merely fine. He was on the phone at every turn of
+ * every order, which wore. Their lines are still in the script, for whoever wants them back.
+ */
+const RAVI_QUIET = new Set(['offer', 'picked', 'ok'])
 const raviSaid = new Map<string, number>()
 /**
  * Ravi's moments that already come with a message of his own, in other words (going online and
@@ -47,6 +51,7 @@ const raviSaid = new Map<string, number>()
 const HAS_ITS_OWN_MESSAGE = new Set(['online', 'offline', 'breakdown'])
 
 function ravi(prefix: string) {
+  if (RAVI_QUIET.has(prefix)) return
   const now = performance.now()
   if (now - raviLast < RAVI_GAP) return
   const rest = RAVI_REST[prefix]

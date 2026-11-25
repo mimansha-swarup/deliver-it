@@ -12047,3 +12047,27 @@ the card stayed up after the rider had moved on.
 Checked by script on the production build: gossip three times then no "Innenu?"; tips three
 times then no "One more?"; the greeting with an order on; a card open, the rider moved 6 m, the
 card gone within the second.
+
+## 2026-11-25: Entry 279, Ravi and Manju, less of them and easier on the ear
+
+Their voices grated: the voice itself, how often, how loud and sharp, and what they said. And the
+lines were to be mostly English, with a Kannada word here and there. All four:
+
+- **The lines** (voiceScript.json, all 44 of theirs, same ids): plain English, one Kannada word in
+  six of them (swalpa, sakkath, maga, chinna, kaapi, ajji), shorter, and no "Hello hello hello",
+  "Uff", "guru" at every turn or sales voice. The notes for whoever records them now ask for calm.
+- **How often.** Ravi no longer speaks at a new order, at a pickup or after a delivery that was
+  merely fine (`RAVI_QUIET`, voiceCues.ts: the offer has its own card and chime, the counter has
+  just spoken). A crash and a five-star delivery are each said once in ten minutes, a complaint
+  once in five. Going online, offline and a breakdown are always said. Manju's breaks come every
+  five to eight minutes (two to three before), the first after two or three (under a minute
+  before), and a traffic update is two lines, three in the rain: its sign-off is gone.
+- **How loud and sharp** (voice.ts): the phone's presence lift 6 to 3 dB, its drive 0.3 to 0.12,
+  its level 1 to 0.8; the radio's level 2.2 to 1.5, presence 2 to 1 dB, drive halved; both
+  squeezed less.
+- **The voices** (scripts/voice_generate.mjs, Sarvam's Bulbul v3): Manju was `kavya` at pace 1.08,
+  the highest of a dozen voices tried (about 267 Hz on one line); she is `simran` (about 190 Hz) at
+  0.98. Ravi was `rahul` (125 Hz); he is `vijay` (111 Hz) at 0.95. Both a shade lower in pitch and
+  at temperature 0.4, which is steadier. Chosen by measured pitch, not by ear: nobody has listened
+  yet. One line in each of the other voices tried is in clips/voice-test (not in git), and
+  `MANJU=<speaker>` or `RAVI=<speaker>` before the script records with another.
